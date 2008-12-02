@@ -138,7 +138,7 @@ class record:
 def unify (t1, t2, subst, tenv, exp):
     t1 = apply_subst_to_type (t1, subst)
     t2 = apply_subst_to_type (t2, subst)
-    print 'unify', t1, '  ====  ', t2
+    #print 'unify', t1, '  ====  ', t2
     if t1 == t2:
         # happy happy joy joy
         return subst
@@ -337,7 +337,8 @@ def build_type_scheme (type, tenv, subst):
         return type
     else:
         r = forall (gens, type)
-        print 'built type scheme', r        
+        if verbose:
+            print 'built type scheme', r        
         return r
 
 def subst_repr (subst):
@@ -407,7 +408,6 @@ def _type_of (exp, tenv, subst):
             arg_types.append (t)
             type_rib.append ((formal.name, t))
         body_type, subst = type_of (exp.body, (type_rib, tenv), subst)
-        print 'function', (body_type, tuple (arg_types))
         return (body_type, tuple (arg_types)), subst
     elif exp.is_a ('application'):
         result_type = exp.serial # new type variable
@@ -537,24 +537,9 @@ def apply_tenv (tenv, name):
                 # is this a type scheme?
                 if is_a (type, forall):
                     result = instantiate_type_scheme (type)
-                    print 'type of %r %r instantiated as %r' % (name, type, result)
+                    if verbose:
+                        print 'type of %r %r instantiated as %r' % (name, type, result)
                     return result
                 else:
                     return type
     raise ValueError (name)
-
-# XXX to be redone - holdover from manual typing.
-def add_typechecks (root):
-    for node in root:
-        if node.one_of ('let_splat', 'fix'):
-            for i in range (len (node.names)):
-                name = node.names[i]
-                init = node.inits[i]
-                print name, name.type, init.type
-                if name.type and not init.type:
-                    init.typecheck = name.type
-        elif node.is_a ('cexp'):
-            result_type, arg_types = node.type_sig
-            for i in range (len (arg_types)):
-                if arg_types[i] and not node.args[i].type:
-                    node.args[i].typecheck = arg_types[i]
