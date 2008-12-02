@@ -263,7 +263,7 @@ class analyzer:
         # apply replacement-fun() to all of <node>
         node = fun (orig_node)
         new_subs = []
-        size = 0
+        size = 1
         for sub in node.subs:
             new_sub = self.replace (sub, fun)
             new_subs.append (new_sub)
@@ -508,7 +508,6 @@ class analyzer:
                     # (<varref xxx> ...) doesn't always refer to a known
                     #  fun, in this case calls == 0...
                     calls = self.get_fun_calls (name)
-
                     # don't inline functions starting with magical '^' character
                     # XXX eventually this will be replaced with some
                     #     kind of compile-time-environment mechanism
@@ -570,7 +569,7 @@ class analyzer:
             else:
                 complex.append (i)
         if self.verbose:
-            print 'inline: name=%r size=%d simple=%r complex=%r calls=%d' % (name, fun.size, simple, complex, self.get_fun_calls (fun))
+            print 'inline: size=%3d name=%r simple=%r complex=%r calls=%d' % (fun.size, name, simple, complex, self.get_fun_calls (fun))
         # substitute each simple arg in the body
         if simple:
             substs = [ (formals[i], rands[i]) for i in simple ]
