@@ -1,0 +1,97 @@
+
+Starting to think about a 'toy VM' to flush out issues with pxll.
+
+How about this - the compiler will be in python, will generate
+bytecode files that the VM will run.
+
+Things:
+
+  * read a file
+  * pxll: list/tuple data structure
+  * mapping of bytecodes/primitives
+  * GC?  The underlying GC works fine - this should be a non-issue in the VM.
+  * will we read bytecodes, or *images*?
+    interesting - an image could be a pxll image, or a pyll image,
+    it'll be fun keeping this straight. 8^)
+  
+Decisions:
+  * VM design.  4val?  Register? [whoa]
+    hmmm... the 4val thing is tempting, but exactly the same logic leads us
+    to the register model, and why not?  Could even share the compiler to a large
+    extent.
+  * although tempting to leave this up to gcc, we may need to have some
+    kind of low-level switch-int primitive?  [or see next, a 'thread/NEXT' prim?]
+  * can we do a 'threaded' VM?  does this even make sense in pxll?
+    YES, I think it does make sense.  It would involve changing from code in byte
+    strings to code with vectors of addresses.  Then the implementation of NEXT
+    would be straightforward.  I think?  Or rather, the implementation in pxll
+    would amount to the same thing, performance-wise.
+    [NOTE: actually, by simply using pxll's function calling mechanism
+    for opcode dispatch, we will have a 'threaded' VM, for *free*]
+  * do we want low-level insns, or high-level insns?
+    for example, python has a 'getattr' bytecode.  do we want that kind of level?
+    does this build too much into the VM itself?  can we start with low-level byte
+    codes and morph them over time into high-level ones?
+  * one nice thing about the shared-compiler idea (i.e., that we target a register-
+    based VM) is that lays down a very clear path toward native code compilation.
+  * bytecodes in strings or vectors?  do we really want to be decoding immediates
+    from that stream, or do it ahead of time?
+
+Optimizations:
+  * huffman-encoded VM.  rather than trying to make 'high-level' opcodes that capture
+    high-level operations (and thus making the VM 'too close' to the target language),
+    instead retain the low-level bytecodes, but 'compress' them.  In other words, find
+    sequences of bytecodes that are used often, and re-assign the sequence as a single
+    bytecode.  This is like 'unrolling' the VM itself, and would allow gcc to optimize
+    'between' opcodes, not to mention cutting down on branching.
+
+There are clearly lots of optimizations to be done - some day.  Need
+  to get a grip in there somewhere and get started.
+
+
+Ok, simple first plan:
+
+We write a register-based VM, and map bytecodes to the same insns
+  supported by the pxll compiler.
+
+  TODO:
+  * list/tuple data structures for environments.
+  * consider an 'include' directive for pxll so we can start collecting
+     tested libraries of functions?
+
+
+insns:
+  L lit
+  J jump (needed?)
+  E new_tuple ('env')
+  A tuple_store ('arg')
+  > push_env
+  < pop_env
+  V varref
+  ! varset
+  } save
+  { restore
+  ? test
+  C close
+  I invoke
+  K invoke_tail
+  R return
+  T tr_call
+primop insns:
+  + - * /
+  l %<<
+  r %>>
+  | %|
+  & %&
+  = %==
+  z %zero?
+  ] %ge?
+  ) %gt?
+  [ %lt?
+  ( %le?
+  p %print
+  q %printn
+  n %newline (does this need to be primitive?)
+  @ %getcc
+  $ %putcc
+    

@@ -1,0 +1,174 @@
+081201:
+Got a 'record' type kinda working with the H-M poly TI.  It seems to
+  do the Right Thing, but I put in a hack to recover recursively-defined
+  fields.  It doesn't feel right at all.
+To Do:
+  1) rewrite subst with a 'type variable' object with slots
+  2) array type (need to come up with a syntax for this)
+  3) union/variant types
+
+081124:
+Finally got the ML-style let-polymorphism working.  The tricky bits
+  with identifying and substituting the right type variables took
+  quite a while, and I still don't completely understand it...
+Now I've got to retool pretty much all the library code.  Need to get
+  rid of wildcarding, and figure out how to get the OO/class stuff
+  working with type inference.
+Thinking about making a typed low-level %make-tuple primitive.  Another
+  nice thing about such a beast would be that I *should* be able to avoid
+  allocating and then clearing the tuple - at the of execution all the args
+  should be in registers...  could be a speed boost...
+
+08112X:
+Giving up on the wildcard thing.  Going to try ML-style typing.
+
+081114:
+Wow, *lots* of work getting done.  Got the manual typing working, then
+  realized that in order to get the type smarts that I want, I need a
+  unification-style algorithm.  So, I implemented the one from eoplv3.
+  Great, it works!  I'm currently trying to extend it to support
+  object types - the current hangup is in learning how to unify
+  attribute references - new node types for 'get' and 'set'.  Seems to
+  be working so far...
+If this works, it'll be pretty damned cool... lots of pythoners that
+  I've known over the years have pined for some kind of explicit
+  typing - this will work out very nicely - it should be possible to
+  decorate classes with explicit types (when you want), and have
+  everything be checked...
+In order to avoid the straightjacket of hindley-milner typing, I'm
+  hoping to simply introduce an explicit wildcard type, and that will
+  allow me to make the problem go away (e.g., (lambda (x) x))
+All the primops are being rewritten using %%cexp.  I plan to actually
+  get rid of the 'primapp' insn type and replace it with typed %%cexp.
+
+NOTE: most of the system is currently broken - e.g., none of the tests
+  are working.  Once the typing system stabilizes, I plan to go back
+  and rewrite everything and tidy up.
+
+081106:
+First version of a manual typing system.  Planning on replacing
+  %%verify (mostly), so I'm gonna spin a dist here before making
+  such a big change.
+
+081030:
+Flailed a bit w.r.t. OO.  wrote and then unwrote a vector-object
+ version of lib/io/buffered-file.  I think I have a way now to build
+ an OO system around closures, with help from manual typing and the
+ compiler.  We'll see.  It's *so* much cleaner than a bunch of
+ generated macro code.
+
+081030:
+spent some time struggling with the yin/yang pitfalls test.  although
+ I don't have a perfect solution, at least I now know how to
+ (expensively) make the problem go away if necessary.
+ (see cps.py:compile_rands for details)
+started thinking about macros.
+started thinking about objects.
+about to try an experiment to make fix and let* even more alike.
+first hack at a buffered i/o object
+hack to make '.' act like getattr: a.b => (a 'b)
+about to try an experiment to associate simple types with bindings
+
+081013:
+more info in README
+dump/load working!  thx to Derek Peschel for prodding re Lunacy.
+  [Still need to find a way to correct raw label addresses if they're
+   moved... what platforms might do this?  Vista?]
+gc_flip() split into do_gc() and gc_flip(), parameterized on the
+  number of roots.
+access to 'sys.argv/argc'
+people are making me think about google-code, or at least svn.
+
+081008:
+(a form of) vararg support.
+
+081007:
+little more work on the parser, nearly Useful.
+
+081002:
+added another let*-merge operation.  when an init is defined as
+  another let*, simply merge those variables above and replace
+  the init with the body of the inner let*...
+finally replaced the register array with a properly declared set
+  of registers.  [the arg-reordering trick lowered the average num
+  needed so much that I couldn't withstand the temptation any longer]
+although every test I've done in the past showed this to be a waste
+  of energy, I do notice that the lexer+parser shrunk from 100K to
+  85K (the binary)... and that can only be good.
+fixed a bug with the 'top lenv' hack where it failed if there was
+  no one single topmost environment (i.e, check for top-level <fix>
+  before using it).
+
+080924-090930:
+overdosed on caffeine.
+inliner blew up when faced with mutual recursion.
+  added the ability to detect it in analyze.py,
+  should probably remove the 'recursive' slot (function.params[2])
+added comma-hack to transform.py, allowing a weak version of
+  quasiquote which nonetheless greatly simplifies the parser code.
+work on the python parser, about 75% complete.
+
+080923:
+new make-generator in lib/core.scm
+wasted two days learning how important it is to have an infinite
+  loop at the end of every generator.  some day I will understand
+  exactly how the wheels come off when you do that...
+actual progress on the parser.
+
+080922:
+more general literal expressions, lists/vectors/symbols/etc..
+collect_primargs():
+  re-arrange the args so that complex args are evaluated first.
+    this solves the problem with insane register consumption caused
+    by things like (cons a (cons b (cons c (cons ...))))  
+
+080921:
+added vector constants
+renamed new_tuple, tuple_store, etc insns to new_env, push_env, store_env, etc...
+realized that yesterday's hack will fail with zero-length tuples.
+hacked up the functional parser from EOPLv1ch11.3.. wow, it just works!
+
+080920:
+working on the laptop (luckily?) uncovered a nasty bug in gc where
+the tag for a large string happened to look like it was in 'tospace'.
+BOOM!  Happily I noticed that the whole copied_duck() range check is
+unnecessary - whenever forwarding a pointer, leave a sentinel where
+the tag was, and store the forwarded pointer immediately after it.
+Should actually make gc faster...
+
+080919:
+struggled with fix/letrec, had trouble with eval order issues.
+ended up translating fix into let* on the fly in cps.py.. turns out it
+already does *exactly* what I needed fix to do.  This 'letrec'
+implementation is slightly more forgiving than scheme's, because it
+should be possible to refer to 'earlier' inits (just like let*).
+
+080915:
+some progress on constants.
+
+080914:
+lots of notes about how to implement constants...
+
+080910:
+my solution for problem 1.35 in eoplv3 uncovered
+ a bug in <tr_call>.   looks like you can't set!+goto
+ when the variable might have escaped.  wrote an escape_analysis
+ phase.
+
+080909:
+allow 'fix' to bind normal variables as well as functions.
+make 'frb' store key/val pairs, not just keys.
+added a TC_SYMBOL type.
+started on a symbol table implementation.
+slight work in notes/
+
+080908:
+stole a generator implementation from wikipedia, seems to work on
+ the red-black tree...
+
+080907:
+hacked up 'frb.scm', a pure-functional red-black tree.  no
+delete yet, though.  thinking of adding 'rank' to the red? flag,
+rather than wasting 63 bits.
+
+[start of log]

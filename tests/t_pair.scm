@@ -1,0 +1,12 @@
+(include "lib/pair.scm")
+
+(let ((l1 (cons 1 (cons 2 (cons 3 '()))))
+      (l2 (cons 4 (cons 5 (cons 6 '())))))
+  (%printn (reverse l1))
+  (%printn (reverse-onto l1 l2))
+  (%printn (reverse-onto (reverse l1 l2)))
+  (%printn (append l1 l2))
+  (%printn (memq 3 l1))
+  (%printn (memq 4 l1))
+  (%printn (memq 5 (append l1 l2)))
+  )

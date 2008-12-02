@@ -1,0 +1,70 @@
+
+having some trouble thinking clearly about inlining.
+
+A few different ideas I've had:
+
+
+ 1) inline at the lambda-language level.
+    problem here is that we have two choices:
+    a) inline with a lambda abstraction (i.e., a LET)
+       ((lambda (x y) (%+ x y)) 3 5)
+    b) inline 'textually' (i.e., a macro)
+       (%+ (+ 9 3 4) (+ 9 3 4))
+
+    'a' doesn't achieve much at all.  it translates an APP
+    into a LET.  'b' has the danger of duplicating code.
+    perhaps I should just give up and have a 'defmacro'?
+
+ 2) inline at the CPS level.
+    I'm leaning toward this but it's a pretty big change.
+    Bigger in fact than inlining, I think.
+    I think what I'm really wanting here is to be able to
+    'expand' a function in such a way as to replace a lexical
+    contour with registers.  I.e., add new kinds of ribs to <lenv>
+    so that <varref> of an inlined body will instead expand to 
+    a direct register reference.
+
+
+---------------------------
+lots of struggling with solution #2.
+I really want it to work though, because it does exactly what I want.
+
+080827, new issue:
+when calling a function, we need to know ahead of time whether this
+  function knows about our register bindings or not.  because if the
+  function *does* know, and assigns to any of these bindings, then
+  save/restore will wipe out that assignment!  If it does *not* know,
+  then we have to save/restore them.
+
+rethinking this.  in 'modern compiler impl...' appel gives an
+algorithm that dynamically chooses between the two alternatives
+above.  If the arguments are complex, it becomes a "let ..."
+expression.  If they are simple, then the substitution is
+straightforward.  The problem with this is that "let..." is much more
+expensive than my register-rib idea, and *many* times we want
+expansion of things that are 'complex', but not really:
+
+  (car (car x))
+
+Would only expand the innermost application, not both of them.
+[would this be simplified by a second pass?]
+
+This also brings to the fore a long-standing issue.  I *really* need
+to implement a base 'let*' construct (I had something like this with
+<push_env>, now removed).
+Fairly certain this is what Appel does with Tiger, because he mentions
+coalescing "let" expressions at the end of the section on inlining...
+
+---------------------------------
+
+Ok, here's the plan:
+
+1) implement let*
+2) remove my inlining code
+3) rewrite inlining to use something like Appel's algorithm:
+  a) if all arguments are simple (lit or varref), then use
+     substitution
+  b) if some arguments are non-simple, but these are referenced
+     only once, then use substitution.
+  c) if some arguments are non-simple *and* referenced more than
+     once, use let*.

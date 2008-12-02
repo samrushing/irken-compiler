@@ -1,0 +1,44 @@
+
+Nov 28, 2008
+
+we have basic Hindley-Milner with let-polymorphism.
+we've tried to add in a simple polymorphic 'object' type, that is
+  basically a record type since it supports no subtyping.
+trying to infer the class of a method/field reference by introducing a new kind of 'type variable'.
+The problem is that I'm not sure if it will work - i.e., if it's even
+  possible.  Appel's MCIinML introduces a record type with globally
+  unique field names, but mentions that ML solves the problem by using
+  globally unique data constructors.  This is tantamount to doing
+  something like this:
+
+  "node.tree/right"
+
+instead of
+
+  "node.right"
+
+to specify which class the 'right' attribute access belongs to.
+
+It really seems like my method should work, but maybe I've gone about
+it the wrong way?  Think I'm gonna remove the attr_type variable, and
+see if I can get away with just doing some type_of rules...
+
+================================================================================
+
+Ok, just refreshed my brain on exactly how SML handles all of this.
+It appears that the 'unique name' thing is true of data constructors
+(redefinition shadows and hides any previous constructors by that
+name), and that they route around the record-field issue by simply
+requiring a type annotation.  I think this is do-able, and I can
+certainly live with it in order to escape typing hell. 8^)
+
+At some point in the future I may revisit this problem, it certainly
+seems like it should be solvable!
+
+================================================================================
+
+Variant types.  I believe this is what a 'sum' type is.  Sum types
+will require a run-time tag to distinguish which sub-type has been
+chosen.  It'd be *really* cool if I could blend this with the existing
+tag system, and then introduce a typecase or pattern match or
+something...

@@ -1,0 +1,244 @@
+#
+
+[big discontinuity between thoughts.txt and this]
+
+I've finally started working on pxll in april 2008.
+
+the basic compiler structure is there, looks like continuations can
+work with the 'giant c function' model.  a few questions remain:
+
+==================================================
+* can calls be made between functions?  for example, if a
+continuation is saved for vm1(), can we jump to it from vm2()?
+[this will be necessary if we *ever* want to have more than one
+ file or function, which seems likely.  as beautiful as the original
+ notion might be]
+
+==================================================
+* must remember the *purpose* of this compiler.  it's not necessarily
+going to be an implementation language of choice.  its purpose is to
+facilitate the writing of a VM!  So exposing the fine-grained
+nastiness of C is going to help that.  Tagged integers etc may not be
+what we want.  HOWEVER, we need to think clearly on this.  It seems
+likely that the VM will share heap+gc, so we may need to distinguish
+between objects that will live in the heap and those that will not (if
+any).
+
+==================================================
+* safety/typechecking/etc
+  this is where I always screw up on these projects.  I'm always
+flying by the skin of my teeth, and spend *way* too much time chasing
+down stupid bugs that would have been caught early by some type of
+checking.  Since we're generating C, it should be *trivial* to have
+code that checks these things, and it should be *trivial* to turn it
+off when we want to know how fast it can go.
+
+==================================================
+* 'runtime'.  The 'runtime' of pxll will consist of routines useful
+for implementing the VM.
+
+==================================================
+* GC.  will we be able to write the collector *in* pxll?
+Hmmm.... this could be difficult.  Perhaps this is the ultimate
+challenge for PXLL, because it would require no stack/environment at
+all... possibly a variant of PXLL would use the C stack?  Well,
+looking carefully at the cheney copying loop, it of course does not
+use recursion.  A fun challenge!  [my guess is that any initial
+collector will be written by hand]
+
+==================================================
+* known vs unknown functions.  For the purposes of this VM, *all*
+functions should be known.  Therefore we actually should *not* need
+the &&label feature of gcc.  [NB: true except for return labels -
+i.e. return address stored in SAVE tuples]
+[Note: this is not true - functions referenced outside the operator
+ position are unknown (i.e., functional programming) ]
+==================================================
+  * determine if we can make cross-function calls
+
+This could be tricky.  If we keep the 'globals' in registers,
+we'll take a performance hit.  If we load them up at entry, and
+restore them at exit, it might could work.  But at a heavy cost.
+It's possible that we'll have to choose:
+  a) a high-performance, all code in one function
+  b) a lower-performance, allow multiple modules
+
+[The only true escape would be to use native code generation]
+
+Another approach: use gcc's global register decl, therefore stop using
+lexical functions, etc...
+
+==================================================
+evaluation order.
+  I was bothered by the output from (cons 1 (cons 2 (cons 3 ...))),
+  it consumed registers and saved all the <cons> operations for the
+  end.  As a test I parameterized the eval order of both primops and
+  funcalls... the results were strange, at least with nqueens.  The
+  best performance came from left->right.  Perhaps the above example
+  is unrealistic?  At some point run many benchmarks.  Better yet,
+  see if a complex-args-first model works better in general.
+  [yes, this fixed the problem completely]
+
+==================================================
+INDENT/DEDENT
+Most implementations of a python lexer include an extra level of state
+management to handle the synthetic indent/dedent tokens.
+I have a 'feeling' that using a generator I might be able to make
+that a trivial wrapper around the token stream - using local
+variables... [yes, this works just fine]
+==================================================
+binding order.
+  The yin/yang pitfall test exposes a possible issue w.r.t. the exact
+  order of binding operations.  It will only succeed if the env rib
+  allocation is held off until the last possible moment (i.e., after
+  the call/cc).  Not sure if this is important.
+==================================================
+passing arguments in registers.
+  This should be relatively easy for leaf procedures.  The main
+  difficulty is that we'll have to teach the gc about those extra
+  roots, which isn't much fun.
+
+crazy idea about passing arguments in registers.
+  While trying to imagine a way of merging the three binding
+  constructs, it occurs to me that we could make function definitions
+  look like a non-binding construct with a let* immediately nested
+  inside it that is automagically populated with the arguments?
+  passing args via registers would make this a more natural thing?
+  hmmm... or perhaps pointless, unless we started to talk about
+  making bindings map to registers again... uff da...
+  
+==================================================
+noticed a problem with inlining and typechecks.  inlining a small
+function will consider its args either 'simple', or 'complex'.  if a
+complex arg is used only once, it will be considered simple, and will
+thus avoid a let* to hold the arg.  however, %%verify calls frequently
+introduce extra references to args that make nearly all small
+functions impossible to efficiently inline.  This is especially rough
+when trying to avoid allocations inside a loop.
+
+possible solutions:
+1) if we could be smarter about removing (or moving) type checks in
+   such a way as to avoid let* in loops...
+2) type inference!
+3) let-register
+4) when inlining a function, treat %%verify specially - more like a
+   type declaration.
+5) use type declarations rather than %%verify.
+
+==================================================
+
+TASKS.
+  
+  * simple optional manual typing. [in progress]
+
+  * flatten lexical contours.  This kinda thing:
+        r[2] = ((object *******) lenv) [1][1][1][1][1][1][14];
+    is a little ridiculous.
+    I believe this should not be too hard.  Since <let> closures can't escape,
+     it should be possible to raise/lower ('hoist') the binding position.
+
+    it should be possible to lift every variable bound inside a
+    function to the top of it.  stupidly, you could just declare them
+    all... *or*, you could find a minimal set, like with registers,
+    so that otherwise-non-overlapping bindings could share a slot.
+
+  * some kind of nary make-tuple primitive that will build a tuple
+    with a particular typecode and fill it in with the other args.
+    it would probably have to look like %%cexp?
+  * raise inner functions to the top when they do not close over any
+    variables... this avoids creating unneccesary closures inside
+    loops, for example.
+  * fix the 'copied duck' sentinel when used with zero-length tuples.
+  * consider replacing <if> with a <cond> core construct.
+    why?  because cascaded <if> still results in a bunch of r[0]=#f
+    stores followed by if (r[0] == #f) tests... these are *not*
+    getting optimized away!
+  * consider writing an <int-switch> construct, it might make
+    a big difference with things like the lexer, which (when inlined)
+    make repeated references to lenv[1][1][1][1][1][2], which might
+    compile better as a switch?  dunno.
+  * why does tak20 crash on amd64? [probably a gcc bug, -O2 makes it
+    go away]  need to get a fresher gcc on dark!  Urgh, need to look
+    into this - seems too fishy - most optimized tak20 crashes.  is
+    something wrong?
+  * when calling a known function, only save registers that it might clobber.
+  * file object
+  * support [list] constants?
+  * move all verify() calls into C macros and always emit them.  then use -DSAFETY=x
+    (actually, the optimizer should be able to remove those calls with constant <safety>)
+  * ideas from rabbit:
+    * literals as core values, and hence not needing a continuation. would this be worth doing?
+  * add command-line argument for safety checks
+  * lambda-lifting/closure-conversion - I believe this requires known functions.
+  * define an important VM task & the performance we demand (e.g., parsing)
+    how about reading a large file?  for this we need buffers, strings, etc.
+    not to mention, access to open/close/read/write.
+  * add syntactical environments to the compiler
+  * box in compiler, not code generator?
+  * determine if we can make cross-function calls
+    * Note: with the globals in registers, this *can't* work!
+    * Note: gcc can put C globals in registers.
+  * describe some features/funs of VM-runtime
+  * calling external C functions - describing their type signatures
+  * begin a toy VM in order to flush out issues
+  * save/load - much fun to be had here - a good demo as well
+
+DONE.
+  * when accessing the topmost environment is a common activity, store
+    it in a variable, and detect it.
+  * consider re-arranging arguments depending on complexity. looks
+    like register pressure is much lighter when you eval complex args
+    earlier rather than later. (e.g., (cons 1 (cons 2 (cons 3 ...))))
+  * implement variable-arity functions (i.e., (lambda x ...)
+    how to do this: quietly convert a dot-vararg into a special name,
+    and then require a form like "vararg[n]" to access each element
+    of the environment rib.  at first we should allow no fixed args,
+    and then later add support for them, adjusting the offset of the
+    tuple references.
+  * would declaring r0, r1, etc.. make much of a difference?
+    [no: g5: -verbose-gc, tak20=0.096u : yes: 0.098u  yeah gcc!]
+  * fix call/cc: ok, this actually for the most part works again
+    (after removing 'register' inlining).  However, in the test
+    fun call/cc gets inlined, and so it actually fails.   This is
+    a separate issue, but still need to come up with a test that works.
+  * (bor ...) => simple boolean implementation, rather than the scheme
+    one which *requires* a binding in order to return the first true value.
+  * (<rator> <arg0> ...) => eval rator *last*, otherwise it
+    pointlessly consumes a register.
+  * fix the 'include' special form
+  * added and then removed code to track line numbers.  it made the
+    transformer *much* too complicated.  Needs to be replaced with an
+    automated mechanism, something like macro-by-example.
+  * identify functions that allocate, use check_heap() at their top.
+  * INSN class for CPS
+  * flattened CPS representation
+  * inline small functions.  this should be pretty easy too.
+  * implement FIX, and maybe LET.  <let> would just be <push_env>.
+  * split into multiple modules
+  * switch to real data structures
+  * identify tail recursion and turn it into goto (or, use registers for argument passing)
+  * known vs unknown functions
+  * measure the cost of consing loops vs non-consing loops
+    (i.e., what would stack allocation be worth, or args in registers?)
+    [ok, what I did was special-case tail recursion.  a loop that counts
+     down from 1 million takes about 8 million cycles to complete]
+  * optimization: ((lambda (x) ...) y) => (extend-env-and-goto ...)
+    [this should probably be redone as a straightforward beta reduction]
+  * move globals into vm() so they can go into registers
+  * GC [wow, that was easy]
+  * rewrite as register compiler
+  * add an 'inline' capability? ('cexp')
+  * figure out primops/model-c-types/c-expressions
+    * mockup what we think we need, then work through
+      steps needed to get there.
+  * fix gc to know about free regs
+  * verify that getcc/putcc work correctly
+  * add string datatype
+  * rdtsc() support, measure gc overhead
+
+
+benchmarking
+[need to be more organized about this - compiler is changing so
+ radically that I might easily miss a huge hit to performance]
+[tempted to start putting up numbers, but since I'm likely to replace
+ this g5 soon...]

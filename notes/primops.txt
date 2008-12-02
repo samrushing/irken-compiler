@@ -1,0 +1,261 @@
+==================================================
+  * figure out primops/model-c-types/c-expressions
+
+let's imagine a fact function, and what we want it to look like.
+we want the accumulator version to, minimally, not eat through the heap.
+
+  ** figure out how to model straightfoward integer arithmetic, so
+that it does the obvious thing (like in Pyrex).  I want
+
+  (%+ 3 4)
+to become
+  "3+4"
+
+ [perhaps boxing/unboxing should be done in pxll rather than in C
+ (i.e. header.c)?]
+
+ ** right now, the compiler knows *nothing* about args that do not
+    go into the environment.  I think we need another sub-compiler to
+    handle expressions that will translate into C expressions.  We
+    need to carefully define that language.  HOWEVER, a simple
+    expression-only sublang won't be very useful.  We need control
+    structure as well.  Perhaps we can deliberately define this
+    sub-language to translate directly into for/while/etc, like Pyrex
+    does? How schizoid would that be? 
+
+    (let loop ((n 100) (a 1)) (if (zero? n) a (loop (- n 1) (* n a))))
+
+    currently, this translates into a closure.  how fast/slow is this
+    loop?  would rewriting it in a more c-like fashion speed it up at
+    all?  This does a lot of allocation, for the environments.  AH!
+    that's it, we need to remove the allocation for primops.  That's
+    the whole point of this task, is to define *primops*, i.e. things
+    that don't need environments and escape, etc...
+
+
+Let's say we want to support mixed expressions - ones that include
+real funcalls and mixtures of C primops, for example:
+
+  (%+ 1 (%<< (fact 5) 1))
+
+this could turn into something like:
+
+  ...
+  acc = <fact 5 result>
+  acc = (acc<<1)+1
+
+But what about this:
+
+  (%+ 1 (%<< (fact 5) (fnord 3)))
+
+Ok, so we *could* use a register model... instead of <acc>, we have
+<r0>, <r1>, ...  and there's no worry about running out of registers,
+since we can just declare however many we need for the maximum.
+
+The trick is going to be correctly mixing the register model with the
+'four-register' model... need to look at lumberjack again...
+
+
+
+================================================================================
+the register compiler is very similar.  the main difference is in how
+continuations are made.  The one that uses registers has a 'delayed'
+aspect to it.  Instead of recursively calling compile_exp(), it calls
+'build_cont()' with a thunk.  build_cont() allocates the register,
+then calls the thunk.  Also of course, the continuations keep track of
+the free registers.
+
+I'm not sure that even in *that* compiler it is really necessary to
+track the free registers, since they are always allocated
+sequentially.  It's probably only necessary to track the highest-used
+register.  [it may be necessary to pass this as a param to allocate()
+and thus gc_flip()].
+
+Can we avoid the thunk?  It would make the compiler much easier to
+read without it.  In terms of argument order... seems like it
+shouldn't be necessary.  To allocate a register, look at the highest
+register used by the continuation, and add one to it.
+
+[...]
+
+How about this - wrap compile_exp() up with something that gets a
+target register?  Or is there not enough info available at that time?
+
+
+=====================
+Really struggling with the rewrite, because I've tried to cheat by looking at
+the old lumberjack register compiler.  That thing is a bit of a hack because it
+uses a ('cont', ...) data structure for continuations.  It's not clear to me
+exactly when/what is returned from e.g. compile_exp().  There are kinda two
+different 'continuations' - the kind that's wrapped with a target register, and
+then the expression that's inside of it.  Maybe I need a convention in variable
+naming to keep them straight.  This is a good exercise though, I really need to
+understand this like the back of my hand.
+
+=====================
+the 'restore' insn.  how is it different from the 'return' insn?
+in the reg compiler, 'restore' puts back the values of free registers.
+we didn't need that in the 4-val compiler.  same with 'save'.  HOWEVER,
+will we need that with *this* compiler?  If the registers are only used for
+feeding primops... hmmmm... maybe another nice advantage here would be that it
+would be even easier to generate native code if we wanted.  sigh.
+
+'return' is used by compile_exp to wrap tail expressions.
+
+=====================
+
+ok, finally getting somewhere. I think this register thing is going to change
+the compiler more than I expected.  for example, the 4-val would allocate a
+tuple and then start stuffing values into it.  I think this one can put that off
+until the moment the closure is called - because the values will be in
+registers?  I think this means the <val> register is gone, as well.  (the
+accumulating tuple is stored in a register).  It may make it possible to support
+a register-based calling convention as well - for those functions that don't do
+anything fancy.
+
+=====================
+Making progress.  Noticed a familiar-seeming problem:
+(%+ 3 (if #t 10 0)) makes two copies of the outer code (i.e., the continuation
+is completely duplicated).  How do I avoid this?  [maybe I caused this to happen
+by ignoring the 'gen_jump' stuff from lumberjack?]  Yup.  Although there is no
+'jump' insn really, it's a placeholder that allows the result of the conditional
+to go into a target register.  maybe think of a better name?
+
+=====================
+Q: varset doesn't seem to have a dead target?  It often does in practice,
+because it's usually part of a sequence.  But nothing is forcing it?
+maybe insn_varset should check for a non-dead continuation and complain?
+
+=====================
+struggling with restore vs return
+also, trying to eliminate save/restore 'insns'.
+return should simply goto the continuation.
+ however, it seems to have hold of a value.
+ it should give that value to the continuation?
+ how is that done?  e.g., is it always r0?
+ hmmm... with lumberjack, the target register
+  is always copied to %eax.  This would seem the equivalent
+  of something like <result>.
+ also, in lumberjack, the <return> insn only jumps
+  to the continuation, it doesn't pop it.
+
+=====================
+
+
+Ok, doing much better now with registers.  Loops are faster.  But we're still
+consing more than we need - a simple 'let loop' will still create an arg tuple
+and link it in before the 'goto'.  if we can pass args in registers, I think we
+can avoid this and get something very close to an actual C for loop.
+
+idea 1
+So let's say that registers r0-rN are reserved for passing args.  We can always
+guarantee there will be enough registers.  So.  how/when do args move from
+registers into the lenv?  Well, allocate and fill an lenv tuple only when we're
+about to make a non-tail funcall.  [does a tail call not imply that the
+environment (and therefore those registers) are not needed any longer?]
+
+idea 2
+Instead, can we tell when we can reuse a given lenv-tuple?  So
+instead of consing a new tuple we can just dump the args into the existing
+tuple.  [compute them all first, then copy?]
+----------
+
+I like idea 1 better.  The innermost environment will always be in registers.
+Only copied to a tuple when making a non-tail call?  This will use more
+registers, though.  This will change lots of stuff, including varset/varref,
+function call, etc.
+
+Now, do we make a set of 'arg' registers, or just use the ones that are here
+already?  Maybe easier this way, but we'll need to pass around two sets of free
+regs?  Nah... they'll never be free.
+
+  Let say a0, a1, a2 are taken up.  Let's picture 'tak'.
+
+      (tak (tak (%- x 1) y z)
+	   (tak (%- y 1) z x)
+	   (tak (%- z 1) x y))))
+
+  To make the first innermost call we first have to evacuate the current
+  bindings.  But in this case we *know* we don't have to.  Because there is no
+  inner environment.  So we'd just need three new registers to compute the new
+  args, then move into the official regs, then invoke.  So the question is how
+  do we know when we won't have to build an lenv tuple?
+
+Maybe if I think about exactly what I'm shooting for:
+
+(let ((x 99))
+  (let ((y 88))
+    (let loop ((n (%+ x y)))
+      (if (%zero? n)
+          (%+ x y)
+	  (loop (%- n  1))))))
+
+In this case I want 'loop' to take a single argument in a register.
+I want the recursive call to evaluate n-1, then stuff it into that register and
+jump.  Seems relatively straightforward.
+
+But at what point do args in the local env need to get linked in?
+
+make it a one-stage let binding:
+
+(lambda (x)
+   (let loop ((n x)) (if (%zero? n) x (loop (%- n 1)))))
+
+When this is called, 'x' is in 'a0'.  Before we call loop, we know that we'll
+need to evacuate it, because it is free in that expression.  So the answer is,
+free bindings will need to be stuffed in a tuple.  [we could actually analyze
+the inside code and discard/ignore any bindings not used further in?]
+
+Ok, so when we compile a funcall, how do we know which variables are free in the
+immediate surrounding environment?  [we look at lenv[0]?]  Maybe if I could
+compile some examples with and without free vars?  Probably the biggest
+distinction would be between calling functions up or down your own contour - and
+since all are tests are so simple yet and use no dynamic binding...
+
+(lambda (x y z)
+  (thingy x z))
+
+Here, thingy does *not* use the current environment.
+Ugh, the thing to remember is that we extend into the *called* procedure's lenv,
+not our current one.  Always confusing.
+
+To really grok this, I need to really understand when/how environment ribs are
+thrown away, and when they're linked in.
+
+--------------
+hmmm.... maybe this is easier than I thought?  maybe the only time you
+'permanently' link in a rib is when you <close>??
+
+--------------
+The register-args experiment.  Ok, it came very close to working.  However.
+The problem comes with anyone calling set! in the closure:
+
+  (letrec ((x ...)
+           (y ...)
+           (z ...))
+    <body>)
+
+If anyone inside <body> does a set! on x, y, or z - then they will set the
+register, not the one stored in the closure.  If we had a 'fix' operator then
+this would stop folks from assigning to function slots.  Or if we could verify
+that nobody calls set! on that slot.  Which one to do?  Could we support both
+types of calls?
+
+But what about a more natural use of closures:
+
+  (let ((n 100))
+    (let loop ...))
+
+In this case, if anything inside the body of the outer let calls set! on n, then
+again it gets the register, not the tuple.
+
+Hmmmm.... maybe we need to distinguish between leaf procedures and non-leaf
+procedures?  Leaf procedures can use registers.
+
+What about stuff like known/unknown, though?  I think it's about time to start
+recording real information.
+
+================================================================================
+Aight, I've switched over to using real data structures.  Next step is to walk
+over them, take not of use/def, known functions, etc...
+

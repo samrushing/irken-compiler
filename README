@@ -1,0 +1,134 @@
+
+PXLL = 'pyrex-like language'
+PYLL = 'python-like language'
+
+The Goal:
+ A new dialect and implementation of python that supports massively
+  scalable cooperative multi-threading, and eventually support for
+  erlang-style concurrency.
+
+How:
+ A VM that supports continuations. 'threads' will be built using continuations.
+ The VM will be implemented in a pyrex-like language, rather than directly in C.
+ Continuations will be available in both the target language and the implementation
+ language, and since we want to support millions of threads, we cannot use the C
+ stack.  Our approach is to generate continuation-passing style (CPS) code in C.
+
+The Plan:
+
+ 1) implement the pxll compiler.
+ 2) write a VM for pyll in pxll
+ 3) rewrite pxll compiler in pyll
+
+Currently, I'm in stage 2 - though about 90% of the work is still in stage 1.  Also,
+the 'pyrex-like language' is currently a simple dialect of Scheme.  Things being
+considered for pxll are type inference, and possibly even staying with the scheme
+syntax because of its extreme suitability for this purpose.
+
+================================================================================
+
+Quick note about the name 'pxll':
+
+  This project was conceived as "write python in pyrex".
+  Currently, though - 'pxll' is like pyrex only in the sense that it is a HLL that
+  compiles to C, used to implement another HLL.  Sorry for the confusion.  Until
+  I come up with a better name, it's just a good four-letter acronym.
+
+================================================================================
+
+The Python code:
+
+compile.py:
+  drives everything.
+
+lisp_reader.py:
+  reads scheme forms into an s-expression.
+  input: program
+  output: s-exp
+
+transform.py:
+  converts all derived scheme expressions into the core understood by the compiler.
+  input: s-exp
+  output: s-exp
+
+lambda_tree.py:
+  convert the s-expression into a tree of nodes.
+  input: s-exp
+  output: node tree
+
+typing.py:
+  first round: manual typing, eventually: some kind of type inference.
+
+analyze.py:
+  alpha conversion, tree shaker, inliner, some simplification
+  input: node tree
+  output: node tree
+
+cps.py:
+  convert to continuation-passing style, where each continuation is represented
+    by a 'register' assignment.
+  input: node tree
+  output: flattened list of insns
+  
+backend.py:
+  emit C code implementing the cps insns.
+  Here you'll find the small collection of primops.
+  input: insns
+  output: a C file
+
+================================================================================
+
+The Scheme/'pxll' Code:
+
+lib/*.scm:
+
+  These are considered 'official' library implementations of runtime features.
+  core.scm:
+    candidates for compiler builtins (i.e., no need to (include "xxx.scm"))
+  frb.scm:
+    functional red-black trees.  may be used for the symbol table, dicts, etc.
+    (based on Okasaki)
+  io.scm:
+    core unix i/o
+  pair.scm:
+    lisp lists
+  random.scm:
+    random(3)
+  rbtree.scm:
+    red-black tree code from scheme48
+  string.scm:
+    string support
+  symbol:
+    lisp/scheme symbols
+  vector:
+    lisp/scheme vectors (i.e., python lists)
+
+tests/*.scm:
+  Currently, these are ad-hoc tests used to verify pxll compiler features as I
+  write them.  Eventually, these will turn into automated tests (like the ones
+  in compile.py).
+
+vm/*.scm:
+  will hold the VM for the python-like language.
+   
+================================================================================
+
+Quick usage notes.
+
+python compile.py
+ - compile and run all the self-tests which you will find near the end of compile.py
+
+python compile.py -l
+ - compile and run only the last test
+
+python compile.py -f tests/tak20.scm
+ - compile tests/tak20.scm to
+           tests/tak20.c and then
+           tests/tak20
+
+python compile.py -f -O tests/tak20.scm
+ - compile with "gcc -O3"
+
+python compile.py -f -O tests/tak20.scm -s 0
+ - compile with safety level '0'
+

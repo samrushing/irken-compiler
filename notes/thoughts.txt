@@ -1,0 +1,269 @@
+Ok, I just made up the name, because I needed a name for the
+directory. Yes, it sucks.
+
+PLL == python-like-language
+PxLL == pyrex-like-language
+
+Here's the idea: a completely new Python+Pyrex, hopefully implemented
+mostly in PxLL.  Have the underlying API be based on a subset of
+C++/STL.  (A *very* small subset).
+
+Let's first characterize the end product, and then lay out a path to
+get there.
+
+1) find a subset of STL that can be used to implement something like
+the Python VM.
+
+2) a Pyrex-like compiler/front-end for it.  This means designing the
+pxll language as well.  certainly, Pyrex itself makes a good starting
+point.  Try to avoid gratuitous differences, so there might be some
+level of compatibility?
+
+3) Use refcounting, or GC?  Or both, like Python?  Perhaps this could
+be considered a benchmark of the PxLL's success: if even the GC can be
+written using it.
+
+4) Let's do a quick survey of important types.
+
+ Note: in general, we want to avoid speed hacks - try to keep things
+as simple and as close to STL as we can.  At least at first.
+
+  * The Dictionary.  An important question about the dictionary - is
+it used to implement type slots?  Or namespaces?  Or is it an end-user
+data structure only?  The simplest approach here is to use an stl
+hash_map.  [actually, an even simpler approach would be to use an
+association list].
+
+    An alternative would be to use a <map> - this would get rid of the
+need for defining 'hashability' on every type, but would impose a
+partial ordering on all types.  Same problem, different color.  But it
+sure would be nice to be able to iterate over sorted dictionaries,
+wouldn't it?
+
+  * The List.  Probably needs to be a <vector>
+
+  * The Tuple.  Probably an immutable <vector>?
+
+  * The Integer.  Damn, it's tempting to make an immediate int.
+
+  * The Float.  object wrapper.
+
+  * The BigNum.  Hmm... probably best left out at first.
+
+  * The String.  Hmmm... probably use the c++ string.  Smells like
+      trouble, though.  But lots of work already done for us.
+
+5) The VM.
+
+  My druthers would be to stick to a Scheme-like VM, rather than
+reimplement the craziness of the Python VM.  And of course,
+stacklessness.  Need to think about possible impacts, though.  If we
+do end up actually dis-enabling a C API, then we'll be requiring folks
+to go through PxLL, which will support coroutines, if not
+continuations.
+
+Will generated C/C++ code be written in continuation-passing style?
+
+================================================================================
+
+The Path.
+
+What order do we follow here?
+And what's our primary implementation language?
+A bit of a chicken & egg problem - do we do pxll first, or pll?
+Do we design a VM first, then implement it a compiler for it?
+
+Another possibility - we could start with something like the lunacy
+vm, intending to eventually replace it with one written in pxll.
+
+The choices for implementation:
+
+ 1) the pll compiler: python, eventually (parts) in pxll.
+ 2) the pxll compiler: python, eventually (parts) in pxll.
+
+Note that Pyrex is written completely in Python.
+
+So we're really just talking about sitting down and writing some
+Python code.
+
+Maybe an interesting approach would be to hand-write a core/sample VM
+implementation using STL, so that we get a feel for what pxll needs to
+generate.
+
+0) toy VM written in Python.
+1) hard-written VM 'sample/demo', hosted in Python. [similar to early lumberjack]
+2) simple expression compiler for this VM.  [VM is in a module?].
+3) beginnings of Pyrex/pxll implementation of VM.  beginnings of
+   design of 'api'.
+
+--- at this point maybe the target language supports integers,
+    variables, and functions.  From here, we begin to add
+    sophistication one step at a time to the target language.  all
+    other work derives from this.
+
+4) strings, tuples, lists, dictionaries, etc...
+5) classes/types (types are already inherent in the design though)
+6-n) converge on a final definition of pxll and pll.
+
+[...]
+That timeline kinda hand-waves the development of pxll, though.  I
+think maybe a better starting point is on pxll, following a path
+similar to the eopl one of progressively adding to the language.
+
+================================================================================
+
+STL vs C.
+
+What STL gives us is a ready-made set of datatypes, iterators, and
+algorithms.  So we don't have to write them ourselves.  I guess they
+should be considered the 'primitive' operations of the 'primitive'
+types.  It's really just a short-cut way of getting something running
+quickly.
+
+I'm going to guess that nearly all the STL stuff is going to show up
+*outside* the core VM - they'll show up as primops.  So for example we
+might have an 'iterator.next' primop, and an 'int.add' primop.
+
+================================================================================
+
+C vs C++
+
+If we're using STL just for the data structures, we don't need to get
+the whole C++ religion.  But if we *did* have the C++ religion, we'd
+probably want objects & methods to be implemented as c++ objects &
+methods.  What are the pros/cons of this?
+
+Myself, I'm very NOT attracted to going c++.  But I can see I'd have a
+hard time arguing with a zealot.  Maybe there are other advantages?
+
+================================================================================
+
+Namespaces.  There's a real tension between Python's simple
+original dictionary-based namespace design, and wanting to do it
+'right', with closures and lexically bound variables.  Clearly, we
+want to avoid repeating Python's hackish path from the former to the
+latter.  But what problems will we run into by *starting* with lexical
+variables?  Can we get away with disallowing dynamic updates to
+namespaces? (e.g., adding slots to random objects).  Many useful
+objects in Python are already no-updates-allowed.
+
+
+================================================================================
+
+Continuations.
+
+First off - I'm really leaning toward *not* having a user-visible C
+API.  In other words, the official extension language is pxll.  If you
+want to access C stuff from it, you *have* to use pxll.  This gives us
+considerable freedom underneath the covers.  (the unofficial position
+will be, for a particular version of the implementation, you're
+welcome to try to figure out how to do it.  good luck.).
+
+I really want the VM itself to be stackless.  As we know, this implies
+that C code compiled against it must be written in
+continuation-passing mode.  So, the pxll compiler must generation CPS
+output.  How hard his this?
+
+We need to come up with a really simple example function, and show
+what the generated code might look like, and how it interacts with the
+VM.
+
+================================================================================
+Starting on PXLL.
+
+This will be similar to the path in EOPL, starting with a simple
+expression language and adding to it.
+
+SO, step zero is to get a parser going.  Sigh.  Or I could do lisp.
+But we really want a parser.  But lisp would let us get to the
+experiment quicker.
+
+So let's say we start with a lisp syntax.  Add a pyrex-like syntax
+later.  Keep the pyrex syntax in mind while working.
+
+[...]
+
+Really need to understand exactly what language Pyrex defines, because
+it's quite interesting.  It consists of *python*, augmented with c
+variable declarations and types.  Its most important features are the
+automatic type conversion, and the transparent handling of refcounts
+and exceptions.
+
+================================================================================
+PXLL specifics.
+
+Ok, now that I've started on 'compile_exp', I see there are some
+unanswered questions. 8^)
+
+1) storage model. [gc'd heap?]
+2) register model. [four-register?  n-register?  c variables?]
+3) code model. [many functions?  one giant function?  CPS?]
+  The temptation here is to put everything in one giant function.
+  Pro: gcc can theoretically optimize the hell out of it.
+  Con: doesn't address how outside code might interact with it?
+    [do we not want to *allow* that? i.e., all code must compile into
+     the VM?  Seems pretty restrictive.  can we ignore this issue for
+     now?]
+
+Actually, this is an interesting way to think about 'compilers'.
+Given a lit-var-app-proc-set! compiler, what parameters are needed to
+'actualize' it?  Can we write a 'top-level' compiler with any
+intelligence at all?  What 'job' does it do?
+
+
+================================================================================
+operands
+ we need two (or more?) different kinds of compile_rands().
+ 1) we need a 'register' kind of compile_rands()
+ 2) a tuple-args version - for normal funcalls that extend an environment.
+ 3) a 'dumb' version, that simply concats the strings of arguments together?
+    (for example, "(%+ a (%+ b (%prim0 c) (%prim1 d e)))")
+
+SO: 'primops' are C functions or operators.  They are called using the
+C calling convention.  But what happens here:
+
+   (%+ (fun0 a b) (fun1 d e))
+
+In this case, we need to do normal funcalls, that will need
+save/restore etc... Where do we accumulate the arguments?  Another
+issue - the *types* of the arguments.  Here, presumably fun0 will
+return an <object>, but %+ expects an integer.  So there will have to
+be a conversion step:
+
+   (%+ (ob->int (fun0 a b)) (ob->int (fun1 d e)))
+
+(Hmmm.. is the conversion function built into the pxll compiler, or is
+it a primop?)
+
+One temptation is to introduce a C scope:
+
+  { int _temp0 = fun0 (a, b); ... }
+
+But this can't actually work, because fun0 is not a C function.
+The calling of fun0 will actually be a 'goto'.
+
+SO, we really do need something like the register compiler, even
+though we're going to be storing into temps?  Will we collect all
+temps of all types, and factor them out?  For example, will we
+discover that there are a maximum of 12 integer temps needed, and
+declare them that way?  Then 7 object temps...
+
+What about pointers to other types...
+
+[...]
+Spent some time staring at scheme48.  They've definitely done some
+sophisticated stuff.  Looks like they split primitives into 'trivial'
+and 'non-trivial', depending on whether they need continuations.
+We may want to do a similar analysis, but maybe let's put it off until
+later.  For now, let's just do the dumb thing.
+
+For example, "(a+b)-c" - I'm not sure that a modern C compiler will
+see that any differernt from the version using a temporary.
+
+[...]
+Just had a thought.  If we end up using a 'register-like' model for
+temporaries, then it's possible that we can rearrange arguments to
+avoid save/restore sets?  For example, in "(%+ 3 (fun0 x))" we might
+do the funcall first, so we don't have to save/restore the '3', making
+it probably 10x more complicated.
+

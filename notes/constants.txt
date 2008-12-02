@@ -1,0 +1,101 @@
+
+The issue:  Constants.
+
+We need a way to compile constants into a binary.
+
+First off, I'm not happy with this - I'd prefer to not carry along in the text section a
+set of constants that will be immediately copied into the heap.  [Why is this an issue?
+Imagine 4MB+ of symbol tables, DFA's, partial list structures, etc...]
+
+A better alternative would be to initialize these constants somehow, and discard them
+once the image is up and running.
+
+The most natural solution to this would be to have an 'initialization', or 'bootstrap'
+image, that contains these constants and little else - viewed as an initial 'save-world'
+continuation.
+
+But this is also clumsy - especially for those users that will want a 'single C file'
+style of output from pxll.
+
+One possibility is to append the constant data to the exe and have a way of fetching it
+upon bootstrap.  This could also lead to problems.  Sigh...
+
+[Crazy idea: read bootstrap data from stdin?]
+
+================================================================================
+Someday, the most common way of starting a VM will be with a bootstrap image (i.e., a
+saved continuation from a carefully initialized runtime setup).  The ubiquitous horrid
+startup shell script, ugh.  But assuming this is the case, then we should head in that
+direction....
+
+However.  For the present - being able to issue a C file, compile it and run it as a
+self-contained entity is valuable and convenient.  So, we should view it as a temporary
+ugliness, eventually to be fixed.
+
+================================================================================
+Having made the decision to build constants into the exe, how do we do it?  
+
+Do we 
+  1) embed a heap image, ready for relocation by gc, or
+  2) emit code to build a constant vector?
+
+#1 is difficult, because it may require choosing a target platform prematurely.
+ Currently, the same exact C file will compile and run on either a 32 or 64 bit
+ platform.  Also, some kind of code to scan/copy this data into the heap will be
+ required.  [hmm... this isn't 100% true - a 64-bit constant will break on a 32-bit
+ compiler, regardless.  [maybe we could arrange for the C compiler to warn us about
+ this?]  and it may be relatively easy to build arrays of pxll_int, or struct inits,
+ that will do the Right Thing on different platforms...]
+
+#2 seems wasteful/bloated, but very simple.
+
+Is there a way to do #1 that doesn't presume one architecture?  Perhaps we could be lazy
+and specify only 32-bit constants during initialization?
+
+So, after all this perambulation, we're back where we started - #2.  *For Now*, we'll
+just generate code to create the vector of constants, and make that the entry point of
+every program.
+
+Tasks:
+
+ 1) have the compiler collect constants:
+   strings
+   symbols
+   lists
+   vectors
+
+ 2) change the compiler to reference the constant vector
+
+ 3) emit code to create the constant vector
+
+ 4) when the CV exists, call it before starting the user program,
+    otherwise ignore...
+    
+[actually, #1-#2 are necessary for any constant scheme.  #3-#4 are different depending
+on the choice].
+
+
+Objects in the CV:
+  immediates: int, char, bool, null, undefined
+  opaque: string
+  tuples: pair, vector, symbol
+
+
+================================================================================
+Ok, noticing big problems with my plans for a CV.
+First off, we can only put constants in it.  That means nothing mutable.
+No cons cells (unless we declare them immutable), no strings (same), no vectors.
+Only symbols - and technically they're mutable.
+
+So, rethinking once again:
+
+ 1) strings and symbols are probably it (maybe later to be joined by things like floats or bignums)
+ 2) then we need lib/core functions that will populate lists and vectors, and translate
+    literals into generating code.
+
+
+================================================================================
+another idea, maybe even simpler.
+rather than generating some kind of special CV, simply place each string and symbol into
+a global top-level binding.  Then it's just varref to fetch it.  *Especially* when
+combined with the idea of direct access to the top-level environment...
