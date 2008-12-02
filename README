@@ -57,7 +57,7 @@ lambda_tree.py:
   output: node tree
 
 typing.py:
-  first round: manual typing, eventually: some kind of type inference.
+  hindley-milner polymorphic type inference [in progress]
 
 analyze.py:
   alpha conversion, tree shaker, inliner, some simplification
