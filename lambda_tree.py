@@ -59,11 +59,10 @@ class node:
         # XXX consider making this tuple(subs)
         self.subs = subs
         self.serial = serial.next()
-        size = 0
+        size = 1
         for sub in subs:
             size += sub.size
-        # don't count verify nodes for sizing purposes
-        self.size = size + (kind != 'verify')
+        self.size = size
         self.type = type
 
     def pprint (self, depth=0):
