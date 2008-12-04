@@ -45,6 +45,8 @@ def apply1 (t0, tvar, t1):
         for fname, ftype in t0.fields:
             fields.append ((fname, apply1 (ftype, tvar, t1)))
         return record (t0.name, fields)
+    elif is_a (t0, array):
+        return array (apply1 (t0.type, tvar, t1))
     else:
         # a function
         result_type, arg_types = t0
@@ -78,6 +80,8 @@ def apply_subst_to_type (t, subst):
         for fname, ftype in t.fields:
             fields.append ((fname, apply_subst_to_type (ftype, subst)))
         return record (t.name, fields)
+    elif is_a (t, array):
+        return array (apply_subst_to_type (t.type, subst))
     else:
         raise ValueError
 
@@ -134,6 +138,20 @@ class record:
     def __repr__ (self):
         return '{%s %s}' % (self.name, ' '.join (['%s:%s' % x for x in self.fields]))
 
+class array:
+    def __init__ (self, type):
+        self.type = type
+
+    def __cmp__ (self, other):
+        if is_a (other, array):
+            return cmp (self.type, other.type)
+        else:
+            return -1
+
+    def __repr__ (self):
+        return '%s[]' % (self.type,)
+
+
 # reconcile types t1 and t2 from <exp> given <subst>
 def unify (t1, t2, subst, tenv, exp):
     t1 = apply_subst_to_type (t1, subst)
@@ -166,6 +184,8 @@ def unify (t1, t2, subst, tenv, exp):
             return subst
         else:
             raise TypeError ((t1, t2, exp))
+    elif is_a (t1, array) and is_a (t2, array):
+        return unify (t1.type, t2.type, subst, tenv, exp)
     else:
         raise TypeError ((t1, t2, exp))
 
@@ -183,6 +203,8 @@ def occurs_in_type (tvar, t):
                 return True
         else:
             return False
+    elif is_a (t, array):
+        return occurs_in_type (tvar, t.type)
     else:
         # function
         result_type, arg_types = t
@@ -235,6 +257,8 @@ def initial_type_environment():
         ('bool', 'bool'),
         ('nil', 'nil'),
         ('undefined', 'undefined'),
+        # think about this...
+        ('%%vector-literal', forall ([10000], array (10000)))
         ]
     constructors = []
     for name, c in classes.items():
@@ -328,6 +352,8 @@ def build_type_scheme (type, tenv, subst):
         elif is_a (t, record):
             for fname, ftype in t.fields:
                 list_generic_tvars (ftype)
+        elif is_a (t, array):
+            list_generic_tvars (t.type)
         else:
             raise ValueError
 
@@ -412,9 +438,11 @@ def _type_of (exp, tenv, subst):
     elif exp.is_a ('application'):
         result_type = exp.serial # new type variable
         rator_type, subst = type_of (exp.rator, tenv, subst)
+        n = len (exp.rands)
+        # I think these exceptions should maybe be done as primapp instead?
+        #  like this?: (primapp (record list) ...)
         if is_a (rator_type, record):
             # a constructor
-            n = len (exp.rands)
             arg_types = []
             assert (n == len (rator_type.fields))
             for i in range (n):
@@ -428,9 +456,13 @@ def _type_of (exp, tenv, subst):
                         tf = apply_tenv (tenv, tf)
                 subst = unify (ta, tf, subst, tenv, exp)
             return rator_type, subst
+        elif is_a (rator_type, array):
+            for i in range (n):
+                ta, subst = type_of (exp.rands[i], tenv, subst)
+                subst = unify (ta, rator_type.type, subst, tenv, exp)
+            return rator_type, subst
         else:
             # normal application
-            n = len (exp.rands)
             arg_types = []
             for i in range (n):
                 ta, subst = type_of (exp.rands[i], tenv, subst)
@@ -498,6 +530,32 @@ def _type_of (exp, tenv, subst):
             # this is kindof a 'dead' type judgement?
             ta, subst = type_of (arg, tenv, subst)
         return result_type, subst
+    elif exp.is_a ('primapp'):
+        if exp.name == '%%vector-literal':
+            n = len (exp.args)
+            if n == 0:
+                raise ValueError ("don't know how to type a zero-length vector yet")
+            else:
+                ta0, subst = type_of (exp.args[0], tenv, subst)
+                for i in range (1, n):
+                    ta, subst = type_of (exp.args[i], tenv, subst)
+                    subst = unify (ta0, ta, subst, tenv, exp)
+            return array (ta0), subst
+        elif exp.name == '%%array-ref':
+            # (%%array-ref <array> <index>)
+            base = exp.args[0]
+            index = exp.args[1]
+            bt, subst = type_of (base, tenv, subst)
+            it, subst = type_of (index, tenv, subst)
+            # hmmm... we don't know the type of the array here,
+            #  should i just make a fresh tvar?  or am I somehow routing
+            #  around the normal instantiation mechanism?
+            ta = array (fresh_tvar())
+            subst = unify (bt, ta, subst, tenv, exp)
+            subst = unify (it, 'int', subst, tenv, exp)
+            return ta, subst
+        else:
+            raise ValueError ("can't type unknown primop %s" % (exp.name,))
     else:
         raise ValueError (exp)
 
@@ -515,6 +573,8 @@ def instantiate_type (type, tvar, fresh_tvar):
             return (f (result_type), tuple ([f(x) for x in arg_types]))
         elif is_a (t, record):
             return record (t.name, [ (fname, f (ftype)) for (fname, ftype) in t.fields ])
+        elif is_a (t, array):
+            return array (f (t.type))
         else:
             raise ValueError
     return f (type)
