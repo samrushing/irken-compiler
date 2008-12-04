@@ -101,15 +101,16 @@ class reader:
             if a == '-':
                 # bad, bad, bad
                 result = '-'
-            all_digits = 1
-            for ch in a:
-                if ch not in '-0123456789':
-                    all_digits = 0
-                    break
-            if all_digits:
-                result = atom ('int', string.atoi (a))
             else:
-                result = a
+                all_digits = 1
+                for ch in a:
+                    if ch not in '-0123456789':
+                        all_digits = 0
+                        break
+                if all_digits:
+                    result = atom ('int', string.atoi (a))
+                else:
+                    result = a
         else:
             result = self.read_atom()
         # hack to support postfix array-reference syntax
