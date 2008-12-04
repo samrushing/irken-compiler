@@ -154,6 +154,10 @@ class transformer:
             # (set! x.y.z 3) => (set (get x y) z 3)
             ignore, loc, name = self.expand_atom (exp[1])
             return ['set', loc, name, self.expand_exp (exp[2])]
+        elif is_a (exp[1], list) and exp[1][0] == '%%array-ref':
+            [ignore, base, index] = exp[1]
+            value = exp[2]
+            return ['%%array-set', self.expand_exp (base), self.expand_exp (index), self.expand_exp (value)]
         else:
             return ['set_bang', exp[1], self.expand_exp (exp[2])]
 
