@@ -144,6 +144,8 @@ class compiler:
             # XXX need two different insns, to handle constant index
             # XXX could support strings as character arrays by passing down a hint?
             return self.compile_primargs (exp.args, ('%array-ref',), lenv, k)
+        elif exp.name == '%%array-set':
+            return self.compile_primargs (exp.args, ('%array-set',), lenv, k)
         else:
             raise ValueError ("Unknown primop: %r" % (exp.name,))
 
