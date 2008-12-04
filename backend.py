@@ -168,9 +168,12 @@ class c_backend:
             self.write ('r%d = t;' % (insn.target,))
         elif primop[0] == '%array-ref':
             [base, index] = insn.regs
-            #define UOBJ_GET(o,i) (((pxll_vector*)(o))->val[i])
             self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
             self.write ('r%d = ((pxll_vector*)r%d)->val[unbox(r%d)];' % (insn.target, base, index))
+        elif primop[0] == '%array-set':
+            [base, index, val] = insn.regs
+            self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
+            self.write ('((pxll_vector*)r%d)->val[unbox(r%d)] = r%d;' % (base, index, val))
         else:
             raise ValueError ("unknown primop")
 
