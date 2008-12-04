@@ -166,6 +166,11 @@ class c_backend:
             for i in range (nargs):
                 self.write ('t[%d] = r%d;' % (i+1, regs[i]))
             self.write ('r%d = t;' % (insn.target,))
+        elif primop[0] == '%array-ref':
+            [base, index] = insn.regs
+            #define UOBJ_GET(o,i) (((pxll_vector*)(o))->val[i])
+            self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
+            self.write ('r%d = ((pxll_vector*)r%d)->val[unbox(r%d)];' % (insn.target, base, index))
         else:
             raise ValueError ("unknown primop")
 
