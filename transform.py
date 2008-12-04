@@ -425,7 +425,7 @@ class transformer:
     # literal expressions are almost like a sub-language
 
     def build_vector (self, exp):
-        return self.expand_exp (['vector'] + [self.build_literal (x) for x in exp.value])
+        return self.expand_exp (['%%vector-literal'] + [self.build_literal (x) for x in exp.value])
 
     def build_literal (self, exp):
         if is_a (exp, atom):
@@ -479,15 +479,6 @@ class transformer:
         self.classes.append (c)
         # this will get optimized away to nothing...
         return ['begin']
-
-    def gen_constructor (self, klass):
-        nfields = len (klass.fields)
-        return [
-            'function',
-            (klass.name, klass.name),
-            (False, klass.fields),
-            ['%%make-tuple', klass.name, 'userobj'] + [ fname for (fname, ftype) in klass.fields ]
-            ]
 
 class pxll_class:
 
