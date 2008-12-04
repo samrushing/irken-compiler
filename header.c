@@ -266,6 +266,18 @@ read_header (FILE * file)
   fgetc (file);
 }
 
+// used to check array references.  some day we might try to teach
+//   the compiler when/how to skip doing this...
+void
+inline
+range_check (object * o, unsigned int index)
+{
+  if ((index < 0) || (index >= GET_TUPLE_LENGTH (*o))) {
+    fprintf (stderr, "array reference out of range\n");
+    abort();
+  }
+}
+
 pxll_int verbose_gc = 1;
 pxll_int clear_fromspace = 0;
 pxll_int clear_tospace = 0;
