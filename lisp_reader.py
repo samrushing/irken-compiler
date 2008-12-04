@@ -54,15 +54,15 @@ class reader:
         if ch == '':
             raise EOFError, "Unexpected end of file"
         elif ch == '(':
-            return self.read_list()
+            result = self.read_list()
         elif ch == '"':
-            return self.read_string()
+            result = self.read_string()
         elif ch == "'":
             self.next()
-            return ['quote', self.read()]
+            result = ['quote', self.read()]
         elif ch == ",":
             self.next()
-            return ['comma', self.read()]
+            result = ['comma', self.read()]
         # unquote, etc.. can be found in old lumberjack code if needed.
         elif ch == '#':
             self.next()
@@ -76,42 +76,49 @@ class reader:
                     ch = ' '
                 else:
                     ch = probe[0]
-                return atom ('char', ch)
+                result = atom ('char', ch)
             elif ch in 'Xx':
                 self.next()
-                return atom ('int', string.atoi (self.read_atom(), 16))
+                result = atom ('int', string.atoi (self.read_atom(), 16))
             elif ch in 'Oo':
                 self.next()
-                return atom ('int', string.atoi (self.read_atom(), 8))
+                result = atom ('int', string.atoi (self.read_atom(), 8))
             elif ch in 'Bb':
                 self.next()
-                return atom ('int', string.atoi (self.read_atom(), 2))
+                result = atom ('int', string.atoi (self.read_atom(), 2))
             elif ch in 'Tt':
                 self.next()
-                return atom ('bool', 'true')
+                result = atom ('bool', 'true')
             elif ch in 'Ff':
                 self.next()
-                return atom ('bool', 'false')
+                result = atom ('bool', 'false')
             elif ch == '(':
-                return atom ('vector', self.read_list())
+                result = atom ('vector', self.read_list())
             else:
                 raise SyntaxError, 'Illegal #-escape character: "%s"' % ch
         elif ch in '-0123456789':
             a = self.read_atom()
             if a == '-':
                 # bad, bad, bad
-                return '-'
+                result = '-'
             all_digits = 1
             for ch in a:
                 if ch not in '-0123456789':
                     all_digits = 0
                     break
             if all_digits:
-                return atom ('int', string.atoi (a))
+                result = atom ('int', string.atoi (a))
             else:
-                return a
+                result = a
         else:
-            return self.read_atom()
+            result = self.read_atom()
+        # hack to support postfix array-reference syntax
+        self.skip_whitespace()
+        if self.peek() == '[':
+            index = self.read_array_index()
+            return ['%%array-ref', result, index]
+        else:
+            return result
 
     def read_atom (self):
         # read at least one character
@@ -119,7 +126,7 @@ class reader:
         result = self.next()
         while 1:
             ch = self.peek()
-            if ch in string.whitespace or ch in '()':
+            if ch in string.whitespace or ch in '()[]':
                 return result
             else:
                 result = result + self.next()
@@ -171,6 +178,14 @@ class reader:
                     self.read_include (exp, result)
                 else:
                     result.append (exp)
+
+    def read_array_index (self):
+        # throw away open bracket
+        self.next()
+        exp = self.read()
+        if self.read() != ']':
+            raise SyntaxError ("expected closing ']' character")
+        return exp
 
     def read_all (self):
         forms = []
