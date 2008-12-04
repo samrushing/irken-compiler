@@ -554,6 +554,16 @@ def _type_of (exp, tenv, subst):
             subst = unify (bt, ta, subst, tenv, exp)
             subst = unify (it, 'int', subst, tenv, exp)
             return ta, subst
+        elif exp.name == '%%array-set':
+            # (%%array-ref <array> <index> <value>)
+            base, index, value = exp.args
+            bt, subst = type_of (base, tenv, subst)
+            it, subst = type_of (index, tenv, subst)
+            vt, subst = type_of (value, tenv, subst)
+            ta = array (vt)
+            subst = unify (bt, ta, subst, tenv, exp)
+            subst = unify (it, 'int', subst, tenv, exp)
+            return 'undefined', subst
         else:
             raise ValueError ("can't type unknown primop %s" % (exp.name,))
     else:
