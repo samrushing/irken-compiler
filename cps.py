@@ -468,6 +468,7 @@ def analyze (insns):
         node, body, free = fun.params
         fun.allocates = 0
         for insn in walk_function (body):
+            # XXX THIS IS CURRENTLY WRONG!!
             if insn.name == 'primop' and insn.params == '%make-tuple':
                 fun.allocates += 1
             if insn.name in ('new_env', 'build_env'):
