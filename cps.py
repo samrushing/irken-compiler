@@ -53,6 +53,8 @@ class compiler:
             return self.compile_let_splat (tail_pos, exp, lenv, k)
         elif exp.is_a ('make_tuple'):
             return self.compile_primargs (exp.args, ('%make-tuple', exp.type, exp.tag), lenv, k)
+        elif exp.is_a ('primapp'):
+            return self.compile_primapp (tail_pos, exp, lenv, k)
         else:
             raise NotImplementedError
 
@@ -134,6 +136,16 @@ class compiler:
 
     def compile_primargs (self, args, op, lenv, k):
         return self.collect_primargs (args, [], lenv, k, lambda regs: self.gen_primop (op, regs, k))
+
+    def compile_primapp (self, tail_pos, exp, lenv, k):
+        if exp.name == '%%vector-literal':
+            return self.compile_primargs (exp.args, ('%make-tuple', exp.type, 'vector'), lenv, k)
+        elif exp.name == '%%array-ref':
+            # XXX need two different insns, to handle constant index
+            # XXX could support strings as character arrays by passing down a hint?
+            return self.compile_primargs (exp.args, ('%array-ref',), lenv, k)
+        else:
+            raise ValueError ("Unknown primop: %r" % (exp.name,))
 
     def compile_sequence (self, tail_pos, exps, lenv, k):
         if len(exps) == 0:
