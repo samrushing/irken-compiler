@@ -70,12 +70,7 @@ def gcc (name, force_32=False, optimize=False):
     base, ext = os.path.splitext (name)
     uname = os.uname()
     machine = uname[-1]
-    if machine == 'Power Macintosh':
-        if force_32:
-            pass
-        else:
-            arch = '-arch ppc64'
-    elif machine == 'amd64':
+    if machine == 'amd64':
         if force_32:
             arch = '-m32'
         else:
@@ -89,6 +84,8 @@ def gcc (name, force_32=False, optimize=False):
         optimize = ''
     if uname[0] == 'Darwin':
         arch += ' -fnested-functions'
+        if not force_32:
+            arch += ' -m64'
     cmd = 'gcc -I. -g %s %s %s.c -o %s' % (arch, optimize, base, base)
     print cmd
     os.system (cmd)
