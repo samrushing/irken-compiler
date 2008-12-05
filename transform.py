@@ -429,7 +429,8 @@ class transformer:
     # literal expressions are almost like a sub-language
 
     def build_vector (self, exp):
-        return self.expand_exp (['%%vector-literal'] + [self.build_literal (x) for x in exp.value])
+        #return self.expand_exp (['%%vector-literal'] + [self.build_literal (x) for x in exp.value])
+        return self.expand_exp (['%%vector-literal'] + [self.expand_exp (x) for x in exp.value])
 
     def build_literal (self, exp):
         if is_a (exp, atom):
