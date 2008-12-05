@@ -545,10 +545,11 @@ def _type_of (exp, tenv):
             # hmmm... we don't know the type of the array here,
             #  should i just make a fresh tvar?  or am I somehow routing
             #  around the normal instantiation mechanism?
-            ta = array (type_variable())
+            item_type = type_variable()
+            ta = array (item_type)
             unify (bt, ta, tenv, exp)
             unify (it, 'int', tenv, exp)
-            return ta
+            return item_type
         elif exp.name == '%%array-set':
             # (%%array-set <array> <index> <value>)
             base, index, value = exp.args
