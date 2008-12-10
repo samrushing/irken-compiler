@@ -132,20 +132,6 @@ dump_object (object * ob, int depth)
         fprintf (stdout, ")");
       }
 	break;
-      case TC_USEROBJ: {
-        pxll_vector * t = (pxll_vector *) ob;
-        pxll_int n = get_tuple_size (ob);
-        int i;
-	fprintf (stdout, "{");
-        for (i=0; i < n; i++) {
-          dump_object ((object *) t->val[i], 0);
-	  if (i < n-1) {
-	    fprintf (stdout, " ");
-	  }
-        }
-        fprintf (stdout, "}");
-      }
-	break;
       case TC_PAIR:
 	print_list ((pxll_pair *) ob);
         break;
@@ -155,10 +141,19 @@ dump_object (object * ob, int depth)
       case TC_SYMBOL:
 	print_string (ob[1], 0);
 	break;
-      default:
-        fprintf (stdout, "<unknown object>");
-        abort();
-        break;
+      default: {
+        pxll_vector * t = (pxll_vector *) ob;
+        pxll_int n = get_tuple_size (ob);
+        int i;
+	fprintf (stdout, "{u%d ", tc - TC_USEROBJ);
+        for (i=0; i < n; i++) {
+          dump_object ((object *) t->val[i], 0);
+	  if (i < n-1) {
+	    fprintf (stdout, " ");
+	  }
+        }
+        fprintf (stdout, "}");
+      }
       }
     }
     }
