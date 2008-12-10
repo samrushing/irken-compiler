@@ -188,6 +188,24 @@ class analyzer:
         else:
             return node
 
+    def transform_0_typecase (self, node):
+        # (typecase x 
+        #    ((<select0> <formal0> <formal1> ...) <body0>)
+        #    ((<select1> <formal0> <formal1> ...) <body1>)
+        #    ...)
+        # =>
+        # (typecase x
+        #    ((let ((f0 x.0) (f1 x.1) (f2 x.2)) <body0>) ...))
+        #
+        alts = []
+        for i in range (len (node.alts)):
+            formals = [tree.vardef (x) for x in node.alt_formals[i][1:]]
+            inits = [tree.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?')), [node.variant]) for j in range (len (formals))]
+            alts.append (tree.let_splat (formals, inits, node.alts[i]))
+        node.alts = alts
+        node.subs = [node.variant] + node.alts
+        return node
+
     def transform_1_conditional (self, node):
         # (if #t x y) => x
         [test_exp, then_exp, else_exp] = node.subs
