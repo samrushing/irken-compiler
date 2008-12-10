@@ -1,3 +1,11 @@
+081209:
+variant/sum/union types.  I thought I might implement this as a
+  straight 'union', rather than an ML-style sum-of-products.  However,
+  the more I think about it the more I'm leaning toward fleshing it
+  out.  There's a reason these guys did things the way they did. 8^)
+  Mostly it seems like I've now done 90% of the work to support it,
+  and taken 90% of the performance hit.
+
 081201:
 Got a 'record' type kinda working with the H-M poly TI.  It seems to
   do the Right Thing, but I put in a hack to recover recursively-defined
