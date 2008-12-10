@@ -37,6 +37,9 @@ object * heap1 = NULL;
 
 #define TC_LAST                 TC_USEROBJ
 
+// the range TC_USEROBJ to 252 is available for variant records,
+//   leaving a max of 59 variants in any one type.
+
 // immediate constants
 #define PXLL_FALSE		(object *) (0x000 | TC_BOOL)
 #define PXLL_TRUE		(object *) (0x100 | TC_BOOL)
