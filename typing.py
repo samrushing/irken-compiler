@@ -32,6 +32,7 @@ verbose = False
 # XXX I should probably use a 'constructor' based design.
 
 class type_variable:
+
     def __init__ (self, num=None):
         if num is None:
             self.num = tree.serial.next()
@@ -107,11 +108,10 @@ def apply_subst_to_type (t):
         return record (t.name, fields)
     elif is_a (t, array):
         return array (apply_subst_to_type (t.type))
+    elif is_a (t, product):
+        return product ([apply_subst_to_type (x) for x in t.types])
     elif is_a (t, union):
-        alts = []
-        for fname, ftype in t.alts:
-            alts.append ((fname, apply_subst_to_type (ftype)))
-        return union (t.name, alts)
+        return union (t.name, [(fn, ft) for (fn, ft) in t.alts])
     else:
         raise ValueError
 
@@ -127,9 +127,12 @@ def extend_subst (tvar, type):
 def lookup_subst (tvar):
     t = tvar
     while is_a (t, type_variable):
-        t = t.val
-    # path compression
-    tvar.val = t
+        if t.val is not None:
+            t = t.val
+            # path compression
+            tvar.val = t
+        else:
+            break
     return t
 
 class record:
@@ -169,6 +172,20 @@ class array:
     def __repr__ (self):
         return '%s[]' % (self.type,)
 
+class product:
+
+    def __init__ (self, types):
+        self.types = types
+
+    def __cmp__ (self, other):
+        if is_a (other, product):
+            return cmp (self.types, other.types)
+        else:
+            return -1
+
+    def __repr__ (self):
+        return '{' + '*'.join ([str(x) for x in self.types]) + '}'
+
 class union:
     def __init__ (self, name, alts):
         self.name = name
@@ -191,15 +208,21 @@ class union:
     def gen_constructor (self, selector):
         # build a constructor as a node tree - before analyse is called.
         stype, index = self.get_field_type (selector)
-        formals = [tree.vardef (selector, stype)]
-        arg = tree.varref (selector)
-        body = tree.make_tuple (self.name, index, [arg])
+        if is_a (stype, product):
+            types = stype.types
+            formals = [tree.vardef ('%s_%d' % (selector, i), types[i]) for i in range (len (types))]
+            args = [tree.varref (x.name) for x in formals]
+        else:
+            formals = [tree.vardef (selector)]
+            args = [tree.varref (selector)]
+        body = tree.make_tuple (self.name, index, args)
         name = '%s/%s' % (self.name, selector)
         return name, tree.function (self.name, formals, body)
 
     def get_datatype_constructors (self):
         constructors = []
-        for sname, stype in self.alts:
+        for alt in self.alts:
+            sname = alt[0]
             constructors.append (('%s/%s' % (self.name, sname), self))
         return constructors
 
@@ -208,9 +231,9 @@ class union:
         return '{union %s %s}' % (self.name, alts)
 
 # reconcile types t1 and t2 from <exp> given <subst>
-def unify (t1, t2, tenv, exp):
-    t1 = apply_subst_to_type (t1)
-    t2 = apply_subst_to_type (t2)
+def unify (ot1, ot2, tenv, exp):
+    t1 = apply_subst_to_type (ot1)
+    t2 = apply_subst_to_type (ot2)
     #print 'unify', t1, '  ====  ', t2
     if t1 == t2:
         # happy happy joy joy
@@ -231,7 +254,7 @@ def unify (t1, t2, tenv, exp):
         for i in range (len (args1)):
             unify (args1[i], args2[i], tenv, exp)
         # extend with result type
-        return unify (r1, r2, tenv, exp)
+        unify (r1, r2, tenv, exp)
     elif is_a (t1, record) and is_a (t2, record):
         if t1.name == t2.name:
             for i in range (len (t1.fields)):
@@ -239,7 +262,15 @@ def unify (t1, t2, tenv, exp):
         else:
             raise TypeError ((t1, t2, exp))
     elif is_a (t1, array) and is_a (t2, array):
-        return unify (t1.type, t2.type, tenv, exp)
+        unify (t1.type, t2.type, tenv, exp)
+    elif is_a (t1, product) and is_a (t2, product):
+        for i in range (len (t1.types)):
+            unify (t1.types[i], t2.types[i], tenv, exp)
+    # ahhh... this may be the hack I need to support recursive types...
+    elif is_a (t1, str):
+        unify (apply_tenv (tenv, t1), t2, tenv, exp)
+    elif is_a (t2, str):
+        unify (apply_tenv (tenv, t2), t1, tenv, exp)
     else:
         raise TypeError ((t1, t2, exp))
 
@@ -259,6 +290,10 @@ def occurs_in_type (tvar, t):
             return False
     elif is_a (t, array):
         return occurs_in_type (tvar, t.type)
+    elif is_a (t, product):
+        for tp in t.types:
+            if occurs_in_type (tvar, tp):
+                return True
     elif is_a (t, union):
         for sname, stype in t.alts:
             if occurs_in_type (tvar, stype):
@@ -521,9 +556,15 @@ def _type_of (exp, tenv):
             [base, selector] = exp.rator.name.split ('/')
             # which type is selected?
             tf, index = rator_type.get_field_type (selector)
-            tf = apply_tenv (tenv, tf)
+            if is_a (tf, str):
+                tf = apply_tenv (tenv, tf)
             # XXX lookup type
-            tv = type_of (exp.rands[0], tenv)
+            if len(exp.rands) > 1:
+                tv = product ([type_of (x, tenv) for x in exp.rands])
+            elif len(exp.rands) == 1:
+                tv = type_of (exp.rands[0], tenv)
+            else:
+                raise ValueError
             unify (tf, tv, tenv, exp)
             # XXX hack: frob this application.
             # XXX this should be a method of <union>
@@ -633,31 +674,40 @@ def _type_of (exp, tenv):
         else:
             raise ValueError ("can't type unknown primop %s" % (exp.name,))
     elif exp.is_a ('typecase'):
-        vt = type_of (exp.varname, tenv)
+        vt = type_of (exp.variant, tenv)
+        if is_a (vt, str):
+            # XXX fix this issue!
+            vt = apply_tenv (tenv, vt)
         if not is_a (vt, union):
             raise ValueError ("typecase expects a union/sum type")
         else:
             # verify that all of the variants are accounted for...
             names0 = set ([sname for sname, stype in vt.alts])
-            names1 = set (exp.alt_names)
+            names1 = set ([x[0] for x in exp.alt_formals])
             if names0 != names1:
                 raise ValueError ("set of union/sum type alternatives does not match in typecase")
             else:
-                n = len (exp.alt_names)
+                n = len (exp.alt_formals)
                 texp = type_variable (exp.serial)
                 new_alts = [None] * n
                 for i in range (n):
-                    sname = exp.alt_names[i]
+                    formals = exp.alt_formals[i]
+                    sname = formals[0]
                     body = exp.alts[i]
-                    type, index = vt.get_field_type (sname)
-                    type_rib = [(exp.varname.name, type)]
+                    ftype, index = vt.get_field_type (sname)
+                    if is_a (ftype, product):
+                        type_rib = []
+                        for j in range (len (ftype.types)):
+                            type_rib.append ((formals[j+1], ftype.types[j]))
+                    else:
+                        type_rib = [(formals[1], ftype)]
                     tenv2 = (type_rib, tenv)
                     bt = type_of (body, tenv2)
                     unify (texp, bt, tenv2, exp)
                     # sort 'em
                     new_alts[index] = exp.alts[i]
                 exp.alts = new_alts
-                exp.subs = [exp.varname] + exp.alts
+                exp.subs = [exp.variant] + exp.alts
             return texp
     else:
         raise ValueError (exp)
