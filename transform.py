@@ -78,9 +78,10 @@ class transformer:
             else:
                 raise ValueError
         for c in self.classes:
-            for fun in c.methods:
-                names.append (fun[1][0])
-                inits.append (fun)
+            if is_a (c, pxll_class):
+                for fun in c.methods:
+                    names.append (fun[1][0])
+                    inits.append (fun)
         return exp
 
     def go (self, exp):
@@ -425,11 +426,37 @@ class transformer:
         # (%%make-tuple <typecode-string> arg0 arg1 ...)
         return ['%%make-tuple', exp[1]] + self.expand_all (exp[2:])
     
+    # ----------- datatype ------------
+    def expand_datatype (self, exp):
+        # (datatype <name> (union (tag0 type0) (tag1 type1) ...))
+        name = exp[1]
+        defn = exp[2]
+        # for now
+        if defn[0] == 'union':
+            # XXX a function in <typing> to add these?
+            typing.datatypes[name] = typing.union (name, defn[1:])
+        else:
+            raise ValueError ("unknown datatype constructor")
+        return ['begin']
+
+    def expand_typecase (self, exp):
+        # (typecase <varname>
+        #    (kind0 <body0>)
+        #    (kind1 <body1>)
+        #    ...)
+        varname = exp[1]
+        alts = exp[2:]
+        names = []
+        bodies = []
+        for alt in alts:
+            names.append (alt[0])
+            bodies.append (self.expand_exp (['begin'] + alt[1:]))
+        return ['typecase', varname, names, bodies]
+
     # --------------------------------------------------------------------------------
     # literal expressions are almost like a sub-language
 
     def build_vector (self, exp):
-        #return self.expand_exp (['%%vector-literal'] + [self.build_literal (x) for x in exp.value])
         return self.expand_exp (['%%vector-literal'] + [self.expand_exp (x) for x in exp.value])
 
     def build_literal (self, exp):
