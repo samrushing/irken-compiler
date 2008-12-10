@@ -8,6 +8,8 @@ is_a = isinstance
 # yeah, it's a global.  get over it.
 #  XXX at some point, move some of these funs into a class, and fix these.
 classes = {}
+# probably merge these
+datatypes = {}
 verbose = False
 
 # the schizoid style of this file.
@@ -99,13 +101,17 @@ def apply_subst_to_type (t):
             tuple ([ apply_subst_to_type (x) for x in arg_types ])
             )
     elif is_a (t, record):
-        # constructor
         fields = []
         for fname, ftype in t.fields:
             fields.append ((fname, apply_subst_to_type (ftype)))
         return record (t.name, fields)
     elif is_a (t, array):
         return array (apply_subst_to_type (t.type))
+    elif is_a (t, union):
+        alts = []
+        for fname, ftype in t.alts:
+            alts.append ((fname, apply_subst_to_type (ftype)))
+        return union (t.name, alts)
     else:
         raise ValueError
 
@@ -163,6 +169,43 @@ class array:
     def __repr__ (self):
         return '%s[]' % (self.type,)
 
+class union:
+    def __init__ (self, name, alts):
+        self.name = name
+        self.alts = alts
+
+    def __cmp__ (self, other):
+        if is_a (other, union):
+            # assumes unique by name...
+            return cmp (self.name, other.name)
+        else:
+            return -1
+
+    def get_field_type (self, selector):
+        for i in range (len (self.alts)):
+            sname, stype = self.alts[i]
+            if selector == sname:
+                return stype, i
+        raise ValueError ("union: no such field/selector")
+
+    def gen_constructor (self, selector):
+        # build a constructor as a node tree - before analyse is called.
+        stype, index = self.get_field_type (selector)
+        formals = [tree.vardef (selector, stype)]
+        arg = tree.varref (selector)
+        body = tree.make_tuple (self.name, index, [arg])
+        name = '%s/%s' % (self.name, selector)
+        return name, tree.function (self.name, formals, body)
+
+    def get_datatype_constructors (self):
+        constructors = []
+        for sname, stype in self.alts:
+            constructors.append (('%s/%s' % (self.name, sname), self))
+        return constructors
+
+    def __repr__ (self):
+        alts = ' '.join ([('%s:%s' % tuple(x)) for x in self.alts])
+        return '{union %s %s}' % (self.name, alts)
 
 # reconcile types t1 and t2 from <exp> given <subst>
 def unify (t1, t2, tenv, exp):
@@ -216,6 +259,10 @@ def occurs_in_type (tvar, t):
             return False
     elif is_a (t, array):
         return occurs_in_type (tvar, t.type)
+    elif is_a (t, union):
+        for sname, stype in t.alts:
+            if occurs_in_type (tvar, stype):
+                return True
     else:
         # function
         result_type, arg_types = t
@@ -253,6 +300,14 @@ def optional_type (exp, tenv):
     else:
         return type_variable (exp.serial)
 
+#
+# I think there need to be *two* type environments... maybe this is the two sigmas in Appel?
+#  1) a local environment mapping variable names to types
+#  2) a global type environment describing builtin types and user datatypes
+# what does having a single environment get us?  the ability to override a type constructor?
+# Note that poly instantiation is built into 'varref', though...
+#
+
 def initial_type_environment():
     base_types = [
         # XXX think about these...
@@ -272,8 +327,6 @@ def initial_type_environment():
         n = len (c.fields)
         for fname, ftype in c.fields:
             if ftype is None:
-                # note that since we're not building a type *scheme* here,
-                #  we're going to get monomorphic record types.
                 tvar = type_variable()
                 meta.append (tvar)
                 ftype = tvar
@@ -284,6 +337,10 @@ def initial_type_environment():
             #  since the type environment and subst are completely empty here.
             con = forall (meta, con)
         constructors.append ((cname, con))
+    # datatype constructors
+    for name, dt in datatypes.iteritems():
+        constructors.extend (dt.get_datatype_constructors())
+        constructors.append ((name, dt))
     return base_types + constructors
 
 def lookup_method (node):
@@ -416,11 +473,12 @@ def _type_of (exp, tenv):
         return t2
     elif exp.one_of ('let_splat'):
         n = len (exp.inits)
-        type_rib = []
+        #type_rib = []
         for i in range (n):
             ta = type_of (exp.inits[i], tenv)
-            type_rib.append ((exp.names[i].name, ta))
-        return type_of (exp.body, (type_rib, tenv))
+            #type_rib.append ((exp.names[i].name, ta))
+            tenv = ([(exp.names[i].name, ta)], tenv)
+        return type_of (exp.body, tenv)
     elif exp.is_a ('function'):
         type_rib = []
         arg_types = []
@@ -455,6 +513,20 @@ def _type_of (exp, tenv):
             for i in range (n):
                 ta = type_of (exp.rands[i], tenv)
                 unify (ta, rator_type.type, tenv, exp)
+            return rator_type
+        elif is_a (rator_type, union):
+            # bit of a hack here, transform.py should assert() that
+            #  the name is is a string and not an expression...
+            # XXX assumes exp.rator is a varref
+            [base, selector] = exp.rator.name.split ('/')
+            # which type is selected?
+            tf, index = rator_type.get_field_type (selector)
+            tf = apply_tenv (tenv, tf)
+            # XXX lookup type
+            tv = type_of (exp.rands[0], tenv)
+            unify (tf, tv, tenv, exp)
+            # XXX hack: frob this application.
+            # XXX this should be a method of <union>
             return rator_type
         else:
             # normal application
@@ -542,9 +614,7 @@ def _type_of (exp, tenv):
             index = exp.args[1]
             bt = type_of (base, tenv)
             it = type_of (index, tenv)
-            # hmmm... we don't know the type of the array here,
-            #  should i just make a fresh tvar?  or am I somehow routing
-            #  around the normal instantiation mechanism?
+            # we don't know the item type yet...
             item_type = type_variable()
             ta = array (item_type)
             unify (bt, ta, tenv, exp)
@@ -562,6 +632,33 @@ def _type_of (exp, tenv):
             return 'undefined'
         else:
             raise ValueError ("can't type unknown primop %s" % (exp.name,))
+    elif exp.is_a ('typecase'):
+        vt = type_of (exp.varname, tenv)
+        if not is_a (vt, union):
+            raise ValueError ("typecase expects a union/sum type")
+        else:
+            # verify that all of the variants are accounted for...
+            names0 = set ([sname for sname, stype in vt.alts])
+            names1 = set (exp.alt_names)
+            if names0 != names1:
+                raise ValueError ("set of union/sum type alternatives does not match in typecase")
+            else:
+                n = len (exp.alt_names)
+                texp = type_variable (exp.serial)
+                new_alts = [None] * n
+                for i in range (n):
+                    sname = exp.alt_names[i]
+                    body = exp.alts[i]
+                    type, index = vt.get_field_type (sname)
+                    type_rib = [(exp.varname.name, type)]
+                    tenv2 = (type_rib, tenv)
+                    bt = type_of (body, tenv2)
+                    unify (texp, bt, tenv2, exp)
+                    # sort 'em
+                    new_alts[index] = exp.alts[i]
+                exp.alts = new_alts
+                exp.subs = [exp.varname] + exp.alts
+            return texp
     else:
         raise ValueError (exp)
 
@@ -595,7 +692,9 @@ def instantiate_type_scheme (tscheme):
 def apply_tenv (tenv, name):
     while tenv:
         rib, tenv = tenv
-        for var, type in rib:
+        # walk the rib backwards for the sake of let*
+        for i in range (len(rib)-1, -1, -1):
+            var, type = rib[i]
             if var == name:
                 # is this a type scheme?
                 if is_a (type, forall):
