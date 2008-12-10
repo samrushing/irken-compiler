@@ -52,6 +52,8 @@ class node:
     #     of them.
 
     typecheck = None
+    # generic flag
+    flag = False
 
     def __init__ (self, kind, params=(), subs=(), type=None):
         self.kind = kind
@@ -202,6 +204,12 @@ class node:
         elif self.kind == 'make_tuple':
             (self.type, self.tag) = self.params
             self.args = self.subs
+        elif self.kind == 'constructor':
+            pass
+        elif self.kind == 'typecase':
+            self.alt_names = self.params
+            self.varname = self.subs[0]
+            self.alts = self.subs[1:]
         else:
             raise ValueError (self.kind)
 
@@ -248,6 +256,10 @@ def to_scheme (node):
         return ['set', to_scheme (node.ob), node.name, to_scheme (node.val)]
     elif node.is_a ('get'):
         return ['get', to_scheme (node.ob), node.name]
+    elif node.is_a ('constructor'):
+        return ['constructor', scheme_string (repr (node.params))]
+    elif node.is_a ('typecase'):
+        return ['typecase', node.params, [to_scheme (x) for x in node.alts]]
     else:
         raise ValueError
 
@@ -339,6 +351,13 @@ def get (ob, name):
 def set (ob, name, val):
     return node ('set', name, [ob, val])
 
+def constructor (params):
+    # constructors are applied like functions
+    return node ('constructor', params, [])
+
+def typecase (varname, alt_names, alts):
+    return node ('typecase', alt_names, [varref (varname)] + alts)
+
 # ================================================================================
 
 class ConfusedError (Exception):
@@ -416,6 +435,9 @@ class walker:
                 elif rator == 'set':
                     ignore, ob, name, val = exp
                     return set (WALK (ob), name, WALK (val))
+                elif rator == 'typecase':
+                    ignore, varname, alt_names, alts = exp
+                    return typecase (varname, alt_names, [WALK (x) for x in alts])
                 else:
                     # a varref application
                     return application (WALK (rator), [WALK (x) for x in exp[1:]])
