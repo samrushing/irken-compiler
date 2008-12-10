@@ -1,3 +1,8 @@
+081210:
+ok, I added a product type and now full-on recursive algebraic datatypes
+  seem to be working.  phew!  Next up: support 'unit' so we can get a 
+  good 'nil' datatype, and things like enums... [is this really necessary?]
+
 081209:
 variant/sum/union types.  I thought I might implement this as a
   straight 'union', rather than an ML-style sum-of-products.  However,
