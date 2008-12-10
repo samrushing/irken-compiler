@@ -55,6 +55,8 @@ class compiler:
             return self.compile_primargs (exp.args, ('%make-tuple', exp.type, exp.tag), lenv, k)
         elif exp.is_a ('primapp'):
             return self.compile_primapp (tail_pos, exp, lenv, k)
+        elif exp.is_a ('typecase'):
+            return self.compile_typecase (tail_pos, exp, lenv, k)
         else:
             raise NotImplementedError
 
@@ -112,24 +114,22 @@ class compiler:
         args.sort (lambda x,y: cmp (y[0].size, x[0].size))
         perm = [x[1] for x in args]
         args = [x[0] for x in args]
+        #print 'collect_primargs, len(args)=', len(args)
         return self._collect_primargs (args, regs, perm, lenv, k, ck)
 
     def _collect_primargs (self, args, regs, perm, lenv, k, ck):
         # collect a set of arguments into registers, pass that into compiler-continuation <ck>
-        if not args:
+        if len(args) == 0:
             # undo the permutation of the args
             perm_regs = [regs[perm.index (i)] for i in range (len (perm))]
             return ck (perm_regs)
         else:
-            result = self.compile_exp (
+            return self.compile_exp (
                 False, args[0], lenv, cont (
                     regs + k[1],
                     lambda reg: self._collect_primargs (args[1:], regs + [reg], perm, lenv, k, ck)
                     )
                 )
-            if args[0].typecheck:
-                result.typecheck = args[0].typecheck
-            return result
 
     def compile_tr_call (self, args, node, lenv, k):
         return self.collect_primargs (args, [], lenv, k, lambda regs: self.gen_tr_call (node, regs))
@@ -191,6 +191,13 @@ class compiler:
                 k
                 )
         return self.collect_primargs (exp.test_exp.args, [], lenv, k, finish)
+
+    def compile_typecase (self, tail_pos, exp, lenv, k):
+        def finish (test_reg):
+            jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
+            alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
+            return self.gen_typecase (test_reg, alts, k)
+        return self.compile_exp (False, exp.varname, lenv, cont (k[1], finish))
 
     def compile_function (self, tail_pos, exp, lenv, k):
         lenv = (exp.formals, lenv)
@@ -292,8 +299,10 @@ class INSN:
     def print_info (self):
         if self.name == 'test':
             return '%s %r %r' % (self.name, self.regs, self.params[0])
-        if self.name == 'close':
+        elif self.name == 'close':
             return '%s %r %r' % (self.name, self.regs, self.params[0].name)
+        elif self.name == 'typecase':
+            return '%s %r' % (self.name, self.regs)
         else:
             return '%s %r %r' % (self.name, self.regs, self.params)
 
@@ -368,6 +377,9 @@ class pxll_compiler (compiler):
     def gen_simple_test (self, name, regs, then_code, else_code, k):
         return INSN ('test', regs, (name, then_code, else_code), k)
 
+    def gen_typecase (self, test_reg, alts, k):
+        return INSN ('typecase', [test_reg], alts, k)
+
     def gen_invoke_tail (self, fun, closure_reg, args_reg, k):
         return INSN ('invoke_tail', [closure_reg, args_reg], fun, None)
 
@@ -408,6 +420,8 @@ def flatten (exp):
         elif exp.name == 'close':
             node, body, free = exp.params
             exp.params = node, flatten (body), free
+        elif exp.name == 'typecase':
+            exp.params = [flatten (x) for x in exp.params]
         r.append (exp)
         exp = next
     return r
@@ -433,6 +447,9 @@ def pretty_print (insns, depth=0):
         elif insn.name == 'close':
             node, body, free = insn.params
             pretty_print (body, depth+1)
+        elif insn.name == 'typecase':
+            for alt in insn.params:
+                pretty_print (alt, depth+1)
 
 def walk (insns):
     "iterate the entire tree of insns"
