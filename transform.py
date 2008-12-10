@@ -428,30 +428,38 @@ class transformer:
     
     # ----------- datatype ------------
     def expand_datatype (self, exp):
-        # (datatype <name> (union (tag0 type0) (tag1 type1) ...))
+        # (datatype <name> (union (tag0 type0 type1 ...) (tag1 type0 type1 ...) ...))
         name = exp[1]
         defn = exp[2]
         # for now
         if defn[0] == 'union':
             # XXX a function in <typing> to add these?
-            typing.datatypes[name] = typing.union (name, defn[1:])
+            def maybe_product (x):
+                if len(x) == 1:
+                    return x[0]
+                else:
+                    return typing.product (x)
+            typing.datatypes[name] = typing.union (
+                name,
+                [(x[0], maybe_product (x[1:])) for x in defn[1:]]
+                )
         else:
             raise ValueError ("unknown datatype constructor")
         return ['begin']
 
     def expand_typecase (self, exp):
-        # (typecase <varname>
-        #    (kind0 <body0>)
-        #    (kind1 <body1>)
+        # (typecase <exp>
+        #    ((kind0 var0 var1) ...)
+        #    ((kind1 var0 ...) ...)
         #    ...)
-        varname = exp[1]
+        variant = exp[1]
+        # for now, only allow a varref for <exp>... later we'll automatically
+        #    wrap this thing in a let if it's not.
+        assert is_a (variant, str)
         alts = exp[2:]
-        names = []
-        bodies = []
-        for alt in alts:
-            names.append (alt[0])
-            bodies.append (self.expand_exp (['begin'] + alt[1:]))
-        return ['typecase', varname, names, bodies]
+        formals = [x[0] for x in alts]
+        bodies = [self.expand_body (x[1:]) for x in alts]
+        return ['typecase', variant, formals, bodies]
 
     # --------------------------------------------------------------------------------
     # literal expressions are almost like a sub-language
