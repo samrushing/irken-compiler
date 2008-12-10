@@ -34,12 +34,14 @@ class analyzer:
 
     def analyze (self, root):
         # add constructors
-        if len(typing.classes):
+        if len(typing.classes) or len (typing.datatypes):
             root = self.add_constructors (root)
+        # transforms *before* alpha conversion
+        root = self.transform (root, 0)
         # perform alpha conversion and resolve varref/varset
         self.alpha_convert (root)
         # perform simple transformations
-        root = self.transform (root)
+        root = self.transform (root, 1)
         # find recursive functions/applications
         self.find_recursion (root)
         if self.verbose:
@@ -52,7 +54,7 @@ class analyzer:
             self.call_graph = self.build_call_graph (root)
             root = self.find_inlines (root)
             # transform again
-            root = self.transform (root)
+            root = self.transform (root, 1)
             # trim again
             self.find_applications (root)
             if self.verbose:
@@ -80,6 +82,14 @@ class analyzer:
         for name, c in typing.classes.items():
             names.append (tree.vardef (c.name))
             inits.append (c.gen_constructor())
+        for name, dt in typing.datatypes.items():
+            if is_a (dt, typing.union):
+                for sname, stype in dt.alts:
+                    fname, fun = dt.gen_constructor (sname)
+                    names.append (tree.vardef (fname))
+                    inits.append (fun)
+            else:
+                raise ValueError ("unknown datatype")
         return tree.fix (names, inits, root)
 
     def alpha_convert (self, exp):
@@ -146,12 +156,12 @@ class analyzer:
         for vd in vars:
             self.vars[vd.name] = vd
 
-    def transform (self, node):
-        name = 'transform_%s' % (node.kind,)
+    def transform (self, node, stage):
+        name = 'transform_%d_%s' % (stage, node.kind)
         probe = getattr (self, name, None)
         if probe:
             node = probe (node)
-        new_subs = [self.transform (sub) for sub in node.subs]
+        new_subs = [self.transform (sub, stage) for sub in node.subs]
         node = tree.node (node.kind, node.params, new_subs, node.type)
         if node.is_a ('fix'):
             # update function slots in every vardef
@@ -162,7 +172,23 @@ class analyzer:
                     names[i].function = inits[i]
         return node
 
-    def transform_conditional (self, node):
+    def transform_0_typecase (self, node):
+        # wrap typecase with a let that pulls out the variant object.
+        if not node.flag:
+            node.flag = True
+            varref = node.varname
+            name = varref.name
+            vardef = tree.vardef (name)
+            name2 = name + '_base'
+            vardef2 = tree.vardef (name2)
+            varref2 = tree.varref (name2)
+            unpack = tree.cexp ("UOBJ_GET(%s,0)", ('?', ('?')), [varref])
+            node.subs[0] = varref2
+            return tree.let_splat ([vardef2, vardef], [varref, unpack], node)
+        else:
+            return node
+
+    def transform_1_conditional (self, node):
         # (if #t x y) => x
         [test_exp, then_exp, else_exp] = node.subs
         if test_exp.is_a ('literal') and test_exp.params[0] == 'bool':
@@ -175,7 +201,7 @@ class analyzer:
 
     opt_apply_lambda_to_let = True
 
-    def transform_application (self, node):
+    def transform_1_application (self, node):
         rator = node.get_rator()
         if self.opt_apply_lambda_to_let and rator.is_a ('function'):
             # ((lambda (var0 var1 ... ) <body>) <arg0>) => (let* ((var0 arg0) ...) <body>)
@@ -183,12 +209,12 @@ class analyzer:
             rands = node.get_rands()
             name, formals, recursive, type = rator.params
             body = rator.get_body()
-            return self.transform (tree.let_splat (formals, rands, body))
+            return self.transform (tree.let_splat (formals, rands, body), 1)
         else:
             return node
 
     # XXX any reason the same wouldn't work for <fix>?
-    def transform_let_splat (self, node):
+    def transform_1_let_splat (self, node):
         # coalesce cascading let*
         names = node.params
         inits = node.subs[:-1]
@@ -199,8 +225,8 @@ class analyzer:
             body2  = body.subs[-1]
             return tree.let_splat (
                 names + names2,
-                [self.transform (x) for x in inits + inits2],
-                self.transform (body2),
+                [self.transform (x, 1) for x in inits + inits2],
+                self.transform (body2, 1),
                 type=body2.type
                 )
         else:
@@ -220,12 +246,13 @@ class analyzer:
                             inits[:i] + inits2 + [body2] + inits[i+1:],
                             body,
                             type=body.type
-                            )
+                            ),
+                        1
                         )
             else:
                 return node
 
-    def transform_sequence (self, node):
+    def transform_1_sequence (self, node):
         if len (node.subs) == 1:
             # (begin x) => x
             return node.subs[0]
@@ -244,14 +271,14 @@ class analyzer:
     # Unfortunately, these two expose the C backend up here
     #  where they shouldn't.  Should probably just make these
     #  user functions?
-    def transform_get (self, node):
+    def transform_1_get (self, node):
         [ob] = node.subs
         field_name = node.params
         c = typing.classes[ob.type.name]
         offset = c.get_field_offset (field_name)
         return tree.cexp ("UOBJ_GET(%%s,%d)" % (offset,), ('?', ('?')), [ob])
 
-    def transform_set (self, node):
+    def transform_1_set (self, node):
         #(%%cexp "((pxll_vector*)(%s))->val[%s] = %s" ob offset x))
         [ob, val] = node.subs
         field_name = node.params
