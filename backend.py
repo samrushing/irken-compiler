@@ -3,6 +3,8 @@
 import sys
 W = sys.stderr.write
 
+is_a = isinstance
+
 class RegisterError:
     pass
 
@@ -161,7 +163,10 @@ class c_backend:
             ignore, type, tag = primop
             regs = insn.regs
             nargs = len (regs)
-            tag = 'TC_%s' % (tag.upper(),)
+            if is_a (tag, int):
+                tag = '(TC_USEROBJ+%d)' % (tag,)
+            else:
+                tag = 'TC_%s' % (tag.upper(),)
             self.write ('t = alloc_no_clear (%s, %d);' % (tag, nargs))
             for i in range (nargs):
                 self.write ('t[%d] = r%d;' % (i+1, regs[i]))
@@ -193,6 +198,21 @@ class c_backend:
         self.indent += 1
         self.emit (else_code)
         self.indent -= 1
+        self.write ('}')
+
+    def insn_typecase (self, insn):
+        [test_reg] = insn.regs
+        alts = insn.params
+        self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
+        for i in range (len (alts)):
+            alt = alts[i]
+            self.indent += 1
+            self.write ('case TC_USEROBJ+%d: {' % (i,))
+            self.indent += 1
+            self.emit (alt)
+            self.indent -= 1
+            self.write ('} break;')
+            self.indent -= 1
         self.write ('}')
 
     def check_free_regs (self, free_regs):
