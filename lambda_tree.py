@@ -207,8 +207,8 @@ class node:
         elif self.kind == 'constructor':
             pass
         elif self.kind == 'typecase':
-            self.alt_formals = self.params
-            self.variant = self.subs[0]
+            self.type, self.alt_formals = self.params
+            self.value = self.subs[0]
             self.alts = self.subs[1:]
         else:
             raise ValueError (self.kind)
@@ -259,7 +259,7 @@ def to_scheme (node):
     elif node.is_a ('constructor'):
         return ['constructor', scheme_string (repr (node.params))]
     elif node.is_a ('typecase'):
-        return ['typecase', node.params, [to_scheme (x) for x in node.alts]]
+        return ['typecase', node.params[0], node.params[1], [to_scheme (x) for x in node.alts]]
     else:
         raise ValueError
 
@@ -355,8 +355,8 @@ def constructor (params):
     # constructors are applied like functions
     return node ('constructor', params, [])
 
-def typecase (variant, alt_formals, alts):
-    return node ('typecase', alt_formals, [variant] + alts)
+def typecase (type, value, alt_formals, alts):
+    return node ('typecase', (type, alt_formals), [value] + alts)
 
 # ================================================================================
 
@@ -436,8 +436,8 @@ class walker:
                     ignore, ob, name, val = exp
                     return set (WALK (ob), name, WALK (val))
                 elif rator == 'typecase':
-                    ignore, variant, alt_formals, alts = exp
-                    return typecase (WALK(variant), alt_formals, [WALK (x) for x in alts])
+                    ignore, type, value, alt_formals, alts = exp
+                    return typecase (type, WALK(value), alt_formals, [WALK (x) for x in alts])
                 else:
                     # a varref application
                     return application (WALK (rator), [WALK (x) for x in exp[1:]])
