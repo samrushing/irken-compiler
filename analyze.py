@@ -173,37 +173,21 @@ class analyzer:
         return node
 
     def transform_0_typecase (self, node):
-        # wrap typecase with a let that pulls out the variant object.
-        if not node.flag:
-            node.flag = True
-            varref = node.varname
-            name = varref.name
-            vardef = tree.vardef (name)
-            name2 = name + '_base'
-            vardef2 = tree.vardef (name2)
-            varref2 = tree.varref (name2)
-            unpack = tree.cexp ("UOBJ_GET(%s,0)", ('?', ('?')), [varref])
-            node.subs[0] = varref2
-            return tree.let_splat ([vardef2, vardef], [varref, unpack], node)
-        else:
-            return node
-
-    def transform_0_typecase (self, node):
-        # (typecase x 
+        # (typecase type x 
         #    ((<select0> <formal0> <formal1> ...) <body0>)
         #    ((<select1> <formal0> <formal1> ...) <body1>)
         #    ...)
         # =>
-        # (typecase x
+        # (typecase type x
         #    ((let ((f0 x.0) (f1 x.1) (f2 x.2)) <body0>) ...))
         #
         alts = []
         for i in range (len (node.alts)):
             formals = [tree.vardef (x) for x in node.alt_formals[i][1:]]
-            inits = [tree.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?')), [node.variant]) for j in range (len (formals))]
+            inits = [tree.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?')), [node.value]) for j in range (len (formals))]
             alts.append (tree.let_splat (formals, inits, node.alts[i]))
         node.alts = alts
-        node.subs = [node.variant] + node.alts
+        node.subs = [node.value] + node.alts
         return node
 
     def transform_1_conditional (self, node):
@@ -237,7 +221,10 @@ class analyzer:
         names = node.params
         inits = node.subs[:-1]
         body = node.subs[-1]
-        if body.is_a ('let_splat'):
+        # this is generated often by typecase: (let (x <init>) x)
+        if len(names) == 1 and body.is_a ('varref') and body.params == names[0].name:
+            return inits[0]
+        elif body.is_a ('let_splat'):
             names2 = body.params
             inits2 = body.subs[:-1]
             body2  = body.subs[-1]
