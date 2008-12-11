@@ -14,21 +14,14 @@
     )
   )
 
-;; (datatype exp
-;;   (union 
-;;     (literal int)
-;;     (sum exp exp)
-;;     (prod exp exp)
-;;     ))
-
 (let* ((x (literal/integer 19))
        (y (literal/child x)))
   (printn x)
-  (typecase x
-    (integer (printn 3141) (+ x 3))
-    (boolean 100)
-    (string 200)
-    (child 300))
+  (typecase literal x
+    ((integer i) (printn 3141) (+ i 3))
+    ((boolean b) 100)
+    ((string s) 200)
+    ((child c) 300))
   (printn y)
   )
 
