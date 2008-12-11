@@ -448,18 +448,19 @@ class transformer:
         return ['begin']
 
     def expand_typecase (self, exp):
-        # (typecase <exp>
+        # (typecase <type> <exp>
         #    ((kind0 var0 var1) ...)
         #    ((kind1 var0 ...) ...)
         #    ...)
-        variant = exp[1]
+        type = exp[1]
+        val = exp[2]
         # for now, only allow a varref for <exp>... later we'll automatically
         #    wrap this thing in a let if it's not.
-        assert is_a (variant, str)
-        alts = exp[2:]
+        assert is_a (val, str)
+        alts = exp[3:]
         formals = [x[0] for x in alts]
         bodies = [self.expand_body (x[1:]) for x in alts]
-        return ['typecase', variant, formals, bodies]
+        return ['typecase', type, val, formals, bodies]
 
     # --------------------------------------------------------------------------------
     # literal expressions are almost like a sub-language
