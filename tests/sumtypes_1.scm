@@ -15,8 +15,8 @@
     (prod exp exp)
     ))
 
-(define (exp-value n:exp)
-  (typecase n
+(define (exp-value n)
+  (typecase exp n
     ((literal v) v)
     ((sum a b) (+ (exp-value a) (exp-value b)))
     ((prod a b) (* (exp-value a) (exp-value b)))))
