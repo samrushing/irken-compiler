@@ -197,7 +197,7 @@ class compiler:
             jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
             return self.gen_typecase (test_reg, alts, k)
-        return self.compile_exp (False, exp.variant, lenv, cont (k[1], finish))
+        return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
 
     def compile_function (self, tail_pos, exp, lenv, k):
         lenv = (exp.formals, lenv)
