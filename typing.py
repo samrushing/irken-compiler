@@ -46,10 +46,6 @@ class type_variable:
         else:
             return -1
 
-    def __hash__ (self):
-        # XXX temporary, remove when subst is no longer an assoc list
-        return hash (self.num)
-
     def __repr__ (self):
         if self.val is None:
             return '<t%d>' % (self.num,)
@@ -175,7 +171,13 @@ class array:
 class product:
 
     def __init__ (self, types):
-        self.types = types
+        self.types = []
+        for t in types:
+            if t == '?':
+                # XXX this should be done in transform.py
+                self.types.append (type_variable())
+            else:
+                self.types.append (t)
 
     def __cmp__ (self, other):
         if is_a (other, product):
@@ -189,7 +191,12 @@ class product:
 class union:
     def __init__ (self, name, alts):
         self.name = name
-        self.alts = alts
+        self.alts = []
+        for sname, stype in alts:
+            if stype == '?':
+                # XXX this should be done in transform.py
+                stype = type_variable()
+            self.alts.append ((sname, stype))
 
     def __cmp__ (self, other):
         if is_a (other, union):
@@ -220,11 +227,7 @@ class union:
         return name, tree.function (self.name, formals, body)
 
     def get_datatype_constructors (self):
-        constructors = []
-        for alt in self.alts:
-            sname = alt[0]
-            constructors.append (('%s/%s' % (self.name, sname), self))
-        return constructors
+        return ['%s/%s' % (self.name, alt[0]) for alt in self.alts]
 
     def __repr__ (self):
         alts = ' '.join ([('%s:%s' % tuple(x)) for x in self.alts])
@@ -268,9 +271,19 @@ def unify (ot1, ot2, tenv, exp):
             unify (t1.types[i], t2.types[i], tenv, exp)
     # ahhh... this may be the hack I need to support recursive types...
     elif is_a (t1, str):
-        unify (apply_tenv (tenv, t1), t2, tenv, exp)
+        t1 = apply_tenv (tenv, t1)
+        if is_a (t1, str):
+            if t1 != t2:
+                raise TypeError ((t1, t2, exp))
+        else:
+            unify (t1, t2, tenv, exp)
     elif is_a (t2, str):
-        unify (apply_tenv (tenv, t2), t1, tenv, exp)
+        t2 = apply_tenv (tenv, t2)
+        if is_a (t2, str):
+            if t2 != t1:
+                raise TypeError ((t1, t2, exp))
+        else:
+            unify (t2, t1, tenv, exp)
     else:
         raise TypeError ((t1, t2, exp))
 
@@ -349,7 +362,7 @@ def initial_type_environment():
         ('int', 'int'),
         ('string', 'string'),
         ('bool', 'bool'),
-        ('nil', 'nil'),
+        #('nil', 'nil'),
         ('undefined', 'undefined'),
         # think about this...
         ('%%vector-literal', forall ([10000], array (10000)))
@@ -374,8 +387,10 @@ def initial_type_environment():
         constructors.append ((cname, con))
     # datatype constructors
     for name, dt in datatypes.iteritems():
-        constructors.extend (dt.get_datatype_constructors())
-        constructors.append ((name, dt))
+        poly_dt = build_type_scheme (dt, None)
+        constructors.append ((name, poly_dt))
+        for name in dt.get_datatype_constructors():
+            constructors.append ((name, poly_dt))
     return base_types + constructors
 
 def lookup_method (node):
@@ -387,6 +402,7 @@ def lookup_method (node):
     return c.lookup_method (name)
 
 def type_program (exp):
+    exp.pprint()
     tenv = (initial_type_environment(), None)
     t_exp = type_of (exp, tenv)
     pp (the_subst)
@@ -447,10 +463,15 @@ def build_type_scheme (type, tenv):
                 list_generic_tvars (ftype)
         elif is_a (t, array):
             list_generic_tvars (t.type)
+        elif is_a (t, union):
+            for sname, stype in t.alts:
+                list_generic_tvars (stype)
+        elif is_a (t, product):
+            for tp in t.types:
+                list_generic_tvars (tp)
         else:
             raise ValueError
 
-    #import pdb; pdb.set_trace()
     list_generic_tvars (type)
     if not gens:
         return type
@@ -508,10 +529,8 @@ def _type_of (exp, tenv):
         return t2
     elif exp.one_of ('let_splat'):
         n = len (exp.inits)
-        #type_rib = []
         for i in range (n):
             ta = type_of (exp.inits[i], tenv)
-            #type_rib.append ((exp.names[i].name, ta))
             tenv = ([(exp.names[i].name, ta)], tenv)
         return type_of (exp.body, tenv)
     elif exp.is_a ('function'):
@@ -674,41 +693,37 @@ def _type_of (exp, tenv):
         else:
             raise ValueError ("can't type unknown primop %s" % (exp.name,))
     elif exp.is_a ('typecase'):
-        vt = type_of (exp.variant, tenv)
-        if is_a (vt, str):
-            # XXX fix this issue!
-            vt = apply_tenv (tenv, vt)
-        if not is_a (vt, union):
-            raise ValueError ("typecase expects a union/sum type")
+        tt = apply_tenv (tenv, exp.type)
+        vt = type_of (exp.value, tenv)
+        unify (tt, vt, tenv, exp)
+        # verify that all of the variants are accounted for...
+        names0 = set ([sname for sname, stype in tt.alts])
+        names1 = set ([x[0] for x in exp.alt_formals])
+        if names0 != names1:
+            raise ValueError ("set of union/sum type alternatives does not match in typecase")
         else:
-            # verify that all of the variants are accounted for...
-            names0 = set ([sname for sname, stype in vt.alts])
-            names1 = set ([x[0] for x in exp.alt_formals])
-            if names0 != names1:
-                raise ValueError ("set of union/sum type alternatives does not match in typecase")
-            else:
-                n = len (exp.alt_formals)
-                texp = type_variable (exp.serial)
-                new_alts = [None] * n
-                for i in range (n):
-                    formals = exp.alt_formals[i]
-                    sname = formals[0]
-                    body = exp.alts[i]
-                    ftype, index = vt.get_field_type (sname)
-                    if is_a (ftype, product):
-                        type_rib = []
-                        for j in range (len (ftype.types)):
-                            type_rib.append ((formals[j+1], ftype.types[j]))
-                    else:
-                        type_rib = [(formals[1], ftype)]
-                    tenv2 = (type_rib, tenv)
-                    bt = type_of (body, tenv2)
-                    unify (texp, bt, tenv2, exp)
-                    # sort 'em
-                    new_alts[index] = exp.alts[i]
-                exp.alts = new_alts
-                exp.subs = [exp.variant] + exp.alts
-            return texp
+            n = len (exp.alt_formals)
+            texp = type_variable (exp.serial)
+            new_alts = [None] * n
+            for i in range (n):
+                formals = exp.alt_formals[i]
+                sname = formals[0]
+                body = exp.alts[i]
+                ftype, index = tt.get_field_type (sname)
+                if is_a (ftype, product):
+                    type_rib = []
+                    for j in range (len (ftype.types)):
+                        type_rib.append ((formals[j+1], ftype.types[j]))
+                else:
+                    type_rib = [(formals[1], ftype)]
+                tenv2 = (type_rib, tenv)
+                bt = type_of (body, tenv2)
+                unify (texp, bt, tenv2, exp)
+                # sort 'em
+                new_alts[index] = exp.alts[i]
+            exp.alts = new_alts
+            exp.subs = [exp.value] + exp.alts
+        return texp
     else:
         raise ValueError (exp)
 
@@ -728,6 +743,10 @@ def instantiate_type (type, tvar, fresh_tvar):
             return record (t.name, [ (fname, f (ftype)) for (fname, ftype) in t.fields ])
         elif is_a (t, array):
             return array (f (t.type))
+        elif is_a (t, product):
+            return product ([f(x) for x in t.types])
+        elif is_a (t, union):
+            return union (t.name, [ (sn, f(st)) for sn, st in t.alts ])
         else:
             raise ValueError
     return f (type)
