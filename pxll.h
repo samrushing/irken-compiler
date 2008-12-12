@@ -24,6 +24,7 @@ object * heap1 = NULL;
 #define TC_BOOL                 (3<<1) // 0x06
 #define TC_NIL                  (5<<1) // 0x0a
 #define TC_UNDEFINED            (7<<1) // 0x0e
+#define TC_USERIMM              (9<<1) // 0x10
 
 /* pointer types (multiples of 4) */
 #define TC_SAVE                 (1<<2)    /* 00000100  04 */
