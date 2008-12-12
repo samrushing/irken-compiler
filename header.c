@@ -156,6 +156,10 @@ dump_object (object * ob, int depth)
       }
       }
     }
+      break;
+    default:
+      // a user immediate unit-type...
+      fprintf (stdout, "<u%d>", (tc-TC_USERIMM)>>2);
     }
   }
   return (object *) PXLL_TRUE;
