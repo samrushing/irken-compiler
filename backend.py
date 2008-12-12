@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 
 import sys
+import typing
 W = sys.stderr.write
 
 is_a = isinstance
@@ -163,14 +164,19 @@ class c_backend:
             ignore, type, tag = primop
             regs = insn.regs
             nargs = len (regs)
-            if is_a (tag, int):
-                tag = '(TC_USEROBJ+%d)' % (tag,)
+            if nargs == 0:
+                # unit type - use an immediate
+                self.write ('r%d = (object*)(TC_USERIMM+%d);' % (insn.target, tag * 4))
             else:
-                tag = 'TC_%s' % (tag.upper(),)
-            self.write ('t = alloc_no_clear (%s, %d);' % (tag, nargs))
-            for i in range (nargs):
-                self.write ('t[%d] = r%d;' % (i+1, regs[i]))
-            self.write ('r%d = t;' % (insn.target,))
+                # tuple type
+                if is_a (tag, int):
+                    tag = '(TC_USEROBJ+%d)' % (tag,)
+                else:
+                    tag = 'TC_%s' % (tag.upper(),)
+                self.write ('t = alloc_no_clear (%s, %d);' % (tag, nargs))
+                for i in range (nargs):
+                    self.write ('t[%d] = r%d;' % (i+1, regs[i]))
+                self.write ('r%d = t;' % (insn.target,))
         elif primop[0] == '%array-ref':
             [base, index] = insn.regs
             self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
@@ -202,18 +208,44 @@ class c_backend:
 
     def insn_typecase (self, insn):
         [test_reg] = insn.regs
-        alts = insn.params
-        self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
-        for i in range (len (alts)):
-            alt = alts[i]
-            self.indent += 1
-            self.write ('case TC_USEROBJ+%d: {' % (i,))
-            self.indent += 1
-            self.emit (alt)
-            self.indent -= 1
-            self.write ('} break;')
-            self.indent -= 1
-        self.write ('}')
+        type, alts = insn.params
+        units = []
+        tuples = []
+        # if there are any unit types, we need to test for immediate types first,
+        #   and only then dereference the pointer to get the tuple type code.
+        for i in range (len (type.alts)):
+            sn, st = type.alts[i]
+            if is_a (st, typing.unit):
+                units.append (i)
+            else:
+                tuples.append (i)
+        closes = 0
+        if len(units):
+            self.write ('switch (GET_TYPECODE(r%d)) {' % test_reg)
+            closes += 1
+            for index in units:
+                self.indent += 1
+                self.write ('case (TC_USERIMM+%d): {' % (index * 4))
+                self.indent += 1
+                self.emit (alts[index])
+                self.indent -= 1
+                self.write ('} break;')
+            if len(tuples):
+                self.write ('case (0): {')
+                closes += 1
+        if len(tuples):
+            self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
+            closes += 1
+            for index in tuples:
+                alt = alts[index]
+                self.indent += 1
+                self.write ('case TC_USEROBJ+%d: {' % (index,))
+                self.indent += 1
+                self.emit (alt)
+                self.indent -= 1
+                self.write ('} break;')
+                self.indent -= 1
+        self.write ('}' * closes)
 
     def check_free_regs (self, free_regs):
         "describe the free_regs to new_env() for gc"
