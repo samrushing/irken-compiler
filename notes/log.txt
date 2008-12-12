@@ -1,3 +1,8 @@
+081211:
+Added support for unit types and efficiently typecasing them.  We can
+  now write list and tree types that are as space-efficient as the
+  untyped ones.
+
 081210:
 ok, I added a product type and now full-on recursive algebraic datatypes
   seem to be working.  phew!  Next up: support 'unit' so we can get a 
