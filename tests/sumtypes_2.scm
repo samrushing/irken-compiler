@@ -10,7 +10,7 @@
 
 (datatype list
   (union 
-    (empty int)
+    (empty)
     (pair ? list)
     ))
 
@@ -18,11 +18,11 @@
   (let loop ((l l)
 	     (a 0))
     (typecase list l
-       ((empty x) a)
+       ((empty) a)
        ((pair hd tl) (loop tl (+ a 1))))))
 
-(let* ((x (list/pair 8 (list/pair 19 (list/empty 0))))
-       (y (list/pair #t (list/pair #f (list/empty 0))))
+(let* ((x (list/pair 8 (list/pair 19 (list/empty))))
+       (y (list/pair #t (list/pair #f (list/empty))))
        )
   (printn x)
   (printn (length x))
