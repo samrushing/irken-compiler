@@ -108,9 +108,13 @@ def apply_subst_to_type (t):
         return product ([apply_subst_to_type (x) for x in t.types])
     elif is_a (t, union):
         return union (t.name, [(fn, ft) for (fn, ft) in t.alts])
+    elif is_a (t, unit):
+        return t
     else:
         raise ValueError
 
+# the_subst is not really used, just helps to keep track of
+#  tvars that have been assigned.
 the_subst = {}
 
 def extend_subst (tvar, type):
@@ -154,6 +158,15 @@ class record:
 
     def __repr__ (self):
         return '{%s %s}' % (self.name, ' '.join (['%s:%s' % x for x in self.fields]))
+
+class unit:
+    def __cmp__ (self, other):
+        if is_a (other, unit):
+            return 0
+        else:
+            return -1
+    def __repr__ (self):
+        return '<unit>'
 
 class array:
     def __init__ (self, type):
@@ -219,6 +232,9 @@ class union:
             types = stype.types
             formals = [tree.vardef ('%s_%d' % (selector, i), types[i]) for i in range (len (types))]
             args = [tree.varref (x.name) for x in formals]
+        elif is_a (stype, unit):
+            formals = []
+            args = []
         else:
             formals = [tree.vardef (selector)]
             args = [tree.varref (selector)]
@@ -311,6 +327,8 @@ def occurs_in_type (tvar, t):
         for sname, stype in t.alts:
             if occurs_in_type (tvar, stype):
                 return True
+    elif is_a (t, unit):
+        return False
     else:
         # function
         result_type, arg_types = t
@@ -469,6 +487,8 @@ def build_type_scheme (type, tenv):
         elif is_a (t, product):
             for tp in t.types:
                 list_generic_tvars (tp)
+        elif is_a (t, unit):
+            pass
         else:
             raise ValueError
 
@@ -570,7 +590,7 @@ def _type_of (exp, tenv):
             return rator_type
         elif is_a (rator_type, union):
             # bit of a hack here, transform.py should assert() that
-            #  the name is is a string and not an expression...
+            #  the name is a string and not an expression...
             # XXX assumes exp.rator is a varref
             [base, selector] = exp.rator.name.split ('/')
             # which type is selected?
@@ -582,6 +602,8 @@ def _type_of (exp, tenv):
                 tv = product ([type_of (x, tenv) for x in exp.rands])
             elif len(exp.rands) == 1:
                 tv = type_of (exp.rands[0], tenv)
+            elif len(exp.rands) == 0:
+                tv = unit()
             else:
                 raise ValueError
             unify (tf, tv, tenv, exp)
@@ -714,6 +736,8 @@ def _type_of (exp, tenv):
                     type_rib = []
                     for j in range (len (ftype.types)):
                         type_rib.append ((formals[j+1], ftype.types[j]))
+                elif is_a (ftype, unit):
+                    type_rib = []
                 else:
                     type_rib = [(formals[1], ftype)]
                 tenv2 = (type_rib, tenv)
@@ -747,6 +771,8 @@ def instantiate_type (type, tvar, fresh_tvar):
             return product ([f(x) for x in t.types])
         elif is_a (t, union):
             return union (t.name, [ (sn, f(st)) for sn, st in t.alts ])
+        elif is_a (t, unit):
+            return t
         else:
             raise ValueError
     return f (type)
