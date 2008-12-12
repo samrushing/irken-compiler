@@ -196,7 +196,7 @@ class compiler:
         def finish (test_reg):
             jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
-            return self.gen_typecase (test_reg, alts, k)
+            return self.gen_typecase (test_reg, exp.value.type, alts, k)
         return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
 
     def compile_function (self, tail_pos, exp, lenv, k):
@@ -377,8 +377,8 @@ class pxll_compiler (compiler):
     def gen_simple_test (self, name, regs, then_code, else_code, k):
         return INSN ('test', regs, (name, then_code, else_code), k)
 
-    def gen_typecase (self, test_reg, alts, k):
-        return INSN ('typecase', [test_reg], alts, k)
+    def gen_typecase (self, test_reg, type, alts, k):
+        return INSN ('typecase', [test_reg], (type, alts), k)
 
     def gen_invoke_tail (self, fun, closure_reg, args_reg, k):
         return INSN ('invoke_tail', [closure_reg, args_reg], fun, None)
@@ -421,7 +421,8 @@ def flatten (exp):
             node, body, free = exp.params
             exp.params = node, flatten (body), free
         elif exp.name == 'typecase':
-            exp.params = [flatten (x) for x in exp.params]
+            type, alts = exp.params
+            exp.params = type, [flatten (x) for x in alts]
         r.append (exp)
         exp = next
     return r
@@ -429,8 +430,8 @@ def flatten (exp):
 import sys
 W = sys.stdout.write
 
-def pretty_print (insns, depth=0):
-    for insn in insns:
+def pretty_print (insns, depth=0): 
+   for insn in insns:
         W ('%s' % ('    ' * depth))
         if insn.target == 'dead':
             W ('   -   ')
@@ -448,7 +449,8 @@ def pretty_print (insns, depth=0):
             node, body, free = insn.params
             pretty_print (body, depth+1)
         elif insn.name == 'typecase':
-            for alt in insn.params:
+            type, alts = insn.params
+            for alt in alts:
                 pretty_print (alt, depth+1)
 
 def walk (insns):
