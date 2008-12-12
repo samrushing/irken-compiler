@@ -437,6 +437,8 @@ class transformer:
             def maybe_product (x):
                 if len(x) == 1:
                     return x[0]
+                elif len(x) == 0:
+                    return typing.unit()
                 else:
                     return typing.product (x)
             typing.datatypes[name] = typing.union (
