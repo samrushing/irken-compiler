@@ -132,6 +132,8 @@ class c_backend:
         for i in range (len (types)):
             if types[i] == 'int':
                 result.append ('unbox(%s)' % (args[i],))
+            elif types[i] == 'string':
+                result.append ('((pxll_string*)(%s))->data' % (args[i],))
             else:
                 result.append (args[i])
         return tuple (result)
@@ -209,6 +211,7 @@ class c_backend:
     def insn_typecase (self, insn):
         [test_reg] = insn.regs
         type, alts = insn.params
+        assert (len(type.alts) == len(alts))
         units = []
         tuples = []
         # if there are any unit types, we need to test for immediate types first,
@@ -230,8 +233,9 @@ class c_backend:
                 self.emit (alts[index])
                 self.indent -= 1
                 self.write ('} break;')
+                self.indent -= 1
             if len(tuples):
-                self.write ('case (0): {')
+                self.write ('default: {')
                 closes += 1
         if len(tuples):
             self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
