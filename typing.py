@@ -424,24 +424,25 @@ def type_program (exp):
     tenv = (initial_type_environment(), None)
     t_exp = type_of (exp, tenv)
     pp (the_subst)
-    for node in exp:
-        # XXX all of this seems really clumsy, I may
-        #     be making this harder than it is...
-        if node.type:
-            node.type = apply_subst_to_type (node.type)
-        if node.is_a ('application') and node.rator.is_a ('get'):
-            # see if this is a known method, call it directly.
-            get_rator = node.rator
-            name = lookup_method (get_rator)
-            # replace the rator
-            node.rator = node.subs[0] = tree.varref (name)
-            # insert <self> into args
-            node.rands.insert (0, get_rator.ob)
-            node.subs.insert (1, get_rator.ob)
-        if node.binds():
-            names = node.get_names()
-            for name in names:
-                name.type = apply_subst_to_type (type_variable (name.serial))
+    if False:
+        for node in exp:
+            # XXX all of this seems really clumsy, I may
+            #     be making this harder than it is...
+            if node.type:
+                node.type = apply_subst_to_type (node.type)
+            if node.is_a ('application') and node.rator.is_a ('get'):
+                # see if this is a known method, call it directly.
+                get_rator = node.rator
+                name = lookup_method (get_rator)
+                # replace the rator
+                node.rator = node.subs[0] = tree.varref (name)
+                # insert <self> into args
+                node.rands.insert (0, get_rator.ob)
+                node.subs.insert (1, get_rator.ob)
+            if node.binds():
+                names = node.get_names()
+                for name in names:
+                    name.type = apply_subst_to_type (type_variable (name.serial))
 
 class forall:
     def __init__ (self, gens, type):
@@ -645,7 +646,6 @@ def _type_of (exp, tenv):
         for i in range (n):
             name = exp.names[i].name
             tsi = build_type_scheme (init_types[i], tenv)
-            #import pdb; pdb.set_trace()
             type_rib.append ((name, tsi))
         poly_tenv = (type_rib, tenv)
         # and type the body in that tenv
@@ -715,9 +715,9 @@ def _type_of (exp, tenv):
         else:
             raise ValueError ("can't type unknown primop %s" % (exp.name,))
     elif exp.is_a ('typecase'):
-        tt = apply_tenv (tenv, exp.type)
+        tt = apply_tenv (tenv, exp.vtype)
         vt = type_of (exp.value, tenv)
-        unify (tt, vt, tenv, exp)
+        unify (vt, tt, tenv, exp)
         # verify that all of the variants are accounted for...
         names0 = set ([sname for sname, stype in tt.alts])
         names1 = set ([x[0] for x in exp.alt_formals])
@@ -726,7 +726,9 @@ def _type_of (exp, tenv):
         else:
             n = len (exp.alt_formals)
             texp = type_variable (exp.serial)
+            exp.vtype = tt
             new_alts = [None] * n
+            new_alt_formals = [None] * n
             for i in range (n):
                 formals = exp.alt_formals[i]
                 sname = formals[0]
@@ -745,7 +747,10 @@ def _type_of (exp, tenv):
                 unify (texp, bt, tenv2, exp)
                 # sort 'em
                 new_alts[index] = exp.alts[i]
+                new_alt_formals[index] = formals
             exp.alts = new_alts
+            exp.alt_formals = new_alt_formals
+            exp.params = exp.vtype, exp.alt_formals
             exp.subs = [exp.value] + exp.alts
         return texp
     else:
