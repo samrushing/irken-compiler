@@ -92,6 +92,9 @@ class reader:
             elif ch in 'Ff':
                 self.next()
                 result = atom ('bool', 'false')
+            elif ch in 'Uu':
+                self.next()
+                result = atom ('undefined', 'undefined')
             elif ch == '(':
                 result = atom ('vector', self.read_list())
             else:
