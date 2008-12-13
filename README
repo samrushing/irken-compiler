@@ -2,6 +2,12 @@
 PXLL = 'pyrex-like language'
 PYLL = 'python-like language'
 
+================================================================================
+081212: Since adding type inference most of the test code and runtime is now
+  broken, and will be rewritten.  If you want to see the compiler work, feed
+  it one of the recently-edited files from the 'tests' directory, or lib/frb3.scm.
+================================================================================
+
 The Goal:
  A new dialect and implementation of python that supports massively
   scalable cooperative multi-threading, and eventually support for
@@ -21,9 +27,7 @@ The Plan:
  3) rewrite pxll compiler in pyll
 
 Currently, I'm in stage 2 - though about 90% of the work is still in stage 1.  Also,
-the 'pyrex-like language' is currently a simple dialect of Scheme.  Things being
-considered for pxll are type inference, and possibly even staying with the scheme
-syntax because of its extreme suitability for this purpose.
+the 'pyrex-like language' is currently a type dialect of Scheme.
 
 ================================================================================
 
@@ -35,6 +39,7 @@ Quick note about the name 'pxll':
   I come up with a better name, it's just a good four-letter acronym.
 
 ================================================================================
+
 
 The Python code:
 
@@ -57,7 +62,7 @@ lambda_tree.py:
   output: node tree
 
 typing.py:
-  hindley-milner polymorphic type inference [in progress]
+  hindley-milner polymorphic type inference [still in progress]
 
 analyze.py:
   alpha conversion, tree shaker, inliner, some simplification
