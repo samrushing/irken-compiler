@@ -196,7 +196,7 @@ class compiler:
         def finish (test_reg):
             jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
-            return self.gen_typecase (test_reg, exp.value.type, alts, k)
+            return self.gen_typecase (test_reg, exp.vtype, alts, k)
         return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
 
     def compile_function (self, tail_pos, exp, lenv, k):
@@ -302,7 +302,7 @@ class INSN:
         elif self.name == 'close':
             return '%s %r %r' % (self.name, self.regs, self.params[0].name)
         elif self.name == 'typecase':
-            return '%s %r' % (self.name, self.regs)
+            return '%s %r %r' % (self.name, self.params[0], self.regs)
         else:
             return '%s %r %r' % (self.name, self.regs, self.params)
 
