@@ -1,3 +1,7 @@
+081212:
+Fixed lots of bugs introduced yesterday, but not nearly all of them.
+Translated frb2.scm into frb3.scm, now with shiny algebraic datatypes!
+
 081211:
 Added support for unit types and efficiently typecasing them.  We can
   now write list and tree types that are as space-efficient as the
