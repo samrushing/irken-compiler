@@ -207,7 +207,7 @@ class node:
         elif self.kind == 'constructor':
             pass
         elif self.kind == 'typecase':
-            self.type, self.alt_formals = self.params
+            self.vtype, self.alt_formals = self.params
             self.value = self.subs[0]
             self.alts = self.subs[1:]
         else:
@@ -355,8 +355,8 @@ def constructor (params):
     # constructors are applied like functions
     return node ('constructor', params, [])
 
-def typecase (type, value, alt_formals, alts):
-    return node ('typecase', (type, alt_formals), [value] + alts)
+def typecase (vtype, value, alt_formals, alts):
+    return node ('typecase', (vtype, alt_formals), [value] + alts)
 
 # ================================================================================
 
@@ -436,8 +436,8 @@ class walker:
                     ignore, ob, name, val = exp
                     return set (WALK (ob), name, WALK (val))
                 elif rator == 'typecase':
-                    ignore, type, value, alt_formals, alts = exp
-                    return typecase (type, WALK(value), alt_formals, [WALK (x) for x in alts])
+                    ignore, vtype, value, alt_formals, alts = exp
+                    return typecase (vtype, WALK(value), alt_formals, [WALK (x) for x in alts])
                 else:
                     # a varref application
                     return application (WALK (rator), [WALK (x) for x in exp[1:]])
