@@ -183,10 +183,21 @@ class analyzer:
         #
         alts = []
         for i in range (len (node.alts)):
-            formals = [tree.vardef (x) for x in node.alt_formals[i][1:]]
-            inits = [tree.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?')), [node.value]) for j in range (len (formals))]
-            alts.append (tree.let_splat (formals, inits, node.alts[i]))
+            formals = []
+            inits = []
+            alt_formals = node.alt_formals[i][1:]
+            for j in range (len (alt_formals)):
+                formal = alt_formals[j]
+                if formal != '_':
+                    formals.append (tree.vardef (formal))
+                    inits.append (tree.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?')), [node.value]))
+            if len(formals):
+                alts.append (tree.let_splat (formals, inits, node.alts[i]))
+            else:
+                alts.append (node.alts[i])
+        assert (len(alts) == len(node.alts))
         node.alts = alts
+        node.params = node.vtype, node.alts
         node.subs = [node.value] + node.alts
         return node
 
