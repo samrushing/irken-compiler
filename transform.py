@@ -461,6 +461,7 @@ class transformer:
         assert is_a (val, str)
         alts = exp[3:]
         formals = [x[0] for x in alts]
+        formals = [ (x[0], x[1:]) for x in formals ]
         bodies = [self.expand_body (x[1:]) for x in alts]
         return ['typecase', type, val, formals, bodies]
 
