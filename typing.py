@@ -17,19 +17,14 @@ verbose = False
 #  modeled directly on either scheme or ml (depending on the reference I'm using at the time),
 #  and as I understand it more completely I'll rewrite it in a more pythonic style.
 
-# XXX need to switch from <subst> as a lookup table to metavariables as
-#   a pair of <int>, <current-value>.
-
 # inference.
 #  we're solving a series of equations.
 # see eoplv3:7.4
 
 # types of 'type':
 # a string means a base type - 'int', 'bool', etc...
-# an integer means a type variable.  think of '34' as 't34'.
 # a tuple means a function type: (int, (bool, string)) means a function
 #    taking (bool, string) args and returning an int.
-# XXX I should probably use a 'constructor' based design.
 
 class type_variable:
 
@@ -51,89 +46,6 @@ class type_variable:
             return '<t%d>' % (self.num,)
         else:
             return '<t%d %r>' % (self.num, self.val)
-
-def apply1 (t0, tvar, t1):
-    # substitute t1 for tvar in t0
-    if is_a (t0, str):
-        # plain type
-        return t0
-    elif is_a (t0, type_variable):
-        # a type variable
-        if t0 == tvar:
-            return t1
-        else:
-            return t0
-    elif is_a (t0, record):
-        fields = []
-        for fname, ftype in t0.fields:
-            fields.append ((fname, apply1 (ftype, tvar, t1)))
-        return record (t0.name, fields)
-    elif is_a (t0, array):
-        return array (apply1 (t0.type, tvar, t1))
-    else:
-        # a function
-        result_type, arg_types = t0
-        return (
-            apply1 (result_type, tvar, t1),
-            tuple ([ apply1 (x, tvar, t1) for x in arg_types ])
-            )
-
-def apply_subst_to_type (t):
-    # replace all known tvars in <t>
-    if is_a (t, str):
-        # plain type
-        return t
-    elif is_a (t, type_variable):
-        # a type variable
-        probe = lookup_subst (t)
-        if probe:
-            return probe
-        else:
-            return t
-    elif is_a (t, tuple):
-        # a function
-        result_type, arg_types = t
-        return (
-            apply_subst_to_type (result_type),
-            tuple ([ apply_subst_to_type (x) for x in arg_types ])
-            )
-    elif is_a (t, record):
-        fields = []
-        for fname, ftype in t.fields:
-            fields.append ((fname, apply_subst_to_type (ftype)))
-        return record (t.name, fields)
-    elif is_a (t, array):
-        return array (apply_subst_to_type (t.type))
-    elif is_a (t, product):
-        return product ([apply_subst_to_type (x) for x in t.types])
-    elif is_a (t, union):
-        return union (t.name, [(fn, ft) for (fn, ft) in t.alts])
-    elif is_a (t, unit):
-        return t
-    else:
-        raise ValueError
-
-# the_subst is not really used, just helps to keep track of
-#  tvars that have been assigned.
-the_subst = {}
-
-def extend_subst (tvar, type):
-    tvar.val = type
-    if the_subst.has_key (tvar.num):
-        raise KeyError ("type var already bound!")
-    else:
-        the_subst[tvar.num] = type
-
-def lookup_subst (tvar):
-    t = tvar
-    while is_a (t, type_variable):
-        if t.val is not None:
-            t = t.val
-            # path compression
-            tvar.val = t
-        else:
-            break
-    return t
 
 class record:
     def __init__ (self, name, fields):
@@ -249,6 +161,89 @@ class union:
         alts = ' '.join ([('%s:%s' % tuple(x)) for x in self.alts])
         return '{union %s %s}' % (self.name, alts)
 
+def apply1 (t0, tvar, t1):
+    # substitute t1 for tvar in t0
+    if is_a (t0, str):
+        # plain type
+        return t0
+    elif is_a (t0, type_variable):
+        # a type variable
+        if t0 == tvar:
+            return t1
+        else:
+            return t0
+    elif is_a (t0, record):
+        fields = []
+        for fname, ftype in t0.fields:
+            fields.append ((fname, apply1 (ftype, tvar, t1)))
+        return record (t0.name, fields)
+    elif is_a (t0, array):
+        return array (apply1 (t0.type, tvar, t1))
+    else:
+        # a function
+        result_type, arg_types = t0
+        return (
+            apply1 (result_type, tvar, t1),
+            tuple ([ apply1 (x, tvar, t1) for x in arg_types ])
+            )
+
+def apply_subst_to_type (t):
+    # replace all known tvars in <t>
+    if is_a (t, str):
+        # plain type
+        return t
+    elif is_a (t, type_variable):
+        # a type variable
+        probe = lookup_subst (t)
+        if probe:
+            return probe
+        else:
+            return t
+    elif is_a (t, tuple):
+        # a function
+        result_type, arg_types = t
+        return (
+            apply_subst_to_type (result_type),
+            tuple ([ apply_subst_to_type (x) for x in arg_types ])
+            )
+    elif is_a (t, record):
+        fields = []
+        for fname, ftype in t.fields:
+            fields.append ((fname, apply_subst_to_type (ftype)))
+        return record (t.name, fields)
+    elif is_a (t, array):
+        return array (apply_subst_to_type (t.type))
+    elif is_a (t, product):
+        return product ([apply_subst_to_type (x) for x in t.types])
+    elif is_a (t, union):
+        return union (t.name, [(fn, ft) for (fn, ft) in t.alts])
+    elif is_a (t, unit):
+        return t
+    else:
+        raise ValueError
+
+# the_subst is not really used, just helps to keep track of
+#  tvars that have been assigned.
+the_subst = {}
+
+def extend_subst (tvar, type):
+    tvar.val = type
+    if the_subst.has_key (tvar.num):
+        raise KeyError ("type var already bound!")
+    else:
+        the_subst[tvar.num] = type
+
+def lookup_subst (tvar):
+    t = tvar
+    while is_a (t, type_variable):
+        if t.val is not None:
+            t = t.val
+            # path compression
+            tvar.val = t
+        else:
+            break
+    return t
+
 # reconcile types t1 and t2 from <exp> given <subst>
 def unify (ot1, ot2, tenv, exp):
     t1 = apply_subst_to_type (ot1)
@@ -270,6 +265,8 @@ def unify (ot1, ot2, tenv, exp):
         r1, args1 = t1
         r2, args2 = t2
         # extend with arg types
+        if len(args1) != len(args2):
+            raise TypeError (("arg count mismatch", t1, t2, exp))
         for i in range (len (args1)):
             unify (args1[i], args2[i], tenv, exp)
         # extend with result type
@@ -350,6 +347,8 @@ def occurs_free_in_tenv (tvar, tenv):
     while tenv:
         rib, tenv = tenv
         for var, type in rib:
+            # XXX this doesn't look right - shouldn't it look into
+            #  <forall>'s and ignore just the bound type vars?
             if not is_a (type, forall) and occurs_in_type (tvar, type):
                 return True
     return False
@@ -358,11 +357,7 @@ def occurs_free_in_tenv (tvar, tenv):
 #   treat it as a type variable.
 def optional_type (exp, tenv):
     if exp.type:
-        if classes.has_key (exp.type):
-            # XXX I think this is a hack
-            return apply_tenv (tenv, exp.type)
-        else:
-            return exp.type
+        return exp.type
     else:
         return type_variable (exp.serial)
 
@@ -418,31 +413,6 @@ def lookup_method (node):
     name = node.params
     c = classes[base_type]
     return c.lookup_method (name)
-
-def type_program (exp):
-    exp.pprint()
-    tenv = (initial_type_environment(), None)
-    t_exp = type_of (exp, tenv)
-    pp (the_subst)
-    if False:
-        for node in exp:
-            # XXX all of this seems really clumsy, I may
-            #     be making this harder than it is...
-            if node.type:
-                node.type = apply_subst_to_type (node.type)
-            if node.is_a ('application') and node.rator.is_a ('get'):
-                # see if this is a known method, call it directly.
-                get_rator = node.rator
-                name = lookup_method (get_rator)
-                # replace the rator
-                node.rator = node.subs[0] = tree.varref (name)
-                # insert <self> into args
-                node.rands.insert (0, get_rator.ob)
-                node.subs.insert (1, get_rator.ob)
-            if node.binds():
-                names = node.get_names()
-                for name in names:
-                    name.type = apply_subst_to_type (type_variable (name.serial))
 
 class forall:
     def __init__ (self, gens, type):
@@ -501,6 +471,57 @@ def build_type_scheme (type, tenv):
         if verbose:
             print 'built type scheme', r        
         return r
+
+
+def instantiate_type (type, tvar, fresh_tvar):
+    def f (t):
+        if is_a (t, type_variable):
+            if t == tvar:
+                return fresh_tvar
+            else:
+                return t
+        elif is_a (t, str):
+            return t
+        elif is_a (t, tuple):
+            result_type, arg_types = t
+            return (f (result_type), tuple ([f(x) for x in arg_types]))
+        elif is_a (t, record):
+            return record (t.name, [ (fname, f (ftype)) for (fname, ftype) in t.fields ])
+        elif is_a (t, array):
+            return array (f (t.type))
+        elif is_a (t, product):
+            return product ([f(x) for x in t.types])
+        elif is_a (t, union):
+            return union (t.name, [ (sn, f(st)) for sn, st in t.alts ])
+        elif is_a (t, unit):
+            return t
+        else:
+            raise ValueError
+    return f (type)
+
+def instantiate_type_scheme (tscheme):
+    gens = tscheme.gens
+    body = tscheme.type
+    for gen in gens:
+        body = instantiate_type (body, gen, type_variable())
+    return body
+
+def apply_tenv (tenv, name):
+    while tenv:
+        rib, tenv = tenv
+        # walk the rib backwards for the sake of let*
+        for i in range (len(rib)-1, -1, -1):
+            var, type = rib[i]
+            if var == name:
+                # is this a type scheme?
+                if is_a (type, forall):
+                    result = instantiate_type_scheme (type)
+                    if verbose:
+                        print 'type of %r %r instantiated as %r' % (name, type, result)
+                    return result
+                else:
+                    return type
+    raise ValueError (name)
 
 def wildcard (t, exp, tenv):
     if t == '?':
@@ -621,35 +642,39 @@ def _type_of (exp, tenv):
             return result_type
     elif exp.is_a ('fix'):
         n = len (exp.inits)
-        type_rib = []
-        init_types = []
-        init_tvars = []
-        # build temp tenv for typing the inits
+        init_tvars = [None] * n
+        init_types = [None] * n
+        n2 = 0
+        # new type var for each init
         for i in range (n):
-            # for each function
-            init = exp.inits[i]
-            name = exp.names[i].name
-            # new type var for each init
-            tvi = type_variable (init.serial)
-            init_tvars.append (tvi)
-            type_rib.append ((name, tvi))
-        temp_tenv = (type_rib, tenv)
-        # type each init in temp_tenv
-        init_types = []
-        for i in range (n):
-            init = exp.inits[i]
-            ti = type_of (init, temp_tenv)
-            unify (ti, init_tvars[i], temp_tenv, init)
-            init_types.append (ti)
-        # now extend the environment with type schemes instead
-        type_rib = []
-        for i in range (n):
-            name = exp.names[i].name
-            tsi = build_type_scheme (init_types[i], tenv)
-            type_rib.append ((name, tsi))
-        poly_tenv = (type_rib, tenv)
+            init_tvars[i] = type_variable (exp.inits[i].serial)
+        for part in partition_fix (exp):
+            type_rib = []
+            # build temp tenv for typing the inits
+            for i in part:
+                # for each function
+                init = exp.inits[i]
+                name = exp.names[i].name
+                type_rib.append ((name, init_tvars[i]))
+            temp_tenv = (type_rib, tenv)
+            # type each init in temp_tenv
+            for i in part:
+                init = exp.inits[i]
+                ti = type_of (init, temp_tenv)
+                unify (ti, init_tvars[i], temp_tenv, init)
+                init_types[i] = ti
+            # now extend the environment with type schemes instead
+            type_rib = []
+            for i in part:
+                name = exp.names[i].name
+                tsi = build_type_scheme (init_types[i], tenv)
+                type_rib.append ((name, tsi))
+            # we now have a polymorphic environment for this subset
+            tenv = (type_rib, tenv)
+            n2 += len (type_rib)
+        assert (n2 == n)
         # and type the body in that tenv
-        return type_of (exp.body, poly_tenv)
+        return type_of (exp.body, tenv)
     elif exp.is_a ('sequence'):
         for sub in exp.subs[:-1]:
             # everything but the last, type it as don't-care
@@ -730,18 +755,17 @@ def _type_of (exp, tenv):
             new_alts = [None] * n
             new_alt_formals = [None] * n
             for i in range (n):
-                formals = exp.alt_formals[i]
-                sname = formals[0]
+                sname, formals = exp.alt_formals[i]
                 body = exp.alts[i]
                 ftype, index = tt.get_field_type (sname)
                 if is_a (ftype, product):
                     type_rib = []
                     for j in range (len (ftype.types)):
-                        type_rib.append ((formals[j+1], ftype.types[j]))
+                        type_rib.append ((formals[j].name, ftype.types[j]))
                 elif is_a (ftype, unit):
                     type_rib = []
                 else:
-                    type_rib = [(formals[1], ftype)]
+                    type_rib = [(formals[0].name, ftype)]
                 tenv2 = (type_rib, tenv)
                 bt = type_of (body, tenv2)
                 unify (texp, bt, tenv2, exp)
@@ -756,52 +780,146 @@ def _type_of (exp, tenv):
     else:
         raise ValueError (exp)
 
-def instantiate_type (type, tvar, fresh_tvar):
-    def f (t):
-        if is_a (t, type_variable):
-            if t == tvar:
-                return fresh_tvar
+def build_call_graph (root):
+    call_graph = {}
+    def search (exp, current_fun):
+        if exp.is_a ('application') and exp.get_rator().is_a ('varref'):
+            ref = exp.get_rator()
+            name = ref.params
+            current_fun.add (name)
+        elif exp.is_a ('function') and exp.params[0]:
+            name = exp.params[0]
+            # i.e., a named function
+            current_fun = set()
+            call_graph[name] = current_fun
+        for sub in exp.subs:
+            search (sub, current_fun)
+    call_graph['top'] = set()
+    search (root, call_graph['top'])
+    return call_graph
+
+def build_dependency_graph (root):
+    g = {}
+    def search (exp, current_fun):
+        if exp.is_a ('varref'):
+            current_fun.add (exp.params)
+        elif exp.is_a ('function') and exp.params[0]:
+            name = exp.params[0]
+            # i.e., a named function
+            current_fun = set()
+            g[name] = current_fun
+        for sub in exp.subs:
+            search (sub, current_fun)
+    g['top'] = set()
+    search (root, g['top'])
+    return g
+
+def transpose (g):
+    gt = {}
+    for k in g.keys():
+        gt[k] = set()
+    for k, vl in g.items():
+        for v in vl:
+            if gt.has_key (v):
+                gt[v].add (k)
             else:
-                return t
-        elif is_a (t, str):
-            return t
-        elif is_a (t, tuple):
-            result_type, arg_types = t
-            return (f (result_type), tuple ([f(x) for x in arg_types]))
-        elif is_a (t, record):
-            return record (t.name, [ (fname, f (ftype)) for (fname, ftype) in t.fields ])
-        elif is_a (t, array):
-            return array (f (t.type))
-        elif is_a (t, product):
-            return product ([f(x) for x in t.types])
-        elif is_a (t, union):
-            return union (t.name, [ (sn, f(st)) for sn, st in t.alts ])
-        elif is_a (t, unit):
-            return t
+                gt[v] = set ([k])
+    return gt
+
+# http://en.wikipedia.org/wiki/Kosaraju%27s_algorithm
+#
+# Finds the strongly-connected components of the graph.  We need this to find
+# out how a pedantic programmer might have grouped a set of functions carefully
+# into letrecs, so that we can isolate such groups - otherwise they're all typed
+# together as a single letrec.  That causes polymorphic instantiation to fail in
+# many cases, because HM disallows polymorphism in recursive functions.  [yes,
+# it's hard to explain]
+
+def strongly (g):
+    s = []
+    visited = set()
+    unknown = set()
+
+    def visit0 (u):
+        visited.add (u)
+        if g.has_key (u):
+            for v in g[u]:
+                if v not in visited:
+                    visit0 (v)
         else:
-            raise ValueError
-    return f (type)
+            unknown.add (u)
+        s.append (u)
 
-def instantiate_type_scheme (tscheme):
-    gens = tscheme.gens
-    body = tscheme.type
-    for gen in gens:
-        body = instantiate_type (body, gen, type_variable())
-    return body
+    # walk the graph forward, pushing finished nodes onto <s>
+    for u in g.keys():
+        if u not in visited:
+            visit0 (u)
+        
+    gt = transpose (g)
+    visited = set()
 
-def apply_tenv (tenv, name):
-    while tenv:
-        rib, tenv = tenv
-        # walk the rib backwards for the sake of let*
-        for i in range (len(rib)-1, -1, -1):
-            var, type = rib[i]
-            if var == name:
-                # is this a type scheme?
-                if is_a (type, forall):
-                    result = instantiate_type_scheme (type)
-                    if verbose:
-                        print 'type of %r %r instantiated as %r' % (name, type, result)
-                    return result
-                else:
-                    return type
-    raise ValueError (name)
+    def visit1 (u):
+        visited.add (u)
+        r1.add (u)
+        for v in gt[u]:
+            if v not in visited:
+                visit1 (v)
+
+    # walk backward, popping strongly connected components off <s>
+    r0 = []
+    while s:
+        u = s.pop()
+        if u not in visited:
+            r1 = set()
+            visit1 (u)
+            # a strongly-connected component, collect it.
+            r0.append (r1)
+
+    # I think this puts the subcomponents in topological order.
+    r0.reverse()
+    # make a handy map from vertex => component
+    map = {}
+    for component in r0:
+        for v in component:
+            map[v] = component
+    return r0, map
+
+def partition_fix (exp):
+    # partition the functions in this fix into sets of mutually-recursive functions
+    vardefs = exp.names
+    name_map = {}
+    # map of <name> => <index>
+    for i in range (len (vardefs)):
+        name_map[vardefs[i].name] = [i, False]
+    names = [x.name for x in vardefs]
+    inits = exp.inits
+    n = len (inits)
+    leftover = range (n)
+    parts = [[]]
+    for component in the_scc_graph:
+        if len(parts[-1]):
+            parts.append ([])
+        for name in component:
+            probe = name_map.get (name, None)
+            if probe and not probe[1]:
+                # index
+                parts[-1].append (probe[0])
+                # flag it as done
+                probe[1] = True
+                leftover.remove (probe[0])
+    # the leftovers should all be non-functions
+    parts.insert (0, leftover)
+    return parts
+
+def type_program (var_dict, exp):
+    global the_dep_graph, the_scc_graph
+    tenv = (initial_type_environment(), None)
+    the_dep_graph = build_dependency_graph (exp)
+    the_scc_graph, scc_map = strongly (the_dep_graph)
+    t_exp = type_of (exp, tenv)
+    if verbose:
+        pp (the_subst)
+
+if __name__ == '__main__':
+    s = test_strongly()
+         
