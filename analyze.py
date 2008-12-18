@@ -23,23 +23,20 @@ class analyzer:
 
     """identify the definition and use of variables (and functions)."""
 
-    def __init__ (self, safety=1, noinline=False, verbose=False):
+    def __init__ (self, vars, safety=1, noinline=False, verbose=False):
         self.node_counter = 0
         self.safety=safety
-        self.vars = {}
+        self.vars = vars
         self.constants = {}
         self.inline = not noinline
         self.verbose = verbose
         self.pending_inlines = []
 
     def analyze (self, root):
-        # add constructors
-        if len(typing.classes) or len (typing.datatypes):
-            root = self.add_constructors (root)
         # transforms *before* alpha conversion
         root = self.transform (root, 0)
         # perform alpha conversion and resolve varref/varset
-        self.alpha_convert (root)
+        #self.alpha_convert (root)
         # perform simple transformations
         root = self.transform (root, 1)
         # find recursive functions/applications
@@ -75,22 +72,6 @@ class analyzer:
             print tree.as_sexp (tree.to_scheme (root))
 
         return root
-
-    def add_constructors (self, root):
-        names = []
-        inits = []
-        for name, c in typing.classes.items():
-            names.append (tree.vardef (c.name))
-            inits.append (c.gen_constructor())
-        for name, dt in typing.datatypes.items():
-            if is_a (dt, typing.union):
-                for sname, stype in dt.alts:
-                    fname, fun = dt.gen_constructor (sname)
-                    names.append (tree.vardef (fname))
-                    inits.append (fun)
-            else:
-                raise ValueError ("unknown datatype")
-        return tree.fix (names, inits, root)
 
     def alpha_convert (self, exp):
         vars = []
@@ -185,11 +166,11 @@ class analyzer:
         for i in range (len (node.alts)):
             formals = []
             inits = []
-            alt_formals = node.alt_formals[i][1:]
+            alt_formals = node.alt_formals[i]
             for j in range (len (alt_formals)):
                 formal = alt_formals[j]
-                if formal != '_':
-                    formals.append (tree.vardef (formal))
+                if formal.name != '_':
+                    formals.append (formal)
                     inits.append (tree.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?')), [node.value]))
             if len(formals):
                 alts.append (tree.let_splat (formals, inits, node.alts[i]))
