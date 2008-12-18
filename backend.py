@@ -115,18 +115,15 @@ class c_backend:
     def insn_return (self, insn):
         val_reg = insn.regs[0]
         self.verify (1, 'verify (k, TC_SAVE);')
-        #self.write ('result = r%d; goto *k[3];' % val_reg)
         self.write ('PXLL_RETURN(%d);' % (val_reg,))
 
     def insn_jump (self, insn):
         result, target = insn.regs
-        # this is really just a placeholder for a 'fall-off' continuation used by 'if'
-        # in a native code compiler it might actually encode a jump, but because we are
-        # using the if(){bracketed}else{form} it is unnecessary.
+        # assign a target register for the other side of a jump (used by 'if' and 'typecase')
         if (target != 'dead') and result != target:
             self.write ('r%d = r%d;' % (target, result))
 
-    # wrap_in, wrap_out: automatically box/unbox, etc... depending on type.
+    # wrap_in, wrap_out: provide automatic type conversions when plausible
     def wrap_in (self, types, args):
         result = []
         for i in range (len (types)):
@@ -372,8 +369,6 @@ class c_backend:
             # this is from varref
             # XXX not needed because of cps.remove_moves()
             #self.write ('r%d = r%d;' % (insn.target, reg_var))
-            #if insn.target == reg_var:
-            #    import pdb; pdb.set_trace()
             pass
 
     def insn_close (self, insn):
