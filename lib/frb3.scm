@@ -3,10 +3,10 @@
   (%%cexp (? -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (print x)
-  (%%cexp (? -> undefined) "dump_object (%s, 0);" x))
+  (%%cexp (? -> undefined) "dump_object (%s, 0)" x))
 
 (define (print-string s)
-  (%%cexp (string -> undefined) "fputs (%s, stdout);" s))
+  (%%cexp (string -> int) "fputs (%s, stdout)" s))
 
 (define (- x y)
   (%%cexp (int int -> int) "%s-%s" x y))
@@ -23,8 +23,15 @@
 (define (== x y)
   (%%cexp (int int -> bool) "%s==%s" x y))
 
+(define (random)
+  (%%cexp (-> int) "random()"))
+
 ;; a quick translation of okasaki's pure functional red-black tree
 
+;; A more 'natural' representation might be:
+;; (datatype node (union (empty) (full bool node node ? ?)))
+;; where the color is stored as a bool in each node.
+;;
 ;; this saves space by encoding the color into the header of each node,
 ;;   but leads to some minor code duplication (due to the lack of real
 ;;   pattern matching).  another issue: the fact that I don't have proper
@@ -140,15 +147,24 @@
   (let p ((n t) (d 0))
     (typecase node n
       ((empty) #u)
-      ((red l r k v)
-       (p l (+ d 1))
-       (print-item k v d)
-       (p r (+ d 1))
-       )
-      ((black l r k v)
-       (p l (+ d 1))
-       (print-item k v d)
-       (p r (+ d 1))))))
+      ((red l r k v)   (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))
+      ((black l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
+    ))
+
+(define (inorder t p)
+  (let inorder0 ((n t))
+    (typecase node n
+      ((empty))
+      ((red l r k v)   (inorder0 l) (p k v) (inorder0 r))
+      ((black l r k v) (inorder0 l) (p k v) (inorder0 r))
+      )))
+
+(define (random-tree n)
+  (let loop ((i n)
+	     (t (node/empty)))
+    (if (== i 0)
+	t
+	(loop (- i 1) (insert t < (random) i)))))
 
 (let ((t (node/empty)))
   (print-string "testing\n")
@@ -162,4 +178,15 @@
   (printn (member t < 12))
   (printn (member t < 20))
   (printn (member t < 19))
+  (define (print-item k v)
+    (print k)
+    (print-string ":")
+    (print v)
+    (print-string ","))
+  (let ((t2 (random-tree 20)))
+    (print-tree t2)
+    (inorder t2 print-item)
+    )
+  (print-string "\n")
+  (printn (insert (insert (node/empty) < 0 "howdy!") < 1 "there"))
   )
