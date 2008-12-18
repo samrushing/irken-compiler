@@ -37,14 +37,17 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
     w = lambda_tree.walker()
     exp3 = w.go (exp2)
 
+    # alpha conversion
+    var_dict = lambda_tree.rename_variables (exp3)
+
     typing.verbose = verbose    # hack
 
-    typing.type_program (exp3)
+    typing.type_program (var_dict, exp3)
     if verbose:
         print '--- typing ---'
         exp3.pprint()
 
-    a = analyze.analyzer (safety, noinline, verbose)
+    a = analyze.analyzer (var_dict, safety, noinline, verbose)
     exp4 = a.analyze (exp3)
 
     if verbose:
