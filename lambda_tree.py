@@ -4,6 +4,8 @@
 
 # XXX why not name this module 'nodes'?
 
+import typing
+
 # used to generate a unique identifier for each node.  it's important that these
 #   be *unique*, because the serial number of a node is later used as a type
 #   variable during type inference!
@@ -288,6 +290,7 @@ def walk_up (n):
 # this is *not* a node!
 class vardef:
     def __init__ (self, name, type=None, nary=False):
+        assert (is_a (name, str))
         self.name = name
         self.type = type
         self.nary = nary
@@ -437,6 +440,7 @@ class walker:
                     return set (WALK (ob), name, WALK (val))
                 elif rator == 'typecase':
                     ignore, vtype, value, alt_formals, alts = exp
+                    alt_formals = [ (selector, [vardef (name) for name in formals]) for selector, formals in alt_formals ]
                     return typecase (vtype, WALK(value), alt_formals, [WALK (x) for x in alts])
                 else:
                     # a varref application
@@ -447,9 +451,113 @@ class walker:
         else:
             raise ValueError, exp
 
-
     def go (self, exp):
-        result = self.walk_exp (exp)
-        for node in result:
+        exp = self.walk_exp (exp)
+        if len (typing.datatypes):
+            exp = add_constructors (exp)
+        for node in exp:
             node.fix_attribute_names()
-        return result
+        return exp
+
+def add_constructors (root):
+    names = []
+    inits = []
+    #for name, c in typing.classes.items():
+    #    names.append (tree.vardef (c.name))
+    #    inits.append (c.gen_constructor())
+    for name, dt in typing.datatypes.items():
+        if is_a (dt, typing.union):
+            for sname, stype in dt.alts:
+                fname, fun = dt.gen_constructor (sname)
+                names.append (vardef (fname))
+                inits.append (fun)
+        else:
+            raise ValueError ("unknown datatype")
+    return fix (names, inits, root)
+
+# alpha conversion
+
+def rename_variables (exp):
+    vars = []
+
+    def lookup_var (name, lenv):
+        while lenv:
+            rib, lenv = lenv
+            # walk rib backwards for the sake of <let*>
+            #   (e.g., (let ((x 1) (x 2)) ...))
+            for i in range (len(rib)-1, -1, -1):
+                x = rib[i]
+                if x.name == name:
+                    return x
+        raise ValueError ("unbound variable: %r" % (name,))
+
+    # walk <exp>, inventing a new name for each <vardef>,
+    #   renaming varref/varset as we go...
+    def rename (exp, lenv):
+        if exp.binds():
+            defs = exp.get_names()
+            for vd in defs:
+                if vd.name != '_':
+                    vd.alpha = len (vars)
+                    vars.append (vd)
+            if exp.is_a ('let_splat'):
+                # this one is tricky
+                names = []
+                lenv = (names, lenv)
+                for i in range (len (defs)):
+                    # add each name only after its init
+                    init = exp.subs[i]
+                    rename (init, lenv)
+                    names.append (defs[i])
+                # now all the inits are done, rename body
+                rename (exp.subs[-1], lenv)
+                # ugh, non-local exit
+                return
+            else:
+                # normal binding behavior
+                lenv = (defs, lenv)
+            if exp.is_a ('fix'):
+                # rename functions
+                for i in range (len (defs)):
+                    if exp.subs[i].is_a ('function'):
+                        exp.subs[i].params[0] = '%s_%d' % (defs[i].name, defs[i].alpha)
+            for sub in exp.subs:
+                rename (sub, lenv)
+        elif exp.is_a ('typecase'):
+            # this is a strangely shaped binding construct
+            rename (exp.value, lenv)
+            n = len (exp.alts)
+            for i in range (n):
+                selector, defs = exp.alt_formals[i]
+                alt = exp.alts[i]
+                for vd in defs:
+                    vd.alpha = len (vars)
+                    vars.append (vd)
+                lenv = (defs, lenv)
+                rename (alt, lenv)
+        elif exp.one_of ('varref', 'varset'):
+            name = exp.params
+            exp.var = lookup_var (name, lenv)
+            if exp.is_a ('varset'):
+                if exp.var.nary:
+                    raise ValueError ("can't assign to a varargs argument")
+            exp.params = exp.name = '%s_%d' % (name, exp.var.alpha)
+            for sub in exp.subs:
+                rename (sub, lenv)
+        else:
+            for sub in exp.subs:
+                rename (sub, lenv)
+
+    exp.pprint()
+    rename (exp, None)
+    # now go back and change the names of the vardefs
+    for vd in vars:
+        if vd.name != '_':
+            vd.name = '%s_%d' % (vd.name, vd.alpha)
+
+    result = {}
+    for vd in vars:
+        result[vd.name] = vd
+    return result
+
+
