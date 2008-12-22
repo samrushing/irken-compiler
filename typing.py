@@ -26,6 +26,10 @@ verbose = False
 # a tuple means a function type: (int, (bool, string)) means a function
 #    taking (bool, string) args and returning an int.
 
+# the_subst is not really used, just helps to keep track of
+#  tvars that have been assigned.
+the_subst = {}
+
 class type_variable:
 
     def __init__ (self, num=None):
@@ -34,6 +38,7 @@ class type_variable:
         else:
             self.num = num
         self.val = None
+        the_subst[self.num] = self
 
     def __cmp__ (self, other):
         if is_a (other, type_variable):
@@ -95,7 +100,8 @@ class array:
 
 class product:
 
-    def __init__ (self, types):
+    def __init__ (self, types, name=None):
+        self.name = name
         self.types = []
         for t in types:
             if t == '?':
@@ -109,6 +115,17 @@ class product:
             return cmp (self.types, other.types)
         else:
             return -1
+
+    def gen_constructor (self):
+        n = len (self.types)
+        names = ['p%d' % i for i in range (n)]
+        vardefs = [tree.vardef(x) for x in names]
+        varrefs = [tree.varref(x) for x in names]
+        body = tree.make_tuple (self.name, 0, varrefs)
+        return self.name, tree.function (self.name, vardefs, body)
+
+    def get_datatype_constructors (self):
+        return [self.name]
 
     def __repr__ (self):
         return '{' + '*'.join ([str(x) for x in self.types]) + '}'
@@ -219,19 +236,24 @@ def apply_subst_to_type (t):
         return union (t.name, [(fn, ft) for (fn, ft) in t.alts])
     elif is_a (t, unit):
         return t
+    elif is_a (t, forall):
+        # XXX
+        return t
     else:
         raise ValueError
 
-# the_subst is not really used, just helps to keep track of
-#  tvars that have been assigned.
-the_subst = {}
-
 def extend_subst (tvar, type):
-    tvar.val = type
-    if the_subst.has_key (tvar.num):
+    #print '%r == %r' % (tvar, type)
+    if tvar.val is not None and tvar.val != type:
         raise KeyError ("type var already bound!")
     else:
-        the_subst[tvar.num] = type
+        tvar.val = type
+
+def get_type_variable (num):
+    if the_subst.has_key (num):
+        return the_subst[num]
+    else:
+        return type_variable (num)
 
 def lookup_subst (tvar):
     t = tvar
@@ -359,52 +381,29 @@ def optional_type (exp, tenv):
     if exp.type:
         return exp.type
     else:
-        return type_variable (exp.serial)
+        return get_type_variable (exp.serial)
 
-#
-# I think there need to be *two* type environments... maybe this is the two sigmas in Appel?
-#  1) a local environment mapping variable names to types
-#  2) a global type environment describing builtin types and user datatypes
-# what does having a single environment get us?  the ability to override a type constructor?
-# Note that poly instantiation is built into 'varref', though...
-#
+the_type_map = {
+    'int':'int',
+    'string':'string',
+    'bool':'bool',
+    'undefined':'undefined',
+    'symbol':'symbol',
+}
 
 def initial_type_environment():
-    base_types = [
-        # XXX think about these...
-        ('int', 'int'),
-        ('string', 'string'),
-        ('bool', 'bool'),
-        #('nil', 'nil'),
-        ('undefined', 'undefined'),
+    constructors = [
         # think about this...
         ('%%vector-literal', forall ([10000], array (10000)))
         ]
-    constructors = []
-    for name, c in classes.items():
-        cname = c.name
-        fields = []
-        meta = []
-        n = len (c.fields)
-        for fname, ftype in c.fields:
-            if ftype is None:
-                tvar = type_variable()
-                meta.append (tvar)
-                ftype = tvar
-            fields.append ((fname, ftype))
-        con = record (cname, fields)
-        if len (meta):
-            # assuming here that we don't need to call build_type_scheme()
-            #  since the type environment and subst are completely empty here.
-            con = forall (meta, con)
-        constructors.append ((cname, con))
     # datatype constructors
     for name, dt in datatypes.iteritems():
         poly_dt = build_type_scheme (dt, None)
-        constructors.append ((name, poly_dt))
+        # store this type scheme in the type map
+        the_type_map[name] = poly_dt
         for name in dt.get_datatype_constructors():
             constructors.append ((name, poly_dt))
-    return base_types + constructors
+    return constructors
 
 def lookup_method (node):
     base_ob = node.subs[0]
@@ -507,6 +506,16 @@ def instantiate_type_scheme (tscheme):
     return body
 
 def apply_tenv (tenv, name):
+
+    def inst (t):
+        if is_a (t, forall):
+            r = instantiate_type_scheme (t)
+            if verbose:
+                print 'type of %r %r instantiated as %r' % (name, t, r)
+            return r
+        else:
+            return t
+
     while tenv:
         rib, tenv = tenv
         # walk the rib backwards for the sake of let*
@@ -514,21 +523,21 @@ def apply_tenv (tenv, name):
             var, type = rib[i]
             if var == name:
                 # is this a type scheme?
-                if is_a (type, forall):
-                    result = instantiate_type_scheme (type)
-                    if verbose:
-                        print 'type of %r %r instantiated as %r' % (name, type, result)
-                    return result
-                else:
-                    return type
-    raise ValueError (name)
+                return inst (type)
 
-def wildcard (t, exp, tenv):
+    if the_type_map.has_key (name):
+        return inst (the_type_map[name])
+    else:
+        raise ValueError (name)
+
+def parse_cexp_type (t, exp, tenv):
     if t == '?':
         return type_variable (exp.serial)
     elif classes.has_key (t):
         # XXX I think this is a hack
         return apply_tenv (tenv, t)
+    elif is_a (t, list):
+        import pdb; pdb.set_trace()
     else:
         return t
 
@@ -538,6 +547,8 @@ def type_of (exp, tenv):
     # this may actually be necessary...
     t_exp = apply_subst_to_type (t_exp)
     exp.type = t_exp
+    #if is_a (t_exp, str):
+    #    t_exp = the_type_map.get (t_exp, t_exp)
     return t_exp
 
 def _type_of (exp, tenv):
@@ -545,17 +556,19 @@ def _type_of (exp, tenv):
         return exp.type
     elif exp.is_a ('cexp'):
         result_type, arg_types = exp.type_sig
-        result_type = wildcard (result_type, exp, tenv)
+        result_type = parse_cexp_type (result_type, exp, tenv)
         for i in range (len (arg_types)):
-            arg = exp.args[i]
             arg_type = arg_types[i]
+            arg = exp.args[i]
+            if is_a (arg_type, str):
+                # strip off wrap options (like "string/raw")
+                arg_type = arg_types[i].split('/')[0]
             ta = type_of (arg, tenv)
-            arg_type = wildcard (arg_type, arg, tenv)
+            arg_type = parse_cexp_type (arg_type, arg, tenv)
             unify (ta, arg_type, tenv, arg)
         return result_type
     elif exp.is_a ('varref'):
-        result = apply_tenv (tenv, exp.name)
-        return result
+        return apply_tenv (tenv, exp.name)
     elif exp.is_a ('varset'):
         # XXX implement the no-generalize rule for vars that are assigned.
         t1 = apply_tenv (tenv, exp.name)
@@ -585,7 +598,7 @@ def _type_of (exp, tenv):
         body_type = type_of (exp.body, (type_rib, tenv))
         return (body_type, tuple (arg_types))
     elif exp.is_a ('application'):
-        result_type = type_variable (exp.serial) # new type variable
+        result_type = get_type_variable (exp.serial) # new type variable
         rator_type = type_of (exp.rator, tenv)
         n = len (exp.rands)
         # I think these exceptions should maybe be done as primapp instead?
@@ -618,7 +631,8 @@ def _type_of (exp, tenv):
             # which type is selected?
             tf, index = rator_type.get_field_type (selector)
             if is_a (tf, str):
-                tf = apply_tenv (tenv, tf)
+                #tf = apply_tenv (tenv, tf)
+                tf = the_type_map.get (tf, tf)
             # XXX lookup type
             if len(exp.rands) > 1:
                 tv = product ([type_of (x, tenv) for x in exp.rands])
@@ -641,14 +655,18 @@ def _type_of (exp, tenv):
             unify (rator_type, (result_type, tuple(arg_types)), tenv, exp)
             return result_type
     elif exp.is_a ('fix'):
+        partition = partition_fix (exp)
+        check_partition (exp, partition)
+        # reorder fix into dependency order
+        partition = reorder_fix (exp, partition)
         n = len (exp.inits)
         init_tvars = [None] * n
         init_types = [None] * n
         n2 = 0
         # new type var for each init
         for i in range (n):
-            init_tvars[i] = type_variable (exp.inits[i].serial)
-        for part in partition_fix (exp):
+            init_tvars[i] = get_type_variable (exp.inits[i].serial)
+        for part in partition:
             type_rib = []
             # build temp tenv for typing the inits
             for i in part:
@@ -681,7 +699,7 @@ def _type_of (exp, tenv):
             ti = type_of (sub, tenv)
         return type_of (exp.subs[-1], tenv)
     elif exp.is_a ('get'):
-        result_type = type_variable (exp.serial) # new type variable
+        result_type = get_type_variable (exp.serial) # new type variable
         ob_type = type_of (exp.ob, tenv)
         if is_a (ob_type, record):
             return ob_type.get_field_type (exp.name)
@@ -693,13 +711,13 @@ def _type_of (exp, tenv):
         tval = type_of (exp.val, tenv)
         t1 = attr_type (ob_type, exp.name)
         unify (t1, tval, tenv, exp)
-        result_type = type_variable (exp.serial) # new type variable
+        result_type = get_type_variable (exp.serial) # new type variable
         unify (result_type, 'undefined', tenv, exp)
         return result_type
     elif exp.is_a ('make_tuple'):
         # XXX examine the types available - think about complicated
         #     cases like 'closure'...
-        result_type = exp.type
+        result_type = apply_tenv (tenv, exp.type)
         for arg in exp.args:
             # this is kindof a 'dead' type judgement?
             ta = type_of (arg, tenv)
@@ -720,13 +738,24 @@ def _type_of (exp, tenv):
             base = exp.args[0]
             index = exp.args[1]
             bt = type_of (base, tenv)
-            it = type_of (index, tenv)
-            # we don't know the item type yet...
-            item_type = type_variable()
-            ta = array (item_type)
-            unify (bt, ta, tenv, exp)
-            unify (it, 'int', tenv, exp)
-            return item_type
+            if is_a (bt, array):
+                it = type_of (index, tenv)
+                # we don't know the item type yet...
+                item_type = type_variable()
+                ta = array (item_type)
+                unify (bt, ta, tenv, exp)
+                unify (it, 'int', tenv, exp)
+                return item_type
+            elif is_a (bt, str):
+                # better be a product type
+                bt = apply_tenv (tenv, bt)
+                assert (is_a (bt, product))
+                assert (index.is_a ('literal') and index.type == 'int')
+                assert (index.value < len(bt.types))
+                item_type = bt.types[index.value]
+                return item_type
+            else:
+                raise ValueError ("illegal type for array-reference")
         elif exp.name == '%%array-set':
             # (%%array-set <array> <index> <value>)
             base, index, value = exp.args
@@ -750,7 +779,7 @@ def _type_of (exp, tenv):
             raise ValueError ("set of union/sum type alternatives does not match in typecase")
         else:
             n = len (exp.alt_formals)
-            texp = type_variable (exp.serial)
+            texp = get_type_variable (exp.serial)
             exp.vtype = tt
             new_alts = [None] * n
             new_alt_formals = [None] * n
@@ -780,36 +809,22 @@ def _type_of (exp, tenv):
     else:
         raise ValueError (exp)
 
-def build_call_graph (root):
-    call_graph = {}
-    def search (exp, current_fun):
-        if exp.is_a ('application') and exp.get_rator().is_a ('varref'):
-            ref = exp.get_rator()
-            name = ref.params
-            current_fun.add (name)
-        elif exp.is_a ('function') and exp.params[0]:
-            name = exp.params[0]
-            # i.e., a named function
-            current_fun = set()
-            call_graph[name] = current_fun
-        for sub in exp.subs:
-            search (sub, current_fun)
-    call_graph['top'] = set()
-    search (root, call_graph['top'])
-    return call_graph
-
 def build_dependency_graph (root):
     g = {}
     def search (exp, current_fun):
         if exp.is_a ('varref'):
             current_fun.add (exp.params)
-        elif exp.is_a ('function') and exp.params[0]:
-            name = exp.params[0]
-            # i.e., a named function
-            current_fun = set()
-            g[name] = current_fun
-        for sub in exp.subs:
-            search (sub, current_fun)
+        elif exp.is_a ('fix'):
+            for i in range (len (exp.names)):
+                name = exp.names[i].name
+                init = exp.inits[i]
+                fun = set()
+                g[name] = fun
+                search (init, fun)
+            search (exp.body, current_fun)
+        else:
+            for sub in exp.subs:
+                search (sub, current_fun)
     g['top'] = set()
     search (root, g['top'])
     return g
@@ -860,10 +875,10 @@ def strongly (g):
 
     def visit1 (u):
         visited.add (u)
-        r1.add (u)
         for v in gt[u]:
             if v not in visited:
                 visit1 (v)
+        r1.add (u)
 
     # walk backward, popping strongly connected components off <s>
     r0 = []
@@ -910,6 +925,44 @@ def partition_fix (exp):
     # the leftovers should all be non-functions
     parts.insert (0, leftover)
     return parts
+
+def check_partition (exp, partition):
+    names = [ x.name for x in exp.names ]
+    n = len (names)
+    reordered = []
+    for part in partition:
+        for i in part:
+            name = names[i]
+            reordered.append (name)
+    for i in range (n):
+        name = reordered[i]
+        deps = the_dep_graph[name]
+        for dep in deps:
+            for j in range (i+1, n):
+                if dep == reordered[j]:
+                    print '***** bad dependency order ****'
+                    import pdb; pdb.set_trace()
+
+def reorder_fix (exp, partition):
+    n = len(exp.inits)
+    names = []
+    inits = []
+    r = []
+    i = 0
+    for part in partition:
+        r.append ([])
+        for j in part:
+            names.append (exp.names[j])
+            inits.append (exp.inits[j])
+            r[-1].append (i)
+            i += 1
+    # XXX rejigger node data
+    exp.names = exp.params = names
+    exp.inits = inits
+    body = exp.subs[-1]
+    exp.subs = inits + [body]
+    assert (len(exp.inits) == n)
+    return r
 
 def type_program (var_dict, exp):
     global the_dep_graph, the_scc_graph
