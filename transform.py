@@ -69,19 +69,20 @@ class transformer:
             exp = ['fix', [], [], exp]
         names = exp[1]
         inits = exp[2]
+        # *prepend* these, since they'll likely be needed *before* the code runs.
         for (kind, value), varname in self.constants.iteritems():
-            names.append (varname)
+            names.insert (0, varname)
             if kind == 'string':
-                inits.append (atom ('string', value))
+                inits.insert (0, atom ('string', value))
             elif kind == 'symbol':
-                inits.append (['string->symbol', atom ('string', value)])
+                inits.insert (0, ['string->symbol', atom ('string', value)])
             else:
                 raise ValueError
         for c in self.classes:
             if is_a (c, pxll_class):
                 for fun in c.methods:
-                    names.append (fun[1][0])
-                    inits.append (fun)
+                    names.insert (0, fun[1][0])
+                    inits.insert (0, fun)
         return exp
 
     def go (self, exp):
@@ -173,7 +174,8 @@ class transformer:
         # literal data
         if exp[1] == []:
             # not sure where's the best place to do this...
-            return ['quote', atom ('nil', 'nil')]
+            #return ['quote', atom ('nil', 'nil')]
+            return ['list/nil']
         else:
             return self.build_literal (exp[1])
 
@@ -445,6 +447,9 @@ class transformer:
                 name,
                 [(x[0], maybe_product (x[1:])) for x in defn[1:]]
                 )
+        elif defn[0] == 'product':
+            # (datatype <name> (product type0 type1 type2))
+            typing.datatypes[name] = typing.product (defn[1:], name)
         else:
             raise ValueError ("unknown datatype constructor")
         return ['begin']
@@ -482,7 +487,8 @@ class transformer:
                 return exp
         elif is_a (exp, list):
             if not len(exp):
-                return atom ('nil', 'nil')
+                #return atom ('nil', 'nil')
+                return ['list/nil']
             elif len(exp) == 3 and exp[1] == '.':
                 return ['cons', self.build_literal (exp[0]), self.build_literal (exp[2])]
             elif exp[0] == 'comma':
