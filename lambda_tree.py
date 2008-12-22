@@ -335,8 +335,8 @@ def conditional (test_exp, then_exp, else_exp):
 def function (name, formals, body, type=None):
     return node ('function', [name, formals, False, type], [body])
 
-def fix (names, inits, body):
-    n = node ('fix', names, inits + [body])
+def fix (names, inits, body, type=None):
+    n = node ('fix', names, inits + [body], type)
     for i in range (len (names)):
         if inits[i].is_a ('function'):
             names[i].function = inits[i]
@@ -370,11 +370,15 @@ def parse_type (exp):
     assert (len (exp) >= 2)
     assert (is_a (x, str) for x in exp)
     assert (exp[-2] == '->')
-    #for i in range (len (exp)):
-    #    if exp[i] == '?':
-    #        exp[i] = None
-    result_type = exp[-1]
-    arg_types = tuple (exp[:-2])
+
+    def pfun (x):
+        if is_a (x, list):
+            return parse_type (x)
+        else:
+            return x
+
+    result_type = pfun (exp[-1])
+    arg_types = tuple ([pfun(x) for x in exp[:-2]])
     return (result_type, arg_types)
 
 from lisp_reader import atom
@@ -471,6 +475,10 @@ def add_constructors (root):
                 fname, fun = dt.gen_constructor (sname)
                 names.append (vardef (fname))
                 inits.append (fun)
+        elif is_a (dt, typing.product):
+            fname, fun = dt.gen_constructor()
+            names.append (vardef (fname))
+            inits.append (fun)
         else:
             raise ValueError ("unknown datatype")
     return fix (names, inits, root)
@@ -548,7 +556,7 @@ def rename_variables (exp):
             for sub in exp.subs:
                 rename (sub, lenv)
 
-    exp.pprint()
+    #exp.pprint()
     rename (exp, None)
     # now go back and change the names of the vardefs
     for vd in vars:
