@@ -16,30 +16,28 @@ do_gc (int nroots)
   object * copy (object * p) {
     object * pp = (object *) *p;
     if (is_immediate (pp)) {
+      //fprintf (stderr, "copy I %x\n", pp);
       return pp;
     } else if (sitting_duck (pp)) {
       if (*pp == (object) GC_SENTINEL) {
         // pp points into to_space, return the forwarding address
+	//fprintf (stderr, "copy S %x\n", pp);
         return (object *) (*(pp+1));
       } else {
         uint8_t tc = GET_TYPECODE (*pp);
-        if (tc <= TC_LAST) {
-          // p points at an object in from_space, copy it
-          object * addr = freep;
-          pxll_int length = GET_TUPLE_LENGTH (*pp);
-          pxll_int k;
-          // copy tag, children
-          for (k=0; k < length+1; k++) {
-            *freep++ = *pp++;
-          }
-	  // leave a sentinel where the tag was, followed by the forwarding address.
-          *(object*)(*p) = (object) GC_SENTINEL;
-	  *((object*)(*p)+1) = (object) addr;
-          return addr;
-        } else {
-          fprintf (stderr, "panic: Unknown Type Code in GC copy loop: *pp=0x%08x tc=0x%x\n", (long)(*pp), tc);
-          abort();
-        }
+	// p points at an object in from_space, copy it
+	object * addr = freep;
+	pxll_int length = GET_TUPLE_LENGTH (*pp);
+	pxll_int k;
+	//fprintf (stderr, "copy T tc=0x%x len=%d %p\n", tc, length, pp);
+	// copy tag, children
+	for (k=0; k < length+1; k++) {
+	  *freep++ = *pp++;
+	}
+	// leave a sentinel where the tag was, followed by the forwarding address.
+	*(object*)(*p) = (object) GC_SENTINEL;
+	*((object*)(*p)+1) = (object) addr;
+	return addr;
       }
     } else {
       // pp points outside of the heap
@@ -68,40 +66,26 @@ do_gc (int nroots)
       
   while (scan < freep) {
     if (IMMEDIATE (*scan)) {
+      //fprintf (stderr, "I %x\n", *scan);
       scan++;
     } else {
       object * p = scan + 1;
       unsigned char tc = GET_TYPECODE (*scan);
       pxll_int length = GET_TUPLE_LENGTH (*scan);
       pxll_int i;
+      //fprintf (stderr, "tc=0x%x p=%p len=%d\n", tc, p, length);
 
       switch (tc) {
 
-      case TC_TUPLE:
-      case TC_PAIR:
-      case TC_VECTOR:
-      case TC_SYMBOL:
-	{
-	//fprintf (stderr, "T%d", length);
-        // copy everything
-        for (i=0; i < length; i++) {
-          *p = copy (p);
-          p++;
-        }
-        scan += length + 1;
-      }
-        break;
-
-      case TC_CLOSURE: {
+      case TC_CLOSURE:
 	// closure = { tag, pc, lenv }
 	//fprintf (stderr, "C%d", length);
 	p++;			// skip pc
 	*p = copy (p); p++;	// lenv
 	scan += 3;
-      }
 	break;
 
-      case TC_SAVE: {
+      case TC_SAVE:
 	// save = { tag, next, lenv, pc, regs[...] }
 	//fprintf (stderr, "S%d", length);
 	*p = copy (p); p++;		// next
@@ -112,18 +96,19 @@ do_gc (int nroots)
 	  p++;
 	}
 	scan += length + 1;
-      }
 	break;
 
-      case TC_STRING: {
+      case TC_STRING:
 	// skip it all
 	scan += length + 1;
-      }
 	break;
 
       default:
-        fprintf (stderr, "panic: Unknown Type Code in GC scan loop: scan=0x%08x tc=0x%02x\n", (pxll_int)scan, tc);
-        abort();
+        // copy everything
+        for (i=0; i < length; i++) {
+          *p = copy (p); p++;
+        }
+        scan += length + 1;
         break;
       }
     }
@@ -215,17 +200,6 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
 
     switch (tc) {
 
-    case TC_TUPLE:
-    case TC_PAIR:
-    case TC_VECTOR:
-    case TC_SYMBOL:
-      // adjust everything
-      for (i=0; i < length; i++, p++) {
-        adjust (p);
-      }
-      scan += length+1;
-      break;
-
       // XXX if we moved SAVE's <pc> to the front, then these two could be identical...
     case TC_CLOSURE:
       // { tag, pc, lenv }
@@ -245,8 +219,11 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
       scan += length+1;
       break;
     default:
-      printf ("Unknown Type Code in heap-relocation loop: scan=%p tc=02x%x\n", scan, tc);
-      abort();
+      // adjust everything
+      for (i=0; i < length; i++, p++) {
+        adjust (p);
+      }
+      scan += length+1;
       break;
     }
   }
