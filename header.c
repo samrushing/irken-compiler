@@ -145,7 +145,7 @@ dump_object (object * ob, int depth)
         pxll_vector * t = (pxll_vector *) ob;
         pxll_int n = get_tuple_size (ob);
         int i;
-	fprintf (stdout, "{u%d ", tc - TC_USEROBJ);
+	fprintf (stdout, "{u%d ", (tc - TC_USEROBJ)>>2);
         for (i=0; i < n; i++) {
           dump_object ((object *) t->val[i], 0);
 	  if (i < n-1) {
@@ -352,7 +352,6 @@ vm (int argc, char * argv[])
 
   object * allocate (pxll_int tc, pxll_int size) {
     object * save = freep;
-    //check_heap();
     *freep = (object*) (size<<8 | (tc & 0xff));
 #if 1
     // at least on the g5, this technique is considerably faster than using memset
