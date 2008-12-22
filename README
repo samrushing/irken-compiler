@@ -22,6 +22,44 @@ The Plan:
 
 Currently, I'm in stage 2 - though about 90% of the work is still in stage 1.
 
+Irken-High:
+
+  This should look as much like Python as possible, though it will
+start life as a much smaller language.  My current thinking is that it
+will be dynamically typed (just like Python), though I may experiment
+with some kind of type inference.  Irken-High will use a VM,
+implemented in Irken-Low.
+
+Irken-Low:
+
+  Currently, this is a strange hybrid of Scheme and ML/Haskell -
+although it looks like Scheme, it uses ML-style Hindley-Milner
+let-polymorphism, with algebraic datatypes.  The lisp syntax was
+chosen for reasons of simplicity and flexibility.  Once Irken-High is
+available, I may think about giving it a python-like syntax.  The main
+feature missing from the ML/Haskell world is full pattern matching,
+though a simpler variant-case syntax works pretty well.
+
+  Irken-low compiles to a single large function in a single C file.
+Function calls are implemented as 'gotos' within this function.  A
+simple register-machine model is used.
+
+Concurrency: Solve Two Problems, Create One.
+
+ Two problems I hope to solve using Erlang-style isolated 'threads':
+
+ First, garbage collection.  If every thread has its own heap, garbage
+ collection will be naturally 'concurrent' - i.e., we'll avoid having
+ one gigantic collection that sweeps 12GB of memory..
+
+ Second, modules / external code.  The runtime model of irken-low
+ makes it very difficult to link in new compiled code at run-time.  If
+ we instead demand erlang-style isolation, it's not a problem - just
+ load up a new 'VM' and run it in a separate process/thread.
+
+ IPC: the price to pay - now we need a very efficient way of
+   communicating between process/threads.  But we needed that anyway.
+
 ================================================================================
 
 The Python code:
