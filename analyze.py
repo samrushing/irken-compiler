@@ -12,6 +12,9 @@ is_a = isinstance
 class UnboundVariableError (Exception):
     pass
 
+# XXX this file needs a lot of work now.  much of the nastier stuff in here
+#  has now been obsoleted by the typing phase.
+
 # something to think about.
 # fix and let* are *very* close now.  In fact, once the node tree leaves
 #  this file they become identical.  So now the question is, can we push
@@ -33,13 +36,9 @@ class analyzer:
         self.pending_inlines = []
 
     def analyze (self, root):
-        # transforms *before* alpha conversion
-        root = self.transform (root, 0)
-        # perform alpha conversion and resolve varref/varset
-        #self.alpha_convert (root)
         # perform simple transformations
+        root = self.transform (root, 0)
         root = self.transform (root, 1)
-        # find recursive functions/applications
         self.find_recursion (root)
         if self.verbose:
             print 'calls:'
@@ -47,7 +46,7 @@ class analyzer:
         self.find_applications (root)
         
         if self.inline:
-
+            # XXX this is already being done in typing, let's combine them.
             self.call_graph = self.build_call_graph (root)
             root = self.find_inlines (root)
             # transform again
@@ -72,70 +71,6 @@ class analyzer:
             print tree.as_sexp (tree.to_scheme (root))
 
         return root
-
-    def alpha_convert (self, exp):
-        vars = []
-
-        def lookup_var (name, lenv):
-            while lenv:
-                rib, lenv = lenv
-                # walk rib backwards for the sake of <let*>
-                #   (e.g., (let ((x 1) (x 2)) ...))
-                for i in range (len(rib)-1, -1, -1):
-                    x = rib[i]
-                    if x.name == name:
-                        return x
-            raise ValueError ("unbound variable: %r" % (name,))
-
-        # XXX consider that this could be simplified by assigning
-        #   a serial number to each vardef, and just using that.
-        # walk <exp>, inventing a new name for each <vardef>,
-        #   renaming varref/varset as we go...
-        def rename (exp, lenv):
-            if exp.binds():
-                defs = exp.get_names()
-                for vd in defs:
-                    vd.alpha = len (vars)
-                    vars.append (vd)
-                if exp.is_a ('let_splat'):
-                    # this one is tricky
-                    names = []
-                    lenv = (names, lenv)
-                    for i in range (len (defs)):
-                        # add each name only after its init
-                        init = exp.subs[i]
-                        rename (init, lenv)
-                        names.append (defs[i])
-                    # now all the inits are done, rename body
-                    rename (exp.subs[-1], lenv)
-                    # ugh, non-local exit
-                    return
-                else:
-                    # normal binding behavior
-                    lenv = (defs, lenv)
-                if exp.is_a ('fix'):
-                    # rename functions
-                    for i in range (len (defs)):
-                        if exp.subs[i].is_a ('function'):
-                            exp.subs[i].params[0] = '%s_%d' % (defs[i].name, defs[i].alpha)
-            elif exp.one_of ('varref', 'varset'):
-                name = exp.params
-                exp.var = lookup_var (name, lenv)
-                if exp.is_a ('varset'):
-                    if exp.var.nary:
-                        raise ValueError ("can't assign to a varargs argument")
-                exp.params = '%s_%d' % (name, exp.var.alpha)
-            for sub in exp.subs:
-                rename (sub, lenv)
-
-        rename (exp, None)
-        # now go back and change the names of the vardefs
-        for vd in vars:
-            vd.name = '%s_%d' % (vd.name, vd.alpha)
-
-        # global variable table
-        for vd in vars:
-            self.vars[vd.name] = vd
 
     def transform (self, node, stage):
         name = 'transform_%d_%s' % (stage, node.kind)
@@ -249,6 +184,28 @@ class analyzer:
             else:
                 return node
 
+    def transform_1_fix (self, node):
+        # coalesce cascading <fix>
+        # (fix (a b c) (fix (d e f) ...))
+        # => (fix (a b c d e f) ...)
+        names = node.params
+        inits = node.subs[:-1]
+        body = node.subs[-1]
+        if body.is_a ('fix'):
+            names2 = body.params
+            inits2 = body.subs[:-1]
+            body2  = body.subs[-1]
+            result = tree.fix (
+                names + names2,
+                [self.transform (x, 1) for x in inits + inits2],
+                self.transform (body2, 1),
+                type=body2.type
+                )
+            result.fix_attribute_names()
+            return result
+        else:
+            return node
+
     def transform_1_sequence (self, node):
         if len (node.subs) == 1:
             # (begin x) => x
@@ -316,15 +273,6 @@ class analyzer:
     def get_fun_calls (self, name):
         return self.calls.get (name, 0)
 
-    def check_args (self, app, fun):
-        # check the number of args for known functions
-        nargs = len (app.subs) - 1
-        formals = fun.params[1]
-        if len(formals) != nargs and (len(formals) > 0 and not formals[0].nary):
-            print "Wong number of args to fun %r in" % fun
-            app.pprint()
-            raise ValueError ("wrong number of args")
-
     def find_recursion (self, exp):
 
         self.calls = {}
@@ -346,7 +294,6 @@ class analyzer:
                     var = self.vars[name]
                     if var.function:
                         fun = var.function
-                        self.check_args (exp, fun)
                         if lookup_fun (fun, fenv):
                             # mark both the function and the application as recursive
                             fun.params[2] = True
@@ -363,6 +310,7 @@ class analyzer:
                 search (sub, fenv)
         search (exp, None)
 
+    # XXX shouldn't be needed, using <typing.the_dep_graph> instead.
     def build_call_graph (self, root):
         call_graph = {}
         def search (exp, this_fun):
@@ -381,6 +329,7 @@ class analyzer:
         search (root, call_graph['top'])
         return call_graph
 
+    # XXX should use <typing.the_dep_graph> instead.
     def is_recursive (self, name):
         # this is used by the inliner to decide whether to inline a small
         #   function - rather than computing the full transitive closure,
@@ -432,6 +381,7 @@ class analyzer:
             inits = node.subs[:-1]
             for init in inits:
                 if not init.is_a ('function'):
+                    # XXX we should really check that this variable is actually *used*
                     nodes.append (init)
             return nodes
         else:
@@ -442,7 +392,8 @@ class analyzer:
         #   'walk applications for tree shaking..'
         to_scan = {}
         # look at the body of root - find all referenced (named) functions
-        for exp in self.get_initial_expressions (root):
+        initial_expressions = self.get_initial_expressions (root)
+        for exp in initial_expressions:
             for node in exp:
                 if node.one_of ('varref', 'varset'):
                     var = self.lookup_var (node)
@@ -641,7 +592,7 @@ class analyzer:
 
     def instantiate (self, fun):
         # give the body of a function, return a new copy with all fresh, unique
-        #   bindings in order to preserve the alpha-converted state of the whole program
+        #   bindings in order to preserve the alpha-converted state of the whole program.
         # first, get all fresh new nodes.  This is a somewhat simpler task than full
         #   alpha conversion - mostly because we know the bindings are already unique.
         fun = fun.deep_copy()
