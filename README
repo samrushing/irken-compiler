@@ -1,45 +1,28 @@
 
-PXLL = 'pyrex-like language'
-PYLL = 'python-like language'
-
-================================================================================
-081212: Since adding type inference most of the test code and runtime is now
-  broken, and will be rewritten.  If you want to see the compiler work, feed
-  it one of the recently-edited files from the 'tests' directory, or lib/frb3.scm.
-================================================================================
+Irken
 
 The Goal:
- A new dialect and implementation of python that supports massively
-  scalable cooperative multi-threading, and eventually support for
-  erlang-style concurrency.
+ A new dialect and implementation of a python-like language that
+  supports massively scalable cooperative multi-threading, and
+  eventually, erlang-style concurrency.
 
-How:
- A VM that supports continuations. 'threads' will be built using continuations.
- The VM will be implemented in a pyrex-like language, rather than directly in C.
- Continuations will be available in both the target language and the implementation
- language, and since we want to support millions of threads, we cannot use the C
- stack.  Our approach is to generate continuation-passing style (CPS) code in C.
+How: A VM that supports continuations. 'threads' will be built using
+ continuations.  The VM will be written in a new high-level language
+ ('irken-low') that compiles to C.  Continuations will be available in
+ both the target language and the implementation language, and since
+ we want to support millions of threads, we cannot use the C stack.
+ Our approach is to generate continuation-passing style (CPS) code in
+ C.
 
 The Plan:
 
- 1) implement the pxll compiler.
- 2) write a VM for pyll in pxll
- 3) rewrite pxll compiler in pyll
+ 1) implement the irken-low compiler.
+ 2) write a VM for irken-high in irken-low
+ 3) rewrite the irken-low compiler in irken
 
-Currently, I'm in stage 2 - though about 90% of the work is still in stage 1.  Also,
-the 'pyrex-like language' is currently a type dialect of Scheme.
-
-================================================================================
-
-Quick note about the name 'pxll':
-
-  This project was conceived as "write python in pyrex".
-  Currently, though - 'pxll' is like pyrex only in the sense that it is a HLL that
-  compiles to C, used to implement another HLL.  Sorry for the confusion.  Until
-  I come up with a better name, it's just a good four-letter acronym.
+Currently, I'm in stage 2 - though about 90% of the work is still in stage 1.
 
 ================================================================================
-
 
 The Python code:
 
@@ -77,13 +60,12 @@ cps.py:
   
 backend.py:
   emit C code implementing the cps insns.
-  Here you'll find the small collection of primops.
   input: insns
   output: a C file
 
 ================================================================================
 
-The Scheme/'pxll' Code:
+The Scheme/irken-low Code:
 
 lib/*.scm:
 
@@ -109,7 +91,7 @@ lib/*.scm:
     lisp/scheme vectors (i.e., python lists)
 
 tests/*.scm:
-  Currently, these are ad-hoc tests used to verify pxll compiler features as I
+  Currently, these are ad-hoc tests used to verify the compiler features as I
   write them.  Eventually, these will turn into automated tests (like the ones
   in compile.py).
 
