@@ -22,6 +22,8 @@ The Plan:
 
 Currently, I'm in stage 2 - though about 90% of the work is still in stage 1.
 
+================================================================================
+
 Irken-High:
 
   This should look as much like Python as possible, though it will
@@ -29,6 +31,8 @@ start life as a much smaller language.  My current thinking is that it
 will be dynamically typed (just like Python), though I may experiment
 with some kind of type inference.  Irken-High will use a VM,
 implemented in Irken-Low.
+
+================================================================================
 
 Irken-Low:
 
@@ -43,6 +47,8 @@ though a simpler variant-case syntax works pretty well.
   Irken-low compiles to a single large function in a single C file.
 Function calls are implemented as 'gotos' within this function.  A
 simple register-machine model is used.
+
+================================================================================
 
 Concurrency: Solve Two Problems, Create One.
 
@@ -59,6 +65,22 @@ Concurrency: Solve Two Problems, Create One.
 
  IPC: the price to pay - now we need a very efficient way of
    communicating between process/threads.  But we needed that anyway.
+
+================================================================================
+
+Platforms:
+  My current testing platforms include FreeBSD/amd64, FreeBSD/i386,
+  OSX/G5, both 32 and 64-bit.  Irken-low should work on any platform
+  that supports gcc (or any other C compiler that supports the
+  address-of-label extension, which most do...) and some kind of
+  rdtsc-like facility - though if you were desperate you could just
+  strip out the tsc stuff - it's only used for timings.
+
+================================================================================
+License: 
+
+  Although I haven't formally stamped a license on, the intent is to
+  use a BSD-style open-source license.
 
 ================================================================================
 
@@ -103,7 +125,7 @@ backend.py:
 
 ================================================================================
 
-The Scheme/irken-low Code:
+The Scheme/Irken-low Code:
 
 lib/*.scm:
 
