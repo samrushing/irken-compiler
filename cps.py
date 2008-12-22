@@ -139,7 +139,10 @@ class compiler:
 
     def compile_primapp (self, tail_pos, exp, lenv, k):
         if exp.name == '%%vector-literal':
-            return self.compile_primargs (exp.args, ('%make-tuple', exp.type, 'vector'), lenv, k)
+            if len (exp.args) < 5:
+                return self.compile_primargs (exp.args, ('%make-tuple', exp.type, 'vector'), lenv, k)
+            else:
+                return self.compile_vector_literal (exp.args, lenv, k)
         elif exp.name == '%%array-ref':
             # XXX need two different insns, to handle constant index
             # XXX could support strings as character arrays by passing down a hint?
@@ -162,7 +165,7 @@ class compiler:
                 dead_cont (k[1], self.compile_sequence (tail_pos, exps[1:], lenv, k))
                 )
 
-    # XXX consider automating this somehow!
+    # XXX this needs to be fixed
     simple_conditionals = set (('%==', '%eq?', '%zero?', '%ge?', '%gt?', '%lt?', '%le?'))
 
     def compile_conditional (self, tail_pos, exp, lenv, k):
@@ -257,6 +260,25 @@ class compiler:
                     )
                 )
 
+    # ugh, this nearly completely duplicates <compile_rands>/<compile_tuple_rands>
+    def compile_vector_literal (self, rands, lenv, k):
+        return self.gen_new_vector (
+            len (rands),
+            cont (k[1], lambda vec_reg: self.compile_vector_rands (0, rands, vec_reg, [vec_reg] + k[1], lenv, k))
+            )
+
+    def compile_vector_rands (self, i, rands, vec_reg, free_regs, lenv, k):
+        return self.compile_exp (
+            False, rands[i], lenv, cont (
+                free_regs,
+                lambda arg_reg: self.gen_store_vec (
+                    arg_reg, vec_reg, i, len(rands),
+                    (dead_cont (free_regs, self.compile_vector_rands (i+1, rands, vec_reg, free_regs, lenv, k)) if i+1 < len(rands) else k)
+                    )
+                )
+            )
+
+
 # the allocator and cont stuff *should* be in the compiler instance...
 
 class register_allocator:
@@ -288,6 +310,7 @@ def box (n):
 class INSN:
 
     typecheck = None
+    allocates = 0
 
     def __init__ (self, name, regs, params, k):
         self.name = name
@@ -356,6 +379,12 @@ class pxll_compiler (compiler):
     def gen_pop_env (self, reg, k):
         return INSN ('pop_env', [reg], None, k)
 
+    def gen_new_vector (self, size, k):
+        return INSN ('new_vector', [], size, k)
+
+    def gen_store_vec (self, arg_reg, vec_reg, i, n, k):
+        return INSN ('store_vec', [arg_reg, vec_reg], (i, n), k)
+
     def gen_varref (self, addr, is_top, var, k):
         return INSN ('varref', [], (addr, is_top, var), k)
     
@@ -398,7 +427,7 @@ class pxll_compiler (compiler):
         self.use_top = exp.is_a ('fix')
         result = self.compile_exp (True, exp, lenv, cont ([], self.gen_return))
         result = flatten (result)
-        analyze (result)
+        find_allocation (result)
         return result
 
 def flatten (exp):
@@ -479,18 +508,22 @@ def walk_function (insns):
                 yield x
             for x in walk_function (else_code):
                 yield x
+        elif insn.name == 'typecase':
+            type, alts = insn.params
+            for alt in alts:
+                for x in walk_function (alt):
+                    yield x
 
-# XXX why is this not up there in the class?  And named something
-#    like 'analyze_allocation'??                
-def analyze (insns):
+def find_allocation (insns):
     funs = [ x for x in walk (insns) if x.name == 'close' ]
     # examine each fun to see if it performs allocation
     for fun in funs:
         node, body, free = fun.params
         fun.allocates = 0
         for insn in walk_function (body):
-            # XXX THIS IS CURRENTLY WRONG!!
-            if insn.name == 'primop' and insn.params == '%make-tuple':
+            if insn.name == 'primop' and insn.params[0] == '%make-tuple' and len(insn.regs):
+                # we're looking for non-immediate constructors (i.e., list/cons but not list/nil)
                 fun.allocates += 1
-            if insn.name in ('new_env', 'build_env'):
+            elif insn.name in ('new_env', 'build_env', 'new_vector'):
                 fun.allocates += 1
+        print 'allocates %d %s' % (fun.allocates, fun.params[0].name)
