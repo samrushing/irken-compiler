@@ -1,84 +1,53 @@
 
-;; (define (make-string n)
-;;   (%%verify "TC_INT" 1 n)
-;;   (let ((s (%make-tuple #x10 (%%cexp "box(string_tuple_length(unbox(%s)))" n))))
-;;     (%%cexp "((pxll_string*)(%s))->len = unbox(%s)" s n)
-;;     s))
-
 (define (make-string n)
-  (%%verify "TC_INT" 1 n)
   (%%cexp
-   "( t = %s, ((pxll_string*)(t))->len = unbox(%s), t)"
-   (%make-tuple #x10 (%%cexp "box(string_tuple_length(unbox(%s)))" n))
+   (int int -> string)
+   "(t=alloc_no_clear (TC_STRING, string_tuple_length (%s)), ((pxll_string*)(t))->len = %s, t)"
+   n
    n))
 
 (define (copy-string s1 n)
-  (%%verify "TC_STRING" 1 s1)
-  (%%verify "TC_INT" 1 n)
   (let ((s2 (make-string n)))
-    (%%cexp "(memcpy (GET_STRING_POINTER(%s), GET_STRING_POINTER(%s), unbox(%s)), PXLL_UNDEFINED)" s2 s1 n)
+    (%%cexp (string string int -> undefined) "(memcpy (%s, %s, %s), PXLL_UNDEFINED)" s2 s1 n)
     s2))
 
 (define (buffer-copy src src-start n dst dst-start)
-  (%%verify "TC_STRING" 1 src)
-  (%%verify "TC_STRING" 1 dst)
-  (%%verify "TC_INT" 1 n)
-  (%%verify "TC_INT" 1 src-start)
-  (%%verify "TC_INT" 1 dst-start)
-  (%%cexp "(memcpy (GET_STRING_POINTER(%s)+unbox(%s), GET_STRING_POINTER(%s)+unbox(%s), unbox(%s)))" dst dst-start src src-start n))
+  (%%cexp
+   (string int string int int -> undefined)
+   "(memcpy (%s+%s, %s+%s, %s), PXLL_UNDEFINED)" dst dst-start src src-start n))
 
 (define (ascii->char n)
-  (%%verify "TC_INT" 1 n)
-  (%make-immediate n #x02))
+  (%%cexp (int -> char) "TO_CHAR(%s)" n))
 
 (define (char->ascii c)
-  (%%verify "TC_CHAR" 1 c)
-  (%%cexp "box (GET_PAYLOAD(%s))" c))
+  (%%cexp (char -> int) "GET_CHAR(%s)" c))
 
 (define (string-length s)
-  (%%verify "TC_STRING" 1 s)
-  (%%cexp "box(((pxll_string *)(%s))->len)" s))
+  (%%cexp (string/raw -> int) "%s->len" s))
 
-;; XXX need range-check
 (define (string-ref s n)
-  (%%verify "TC_STRING" 1 s)
-  (%%verify "TC_INT" 1 n)
-  (%%cexp "TO_CHAR(((pxll_string *)%s)->data[unbox(%s)])" s n)
+  ;; XXX need range-check
+  (%%cexp (string int -> char) "TO_CHAR(%s[%s])" s n)
   )
 
-;; XXX need range-check
 (define (string-set! s n c)
-  (%%verify "TC_STRING" 1 s)
-  (%%verify "TC_INT" 1 n)
-  (%%verify "TC_CHAR" 1 c)
-  (%%cexp "(((pxll_string *)%s)->data[unbox(%s)] = GET_PAYLOAD (%s), PXLL_UNDEFINED)" s n c)
+  ;; XXX need range-check
+  (%%cexp
+   (string int char -> undefined)
+   "(%s[%s] = GET_CHAR (%s), PXLL_UNDEFINED)" s n c)
   )
-
-(define (substring str start end)
-  ;; XXX range-check
-  (let ((r (make-string (- end start))))
-    (buffer-copy str start (- end start) r 0)
-    r))
-
-(define (print-string s)
-  (%%verify "TC_STRING" 1 s)
-  (%%cexp "box (fwrite (GET_STRING_POINTER(%s), 1, unbox(%s), stdout))" s (string-length s)))
-
-(define (print-int n)
-  (%%verify "TC_INT" 1 n)
-  (%%cexp "box (fprintf (stdout, \"%%d\", unbox(%s)))" n))
 
 (define (string-compare a b)
-  (%%verify "TC_STRING" 1 a)
-  (%%verify "TC_STRING" 1 b)
+  ;; it'd be nice if the compiler could get rid of this let*,
+  ;;   it sucks to have to allocate in order to compare two strings.
   (let* ((alen (string-length a))
 	 (blen (string-length b))
-	 (min (if (%lt? alen blen) alen blen))
-	 (cmp (%%cexp "box (memcmp (GET_STRING_POINTER(%s), GET_STRING_POINTER(%s), unbox(%s)))" a b min)))
-    (cond ((%eq? cmp 0)
-	   (if (%eq? alen blen)
+	 (min (if (< alen blen) alen blen))
+	 (cmp (%%cexp (string string int -> int) "memcmp (%s, %s, %s)" a b min)))
+    (cond ((= cmp 0)
+	   (if (= alen blen)
 	       0
-	       (if (%lt? alen blen) -1 1)))
+	       (if (< alen blen) -1 1)))
 	  (else cmp))))
 
 (define (string-=? s1 s2)
@@ -88,6 +57,7 @@
 (define (string->? s1 s2)
   (> (string-compare s1 s2) 0))
 
+;; [waiting for type inference to support nary args]
 ;; (define (string-join . strings)
 ;;   (let size-loop ((i 0)
 ;;                   (size 0))
@@ -103,63 +73,29 @@
 ;;                   (copy-loop (+ j 1) (+ pos jlen)))
 ;;                 r))))))
 
-;; same thing, rewritten to avoid allocation in the loops
-;; [which doesn't work because %%verify expressions cause
-;;  more-than-one-reference in small functions which trigger
-;;  let* bindings when inlining, thus allocation]
-(define (string-join . strings)
-  (let ((i 0)
-	(size 0)
-	(pos 0)
-	(istr 0)
-	(ilen 0)
-	(r #f))
-    (let size-loop ()
-      (cond ((< i (tuple-length strings))
-	     (set! size (+ size (string-length (tuple-ref strings i))))
-	     (set! i (+ i 1))
-	     (size-loop))
-	    (else
-	     (set! r (make-string size))
-	     (set! i 0)
-	     (let copy-loop ()
-	       (cond ((< i (tuple-length strings))
-		      (set! istr (tuple-ref strings i))
-		      (set! ilen (string-length istr))
-		      (buffer-copy istr 0 ilen r pos)
-		      (set! i (+ i 1))
-		      (set! pos (+ pos ilen))
-		      (copy-loop))
-		     (else
-		      r)))
-	     )))
-    ))
+;; [waiting to decide how I will deal with lists]
 
-;; need print-char
+;; (define (list->string l)
+;;   (let ((buffer (make-string (length l))))
+;;     (let loop ((l l) (i 0))
+;;       (if (null? l)
+;; 	  buffer
+;; 	  (begin
+;; 	    (string-set! buffer i (car l))
+;; 	    (loop (cdr l) (+ i 1)))))))
 
-(define (terpri)
-  (print-string "\n"))
+;; (define (string->list s)
+;;   (let loop ((l '()) (n (string-length s)))
+;;     (if (= n 0)
+;; 	l
+;; 	(loop (cons (string-ref s (- n 1)) l) (- n 1)))))
 
-(define (list->string l)
-  (let ((buffer (make-string (length l))))
-    (let loop ((l l) (i 0))
-      (if (null? l)
-	  buffer
-	  (begin
-	    (string-set! buffer i (car l))
-	    (loop (cdr l) (%+ i 1)))))))
+(define (sys:argc)
+  (%%cexp (-> int) "argc"))
 
-(define (string->list s)
-  (let loop ((l '()) (n (string-length s)))
-    (if (= n 0)
-	l
-	(loop (cons (string-ref s (- n 1)) l) (- n 1)))))
-
-(define (sys.argc)
-  (%%cexp "box(argc)"))
-
-(define (sys.argv n)
-  (let* ((len (%%cexp "box(strlen(argv[unbox(%s)]))" n))
+(define (sys:argv n)
+  (let* ((len (%%cexp (int -> int) "strlen(argv[%s])" n))
 	 (r (make-string len)))
-    (%%cexp "(memcpy (GET_STRING_POINTER(%s), argv[unbox(%s)], unbox(%s)), PXLL_UNDEFINED)" r n len)
+    (%%cexp (string int int -> undefined)
+	    "(memcpy (%s, argv[%s], %s), PXLL_UNDEFINED)" r n len)
     r))
