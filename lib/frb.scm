@@ -1,120 +1,138 @@
 
-;;(include "lib/core.scm")
-;;(include "lib/vector.scm")
+;; For the almighty tallest, a quick translation of okasaki's pure
+;;   functional "red-purple" trees.
 
-;; a quick translation of okasaki's pure functional red-black tree
+;; A more 'natural' representation might be:
+;; (datatype node (union (empty) (full bool node node ? ?)))
+;; where the color is stored as a bool in each node.
+;;
+;; Instead, we save space by encoding the color into the header of
+;;   each node, which leads to some minor code duplication (due to the
+;;   lack of real pattern matching).  another issue: the fact that I
+;;   don't have proper type variables in this syntax means there's no
+;;   way to expression that red and purple nodes have the same key and
+;;   value types.
 
-(define (make-tree < root)
-  (let ((t (make-vector 2)))
-    (vector-set! t 0 <)
-    (vector-set! t 1 root)
-    t))
+(datatype node
+  (union
+    (empty)
+    (red node node ? ?)
+    (purple node node ? ?)
+    ))
 
-(define (tree/< t)
-  (vector-ref t 0))
-(define (tree/root t)
-  (vector-ref t 1))
+(define (lbalance l r k v)
+  (typecase node l
+    ((red ll lr lk lv)
+     (typecase node ll
+       ((red lll llr llk llv)
+	(node/red (node/purple lll llr llk llv) (node/purple lr r k v) lk lv))
+       ((purple _ _ _ _)
+	(typecase node lr
+           ((red lrl lrr lrk lrv)
+	    (node/red (node/purple ll lrl lk lv) (node/purple lrr r k v) lrk lrv))
+	   ((purple _ _ _ _)
+	    (node/purple l r k v))
+	   ((empty)
+	    (node/purple l r k v))))
+       ((empty)
+	(node/purple l r k v))))
+    ((purple _ _ _ _)
+     (node/purple l r k v))
+    ((empty)
+     (node/purple l r k v))))
 
-;; ok, it just about *kills* me to waste 64 bits on <red?>.
-;;  possible solutions:
-;;  1) when we get user-defined tuple types, use a red and a black tuple type.
-;;  2) store 'rank' info in there.
+(define (rbalance l r k v)
+  (typecase node r
+    ((red rl rr rk rv)
+     (typecase node rr
+       ((red rrl rrr rrk rrv)
+	(node/red (node/purple l rl k v) (node/purple rrl rrr rrk rrv) rk rv))
+       ((purple _ _ _ _)
+	(typecase node rl
+          ((red rll rlr rlk rlv)
+	   (node/red (node/purple l rll k v) (node/purple rlr rr rk rv) rlk rlv))
+	  ((purple _ _ _ _)
+	   (node/purple l r k v))
+	  ((empty)
+	   (node/purple l r k v))))
+       ((empty)
+	(node/purple l r k v))))
+    ((purple _ _ _ _)
+     (node/purple l r k v))
+    ((empty)
+     (node/purple l r k v))))
 
-(define (make-node red? left right key val)
-  (let ((node (make-vector 5)))
-    (vector-set! node 0 red?)
-    (vector-set! node 1 left)
-    (vector-set! node 2 right)
-    (vector-set! node 3 key)
-    (vector-set! node 4 val)
-    node))
+(define (tree:insert t < k v)
+  (define (ins n)
+    (typecase node n
+      ((empty)
+       (node/red (node/empty) (node/empty) k v))
+      ((red l r k2 v2)
+       (cond ((< k k2)
+	      (node/red (ins l) r k2 v2))
+	     ((< k2 k)
+	      (node/red l (ins r) k2 v2))
+	     (else n)))
+      ((purple l r k2 v2)
+       (cond ((< k k2)
+	      (lbalance (ins l) r k2 v2))
+	     ((< k2 k)
+	      (rbalance l (ins r) k2 v2))
+	     (else n)))))
+  (let ((s (ins t)))
+    (typecase node s
+      ((purple _ _ _ _) s)
+      ((red l r k v) (node/purple l r k v))
+      ((empty) s) ;; impossible, should raise something here?
+      )))
 
-(define (node/red? node)
-  (vector-ref node 0))
-(define (node/left node)
-  (vector-ref node 1))
-(define (node/right node)
-  (vector-ref node 2))
-(define (node/key node)
-  (vector-ref node 3))
-(define (node/val node)
-  (vector-ref node 4))
+(define (tree:member t < key)
+  (let member0 ((n t))
+    (typecase node n
+       ((empty) (maybe/no))
+       ((red l r k v)
+	(cond ((< key k) (member0 l))
+	      ((< k key) (member0 r))
+	      (else (maybe/yes v))))
+       ((purple l r k v)
+	(cond ((< key k) (member0 l))
+	      ((< k key) (member0 r))
+	      (else (maybe/yes v)))))))
 
-(define (red-node l r k v)
-  (make-node #t l r k v))
+(define (print-spaces n)
+  (let loop ((n n))
+    (cond ((> n 0)
+	   (print-string "  ")
+	   (loop (- n 1))))))
 
-(define (black-node l r k v)
-  (make-node #f l r k v))
+(define (print-item k v d)
+  (print-spaces d)
+  (print k)
+  (print-string ":")
+  (print v)
+  (print-string "\n"))
 
-;; my lame attempt at grokking okasaki's ML code.
-;; gee, pattern matching would sure be sweet.
+(define (tree:print t)
+  (let p ((n t) (d 0))
+    (typecase node n
+      ((empty) #u)
+      ((red l r k v)    (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))
+      ((purple l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
+    ))
 
-(define (balance red? l r k v)
-  (cond ((and l (node/red? l) (node/left l) (node/red? (node/left l)))
-	 (red-node (black-node (node/left (node/left l)) (node/right (node/left l)) (node/key (node/left l)) (node/val (node/left l)))
-		   (black-node (node/right l) r k v)
-		   (node/key l)
-		   (node/val l)))
-	((and l (node/red? l) (node/right l) (node/red? (node/right l)))
-	 (red-node (black-node (node/left l) (node/left (node/right l)) (node/key l) (node/val l))
-		   (black-node (node/right (node/right l)) r k v)
-		   (node/key (node/right l))
-		   (node/val (node/right l))))
-	((and r (node/red? r) (node/left r) (node/red? (node/left r)))
-	 (red-node (black-node l (node/left (node/left r)) k v)
-		   (black-node (node/right (node/left r)) (node/right r) (node/key r) (node/val r))
-		   (node/key (node/left r))
-		   (node/val (node/left r))))
-	((and r (node/red? r) (node/right r) (node/red? (node/right r)))
-	 (red-node (black-node l (node/left r) k v)
-		   (black-node (node/left (node/right r)) (node/right (node/right r)) (node/key (node/right r)) (node/val (node/right r)))
-		   (node/key r)
-		   (node/val r)))
-	(else (make-node red? l r k v))))
-	 
-(define (tree-insert tree k v)
-  (let ((< (tree/< tree))
-	(root (tree/root tree)))
-    (define (ins node)
-      (cond ((%eq? node #f)
-	     (make-node #t #f #f k v))
-	    ((< k (node/key node))
-	     (balance (node/red? node) (ins (node/left node)) (node/right node) (node/key node) (node/val node)))
-	    ((< (node/key node) k)
-	     (balance (node/red? node) (node/left node) (ins (node/right node)) (node/key node) (node/val node)))
-	    (else node)))
-    (let ((s (ins root)))
-      (make-tree < (black-node (node/left s) (node/right s) (node/key s) (node/val s))))))
+(define (tree:inorder t p)
+  (let inorder0 ((n t))
+    (typecase node n
+      ((empty))
+      ((red l r k v)    (inorder0 l) (p k v) (inorder0 r))
+      ((purple l r k v) (inorder0 l) (p k v) (inorder0 r))
+      )))
 
-(define (tree-member tree k)
-  (let ((< (tree/< tree))
-	(root (tree/root tree)))
-    (let member0 ((n root))
-      (cond ((%eq? n #f) #f)
-	    ((< k (node/key n))
-	     (member0 (node/left n)))
-	    ((< (node/key n) k)
-	     (member0 (node/right n)))
-	    (else (node/val n))))))
+(define (tree:reverse t p)
+  (let reverse0 ((n t))
+    (typecase node n
+      ((empty))
+      ((red l r k v)    (reverse0 r) (p k v) (reverse0 l))
+      ((purple l r k v) (reverse0 r) (p k v) (reverse0 l))
+      )))
 
-(define (tree-inorder t proc)
-  (let inorder0 ((n (tree/root t)))
-    (cond (n
-	   (inorder0 (node/left n))
-	   (proc (node/key n) (node/val n))
-	   (inorder0 (node/right n))))))
-
-(define (tree-reverse t proc)
-  (let reverse0 ((n (tree/root t)))
-    (cond (n (reverse0 (node/right n))
-	     (proc (node/key n) (node/val n))
-	     (reverse0 (node/left n))))))
-
-(define (make-tree-generator tree)
-  (make-generator
-   (lambda (consumer)
-     (tree-inorder tree consumer)
-     (let loop ()
-       (consumer 'end-of-tree)
-       (loop))
-     )))
