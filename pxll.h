@@ -24,7 +24,7 @@ object * heap1 = NULL;
 #define TC_BOOL                 (3<<1) // 0x06
 #define TC_NIL                  (5<<1) // 0x0a
 #define TC_UNDEFINED            (7<<1) // 0x0e
-#define TC_USERIMM              (9<<1) // 0x10
+#define TC_USERIMM              (9<<1) // 0x12
 
 /* pointer types (multiples of 4) */
 #define TC_SAVE                 (1<<2)    /* 00000100  04 */
@@ -35,8 +35,6 @@ object * heap1 = NULL;
 #define TC_PAIR                 (6<<2)    /* 00011000  18 */
 #define TC_SYMBOL               (7<<2)    /* 00011100  1c */
 #define TC_USEROBJ              (8<<2)    /* 00100000  20 */
-
-#define TC_LAST                 TC_USEROBJ
 
 // the range TC_USEROBJ to 252 is available for variant records,
 //   leaving a max of 59 variants in any one type.
