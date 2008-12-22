@@ -1,8 +1,7 @@
 
 (define (random)
-  (%%cexp "box(random())"))
+  (%%cexp (-> int) "random()"))
 
 (define (srandom n)
-  (%%verify "TC_INT" 1 n)
-  (%%cexp "(srandom (unbox (%s)), PXLL_UNDEFINED)" n))
+  (%%cexp (int -> undefined) "(srandom (%s), PXLL_UNDEFINED)" n))
   
