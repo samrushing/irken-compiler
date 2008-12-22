@@ -127,10 +127,18 @@ class c_backend:
     def wrap_in (self, types, args):
         result = []
         for i in range (len (types)):
-            if types[i] == 'int':
+            t = types[i]
+            if '/' in t:
+                [t, option] = t.split('/')
+            else:
+                option = ''
+            if t == 'int':
                 result.append ('unbox(%s)' % (args[i],))
-            elif types[i] == 'string':
-                result.append ('((pxll_string*)(%s))->data' % (args[i],))
+            elif t == 'string':
+                if option != 'raw':
+                    result.append ('((pxll_string*)(%s))->data' % (args[i],))
+                else:
+                    result.append ('((pxll_string*)(%s))' % (args[i],))
             else:
                 result.append (args[i])
         return tuple (result)
@@ -161,21 +169,24 @@ class c_backend:
                 self.write ('r%d = %s;' % (insn.target, exp))
         elif primop[0] == '%make-tuple':
             ignore, type, tag = primop
-            regs = insn.regs
-            nargs = len (regs)
-            if nargs == 0:
-                # unit type - use an immediate
-                self.write ('r%d = (object*)(TC_USERIMM+%d);' % (insn.target, tag * 4))
+            if insn.target == 'dead':
+                print 'warning: dead %make-tuple', insn
             else:
-                # tuple type
-                if is_a (tag, int):
-                    tag = '(TC_USEROBJ+%d)' % (tag,)
+                regs = insn.regs
+                nargs = len (regs)
+                if nargs == 0:
+                    # unit type - use an immediate
+                    self.write ('r%d = (object*)(TC_USERIMM+%d);' % (insn.target, tag * 4))
                 else:
-                    tag = 'TC_%s' % (tag.upper(),)
-                self.write ('t = alloc_no_clear (%s, %d);' % (tag, nargs))
-                for i in range (nargs):
-                    self.write ('t[%d] = r%d;' % (i+1, regs[i]))
-                self.write ('r%d = t;' % (insn.target,))
+                    # tuple type
+                    if is_a (tag, int):
+                        tag = '(TC_USEROBJ+%d)' % (tag * 4,)
+                    else:
+                        tag = 'TC_%s' % (tag.upper(),)
+                    self.write ('t = alloc_no_clear (%s, %d);' % (tag, nargs))
+                    for i in range (nargs):
+                        self.write ('t[%d] = r%d;' % (i+1, regs[i]))
+                    self.write ('r%d = t;' % (insn.target,))
         elif primop[0] == '%array-ref':
             [base, index] = insn.regs
             self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
@@ -240,7 +251,7 @@ class c_backend:
             for index in tuples:
                 alt = alts[index]
                 self.indent += 1
-                self.write ('case TC_USEROBJ+%d: {' % (index,))
+                self.write ('case TC_USEROBJ+%d: {' % (index * 4,))
                 self.indent += 1
                 self.emit (alt)
                 self.indent -= 1
@@ -270,6 +281,17 @@ class c_backend:
         if not self.toplevel_env:
             self.toplevel_env = True
             self.write ('top = r%d;' % (insn.target,))
+
+    def insn_new_vector (self, insn):
+        size = insn.params
+        self.write ('r%d = allocate (TC_VECTOR, %d);' % (insn.target, size))
+
+    def insn_store_vec (self, insn):
+        [arg_reg, vec_reg] = insn.regs
+        i, n = insn.params
+        self.write ('r%d[%d] = r%d;' % (vec_reg, i+1, arg_reg))
+        if insn.target != 'dead' and insn.target != vec_reg:
+            self.write ('r%d = r%d;' % (insn.target, vec_reg))
 
     def c_string (self, s):
         r = repr(s)
