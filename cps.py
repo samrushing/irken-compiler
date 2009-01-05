@@ -333,7 +333,7 @@ class INSN:
     def __repr__ (self):
         return '<INSN %s>' % (self.print_info())
 
-class pxll_compiler (compiler):
+class irken_compiler (compiler):
 
     """generates 'register' CPS"""
 
