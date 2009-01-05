@@ -7,11 +7,11 @@
 (define (intern-symbol str)
   (let ((sym (string->uninterned-symbol str)))
     (set! the-symbol-table
-	  (tree:insert the-symbol-table string-<? str sym))
+	  (node:insert the-symbol-table string-<? str sym))
     sym))
 
 (define (string->symbol str)
-  (let ((probe (tree:member the-symbol-table string-<? str)))
+  (let ((probe (node:member the-symbol-table string-<? str)))
     (typecase maybe probe
       ((no) (intern-symbol str))
       ((yes sym) sym))))
