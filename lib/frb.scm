@@ -20,7 +20,7 @@
     (purple node node ? ?)
     ))
 
-(define (lbalance l r k v)
+(define (node:lbalance l r k v)
   (typecase node l
     ((red ll lr lk lv)
      (typecase node ll
@@ -41,7 +41,7 @@
     ((empty)
      (node/purple l r k v))))
 
-(define (rbalance l r k v)
+(define (node:rbalance l r k v)
   (typecase node r
     ((red rl rr rk rv)
      (typecase node rr
@@ -62,7 +62,7 @@
     ((empty)
      (node/purple l r k v))))
 
-(define (tree:insert t < k v)
+(define (node:insert root < k v)
   (define (ins n)
     (typecase node n
       ((empty)
@@ -75,19 +75,19 @@
 	     (else n)))
       ((purple l r k2 v2)
        (cond ((< k k2)
-	      (lbalance (ins l) r k2 v2))
+	      (node:lbalance (ins l) r k2 v2))
 	     ((< k2 k)
-	      (rbalance l (ins r) k2 v2))
+	      (node:rbalance l (ins r) k2 v2))
 	     (else n)))))
-  (let ((s (ins t)))
+  (let ((s (ins root)))
     (typecase node s
       ((purple _ _ _ _) s)
       ((red l r k v) (node/purple l r k v))
       ((empty) s) ;; impossible, should raise something here?
       )))
 
-(define (tree:member t < key)
-  (let member0 ((n t))
+(define (node:member root < key)
+  (let member0 ((n root))
     (typecase node n
        ((empty) (maybe/no))
        ((red l r k v)
@@ -112,27 +112,39 @@
   (print v)
   (print-string "\n"))
 
-(define (tree:print t)
-  (let p ((n t) (d 0))
+(define (node:print n)
+  (let p ((n n) (d 0))
     (typecase node n
       ((empty) #u)
       ((red l r k v)    (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))
       ((purple l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
     ))
 
-(define (tree:inorder t p)
-  (let inorder0 ((n t))
+(define (node:inorder n p)
+  (let inorder0 ((n n))
     (typecase node n
       ((empty))
       ((red l r k v)    (inorder0 l) (p k v) (inorder0 r))
       ((purple l r k v) (inorder0 l) (p k v) (inorder0 r))
       )))
 
-(define (tree:reverse t p)
-  (let reverse0 ((n t))
+(define (node:reverse n p)
+  (let reverse0 ((n n))
     (typecase node n
       ((empty))
       ((red l r k v)    (reverse0 r) (p k v) (reverse0 l))
       ((purple l r k v) (reverse0 r) (p k v) (reverse0 l))
       )))
 
+;; the defn of make-generator, call/cc, etc... makes it pretty hard
+;;  to pass more than one arg through a continuation.  so instead we'll
+;;  use a 'pair' constructor to iterate through the tree...
+
+(define (node:make-generator tree end-key end-val)
+  (make-generator
+   (lambda (consumer)
+     (node:inorder tree (lambda (k v) (consumer (pair k v))))
+     (let loop ()
+       (consumer (pair end-key end-val))
+       (loop))
+     )))
