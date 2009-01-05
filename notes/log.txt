@@ -1,3 +1,7 @@
+090105: 
+Found an annoying bug in polymorphic instantiation that would cause
+ random lack of polymorphism, red-purple trees are working again.
+
 081212:
 Fixed lots of bugs introduced yesterday, but not nearly all of them.
 Translated frb2.scm into frb3.scm, now with shiny algebraic datatypes!
