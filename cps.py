@@ -6,9 +6,10 @@ is_a = isinstance
 
 class compiler:
 
-    def __init__ (self, safety=1):
+    def __init__ (self, safety=1, verbose=False):
         self.line = 0
         self.safety = safety
+        self.verbose = verbose
         self.constants = {}
 
     def lexical_address (self, lenv, name):
@@ -427,7 +428,7 @@ class pxll_compiler (compiler):
         self.use_top = exp.is_a ('fix')
         result = self.compile_exp (True, exp, lenv, cont ([], self.gen_return))
         result = flatten (result)
-        find_allocation (result)
+        find_allocation (result, self.verbose)
         return result
 
 def flatten (exp):
@@ -514,7 +515,7 @@ def walk_function (insns):
                 for x in walk_function (alt):
                     yield x
 
-def find_allocation (insns):
+def find_allocation (insns, verbose):
     funs = [ x for x in walk (insns) if x.name == 'close' ]
     # examine each fun to see if it performs allocation
     for fun in funs:
@@ -526,4 +527,5 @@ def find_allocation (insns):
                 fun.allocates += 1
             elif insn.name in ('new_env', 'build_env', 'new_vector'):
                 fun.allocates += 1
-        print 'allocates %d %s' % (fun.allocates, fun.params[0].name)
+        if verbose:
+            print 'allocates %d %s' % (fun.allocates, fun.params[0].name)
