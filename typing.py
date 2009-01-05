@@ -12,20 +12,6 @@ classes = {}
 datatypes = {}
 verbose = False
 
-# the schizoid style of this file.
-# this material is pretty challenging... my pattern is to start with working code,
-#  modeled directly on either scheme or ml (depending on the reference I'm using at the time),
-#  and as I understand it more completely I'll rewrite it in a more pythonic style.
-
-# inference.
-#  we're solving a series of equations.
-# see eoplv3:7.4
-
-# types of 'type':
-# a string means a base type - 'int', 'bool', etc...
-# a tuple means a function type: (int, (bool, string)) means a function
-#    taking (bool, string) args and returning an int.
-
 # the_subst is not really used, just helps to keep track of
 #  tvars that have been assigned.
 the_subst = {}
@@ -107,6 +93,9 @@ class product:
             if t == '?':
                 # XXX this should be done in transform.py
                 self.types.append (type_variable())
+            elif is_a (t, list):
+                # XXX need a central type parser
+                self.types.append (tree.parse_type (t))
             else:
                 self.types.append (t)
 
@@ -398,7 +387,7 @@ def initial_type_environment():
         ]
     # datatype constructors
     for name, dt in datatypes.iteritems():
-        poly_dt = build_type_scheme (dt, None)
+        poly_dt = build_type_scheme (dt, None, name)
         # store this type scheme in the type map
         the_type_map[name] = poly_dt
         for name in dt.get_datatype_constructors():
@@ -423,18 +412,13 @@ class forall:
 
 # build_tscheme (type, tenv):
 #   this will build a type scheme given a type, by finding all the
-#   non-free tvars in the expression.  in the eoplv1 code,
-#   type-dispatch automatically performs the tvar-end-value procedure.
-#   this is done at the time the 'poly' type is inserted into the type
-#   environment.  when apply_tenv() is called, a new instantiation of the
-#   type scheme will be created for that call site.
+#   non-free tvars in the expression.
 
-def build_type_scheme (type, tenv):
+def build_type_scheme (type, tenv, name):
     
     gens = []
 
     def list_generic_tvars (t):
-        t = apply_subst_to_type (t)
         if is_a (t, type_variable):
             if not occurs_free_in_tenv (t, tenv):
                 gens.append (t)
@@ -468,9 +452,8 @@ def build_type_scheme (type, tenv):
     else:
         r = forall (gens, type)
         if verbose:
-            print 'built type scheme', r        
+            print 'built type scheme for %s:%r' % (name, r)
         return r
-
 
 def instantiate_type (type, tvar, fresh_tvar):
     def f (t):
@@ -685,7 +668,7 @@ def _type_of (exp, tenv):
             type_rib = []
             for i in part:
                 name = exp.names[i].name
-                tsi = build_type_scheme (init_types[i], tenv)
+                tsi = build_type_scheme (init_types[i], tenv, name)
                 type_rib.append ((name, tsi))
             # we now have a polymorphic environment for this subset
             tenv = (type_rib, tenv)
@@ -827,6 +810,7 @@ def build_dependency_graph (root):
                 search (sub, current_fun)
     g['top'] = set()
     search (root, g['top'])
+    #pp (g)
     return g
 
 def transpose (g):
