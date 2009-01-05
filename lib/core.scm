@@ -60,6 +60,9 @@
    (yes ?)
    ))
 
+(datatype pair
+  (product ? ?))
+
 ;; need to find a way to describe tuples to the type system?
 ;; [i.e., tuple-ref, etc for nary args]
 
