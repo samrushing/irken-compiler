@@ -54,7 +54,7 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
         print '--- analyzer ---'
         exp4.pprint()
 
-    c = cps.pxll_compiler (safety=safety)
+    c = cps.pxll_compiler (safety=safety, verbose=verbose)
     exp5 = c.go (exp4)
 
     if verbose:
