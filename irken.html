@@ -1,0 +1,211 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+    <title>Irken</title>
+  </head>
+
+  <body>
+    <h1>Irken</h1>
+
+<h2>The Goal</h2>
+<p>
+ A new dialect and implementation of a python-like language that
+  supports massively scalable cooperative multi-threading, and
+  eventually, erlang-style concurrency.</p>
+
+<h2>How</h2>
+ <p>A VM that supports continuations. 'threads' will be built using
+ continuations.  The VM will be written in a new high-level language
+ 'Irken' that compiles to C.  Continuations will be available in
+ both the target language and the implementation language, and since
+ we want to support millions of threads, we cannot use the C stack.
+ Our approach is to generate continuation-passing style (CPS) code in
+ C.</p>
+
+<h2>The Plan</h2>
+
+<ol>
+ <li> implement the irken compiler.</li>
+ <li> write a VM for the python-like language in irken.</li>
+ <li> rewrite the irken compiler in the python-like language</li>
+</ol>
+
+<p>Currently, I'm in stage 2 - though about 90% of the work is still in stage 1.</p>
+
+<h3>Python-like Language ('PLL')</h3>
+
+<p>
+  This should look as much like Python as possible, though it will
+start life as a much smaller language.  My current thinking is that it
+will be dynamically typed (just like Python), though I may experiment
+with some kind of type inference.  PLL will use a VM, implemented in Irken.
+<i>Yes, I need a better name than 'PLL'.</i>  Originally, I had planned to call the two languages 'Irken-Low' and 'Irken-High', but this would just be confusing since they have almost nothing in common.
+</p>
+
+<h3>Irken</h3>
+
+<p>
+  Currently, this is a strange hybrid of Scheme and ML/Haskell -
+although it looks like Scheme, it uses ML-style Hindley-Milner
+let-polymorphism, with algebraic datatypes.  The lisp syntax was
+chosen for reasons of simplicity and flexibility.  Once PLL is
+available, I may think about giving Irken a pythonic syntax.  The main
+feature missing from the ML/Haskell world is full pattern matching,
+though a simpler variant-case syntax works pretty well.
+</p>
+
+<p>
+  Irken compiles to a single large function in a single C file.
+Function calls are implemented as 'gotos' within this function.  A
+simple register-machine model is used.
+</p>
+
+<p>  I may consider a second backend target to LLVM, although LLVM's thin
+support for GC will be useless without a stack.</p>
+
+<h3>Concurrency: Solve Two Problems, Create One.</h3>
+
+<p> Two problems I hope to solve using Erlang-style isolated 'threads':
+</p>
+<p> First, garbage collection.  If every thread has its own heap, garbage
+ collection will be naturally 'concurrent' - i.e., we'll avoid having
+ one gigantic collection that sweeps 12GB of memory..
+</p>
+<p> Second, modules / external code.  The runtime model of Irken
+ makes it very difficult to link in new compiled code at run-time.  If
+ we instead demand erlang-style isolation, it's not a problem - just
+ load up a new 'VM' and run it in a separate process/thread.
+</p>
+<p> IPC: the price to pay - now we need a very efficient way of
+   communicating between process/threads.  But we needed that anyway.
+</p>
+<h3>Platforms</h3>
+
+<p>  My current testing platforms include FreeBSD/amd64, FreeBSD/i386,
+  OSX/G5, both 32 and 64-bit.  Irken should work on any platform
+  that supports gcc (or any other C compiler that supports the
+  address-of-label extension, which most do...) and some kind of
+  rdtsc-like facility - though if you were desperate you could just
+  strip out the tsc stuff - it's only used for timings.
+</p>
+
+<p> [Note: looks like clang is out - at least on Snow Leopard the address-of-label
+  feature is silently broken.  Also seems to not like lexical functions.]
+</p>
+
+<h3>License</h3>
+
+  See LICENSE.txt.  It's a Simplified BSD License.
+
+<h3>The Python code</h3>
+
+<dl>
+<dt>compile.py</dt>
+<dd>drives everything.</ddd>
+
+<dt>lisp_reader.py</dt>
+<dd>  reads scheme forms into an s-expression.
+  <br>input: program
+  <br>output: s-exp
+</dd>
+
+<dt>transform.py</dt>
+<dd>  converts all derived scheme expressions into the core understood by the compiler.
+  <br>input: s-exp
+  <br>output: s-exp
+</dd>
+
+<dt>lambda_tree.py</dt>
+<dd>  convert the s-expression into a tree of nodes.
+  <br>input: s-exp
+  <br>output: node tree
+</dd>
+
+<dt>typing.py</dt>
+<dd>  hindley-milner polymorphic type inference [still in progress] </dd>
+
+<dt>analyze.py</dt>
+<dd>  alpha conversion, tree shaker, inliner, some simplification
+  <br>input: node tree
+  <br>output: node tree
+</dd>
+
+<dt>cps.py</dt>
+<dd>  convert to continuation-passing style, where each continuation is represented
+    by a 'register' assignment.
+  <br>input: node tree
+  <br>output: flattened list of insns
+</dd>
+  
+<dt>backend.py</dt>
+<dd>  emit C code implementing the cps insns.
+  <br>input: insns
+  <br>output: a C file
+</dd>
+
+</dl>
+
+<h3>The Scheme/Irken Code</h3>
+
+<h4>lib/*.scm</h4>
+
+<p>  These are considered 'official' library implementations of runtime features.</p>
+
+<dl>
+  <dt>core.scm</dt><dd>
+    candidates for compiler builtins (i.e., no need to (include "xxx.scm"))</dd>
+  <dt>frb.scm</dt><dd>
+    functional red-black trees.  may be used for the symbol table, dicts, etc. (based on Okasaki)</dd>
+  <dt>io.scm</dt><dd>
+    core unix i/o</dd>
+  <dt>pair.scm</dt><dd>
+    lisp lists</dd>
+  <dt>random.scm</dt><dd>
+    random(3)</dd>
+  <dt>rbtree.scm</dt><dd>
+    red-black tree code from scheme48</dd>
+  <dt>string.scm</dt><dd>
+    string support</dd>
+  <dt>symbol</dt><dd>
+    lisp/scheme symbols</dd>
+  <dt>vector</dt><dd>
+    lisp/scheme vectors (i.e., python lists)</dd>
+</dl>
+
+<h4>tests/*.scm</h4>
+  Currently, these are ad-hoc tests used to verify the compiler features as I
+  write them.  Eventually, these will turn into automated tests (like the ones
+  in compile.py).
+
+<h4>vm/*.scm</h4>
+  will hold the VM for the python-like language.
+   
+<h3>Quick usage notes.</h3>
+
+<pre>
+python compile.py
+ - compile and run all the self-tests which you will find near the end of compile.py
+
+python compile.py -l
+ - compile and run only the last test
+
+python compile.py -f tests/tak20.scm
+ - compile tests/tak20.scm to
+           tests/tak20.c and then
+           tests/tak20
+
+python compile.py -f -O tests/tak20.scm
+ - compile with "gcc -O3"
+
+python compile.py -f -O tests/tak20.scm -s 0
+ - compile with safety level '0'
+
+</pre>
+
+    <hr>
+<!-- Created: Wed Sep 30 13:54:40 PDT 2009 -->
+<!-- hhmts start -->
+Last modified: Wed Sep 30 13:54:58 PDT 2009
+<!-- hhmts end -->
+  </body>
+</html>
