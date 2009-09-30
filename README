@@ -141,8 +141,6 @@ lib/*.scm:
     lisp lists
   random.scm:
     random(3)
-  rbtree.scm:
-    red-black tree code from scheme48
   string.scm:
     string support
   symbol:
