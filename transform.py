@@ -79,10 +79,10 @@ class transformer:
             else:
                 raise ValueError
         for c in self.classes:
-            if is_a (c, pxll_class):
-                for fun in c.methods:
-                    names.insert (0, fun[1][0])
-                    inits.insert (0, fun)
+            if is_a (c, typing.klass):
+                for mname, init in c.methods:
+                    names.insert (0, '&%s-%s' % (c.name, mname))
+                    inits.insert (0, init)
         return exp
 
     def go (self, exp):
@@ -403,20 +403,18 @@ class transformer:
         if not definitions:
             return self.expand_begin (['begin'] + forms)
         else:
-            funs = []
-            for define in definitions:
-                formals = define[1]
-                body = define[2:]
-                if is_a (formals, str):
-                    # variable
-                    funs.append ([formals, body[0]])
-                else:
-                    # function
-                    name = formals[0]
-                    funs.append ([name, ['function', name, formals[1:]] + body])
-
+            funs = [self.exp_define (d) for d in definitions]
             return self.expand_letrec (['letrec', funs] + forms)
 
+    def exp_define (self, exp):
+        formals = exp[1]
+        body = exp[2:]
+        if is_a (formals, str):
+            return [formals, body[0]]
+        else:
+            name = formals[0]
+            return [name, ['function', name, formals[1:]] + body]
+    
     # ----------- misc ---------------
     # this is to avoid treating the format string as a literal
     def expand__percent_percentcexp (self, exp):
@@ -521,43 +519,20 @@ class transformer:
                 fname, type = field, None
             fields.append ((fname, type))
         # method definitions
-        methods = exp[3:]
-        # no methods for now.
-        assert (methods == [])
-        c = pxll_class (cname, fields, methods)
-        typing.classes[cname] = c
+        methods = []
+        for fun in exp[3:]:
+            assert (is_a (fun, list) and len(fun) and fun[0] == 'define')
+            assert (fun[1][1] == 'self')
+            # prepend the method with its class name
+            mname = fun[1][0]
+            # the '&' tells the renamer to leave it alone
+            fun[1][0] = '&%s-%s' % (cname, mname)
+            # set the type of <self>
+            fun[1][1] = 'self:%s' % (cname)
+            [name, init] = self.exp_define (fun)
+            methods.append ((mname, self.expand_exp (init)))
+        c = typing.klass (cname, fields, methods)
         self.classes.append (c)
+        typing.datatypes[cname] = c
         # this will get optimized away to nothing...
         return ['begin']
-
-class pxll_class:
-
-    def __init__ (self, name, fields, methods=[]):
-        self.name = name
-        self.fields = fields
-        self.methods = methods
-
-    def lookup_method (self, meth_name):
-        for fun in self.methods:
-            probe = '%s-%s' % (self.name, meth_name)
-            if fun[1][0] == probe:
-                return probe
-        return None
-
-    def gen_constructor (self):
-        # build a constructor as a node tree - before analyse is called.
-        formals = []
-        args = []
-        for i in range (len (self.fields)):
-            fname, ftype = self.fields[i]
-            formals.append (tree.vardef (fname, ftype))
-            args.append (tree.varref (fname))
-        body = tree.make_tuple (self.name, 'userobj', args)
-        return tree.function (self.name, formals, body)
-
-    def get_field_offset (self, name):
-        for i in range (len (self.fields)):
-            fname, type = self.fields[i]
-            if name == fname:
-                return i
-        raise ValueError ("unknown field name?")
