@@ -1,7 +1,5 @@
 # -*- Mode: Python -*-
 
-import lambda_tree as tree
-
 is_a = isinstance
 
 class compiler:
