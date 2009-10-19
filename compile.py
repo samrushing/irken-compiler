@@ -40,9 +40,9 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
     # alpha conversion
     var_dict = lambda_tree.rename_variables (exp3)
 
-    typing.verbose = verbose    # hack
+    t = typing.typer (verbose)
+    t.go (exp3)
 
-    typing.type_program (var_dict, exp3)
     if verbose:
         print '--- typing ---'
         exp3.pprint()
@@ -68,7 +68,7 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
     b.done()
     fo.close()
 
-def gcc (name, force_32=False, optimize=False):
+def cc (name, force_32=False, optimize=False, cc='gcc'):
     import os
     base, ext = os.path.splitext (name)
     uname = os.uname()
@@ -89,7 +89,11 @@ def gcc (name, force_32=False, optimize=False):
         arch += ' -fnested-functions'
         if not force_32:
             arch += ' -m64'
-    cmd = 'gcc -I. -g %s %s %s.c -o %s' % (arch, optimize, base, base)
+    # doesn't work as of os x 10.6
+    #cc = '/Developer/usr/bin/clang'
+    # *does* work as of os x 10.6
+    #cc = '/Developer/usr/bin/llvm-gcc'
+    cmd = '%s -I. -g %s %s %s.c -o %s' % (cc, arch, optimize, base, base)
     print cmd
     os.system (cmd)
 
@@ -264,7 +268,7 @@ def t0():
         sys.argv.remove ('-f')
         name = sys.argv[1]
         compile_file (open (name, 'rb'), name, safety, annotate, noinline, verbose, trace)
-        gcc (sys.argv[1], optimize=optimize)
+        cc (sys.argv[1], optimize=optimize)
         sys.exit (1)
 
     if '-l' in sys.argv:
