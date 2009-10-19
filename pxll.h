@@ -19,22 +19,22 @@ object * heap1 = NULL;
 
 /* immediate types (multiples of 2 (but not 4!)) */
 
-#define TC_INT                  (0<<1) // 0x00
-#define TC_CHAR                 (1<<1) // 0x02
-#define TC_BOOL                 (3<<1) // 0x06
-#define TC_NIL                  (5<<1) // 0x0a
-#define TC_UNDEFINED            (7<<1) // 0x0e
-#define TC_USERIMM              (9<<1) // 0x12
+#define TC_INT                  (0<<1) // 00000000 00
+#define TC_CHAR                 (1<<1) // 00000010 02
+#define TC_BOOL                 (3<<1) // 00000110 06
+#define TC_NIL                  (5<<1) // 00001010 0a
+#define TC_UNDEFINED            (7<<1) // 00001110 0e
+#define TC_USERIMM              (9<<1) // 00010010 12
 
 /* pointer types (multiples of 4) */
-#define TC_SAVE                 (1<<2)    /* 00000100  04 */
-#define TC_CLOSURE              (2<<2)    /* 00001000  08 */
-#define TC_TUPLE                (3<<2)    /* 00001100  0c */
-#define TC_STRING		(4<<2)	  /* 00010000  10 */
-#define TC_VECTOR               (5<<2)    /* 00010100  14 */
-#define TC_PAIR                 (6<<2)    /* 00011000  18 */
-#define TC_SYMBOL               (7<<2)    /* 00011100  1c */
-#define TC_USEROBJ              (8<<2)    /* 00100000  20 */
+#define TC_SAVE                 (1<<2) // 00000100  04
+#define TC_CLOSURE              (2<<2) // 00001000  08
+#define TC_TUPLE                (3<<2) // 00001100  0c
+#define TC_STRING		(4<<2) // 00010000  10
+#define TC_VECTOR               (5<<2) // 00010100  14
+#define TC_PAIR                 (6<<2) // 00011000  18
+#define TC_SYMBOL               (7<<2) // 00011100  1c
+#define TC_USEROBJ              (8<<2) // 00100000  20
 
 // the range TC_USEROBJ to 252 is available for variant records,
 //   leaving a max of 59 variants in any one type.
@@ -82,6 +82,7 @@ object * heap1 = NULL;
 // i.e. ...111111100
 #define GC_SENTINEL		(-4)
 
+// XXX technically this is 'tagging' rather than boxing.  think about renaming them.
 inline pxll_int unbox (object * n) {return (pxll_int)n >> 1;}
 inline object *   box (pxll_int n) {return (object *) ((n << 1) | 1);}
 
