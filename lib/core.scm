@@ -108,23 +108,23 @@
 
 (define (make-generator producer)
   (let ((ready #f)
-	;; just holding useless continuations
-	(caller (call/cc id))
-	(saved-point (call/cc id)))
+        ;; just holding useless continuations
+        (caller (call/cc id))
+        (saved-point (call/cc id)))
 
     (define (entry-point)
       (call/cc
        (lambda (k)
-	 (set! caller k)
-	 (if ready
-	     (saved-point #f)
-	     (producer yield)))))
+         (set! caller k)
+         (if ready
+             (saved-point #f)
+             (producer yield)))))
 
     (define (yield v)
       (call/cc
        (lambda (k)
-	 (set! ready #t)
-	 (set! saved-point k)
-	 (caller v))))
+         (set! ready #t)
+         (set! saved-point k)
+         (caller v))))
     entry-point
     ))
