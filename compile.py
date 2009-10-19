@@ -2,7 +2,7 @@
 
 import lisp_reader
 import transform
-import lambda_tree
+import nodes
 import typing
 import analyze
 import cps
@@ -34,11 +34,11 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
         print '--- transform ---'
         pp (exp2)
 
-    w = lambda_tree.walker()
+    w = nodes.walker()
     exp3 = w.go (exp2)
 
     # alpha conversion
-    var_dict = lambda_tree.rename_variables (exp3)
+    var_dict = nodes.rename_variables (exp3)
 
     t = typing.typer (verbose)
     t.go (exp3)
