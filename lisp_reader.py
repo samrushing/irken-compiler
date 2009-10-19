@@ -118,9 +118,13 @@ class reader:
             result = self.read_atom()
         # hack to support postfix array-reference syntax
         self.skip_whitespace()
-        if self.peek() == '[':
+        ch = self.peek()
+        if ch != '' and ch in '[{':
             index = self.read_array_index()
-            return ['%%array-ref', result, index]
+            if ch == '[':
+                return ['%%array-ref', result, index]
+            else:
+                return ['%%product-ref', result, index]
         else:
             return result
 
@@ -130,7 +134,7 @@ class reader:
         result = self.next()
         while 1:
             ch = self.peek()
-            if ch in string.whitespace or ch in '()[]':
+            if ch in string.whitespace or ch in '()[]{}':
                 return result
             else:
                 result = result + self.next()
@@ -187,8 +191,8 @@ class reader:
         # throw away open bracket
         self.next()
         exp = self.read()
-        if self.read() != ']':
-            raise SyntaxError ("expected closing ']' character")
+        if self.read() not in ']}':
+            raise SyntaxError ("expected closing ']/}' character")
         return exp
 
     def read_all (self):
