@@ -228,7 +228,7 @@ class analyzer:
     def transform_1_get (self, node):
         [ob] = node.subs
         field_name = node.params
-        c = typing.classes[ob.type.name]
+        c = typing.datatypes[ob.type.name]
         offset = c.get_field_offset (field_name)
         return tree.cexp ("UOBJ_GET(%%s,%d)" % (offset,), ('?', ('?')), [ob])
 
@@ -236,7 +236,7 @@ class analyzer:
         #(%%cexp "((pxll_vector*)(%s))->val[%s] = %s" ob offset x))
         [ob, val] = node.subs
         field_name = node.params
-        c = typing.classes[ob.type]
+        c = typing.datatypes[ob.type.name]
         offset = c.get_field_offset (field_name)
         return tree.cexp ("UOBJ_SET(%%s,%d,%%s)" % (offset,), ('undefined', ('?', '?')), [ob, val])
 
