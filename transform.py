@@ -4,7 +4,6 @@ from lisp_reader import atom
 
 import lisp_reader
 import typing
-import lambda_tree as tree
 
 is_a = isinstance
 
