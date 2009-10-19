@@ -56,6 +56,7 @@ class node:
     typecheck = None
     # generic flag
     flag = False
+    constructor = False
 
     def __init__ (self, kind, params=(), subs=(), type=None):
         self.kind = kind
@@ -206,8 +207,6 @@ class node:
         elif self.kind == 'make_tuple':
             (self.type, self.tag) = self.params
             self.args = self.subs
-        elif self.kind == 'constructor':
-            pass
         elif self.kind == 'typecase':
             self.vtype, self.alt_formals = self.params
             self.value = self.subs[0]
@@ -258,8 +257,6 @@ def to_scheme (node):
         return ['set', to_scheme (node.ob), node.name, to_scheme (node.val)]
     elif node.is_a ('get'):
         return ['get', to_scheme (node.ob), node.name]
-    elif node.is_a ('constructor'):
-        return ['constructor', scheme_string (repr (node.params))]
     elif node.is_a ('typecase'):
         return ['typecase', node.params[0], node.params[1], [to_scheme (x) for x in node.alts]]
     else:
@@ -353,10 +350,6 @@ def get (ob, name):
 
 def set (ob, name, val):
     return node ('set', name, [ob, val])
-
-def constructor (params):
-    # constructors are applied like functions
-    return node ('constructor', params, [])
 
 def typecase (vtype, value, alt_formals, alts):
     return node ('typecase', (vtype, alt_formals), [value] + alts)
@@ -466,9 +459,6 @@ class walker:
 def add_constructors (root):
     names = []
     inits = []
-    #for name, c in typing.classes.items():
-    #    names.append (tree.vardef (c.name))
-    #    inits.append (c.gen_constructor())
     for name, dt in typing.datatypes.items():
         if is_a (dt, typing.union):
             for sname, stype in dt.alts:
@@ -476,6 +466,10 @@ def add_constructors (root):
                 names.append (vardef (fname))
                 inits.append (fun)
         elif is_a (dt, typing.product):
+            fname, fun = dt.gen_constructor()
+            names.append (vardef (fname))
+            inits.append (fun)
+        elif is_a (dt, typing.klass):
             fname, fun = dt.gen_constructor()
             names.append (vardef (fname))
             inits.append (fun)
@@ -505,7 +499,10 @@ def rename_variables (exp):
         if exp.binds():
             defs = exp.get_names()
             for vd in defs:
-                if vd.name != '_':
+                # hack to avoid renaming methods
+                if vd.name.startswith ('&'):
+                    vars.append (vd)
+                elif vd.name != '_':
                     vd.alpha = len (vars)
                     vars.append (vd)
             if exp.is_a ('let_splat'):
@@ -528,7 +525,8 @@ def rename_variables (exp):
                 # rename functions
                 for i in range (len (defs)):
                     if exp.subs[i].is_a ('function'):
-                        exp.subs[i].params[0] = '%s_%d' % (defs[i].name, defs[i].alpha)
+                        if not defs[i].name.startswith ('&'):
+                            exp.subs[i].params[0] = '%s_%d' % (defs[i].name, defs[i].alpha)
             for sub in exp.subs:
                 rename (sub, lenv)
         elif exp.is_a ('typecase'):
@@ -560,7 +558,9 @@ def rename_variables (exp):
     rename (exp, None)
     # now go back and change the names of the vardefs
     for vd in vars:
-        if vd.name != '_':
+        if vd.name.startswith ('&'):
+            vd.name = vd.name[1:]
+        elif vd.name != '_':
             vd.name = '%s_%d' % (vd.name, vd.alpha)
 
     result = {}
