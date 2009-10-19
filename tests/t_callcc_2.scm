@@ -6,23 +6,19 @@
    (lambda (consumer)
      (let loop ((n 0))
        (consumer n)
-       (loop (%+ n 1))))))
+       (loop (+ n 1))))))
 
 (let* ((g (make-int-generator)))
 
   (define (every-other)
     (let ((first (g)))
-      (cond ((%zero? first)
-	     first)
-	    (else
-	     (g)))))
+      (cond ((= 0 first) first)
+            (else (g)))))
 
-  (%printn g)
-  (%printn (every-other))
-  (%printn (every-other))
-  (%printn (every-other))
-  (%printn (every-other))
-  (%printn (every-other))
+  (printn g)
+  (printn (every-other))
+  (printn (every-other))
+  (printn (every-other))
+  (printn (every-other))
+  (printn (every-other))
   )
-   
-
