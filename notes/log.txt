@@ -1,3 +1,7 @@
+091019:
+Wow, that's quite a gap.  Essentially zero progress for 10 months while
+I wrap my head around constraint-solving.  Ready to get back to it.
+
 090105: 
 Found an annoying bug in polymorphic instantiation that would cause
  random lack of polymorphism, red-purple trees are working again.
