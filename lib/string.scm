@@ -16,6 +16,13 @@
    (string int string int int -> undefined)
    "(memcpy (%s+%s, %s+%s, %s), PXLL_UNDEFINED)" dst dst-start src src-start n))
 
+(define (substring src start end)
+  ;; XXX range check
+  (let* ((n (- end start))
+	 (r (make-string n)))
+    (buffer-copy src start n r 0)
+    r))
+
 (define (ascii->char n)
   (%%cexp (int -> char) "TO_CHAR(%s)" n))
 
