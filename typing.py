@@ -8,8 +8,8 @@ is_a = isinstance
 # yeah, it's a global.  get over it.
 #  XXX at some point, move some of these funs into a class, and fix these.
 classes = {}
-# probably merge these
 datatypes = {}
+field_names = {}
 verbose = False
 
 # the_subst is not really used, just helps to keep track of
@@ -32,35 +32,14 @@ class type_variable:
         else:
             return -1
 
+    def __hash__ (self):
+        return self.num
+
     def __repr__ (self):
         if self.val is None:
             return '<t%d>' % (self.num,)
         else:
             return '<t%d %r>' % (self.num, self.val)
-
-class record:
-    def __init__ (self, name, fields):
-        self.name = name
-        # fields = [(<name>, <type>), ...]
-        self.fields = fields
-
-    def get_field_type (self, name):
-        for fname, ftype in self.fields:
-            if name == fname:
-                if ftype == self.name:
-                    # recursive data type
-                    return self
-                else:
-                    return ftype
-
-    def __cmp__ (self, other):
-        if is_a (other, record):
-            return cmp ((self.name, self.fields), (other.name, other.fields))
-        else:
-            return -1
-
-    def __repr__ (self):
-        return '{%s %s}' % (self.name, ' '.join (['%s:%s' % x for x in self.fields]))
 
 class unit:
     def __cmp__ (self, other):
@@ -108,13 +87,18 @@ class product:
     def gen_constructor (self):
         n = len (self.types)
         names = ['p%d' % i for i in range (n)]
-        vardefs = [tree.vardef(x) for x in names]
+        vardefs = [tree.vardef (names[i]) for i in range (n)]
         varrefs = [tree.varref(x) for x in names]
         body = tree.make_tuple (self.name, 0, varrefs)
-        return self.name, tree.function (self.name, vardefs, body)
+        fun = tree.function (self.name, vardefs, body)
+        fun.constructor = True
+        return self.name, fun
 
     def get_datatype_constructors (self):
         return [self.name]
+
+    def get_constructor_types (self, ignore_fun):
+        return self.types
 
     def __repr__ (self):
         return '{' + '*'.join ([str(x) for x in self.types]) + '}'
@@ -130,9 +114,13 @@ class union:
             self.alts.append ((sname, stype))
 
     def __cmp__ (self, other):
+        # NOTE! these __cmp__ methods are more important than they seem,
+        #  because they are responsible for catching type errors!
         if is_a (other, union):
-            # assumes unique by name...
-            return cmp (self.name, other.name)
+            if self.name == other.name:
+                return cmp (self.alts, other.alts)
+            else:
+                return -1
         else:
             return -1
 
@@ -147,8 +135,7 @@ class union:
         # build a constructor as a node tree - before analyse is called.
         stype, index = self.get_field_type (selector)
         if is_a (stype, product):
-            types = stype.types
-            formals = [tree.vardef ('%s_%d' % (selector, i), types[i]) for i in range (len (types))]
+            formals = [tree.vardef ('%s_%d' % (selector, i)) for i in range (len (stype.types))]
             args = [tree.varref (x.name) for x in formals]
         elif is_a (stype, unit):
             formals = []
@@ -158,40 +145,100 @@ class union:
             args = [tree.varref (selector)]
         body = tree.make_tuple (self.name, index, args)
         name = '%s/%s' % (self.name, selector)
-        return name, tree.function (self.name, formals, body)
+        fun = tree.function (self.name, formals, body)
+        fun.constructor = True
+        fun.selector = selector
+        return name, fun
 
     def get_datatype_constructors (self):
         return ['%s/%s' % (self.name, alt[0]) for alt in self.alts]
+
+    def get_constructor_types (self, fun):
+        stype, index = self.get_field_type (fun.selector)
+        if is_a (stype, product):
+            return stype.types
+        elif is_a (stype, unit):
+            return []
+        else:
+            return [stype]
 
     def __repr__ (self):
         alts = ' '.join ([('%s:%s' % tuple(x)) for x in self.alts])
         return '{union %s %s}' % (self.name, alts)
 
-def apply1 (t0, tvar, t1):
-    # substitute t1 for tvar in t0
-    if is_a (t0, str):
-        # plain type
-        return t0
-    elif is_a (t0, type_variable):
-        # a type variable
-        if t0 == tvar:
-            return t1
+field_name_map = {}
+
+class klass:
+
+    def __init__ (self, name, fields, methods):
+        self.name = name
+        # fields = [(<name>, <type>), ...]
+        self.fields = []
+        for fname, ftype in fields:
+            # XXX need the generic type parser!!!
+            if ftype is None:
+                self.fields.append ((fname, type_variable()))
+            else:
+                self.fields.append ((fname, ftype))
+            if field_name_map.has_key (fname):
+                if field_name_map[fname] != self.name:
+                    raise TypeError ("field %r already defined in class %r" % (fname, field_name_map[fname]))
+            else:
+                field_name_map[fname] = self.name
+        self.methods = methods
+
+    def gen_constructor (self):
+        n = len (self.fields)
+        names = [name for name, type in self.fields]
+        # we don't want to use that <type> param, it might be polymorphic
+        vardefs = [tree.vardef (names[i]) for i in range (n)]
+        varrefs = [tree.varref (names[i]) for i in range (n)]
+        body = tree.make_tuple (self.name, 0, varrefs)
+        fun = tree.function (self.name, vardefs, body)
+        fun.constructor = True
+        return self.name, fun
+
+    def get_datatype_constructors (self):
+        return [self.name]
+
+    def get_field_type (self, name):
+        for fname, ftype in self.fields:
+            if name == fname:
+                if ftype == self.name:
+                    # recursive data type
+                    return self
+                else:
+                    return ftype
+        return None
+
+    def get_method (self, name):
+        for mname, method in self.methods:
+            if name == mname:
+                return '%s-%s' % (self.name, mname)
+        raise ValueError ("unknown field/method name: %s" % (name,))
+
+    def get_field_offset (self, name):
+        for i in range (len (self.fields)):
+            fname, type = self.fields[i]
+            if name == fname:
+                return i
+        raise ValueError ("unknown field name: %s" % (name,))
+
+    def get_constructor_types (self, ignore_fun):
+        return [ ftype for fname, ftype in self.fields ]
+
+    def __cmp__ (self, other):
+        if is_a (other, klass):
+            if self.name == other.name:
+                # is this good enough??
+                return cmp (self.fields, other.fields)
+            else:
+                return -1
         else:
-            return t0
-    elif is_a (t0, record):
-        fields = []
-        for fname, ftype in t0.fields:
-            fields.append ((fname, apply1 (ftype, tvar, t1)))
-        return record (t0.name, fields)
-    elif is_a (t0, array):
-        return array (apply1 (t0.type, tvar, t1))
-    else:
-        # a function
-        result_type, arg_types = t0
-        return (
-            apply1 (result_type, tvar, t1),
-            tuple ([ apply1 (x, tvar, t1) for x in arg_types ])
-            )
+            return -1
+
+    def __repr__ (self):
+        return '{%s %s}' % (self.name, ' '.join (['%s:%s' % x for x in self.fields]))
 
 def apply_subst_to_type (t):
     # replace all known tvars in <t>
@@ -212,17 +259,17 @@ def apply_subst_to_type (t):
             apply_subst_to_type (result_type),
             tuple ([ apply_subst_to_type (x) for x in arg_types ])
             )
-    elif is_a (t, record):
+    elif is_a (t, klass):
         fields = []
         for fname, ftype in t.fields:
             fields.append ((fname, apply_subst_to_type (ftype)))
-        return record (t.name, fields)
+        return klass (t.name, fields, t.methods)
     elif is_a (t, array):
         return array (apply_subst_to_type (t.type))
     elif is_a (t, product):
         return product ([apply_subst_to_type (x) for x in t.types])
     elif is_a (t, union):
-        return union (t.name, [(fn, ft) for (fn, ft) in t.alts])
+        return union (t.name, [(fn, apply_subst_to_type (ft)) for (fn, ft) in t.alts])
     elif is_a (t, unit):
         return t
     elif is_a (t, forall):
@@ -259,7 +306,7 @@ def lookup_subst (tvar):
 def unify (ot1, ot2, tenv, exp):
     t1 = apply_subst_to_type (ot1)
     t2 = apply_subst_to_type (ot2)
-    #print 'unify', t1, '  ====  ', t2
+    print 'unify', t1, '  ====  ', t2
     if t1 == t2:
         # happy happy joy joy
         pass
@@ -282,8 +329,8 @@ def unify (ot1, ot2, tenv, exp):
             unify (args1[i], args2[i], tenv, exp)
         # extend with result type
         unify (r1, r2, tenv, exp)
-    elif is_a (t1, record) and is_a (t2, record):
-        if t1.name == t2.name:
+    elif is_a (t1, klass) and is_a (t2, klass):
+        if t1.name == t2.name and len(t1.fields) == len(t2.fields):
             for i in range (len (t1.fields)):
                 unify (t1.fields[i][1], t2.fields[i][1], tenv, exp)
         else:
@@ -293,6 +340,14 @@ def unify (ot1, ot2, tenv, exp):
     elif is_a (t1, product) and is_a (t2, product):
         for i in range (len (t1.types)):
             unify (t1.types[i], t2.types[i], tenv, exp)
+    elif is_a (t1, union) and is_a (t2, union):
+        if t1.name == t2.name and len(t1.alts) == len(t2.alts):
+            for i in range (len (t1.alts)):
+                sname1, stype1 = t1.alts[i]
+                sname2, stype2 = t2.alts[i]
+                unify (stype1, stype2, tenv, exp)
+        else:
+            raise TypeError ((t1, t2, exp))
     # ahhh... this may be the hack I need to support recursive types...
     elif is_a (t1, str):
         t1 = apply_tenv (tenv, t1)
@@ -312,14 +367,14 @@ def unify (ot1, ot2, tenv, exp):
         raise TypeError ((t1, t2, exp))
 
 def occurs_in_type (tvar, t):
-    # does <tvar> does occur in <t>?
+    # does <tvar> occur in <t>?
     if is_a (t, str):
         # type
         return False
     elif is_a (t, type_variable):
         # type variable
         return t == tvar
-    elif is_a (t, record):
+    elif is_a (t, klass):
         for fname, ftype in t.fields:
             if occurs_in_type (tvar, ftype):
                 return True
@@ -368,7 +423,7 @@ def occurs_free_in_tenv (tvar, tenv):
 #   treat it as a type variable.
 def optional_type (exp, tenv):
     if exp.type:
-        return exp.type
+        return apply_tenv (tenv, exp.type)
     else:
         return get_type_variable (exp.serial)
 
@@ -376,16 +431,14 @@ the_type_map = {
     'int':'int',
     'string':'string',
     'bool':'bool',
+    'char':'char',
+    'continuation':'continuation',
     'undefined':'undefined',
     'symbol':'symbol',
 }
 
 def initial_type_environment():
-    constructors = [
-        # think about this...
-        ('%%vector-literal', forall ([10000], array (10000)))
-        ]
-    # datatype constructors
+    constructors = []
     for name, dt in datatypes.iteritems():
         poly_dt = build_type_scheme (dt, None, name)
         # store this type scheme in the type map
@@ -393,14 +446,6 @@ def initial_type_environment():
         for name in dt.get_datatype_constructors():
             constructors.append ((name, poly_dt))
     return constructors
-
-def lookup_method (node):
-    base_ob = node.subs[0]
-    # XXX this might make assumptions that break (x.y.z arg0 arg1 ...)
-    base_type = base_ob.type
-    name = node.params
-    c = classes[base_type]
-    return c.lookup_method (name)
 
 class forall:
     def __init__ (self, gens, type):
@@ -416,12 +461,12 @@ class forall:
 
 def build_type_scheme (type, tenv, name):
     
-    gens = []
+    gens = set()
 
     def list_generic_tvars (t):
         if is_a (t, type_variable):
             if not occurs_free_in_tenv (t, tenv):
-                gens.append (t)
+                gens.add (t)
         elif is_a (t, tuple):
             # procedure
             result_type, arg_types = t
@@ -430,7 +475,7 @@ def build_type_scheme (type, tenv, name):
             list_generic_tvars (result_type)
         elif is_a (t, str):
             pass
-        elif is_a (t, record):
+        elif is_a (t, klass):
             for fname, ftype in t.fields:
                 list_generic_tvars (ftype)
         elif is_a (t, array):
@@ -467,8 +512,8 @@ def instantiate_type (type, tvar, fresh_tvar):
         elif is_a (t, tuple):
             result_type, arg_types = t
             return (f (result_type), tuple ([f(x) for x in arg_types]))
-        elif is_a (t, record):
-            return record (t.name, [ (fname, f (ftype)) for (fname, ftype) in t.fields ])
+        elif is_a (t, klass):
+            return klass (t.name, [ (fname, f (ftype)) for (fname, ftype) in t.fields ], t.methods)
         elif is_a (t, array):
             return array (f (t.type))
         elif is_a (t, product):
@@ -524,20 +569,42 @@ def parse_cexp_type (t, exp, tenv):
     else:
         return t
 
-# a wrapper for type_of helpful when debugging
-def type_of (exp, tenv):
-    t_exp = _type_of (exp, tenv)
-    # this may actually be necessary...
-    t_exp = apply_subst_to_type (t_exp)
-    exp.type = t_exp
-    #if is_a (t_exp, str):
-    #    t_exp = the_type_map.get (t_exp, t_exp)
-    return t_exp
+class typer:
 
-def _type_of (exp, tenv):
-    if exp.is_a ('literal'):
+    def __init__ (self, verbose=False):
+        self.verbose = verbose
+        self.attributes_to_resolve = {}
+
+    def go (self, exp):
+        global the_dep_graph, the_scc_graph
+        the_dep_graph = build_dependency_graph (exp)
+        the_scc_graph, scc_map = strongly (the_dep_graph)
+        pp (the_scc_graph)
+        tenv = (initial_type_environment(), None)
+        result = self.type_of (exp, tenv)
+        pp (the_subst)
+        if self.verbose:
+            pp (the_subst)
+            for n in exp:
+                if n.is_a ('function'):
+                    print n.name, print_type (n.type)
+        return result
+        
+    def type_of (self, exp, tenv):
+        kind = exp.kind
+        method = getattr (self, 'type_of_%s' % (kind,))
+        t_exp = method (exp, tenv)
+        t_exp = apply_subst_to_type (t_exp)
+        if is_a (t_exp, str):
+            # XXX resurrected this hack again for klasses.
+            t_exp = apply_tenv (tenv, t_exp)
+        exp.type = t_exp
+        return t_exp
+
+    def type_of_literal (self, exp, tenv):
         return exp.type
-    elif exp.is_a ('cexp'):
+
+    def type_of_cexp (self, exp, tenv):
         result_type, arg_types = exp.type_sig
         result_type = parse_cexp_type (result_type, exp, tenv)
         for i in range (len (arg_types)):
@@ -546,98 +613,96 @@ def _type_of (exp, tenv):
             if is_a (arg_type, str):
                 # strip off wrap options (like "string/raw")
                 arg_type = arg_types[i].split('/')[0]
-            ta = type_of (arg, tenv)
+            ta = self.type_of (arg, tenv)
             arg_type = parse_cexp_type (arg_type, arg, tenv)
             unify (ta, arg_type, tenv, arg)
         return result_type
-    elif exp.is_a ('varref'):
-        return apply_tenv (tenv, exp.name)
-    elif exp.is_a ('varset'):
+
+    def type_of_varref (self, exp, tenv):
+        result = apply_tenv (tenv, exp.name)
+        return result
+
+    def type_of_varset (self, exp, tenv):
         # XXX implement the no-generalize rule for vars that are assigned.
         t1 = apply_tenv (tenv, exp.name)
-        t2 = type_of (exp.value, tenv)
+        t2 = self.type_of (exp.value, tenv)
         unify (t1, t2, tenv, exp.value)
         return 'undefined'
-    elif exp.is_a ('conditional'):
-        t1 = type_of (exp.test_exp, tenv)
+
+    def type_of_conditional (self, exp, tenv):
+        t1 = self.type_of (exp.test_exp, tenv)
         unify (t1, 'bool', tenv, exp.test_exp)
-        t2 = type_of (exp.then_exp, tenv)
-        t3 = type_of (exp.else_exp, tenv)
+        t2 = self.type_of (exp.then_exp, tenv)
+        t3 = self.type_of (exp.else_exp, tenv)
         unify (t2, t3, tenv, exp)
         return t2
-    elif exp.one_of ('let_splat'):
+
+    def type_of_let_splat (self, exp, tenv):
         n = len (exp.inits)
         for i in range (n):
-            ta = type_of (exp.inits[i], tenv)
+            ta = self.type_of (exp.inits[i], tenv)
             tenv = ([(exp.names[i].name, ta)], tenv)
-        return type_of (exp.body, tenv)
-    elif exp.is_a ('function'):
-        type_rib = []
-        arg_types = []
-        for formal in exp.formals:
-            t = optional_type (formal, tenv)
-            arg_types.append (t)
-            type_rib.append ((formal.name, t))
-        body_type = type_of (exp.body, (type_rib, tenv))
-        return (body_type, tuple (arg_types))
-    elif exp.is_a ('application'):
-        result_type = get_type_variable (exp.serial) # new type variable
-        rator_type = type_of (exp.rator, tenv)
+        return self.type_of (exp.body, tenv)
+
+    def type_of_function (self, exp, tenv):
+        if exp.constructor:
+            assert (exp.body.is_a ('make_tuple'))
+            body_type = apply_tenv (tenv, exp.body.type)
+            arg_types = body_type.get_constructor_types (exp)
+            for i in range (len (arg_types)):
+                ft = optional_type (exp.formals[i], tenv)
+                exp.formals[i].type = arg_types[i]
+            return (body_type, tuple (arg_types))
+        else:
+            type_rib = []
+            arg_types = []
+            for formal in exp.formals:
+                t = optional_type (formal, tenv)
+                arg_types.append (t)
+                type_rib.append ((formal.name, t))
+            body_type = self.type_of (exp.body, (type_rib, tenv))
+            return (body_type, tuple (arg_types))
+
+    def type_of_application (self, exp, tenv):
         n = len (exp.rands)
         # I think these exceptions should maybe be done as primapp instead?
         #  like this?: (primapp (record list) ...)
-        if is_a (rator_type, record):
-            # a constructor
-            arg_types = []
-            assert (n == len (rator_type.fields))
-            for i in range (n):
-                ta = type_of (exp.rands[i], tenv)
-                fname, tf = rator_type.fields[i]
-                if is_a (tf, str):
-                    if tf == rator_type.name:
-                        # hack to grok recursive data types
-                        tf = rator_type
-                    else:
-                        tf = apply_tenv (tenv, tf)
-                unify (ta, tf, tenv, exp)
-            return rator_type
-        elif is_a (rator_type, array):
-            for i in range (n):
-                ta = type_of (exp.rands[i], tenv)
-                unify (ta, rator_type.type, tenv, exp)
-            return rator_type
-        elif is_a (rator_type, union):
-            # bit of a hack here, transform.py should assert() that
-            #  the name is a string and not an expression...
-            # XXX assumes exp.rator is a varref
-            [base, selector] = exp.rator.name.split ('/')
-            # which type is selected?
-            tf, index = rator_type.get_field_type (selector)
-            if is_a (tf, str):
-                #tf = apply_tenv (tenv, tf)
-                tf = the_type_map.get (tf, tf)
-            # XXX lookup type
-            if len(exp.rands) > 1:
-                tv = product ([type_of (x, tenv) for x in exp.rands])
-            elif len(exp.rands) == 1:
-                tv = type_of (exp.rands[0], tenv)
-            elif len(exp.rands) == 0:
-                tv = unit()
-            else:
-                raise ValueError
-            unify (tf, tv, tenv, exp)
-            # XXX hack: frob this application.
-            # XXX this should be a method of <union>
-            return rator_type
+        rator = exp.rator
+        if rator.is_a ('get'):
+            # catch method invocation
+            ob_type = self.type_of (rator.ob, tenv)
+            # two possibilities here: invoking a *method*, or invoking a function
+            #  stored in a slot.  for now, handle methods only.
+            method = ob_type.get_method (rator.name)
+            # transform the expression
+            # ((get ob meth) arg0 arg1 ...)
+            # => (class-meth ob arg0 arg1 ...)
+            exp.rands.insert (0, rator.ob)
+            exp.rator = tree.varref (method)
+            exp.subs = [exp.rator] + exp.rands
+            # XXX ugh, hacks
+            exp.fix_attribute_names()
+            exp.rator.fix_attribute_names()
+            #import pdb; pdb.set_trace()
+            return self.type_of_application (exp, tenv)
         else:
-            # normal application
-            arg_types = []
-            for i in range (n):
-                ta = type_of (exp.rands[i], tenv)
-                arg_types.append (ta)
-            unify (rator_type, (result_type, tuple(arg_types)), tenv, exp)
-            return result_type
-    elif exp.is_a ('fix'):
+            rator_type = self.type_of (exp.rator, tenv)
+            if is_a (rator_type, array):
+                for i in range (n):
+                    ta = self.type_of (exp.rands[i], tenv)
+                    unify (ta, rator_type.type, tenv, exp)
+                return rator_type
+            else:
+                # normal application
+                arg_types = []
+                for i in range (n):
+                    ta = self.type_of (exp.rands[i], tenv)
+                    arg_types.append (ta)
+                result_type = get_type_variable (exp.serial) # new type variable
+                unify (rator_type, (result_type, tuple(arg_types)), tenv, exp)
+                return result_type
+
+    def type_of_fix (self, exp, tenv):
         partition = partition_fix (exp)
         check_partition (exp, partition)
         # reorder fix into dependency order
@@ -661,7 +726,7 @@ def _type_of (exp, tenv):
             # type each init in temp_tenv
             for i in part:
                 init = exp.inits[i]
-                ti = type_of (init, temp_tenv)
+                ti = self.type_of (init, temp_tenv)
                 unify (ti, init_tvars[i], temp_tenv, init)
                 init_types[i] = ti
             # now extend the environment with type schemes instead
@@ -675,85 +740,107 @@ def _type_of (exp, tenv):
             n2 += len (type_rib)
         assert (n2 == n)
         # and type the body in that tenv
-        return type_of (exp.body, tenv)
-    elif exp.is_a ('sequence'):
+        return self.type_of (exp.body, tenv)
+
+    def type_of_sequence (self, exp, tenv):
         for sub in exp.subs[:-1]:
             # everything but the last, type it as don't-care
-            ti = type_of (sub, tenv)
-        return type_of (exp.subs[-1], tenv)
-    elif exp.is_a ('get'):
-        result_type = get_type_variable (exp.serial) # new type variable
-        ob_type = type_of (exp.ob, tenv)
-        if is_a (ob_type, record):
-            return ob_type.get_field_type (exp.name)
+            ti = self.type_of (sub, tenv)
+        return self.type_of (exp.subs[-1], tenv)
+
+    def type_of_get (self, exp, tenv):
+        ob_type = self.type_of (exp.ob, tenv)
+        # look up the class from the globally unique field name
+        probe = field_name_map.get (exp.name, None)
+        if probe is None:
+            raise TypeError ("unknown class / field name", exp)
         else:
-            raise TypeError ("unable to find class for <get> expression")
-    elif exp.is_a ('set'):
-        raise NotImplementedError
-        ob_type = type_of (exp.ob, tenv)
-        tval = type_of (exp.val, tenv)
-        t1 = attr_type (ob_type, exp.name)
-        unify (t1, tval, tenv, exp)
-        result_type = get_type_variable (exp.serial) # new type variable
-        unify (result_type, 'undefined', tenv, exp)
-        return result_type
-    elif exp.is_a ('make_tuple'):
+            base_type = apply_tenv (tenv, probe)
+            # XXX hack
+            exp.ob.type = base_type
+            unify (ob_type, base_type, tenv, exp)
+            tf = base_type.get_field_type (exp.name)
+            print ob_type, base_type, tf
+            return tf
+
+    def type_of_set (self, exp, tenv):
+        ob_type = self.type_of (exp.ob, tenv)
+        # XXX implement the no-generalize rule for vars that are assigned.
+        probe = field_name_map.get (exp.name, None)
+        if probe is None:
+            raise TypeError ("unknown class / field name", exp)
+        else:
+            base_type = apply_tenv (tenv, probe)
+            tf = base_type.get_field_type (exp.name)
+            tval = self.type_of (exp.val, tenv)
+            unify (ob_type, base_type, tenv, exp)
+            unify (tval, tf, tenv, exp.val)
+            return 'undefined'
+
+    def type_of_make_tuple (self, exp, tenv):
         # XXX examine the types available - think about complicated
         #     cases like 'closure'...
         result_type = apply_tenv (tenv, exp.type)
         for arg in exp.args:
             # this is kindof a 'dead' type judgement?
-            ta = type_of (arg, tenv)
+            ta = self.type_of (arg, tenv)
         return result_type
-    elif exp.is_a ('primapp'):
+
+    def type_of_primapp (self, exp, tenv):
         if exp.name == '%%vector-literal':
             n = len (exp.args)
             if n == 0:
                 raise ValueError ("don't know how to type a zero-length vector yet")
             else:
-                ta0 = type_of (exp.args[0], tenv)
+                ta0 = self.type_of (exp.args[0], tenv)
                 for i in range (1, n):
-                    ta = type_of (exp.args[i], tenv)
+                    ta = self.type_of (exp.args[i], tenv)
                     unify (ta0, ta, tenv, exp)
             return array (ta0)
-        elif exp.name == '%%array-ref':
+        elif exp.name in ('%%array-ref', '%%product-ref'):
             # (%%array-ref <array> <index>)
             base = exp.args[0]
             index = exp.args[1]
-            bt = type_of (base, tenv)
-            if is_a (bt, array):
-                it = type_of (index, tenv)
-                # we don't know the item type yet...
-                item_type = type_variable()
-                ta = array (item_type)
-                unify (bt, ta, tenv, exp)
-                unify (it, 'int', tenv, exp)
-                return item_type
-            elif is_a (bt, str):
-                # better be a product type
+            bt = self.type_of (base, tenv)
+            if is_a (bt, str):
                 bt = apply_tenv (tenv, bt)
-                assert (is_a (bt, product))
-                assert (index.is_a ('literal') and index.type == 'int')
-                assert (index.value < len(bt.types))
-                item_type = bt.types[index.value]
-                return item_type
-            else:
-                raise ValueError ("illegal type for array-reference")
+            if exp.name == '%%array-ref':
+                if is_a (bt, array):
+                    it = self.type_of (index, tenv)
+                    # we don't know the item type yet...
+                    item_type = type_variable()
+                    ta = array (item_type)
+                    unify (bt, ta, tenv, exp)
+                    unify (it, 'int', tenv, exp)
+                    return item_type
+                else:
+                    raise ValueError ("illegal type for array-reference")
+            elif exp.name == '%%product-ref':
+                if is_a (bt, product):
+                    assert (index.is_a ('literal') and index.type == 'int')
+                    assert (index.value < len(bt.types))
+                    print bt, index.value
+                    item_type = bt.types[index.value]
+                    return item_type
+                else:
+                    raise ValueError ("illegal base type for tuple reference")
+        # implement %%product-set
         elif exp.name == '%%array-set':
             # (%%array-set <array> <index> <value>)
             base, index, value = exp.args
-            bt = type_of (base, tenv)
-            it = type_of (index, tenv)
-            vt = type_of (value, tenv)
+            bt = self.type_of (base, tenv)
+            it = self.type_of (index, tenv)
+            vt = self.type_of (value, tenv)
             ta = array (vt)
             unify (bt, ta, tenv, exp)
             unify (it, 'int', tenv, exp)
             return 'undefined'
         else:
             raise ValueError ("can't type unknown primop %s" % (exp.name,))
-    elif exp.is_a ('typecase'):
+
+    def type_of_typecase (self, exp, tenv):
         tt = apply_tenv (tenv, exp.vtype)
-        vt = type_of (exp.value, tenv)
+        vt = self.type_of (exp.value, tenv)
         unify (vt, tt, tenv, exp)
         # verify that all of the variants are accounted for...
         names0 = set ([sname for sname, stype in tt.alts])
@@ -779,7 +866,7 @@ def _type_of (exp, tenv):
                 else:
                     type_rib = [(formals[0].name, ftype)]
                 tenv2 = (type_rib, tenv)
-                bt = type_of (body, tenv2)
+                bt = self.type_of (body, tenv2)
                 unify (texp, bt, tenv2, exp)
                 # sort 'em
                 new_alts[index] = exp.alts[i]
@@ -789,8 +876,6 @@ def _type_of (exp, tenv):
             exp.params = exp.vtype, exp.alt_formals
             exp.subs = [exp.value] + exp.alts
         return texp
-    else:
-        raise ValueError (exp)
 
 def build_dependency_graph (root):
     g = {}
@@ -948,14 +1033,24 @@ def reorder_fix (exp, partition):
     assert (len(exp.inits) == n)
     return r
 
-def type_program (var_dict, exp):
-    global the_dep_graph, the_scc_graph
-    tenv = (initial_type_environment(), None)
-    the_dep_graph = build_dependency_graph (exp)
-    the_scc_graph, scc_map = strongly (the_dep_graph)
-    t_exp = type_of (exp, tenv)
-    if verbose:
-        pp (the_subst)
+# XXX this wouldn't be necessary if we had an 'arrow' type,
+#    i.e., repr() would be good enough.
+
+def print_type (t):
+    if is_a (t, str):
+        return t
+    elif is_a (t, tuple):
+        result_type, arg_types = t
+        arg_types = ' * '.join ([print_type(x) for x in arg_types])
+        return '(%s -> %s)' % (arg_types, print_type (result_type))
+    elif is_a (t, type_variable):
+        if t.val is None:
+            return '%d' % (t.num,)
+        else:
+            return print_type (t.val)
+    else:
+        return repr (t)
+        #raise NotImplementedError
 
 if __name__ == '__main__':
     s = test_strongly()
