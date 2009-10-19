@@ -4,7 +4,7 @@
 # analysis on the lambda tree.
 #
 
-import lambda_tree as tree
+import nodes
 import typing
 
 is_a = isinstance
@@ -68,7 +68,7 @@ class analyzer:
 
         if self.verbose:
             print ' --- as scheme ---'
-            print tree.as_sexp (tree.to_scheme (root))
+            print nodes.as_sexp (nodes.to_scheme (root))
 
         return root
 
@@ -78,7 +78,7 @@ class analyzer:
         if probe:
             node = probe (node)
         new_subs = [self.transform (sub, stage) for sub in node.subs]
-        node = tree.node (node.kind, node.params, new_subs, node.type)
+        node = nodes.node (node.kind, node.params, new_subs, node.type)
         if node.is_a ('fix'):
             # update function slots in every vardef
             names = node.get_names()
@@ -106,9 +106,9 @@ class analyzer:
                 formal = alt_formals[j]
                 if formal.name != '_':
                     formals.append (formal)
-                    inits.append (tree.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?')), [node.value]))
+                    inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?')), [node.value]))
             if len(formals):
-                alts.append (tree.let_splat (formals, inits, node.alts[i]))
+                alts.append (nodes.let_splat (formals, inits, node.alts[i]))
             else:
                 alts.append (node.alts[i])
         assert (len(alts) == len(node.alts))
@@ -138,7 +138,7 @@ class analyzer:
             rands = node.get_rands()
             name, formals, recursive, type = rator.params
             body = rator.get_body()
-            return self.transform (tree.let_splat (formals, rands, body), 1)
+            return self.transform (nodes.let_splat (formals, rands, body), 1)
         else:
             return node
 
@@ -155,7 +155,7 @@ class analyzer:
             names2 = body.params
             inits2 = body.subs[:-1]
             body2  = body.subs[-1]
-            return tree.let_splat (
+            return nodes.let_splat (
                 names + names2,
                 [self.transform (x, 1) for x in inits + inits2],
                 self.transform (body2, 1),
@@ -173,7 +173,7 @@ class analyzer:
                     inits2 = n2.subs[:-1]
                     body2  = n2.subs[-1]
                     return self.transform (
-                        tree.let_splat (
+                        nodes.let_splat (
                             names[:i] + names2 + names[i:],
                             inits[:i] + inits2 + [body2] + inits[i+1:],
                             body,
@@ -195,7 +195,7 @@ class analyzer:
             names2 = body.params
             inits2 = body.subs[:-1]
             body2  = body.subs[-1]
-            result = tree.fix (
+            result = nodes.fix (
                 names + names2,
                 [self.transform (x, 1) for x in inits + inits2],
                 self.transform (body2, 1),
@@ -220,7 +220,7 @@ class analyzer:
                     subs.extend (sub.subs)
                 else:
                     subs.append (sub)
-            return tree.sequence (subs)
+            return nodes.sequence (subs)
 
     # Unfortunately, these two expose the C backend up here
     #  where they shouldn't.  Should probably just make these
@@ -230,7 +230,7 @@ class analyzer:
         field_name = node.params
         c = typing.datatypes[ob.type.name]
         offset = c.get_field_offset (field_name)
-        return tree.cexp ("UOBJ_GET(%%s,%d)" % (offset,), ('?', ('?')), [ob])
+        return nodes.cexp ("UOBJ_GET(%%s,%d)" % (offset,), ('?', ('?')), [ob])
 
     def transform_1_set (self, node):
         #(%%cexp "((pxll_vector*)(%s))->val[%s] = %s" ob offset x))
@@ -238,7 +238,7 @@ class analyzer:
         field_name = node.params
         c = typing.datatypes[ob.type.name]
         offset = c.get_field_offset (field_name)
-        return tree.cexp ("UOBJ_SET(%%s,%d,%%s)" % (offset,), ('undefined', ('?', '?')), [ob, val])
+        return nodes.cexp ("UOBJ_SET(%%s,%d,%%s)" % (offset,), ('undefined', ('?', '?')), [ob, val])
 
     def replace (self, orig_node, fun):
         # apply replacement-fun() to all of <node>
@@ -559,17 +559,17 @@ class analyzer:
             inits = []
             for i in complex:
                 name = '%s_i%d' % (formals[i].name, analyzer.rename_counter)
-                var = tree.vardef (name)
+                var = nodes.vardef (name)
                 var.type = formals[i].type
                 self.vars[name] = var
                 names.append (var)
                 inits.append (rands[i])
-                varref = tree.varref (names[-1].name)
+                varref = nodes.varref (names[-1].name)
                 varref.type = names[-1].type
                 substs.append ((formals[i], varref))
                 analyzer.rename_counter += 1
             body = self.substitute (body, substs)
-            result = tree.let_splat (names, inits, body)
+            result = nodes.let_splat (names, inits, body)
             result.type = body.type
         return result
 
