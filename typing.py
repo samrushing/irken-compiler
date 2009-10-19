@@ -1,6 +1,6 @@
 # -*- Mode: Python -*-
 
-import lambda_tree as tree
+import nodes
 from pprint import pprint as pp
 
 is_a = isinstance
@@ -20,7 +20,7 @@ class type_variable:
 
     def __init__ (self, num=None):
         if num is None:
-            self.num = tree.serial.next()
+            self.num = nodes.serial.next()
         else:
             self.num = num
         self.val = None
@@ -74,7 +74,7 @@ class product:
                 self.types.append (type_variable())
             elif is_a (t, list):
                 # XXX need a central type parser
-                self.types.append (tree.parse_type (t))
+                self.types.append (nodes.parse_type (t))
             else:
                 self.types.append (t)
 
@@ -87,10 +87,10 @@ class product:
     def gen_constructor (self):
         n = len (self.types)
         names = ['p%d' % i for i in range (n)]
-        vardefs = [tree.vardef (names[i]) for i in range (n)]
-        varrefs = [tree.varref(x) for x in names]
-        body = tree.make_tuple (self.name, 0, varrefs)
-        fun = tree.function (self.name, vardefs, body)
+        vardefs = [nodes.vardef (names[i]) for i in range (n)]
+        varrefs = [nodes.varref(x) for x in names]
+        body = nodes.make_tuple (self.name, 0, varrefs)
+        fun = nodes.function (self.name, vardefs, body)
         fun.constructor = True
         return self.name, fun
 
@@ -135,17 +135,17 @@ class union:
         # build a constructor as a node tree - before analyse is called.
         stype, index = self.get_field_type (selector)
         if is_a (stype, product):
-            formals = [tree.vardef ('%s_%d' % (selector, i)) for i in range (len (stype.types))]
-            args = [tree.varref (x.name) for x in formals]
+            formals = [nodes.vardef ('%s_%d' % (selector, i)) for i in range (len (stype.types))]
+            args = [nodes.varref (x.name) for x in formals]
         elif is_a (stype, unit):
             formals = []
             args = []
         else:
-            formals = [tree.vardef (selector)]
-            args = [tree.varref (selector)]
-        body = tree.make_tuple (self.name, index, args)
+            formals = [nodes.vardef (selector)]
+            args = [nodes.varref (selector)]
+        body = nodes.make_tuple (self.name, index, args)
         name = '%s/%s' % (self.name, selector)
-        fun = tree.function (self.name, formals, body)
+        fun = nodes.function (self.name, formals, body)
         fun.constructor = True
         fun.selector = selector
         return name, fun
@@ -191,10 +191,10 @@ class klass:
         n = len (self.fields)
         names = [name for name, type in self.fields]
         # we don't want to use that <type> param, it might be polymorphic
-        vardefs = [tree.vardef (names[i]) for i in range (n)]
-        varrefs = [tree.varref (names[i]) for i in range (n)]
-        body = tree.make_tuple (self.name, 0, varrefs)
-        fun = tree.function (self.name, vardefs, body)
+        vardefs = [nodes.vardef (names[i]) for i in range (n)]
+        varrefs = [nodes.varref (names[i]) for i in range (n)]
+        body = nodes.make_tuple (self.name, 0, varrefs)
+        fun = nodes.function (self.name, vardefs, body)
         fun.constructor = True
         return self.name, fun
 
@@ -678,7 +678,7 @@ class typer:
             # ((get ob meth) arg0 arg1 ...)
             # => (class-meth ob arg0 arg1 ...)
             exp.rands.insert (0, rator.ob)
-            exp.rator = tree.varref (method)
+            exp.rator = nodes.varref (method)
             exp.subs = [exp.rator] + exp.rands
             # XXX ugh, hacks
             exp.fix_attribute_names()
