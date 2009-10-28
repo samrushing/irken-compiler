@@ -1,3 +1,6 @@
+091028:
+first gluing of the contstraint solver to irken.
+
 091019:
 Wow, that's quite a gap.  Essentially zero progress for 10 months while
 I wrap my head around constraint-solving.  Ready to get back to it.
