@@ -1,5 +1,5 @@
 091028:
-first gluing of the contstraint solver to irken.
+first gluing of the constraint solver to irken.
 
 091019:
 Wow, that's quite a gap.  Essentially zero progress for 10 months while
