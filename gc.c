@@ -126,7 +126,7 @@ do_gc (int nroots)
   }
 
   if (verbose_gc) {
-    fprintf (stderr, "collected %d words]\n", freep - heap0);
+    fprintf (stderr, "collected %ld words]\n", freep - heap0);
   }
   return (object) box (freep - heap0);
 }
