@@ -2,8 +2,10 @@
 
 import lisp_reader
 import transform
+import graph
 import nodes
 import typing
+import solver
 import analyze
 import cps
 import backend
@@ -40,7 +42,11 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
     # alpha conversion
     var_dict = nodes.rename_variables (exp3)
 
-    t = typing.typer (verbose)
+    dep_graph = graph.build_dependency_graph (exp3)
+    # find strongly connected components
+    scc_graph, scc_map = graph.strongly (dep_graph)
+    # type inference needs scc_graph to rearrange each <fix>.
+    t = solver.typer (scc_graph, verbose)
     t.go (exp3)
 
     if verbose:
@@ -269,7 +275,7 @@ def t0():
         name = sys.argv[1]
         compile_file (open (name, 'rb'), name, safety, annotate, noinline, verbose, trace)
         cc (sys.argv[1], optimize=optimize)
-        sys.exit (1)
+        return
 
     if '-l' in sys.argv:
         # only run the last test.
