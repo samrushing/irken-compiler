@@ -771,7 +771,7 @@ class solver:
                 scheme = p (var)
                 used = used.intersection (qvs)
                 if used:
-                    result.append (c_forall (used, scheme))
+                    result.append (c_forall (tuple(used), scheme))
                 else:
                     result.append (scheme)
             return result
@@ -938,31 +938,19 @@ def test (s, step=True):
     exp3 = w.go (exp2)
     # alpha conversion
     var_dict = nodes.rename_variables (exp3)
-    t = typer (step)
+    t = typer ({}, step)
     c = t.go (exp3)
-    pprint_constraint (c)
-    u = solver(step).solve (c)
-    print u
 
 if __name__ == '__main__':
-    if '-t' in sys.argv:
-        for t in tests:
-            test (t, step=False)
-    elif '-p' in sys.argv:
-        import profile
-        profile.run ("test (tests[-1], step=False)")
-    elif '-l' in sys.argv:
-        # try out the very last test
-        test (tests[-1], step=True)
-    elif '-i' in sys.argv:
-        # interactive
-        while 1:
-            sys.stdout.write ('> ')
-            line = raw_input()
-            if not line:
-                break
-            else:
-                #test (line, step=False)
-                test (line, step=True)
+    if '-v' in sys.argv:
+        step = True
     else:
-        test ("(lambda (x) x)")
+        step = False
+    # interactive test mode
+    while 1:
+        sys.stdout.write ('> ')
+        line = raw_input()
+        if not line:
+            break
+        else:
+            test (line, step=step)
