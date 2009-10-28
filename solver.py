@@ -281,41 +281,6 @@ class constraint_generator:
         else:
             raise ValueError
 
-    def lookup_prim_env2 (self, name):
-        # we need this hack for row-related label lookups, since the label
-        #  is part of the name.
-        if self.prim_env.has_key (name):
-            # the normal path
-            return self.prim_env[name]
-        elif name.startswith ('%rextend/'):
-            what, label = name.split ('/')
-            # XXX pre(X)
-            # ∀XYZ.Π(l:X;Y) → Z → Π(l:Z;Y)
-            return arrow (
-                product (rlabel (label, 2, 1)),
-                product (rlabel (label, 0, 1)),
-                2
-                )
-        elif name.startswith ('%raccess/'):
-            what, label = name.split ('/')
-            # XXX pre(X)
-            # ∀XY.Π(l:X;Y) → X
-            return arrow (0, product (rlabel (label, 0, 1)))
-        elif name.startswith ('%vextend/'):
-            what, label = name.split ('/')
-            # ∀XY.X → Σ(l:pre X;Y)
-            return arrow (sum (rlabel (label, pre(0), 1)), 0)
-        elif name.startswith ('%vcase/'):
-            what, label = name.split ('/')
-            # ∀XYX'Y'.(X → Y) → (Σ(l:X';Y') → Y) → Σ(l:pre X;Y') → Y
-            # ∀XYX'Y'.f0 → f1 → s1 → Y
-            f0 = arrow (1, 0)
-            f1 = arrow (1, sum (rlabel (label, 2, 3)))
-            s1 = sum (rlabel (label, pre (0), 3))
-            return arrow (1, f0, f1, s1)
-        else:
-            raise UnboundVariable (name)
-
 class UnboundVariable (Exception):
     pass
 
@@ -978,64 +943,6 @@ def test (s, step=True):
     pprint_constraint (c)
     u = solver(step).solve (c)
     print u
-
-tests = [
-    "5",
-    "(lambda (x) 3)",
-    "(lambda (x) x)",
-    "(let ((f (lambda (x) x))) (f 5))",
-    "(lambda (x) (lambda (y) x))",
-    "(let ((f (lambda (x) x))) f)",
-    "((lambda (x) x) (lambda (x) x))",
-    "(%+ 3 4)",
-    "(%- (%+ 3 4) 2)",
-    "(%make-pair 3 4)",
-    "(%make-pair 3 #\\A)",
-    "(%pair/first (%make-pair 3 #\\A))",
-    "(%pair/second (%make-pair 3 #\\A))",
-    "(%char->int #\\A)",
-    "(%int->char 65)",
-    # zero-argument function
-    "(%zed)",
-    # this causes a cycle, breaks print-solution
-    #"(let ((f (lambda (x) 3))) (%int->char (f f)))",
-    # row tests
-    # make a default row - maps all symbols to a function: δ(a->a)
-    "(%rmake (lambda (x) x))",
-    # lookup via a random field name on a row of type δ(int)
-    "(%raccess/field (%rmake 0))",
-    # extend a row: (label:char;δ(int))
-    "(%rextend/label (%rmake 0) #\\A)",
-    # dereference via the defined label
-    "(%raccess/label (%rextend/label (%rmake 0) #\\A))",
-    # dereference via an undefined label
-    "(%raccess/fnord (%rextend/label (%rmake 0) #\\A))",
-    # extend a row twice: (other:a->a; label:char; δ(int))
-    "(%rextend/other (%rextend/label (%rmake 0) #\\A) (lambda (x) x))",
-    # deref one defined label
-    "(%raccess/label (%rextend/other (%rextend/label (%rmake 0) #\\A) (lambda (x) x)))",
-    # deref the other
-    "(%raccess/other (%rextend/other (%rextend/label (%rmake 0) #\\A) (lambda (x) x)))",
-    # deref an undefined label
-    "(%raccess/fnord (%rextend/other (%rextend/label (%rmake 0) #\\A) (lambda (x) x)))",
-    # build an extended record, store it in a variable, then deref to pull the identity function out and use it.
-"""(let ((rec0 (%rextend/other (%rextend/label (%rmake 0) #\\A) (lambda (x) x))))
-     (let ((f0 (%raccess/other rec0)))
-       (f0 9)))""",
-    # abs/pre
-    "(%abs)",
-    "(%rmake (%abs))",
-    "(%rextend/l0 (%rmake (%abs)) (%pre #\\A))",
-    # variants
-    "(%vextend/l0 3)",
-    # three args: f0 is X->Y, f1 is sum->Y, s0 is sum. returns Y.
-    "(%vcase/l0 (lambda (x) 3) (lambda (y) 4) (%vextend/l0 9))",
-    # now with the wrong variant (note the difference in the type of <y>)
-    "(%vcase/l0 (lambda (x) 3) (lambda (y) 4) (%vextend/l1 9))",
-    # letrec
-    "(letrec ((fact (lambda (n a) (if (%= n 0) a (fact (%- n 1) (%* n a)))))) (fact 5 1))",
-    "(letrec ((fact (lambda (n) (if (%= n 0) 1 (%* n (fact (%- n 1))))))) (fact 5))",
-    ]
 
 if __name__ == '__main__':
     if '-t' in sys.argv:
