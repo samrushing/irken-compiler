@@ -1,0 +1,57 @@
+Been around a few times with supporting OO in some fashion.
+Clearly HM and OO don't get along too well.
+But somewhere between 'records' and 'classes' must be a sweet spot.
+
+(class thing
+   (x:int y:int ob)
+   (define (meth0 self)
+     (+ (* self.x self.x) (* self.y self.y)))
+    )
+
+Trying to find a way to represent objects/methods/etc... using
+algebraic types...
+
+'self' here should have type int*int*'a (i.e., 'thing')
+so 'thing' is an alias for int*int*'a.
+'meth0' should have type thing->int
+
+A bound method is like a curried function application?
+
+Ok, let's try to emulate python itself.
+
+First, there's a 'class object', which will be a product
+type consisting of the class variables including methods.
+
+So in this case 'thing-class' will be simply #(meth0).
+'thing-object' will be of type int*int*'a
+
+In python - an object has to have a pointer to its type/class.
+We shouldn't need to do that?  So an object can simply be a tuple of
+its slots.  [again, we need to keep in mind here the difference
+between objects in irken low and high]
+
+-------------------------------------------
+
+The circular dependency problem.
+
+Figuring out the type of object a 'get' refers to requires running the
+type inference engine, which requires sorting into strongly connected
+components.  But sorting into strongly connected components requires
+knowing which class each object is.
+
+1) one possible solution is to separate this into two passes... since
+the SCC graph is only needed in order to support polymorphism, maybe
+we can assign classes in a first class that ignores polymorphism, and
+finish up with the normal algorithm?
+
+Would this keep us from mixing polymorphism and classes?
+
+2) Can we modify or eliminate the need for the SCC graph?
+
+
+-------------------------------------------
+
+Closures?  How far can we get by emulating OO with closures?
+In Scheme, we use a 'getattr'-like function to return a random
+object.  That can't work with static types... but is there some other
+way to do it?
