@@ -18,6 +18,7 @@
 # TODO: s-letall (maybe?), kind-checking
 
 import nodes
+import graph
 import sys
 import pdb
 trace = pdb.set_trace
@@ -39,94 +40,7 @@ is_a = isinstance
 # C ::= (equals t t) | (and C C) | (exists a C)
 
 # types
-
-tvar_counter = 0
-
-def fresh():
-    global tvar_counter
-    result = tvar_counter
-    tvar_counter += 1
-    return result
-
-class _type:
-    pass
-
-class t_base (_type):
-    def __cmp__ (self, other):
-        return cmp (self.__class__, other.__class__)
-
-class t_int (t_base):
-    def __repr__ (self):
-        return 'int'
-
-class t_char (t_base):
-    def __repr__ (self):
-        return 'char'
-
-class t_str (t_base):
-    def __repr__ (self):
-        return 'str'
-
-# XXX consider using a true/false variant, then implementing 'if' as a filter.
-class t_bool (t_base):
-    def __repr__ (self):
-        return 'bool'
-
-class t_var (_type):
-    next = None
-    rank = -1
-    letters = 'abcdefghijklmnopqrstuvwxyz'
-    eq = None
-    def __init__ (self):
-        self.id = fresh()
-    def __repr__ (self):
-        return base_n (self.id, len(self.letters), self.letters)
-
-class t_predicate (_type):
-    def __init__ (self, name, args):
-        self.name = name
-        self.args = tuple (args)
-    def __repr__ (self):
-        # special case
-        if self.name == 'arrow':
-            if len(self.args) == 2:
-                return '%r->%r' % (self.args[1], self.args[0])
-            else:
-                return '%r->%r' % (self.args[1:], self.args[0])
-        else:
-            return '%s%r' % (self.name, self.args)
-
-def is_pred (t, *p):
-    # is this a predicate from the set <p>?
-    return is_a (t, t_predicate) and t.name in p
-
-def arrow (*sig):
-    # sig = (<result_type>, <arg0_type>, <arg1_type>, ...)
-    # XXX this might be more clear as (<arg0>, <arg1>, ... <result>)
-    return t_predicate ('arrow', sig)
-    
-# row types
-def product (row):
-    # a.k.a. 'Π'
-    # XXX kind-check that args[0] is a row?
-    return t_predicate ('product', (row,))
-
-def sum (row):
-    # a.k.a. 'Σ'
-    return t_predicate ('sum', (row,))
-
-def rdefault (arg):
-    # a.k.a. 'δ'
-    return t_predicate ('rdefault', (arg,))
-
-def rlabel (name, type, rest):
-    return t_predicate ('rlabel', (name, type, rest))
-
-def abs():
-    return t_predicate ('abs', ())
-
-def pre (x):
-    return t_predicate ('pre', (x,))
+from itypes import *
 
 # constraints
 
@@ -154,6 +68,8 @@ class c_false (constraint):
 class c_equals (constraint):
     kind = 'equals'
     def __init__ (self, *args):
+        if None in args:
+            trace()
         self.args = args
     def __repr__ (self):
         return constraint_repr ('=', self.args)
@@ -180,19 +96,61 @@ class c_is (constraint):
 
 class c_let (constraint):
     kind = 'let'
-    def __init__ (self, formal, init, body):
-        self.args = (formal, init, body)
-        self.formal = formal
-        self.init = init
+    def __init__ (self, names, vars, constraint, body):
+        self.args = (names, vars, constraint, body)
+        self.names = names
+        self.vars = vars
+        self.constraint = constraint
         self.body = body
 
 class c_forall (constraint):
     kind = 'forall'
-    def __init__ (self, vars, constraint, type):
-        self.args = (vars, constraint, type)
+    def __init__ (self, vars, constraint):
+        self.args = (vars, constraint)
         self.vars = vars
         self.constraint = constraint
-        self.type = type
+
+def flatten_conj (c):
+    l = []
+    def p (c):
+        if is_a (c.args[0], c_and):
+            p (c.args[0])
+        else:
+            l.append (c.args[0])
+        l.append (c.args[1])
+    if is_a (c, c_and):
+        p (c)
+        return l
+    else:
+        return [c]
+
+def pprint_constraint (c):
+    W = sys.stdout.write
+    def pp (c, d):
+        W ('\n' + ('  ' * d))
+        # print repr: true,false,equals,and,exists,is
+        # print indented: let, forall
+        if is_a (c, c_let):
+            W ('let %s' % ' '.join (['%s:%r' % (c.names[i].name,c.vars[i]) for i in range (len (c.names))]))
+            if not is_a (c.constraint, c_true):
+                pp (c.constraint, d+1)
+            W ('\n' + ('  ' * d))
+            W ('in')
+            pp (c.body, d+1)
+        elif is_a (c, c_forall):
+            W ('forall (%s)' % (','.join ([repr(v) for v in c.vars])))
+            pp (c.constraint, d+1)
+        elif is_a (c, c_and):
+            W ('and')
+            for t in flatten_conj (c):
+                pp (t, d+1)
+        elif is_a (c, c_exists):
+            W ('exists (%s)' % (','.join ([repr(v) for v in c.vars])))
+            pp (c.sub, d+1)
+        else:
+            W (repr (c))
+    pp (c, 0)
+    W ('\n')
 
 # stack frames
 class frame:
@@ -212,10 +170,12 @@ class s_exists (frame):
         self.vars = vars
 
 class s_let (frame):
-    def __init__ (self, formal, vars, type, body, rank):
-        self.formal = formal
+    def __init__ (self, names, types, vars, body, rank):
+        if len(names) == 0:
+            raise ValueError
+        self.names = names
+        self.types = types
         self.vars = vars
-        self.type = type
         self.body = body
         self.rank = rank
         for v in vars:
@@ -228,10 +188,10 @@ class s_let (frame):
 
 class s_env (frame):
     # after a <let> type scheme has been solved, an <env> frame
-    #   binds the scheme to the formal.
-    def __init__ (self, formal, type):
-        self.formal = formal
-        self.type = type
+    #   binds the schemes to the formals.
+    def __init__ (self, names, types):
+        self.names = names
+        self.types = types
 
 # this is a two-phase algorithm
 # 1) constraint generation
@@ -239,74 +199,122 @@ class s_env (frame):
 
 class constraint_generator:
 
+    def __init__ (self, scc_graph):
+        self.scc_graph = scc_graph
+
     def go (self, exp):
         t = t_var()
         return self.gen (exp, t), t
 
     def gen (self, exp, t):
-        if is_a (exp, nodes.varref):
+        if exp.is_a ('varref'):
             return c_is (exp.name, t)
-        elif is_a (exp, nodes.function):
+        elif exp.is_a ('function'):
             if is_pred (t, 'arrow'):
                 # lemma 10.4.7
-                rtv, arg_tvs = t.args[0], list(t.args[1:])
+                rtv, args = t.args[0], list(t.args[1:])
             else:
-                arg_tvs = [t_var() for x in exp.names]
-                rtv = t_var()
-            bod0 = self.gen (exp.body, rtv)
-            for i in range (len (exp.names)):
-                bod0 = c_let (exp.names[i].name, arg_tvs[i], bod0)
+                rtv, args = t_var(), [t_var() for x in exp.formals]
+            if len(args):
+                c = c_let (exp.formals, args, c_true(), self.gen (exp.body, rtv))
+            else:
+                c = self.gen (exp.body, rtv)
             # XXX: in ATTPL, this is a c_supertype relation
-            sub1 = c_equals (t, arrow (rtv, *arg_tvs))
             if is_pred (t, 'arrow'):
-                return c_and (bod0, sub1)
+                return c
             else:
-                return c_exists ([rtv] + arg_tvs, c_and (bod0, sub1))
-        elif is_a (exp, nodes.application):
-            arg_tvs = [t_var() for x in exp.rands]
-            sub0 = self.gen (exp.rator, arrow (t, *arg_tvs))
+                sub1 = c_equals (t, arrow (rtv, *args))
+                return c_exists ([rtv] + args, c_and (c, sub1))
+        elif exp.is_a ('application'):
+            args = [t_var() for x in exp.rands]
+            c = self.gen (exp.rator, arrow (t, *args))
             for i in range (len(exp.rands)):
-                sub0 = c_and (sub0, self.gen (exp.rands[i], arg_tvs[i]))
-            return c_exists (arg_tvs, sub0)
-        elif is_a (exp, nodes.let):
-            # XXX make this an n-ary let
+                c = c_and (c, self.gen (exp.rands[i], args[i]))
+            return c_exists (args, c)
+        elif exp.is_a ('cexp'):
+            sig = parse_cexp_type (exp.type_sig)
+            r = c_equals (t, sig.args[0]) # result type
+            for i in range (len (exp.args)):
+                r = c_and (r, self.gen (exp.args[i], sig.args[i+1]))
+            return r
+        elif exp.is_a ('let_splat'):
+            # XXX make nary by repeated wrapping in let
             assert (len(exp.names) == 1)
             x = t_var()
             init0 = self.gen (exp.inits[0], x)
             body0 = self.gen (exp.body, t)
-            return c_let (exp.names[0].name, c_forall ((x,), init0, x), body0)
-        elif is_a (exp, nodes.letrec):
-            # XXX make this an n-ary letrec
-            assert (len(exp.names) == 1)
-            name = exp.names[0].name
-            y = t_var()
-            fun = exp.inits[0]
-            arg_tvs = [t_var() for x in fun.names]
-            bod0 = self.gen (fun.body, y)
-            bod1 = self.gen (exp.body, t)
-            # each arg in a let
-            for i in range (len (fun.names)):
-                bod0 = c_let (fun.names[i].name, arg_tvs[i], bod0)
-            sig = arrow (y, *arg_tvs)
-            # inner binding
-            bod0 = c_let (name, sig, bod0)
-            # outer binding
-            return c_let (name, c_forall ((y,) + tuple(arg_tvs), bod0, sig), bod1)
-        elif is_a (exp, nodes.conditional):
+            return c_let ([exp.names[0]], [x], c_forall ((x,), init0), body0)
+        elif exp.is_a ('fix'):
+            partition = graph.reorder_fix (exp, self.scc_graph)
+            # ???
+            partition.reverse()
+            c0 = self.gen (exp.body, t)
+            # XXX deep partitioning magic here
+            for part in partition:
+                names = [exp.names[i] for i in part]
+                funs  = [exp.inits[i] for i in part]
+                # one var for each function
+                fvars = tuple ([t_var() for x in names])
+                c1 = list_to_conj (
+                    [self.gen (funs[i], fvars[i]) for i in range (len (part))]
+                    )
+                # inner/monomorphic binding
+                c1 = c_let (names, fvars, c_true(), c1)
+                # outer/polymorphic binding
+                c1 = c_let (names, fvars, c_forall (fvars, c1), c0)
+                c0 = c1
+            return c0
+        elif exp.is_a ('conditional'):
             test_exp = self.gen (exp.test_exp, t_bool())
-            x = t_var()
-            then_exp = self.gen (exp.then_exp, x)
-            else_exp = self.gen (exp.else_exp, x)
-            return c_exists ((x,), c_and (test_exp, c_and (then_exp, else_exp)))
-        elif is_a (exp, nodes.literal):
-            if exp.kind == 'int':
+            then_exp = self.gen (exp.then_exp, t)
+            else_exp = self.gen (exp.else_exp, t)
+            return c_and (test_exp, c_and (then_exp, else_exp))
+        elif exp.is_a ('literal'):
+            if exp.type == 'int':
                 return c_equals (t, t_int())
-            elif exp.kind == 'char':
+            elif exp.type == 'char':
                 return c_equals (t, t_char())
+            elif exp.type == 'bool':
+                return c_equals (t, t_bool())
             else:
                 raise ValueError ("unsupported literal type")
         else:
             raise ValueError
+
+    def lookup_prim_env2 (self, name):
+        # we need this hack for row-related label lookups, since the label
+        #  is part of the name.
+        if self.prim_env.has_key (name):
+            # the normal path
+            return self.prim_env[name]
+        elif name.startswith ('%rextend/'):
+            what, label = name.split ('/')
+            # XXX pre(X)
+            # ∀XYZ.Π(l:X;Y) → Z → Π(l:Z;Y)
+            return arrow (
+                product (rlabel (label, 2, 1)),
+                product (rlabel (label, 0, 1)),
+                2
+                )
+        elif name.startswith ('%raccess/'):
+            what, label = name.split ('/')
+            # XXX pre(X)
+            # ∀XY.Π(l:X;Y) → X
+            return arrow (0, product (rlabel (label, 0, 1)))
+        elif name.startswith ('%vextend/'):
+            what, label = name.split ('/')
+            # ∀XY.X → Σ(l:pre X;Y)
+            return arrow (sum (rlabel (label, pre(0), 1)), 0)
+        elif name.startswith ('%vcase/'):
+            what, label = name.split ('/')
+            # ∀XYX'Y'.(X → Y) → (Σ(l:X';Y') → Y) → Σ(l:pre X;Y') → Y
+            # ∀XYX'Y'.f0 → f1 → s1 → Y
+            f0 = arrow (1, 0)
+            f1 = arrow (1, sum (rlabel (label, 2, 3)))
+            s1 = sum (rlabel (label, pre (0), 3))
+            return arrow (1, f0, f1, s1)
+        else:
+            raise UnboundVariable (name)
 
 class UnboundVariable (Exception):
     pass
@@ -344,7 +352,9 @@ class multi:
         return mv
 
     def __repr__ (self):
-        r = '='.join (['%r' % v for v in self.vars])
+        vars = list(self.vars)
+        vars.sort (lambda a,b: cmp (a.id, b.id))
+        r = '='.join (['%r' % v for v in vars])
         if self.type:
             return r + '=%r' % (self.type,)
         else:
@@ -376,6 +386,8 @@ class unifier:
             for v in vars:
                 if v.eq:
                     # if so, then fuse
+                    if repr(v) == 'bz':
+                        trace()
                     self.fuse (v.eq, vars, type)
                     return
             # nope, a new equation
@@ -553,16 +565,24 @@ class unifier:
     def split (self, sz):
         # leave in only equations made entirely of 'old' variables
         # this is the U1,U2 split from the rule S-POP-LET
+        def compress (t):
+            if is_a (t, t_var):
+                return t.next or t
+            elif is_a (t, t_predicate):
+                return t_predicate (t.name, [compress(x) for x in t.args])
+            else:
+                return t
         young = set (sz.vars)
-        u2 = []
+        u2 = {}
         forget = []
         for eq in self.eqs:
             if eq.rep in young or eq.free.intersection (eq.vars):
-                u2.append (c_equals (* list(eq.vars) + [eq.type]))
+                if eq.type:
+                    u2[eq.rep] = compress (eq.type)
                 forget.append (eq)
         for eq in forget:
             self.forget (eq)
-        return list_to_conj (u2)
+        return u2
 
     def dprint (self, msg):
         if self.step:
@@ -571,18 +591,23 @@ class unifier:
             sys.stderr.write ('\n')
             self.pprint()
 
-    def simplify (self):
-        # d=c=b=a=x => a=x
-        def compress (t):
+    def decode (self, t):
+        # XXX this doesn't work because split() removes the 'eq' links
+        #     just before they're needed.
+        def p (t):
             if is_a (t, t_var):
-                return t.next or t
+                if t.eq:
+                    if t.eq.type is None:
+                        return t.eq.rep
+                    else:
+                        return t.eq.type
+                else:
+                    return t
             elif is_a (t, t_predicate):
-                return t_predicate (t.name, [compress(x) for x in t.args])
+                return t_predicate (t.name, [p(x) for x in t.args])
             else:
                 return t
-        for eq in self.eqs:
-            eq.type = compress (eq.type)
-            eq.vars = set ([eq.rep])
+        return p (t)
 
     def renumber (self):
         # first, collect every tvar referenced
@@ -610,7 +635,6 @@ class solver:
 
     def __init__ (self, step=True):
         self.step = step
-        self.prim_env = self.make_prim_env()
 
     def dprint (self, msg):
         if self.step:
@@ -621,7 +645,7 @@ class solver:
 
         self.dprint ('\nHit <return> at each pause (or "t<return>" to enter the debugger)')
 
-        pvars = []
+        pvars = {}
         self.exists = []
         # ensure there are always two items on the stack
         s = [empty, empty]
@@ -670,19 +694,18 @@ class solver:
                 c = c_true()
             elif is_a (c, c_is) and is_a (c.x, str):
                 self.dprint ('s-solve-id')
-                scheme, type = self.lookup (c.x, s), c.t
+                scheme = self.lookup (c.x, s)
+                scheme = self.instantiate (scheme)
                 # assert that scheme.type is a tvar
                 # "Recall that if σ is of the form ∀X0..XN[U].X
                 # where X0..XN#ftv(T), then c_is(σ, T) stands for ∃X0..XN.(U ^ X=T)."
-                self.dprint ('scheme= %r' % scheme)
-                self.dprint ('type=%r' % type)
+                self.dprint ('name=%s' % (c.x,))
+                self.dprint ('scheme= %r' % (scheme,))
+                self.dprint ('type=%r' % c.t)
                 if is_a (scheme, c_forall):
-                    if not scheme.vars and is_a (scheme.constraint, c_true):
-                        c = c_equals (scheme.type, type)
-                    else:
-                        c = c_exists (scheme.vars, c_and (scheme.constraint, c_equals (scheme.type, type)))
+                    c = c_exists (scheme.vars, c_equals (scheme.constraint, c.t))
                 else:
-                    c = c_equals (scheme, type)
+                    c = c_equals (scheme, c.t)
             elif is_a (c, c_and):
                 self.dprint ('s-solve-and')
                 push (s_and (c.args[1]))
@@ -693,38 +716,37 @@ class solver:
                 c = c.sub
             elif is_a (c, c_let):
                 self.dprint ('s-solve-let')
-                if is_a (c.init, c_forall):
-                    vars = c.init.vars
-                    push (s_let (c.formal, c.init.vars, c.init.type, c.body, rank))
-                    rank += 1
-                    c = c.init.constraint
+                if is_a (c.constraint, c_forall):
+                    push (s_let (c.names, c.vars, c.constraint.vars, c.body, rank))
+                    c = c.constraint.constraint
                 else:
                     # let x: T in C == let x: ∀∅[true].T in C
-                    push (s_let (c.formal, (), c.init, c.body, rank))
+                    push (s_let (c.names, c.vars, (), c.body, rank))
                     c = c_true()
             elif is_a (c, c_true):
                 if is_a (sz, s_and):
                     self.dprint ('s-pop-and')
                     pop()
                     c = sz.constraint
-                elif is_a (sz, s_let) and not is_a (sz.type, t_var):
-                    self.dprint ('s-name-2')
-                    x = t_var()
-                    pop()
-                    push (s_let (sz.formal, sz.vars + (x,), x, sz.body, rank))
-                    u.add (set([x]), sz.type)
+                # fairly certain this can't happen now
+                #elif is_a (sz, s_let) and not is_a (sz.type, t_var):
+                #    self.dprint ('s-name-2')
+                #    x = t_var()
+                #    pop()
+                #    push (s_let (sz.formal, sz.vars + (x,), x, sz.body, rank))
+                #    u.add (set([x]), sz.type)
                 elif is_a (sz, s_let):
                     unname = []
                     for var in sz.vars:
                         # XXX this isn't quite right - we can subst sz.type with var.rep
-                        if var.next and not u.is_free (var) and sz.type is not var:
+                        if var.next and not u.is_free (var) and var not in sz.types:
                             unname.append (var)
                     if unname:
                         self.dprint ('s-unname %r' % (unname,))
                         vars = [x for x in sz.vars if x not in unname]
                         self.dprint ('  new vars=%r' % (vars,))
                         pop()
-                        push (s_let (sz.formal, vars, sz.type, sz.body, sz.rank))
+                        push (s_let (sz.names, sz.types, vars, sz.body, sz.rank))
                     else:
                         # **** S-LETALL here ****
                         # s-letall will simplify the current scheme by removing some of
@@ -733,12 +755,17 @@ class solver:
                         # the above conditions have been met it turns the <let>
                         # into an <env>.
                         self.dprint ('s-pop-let')
+                        schemes = self.build_type_schemes (sz.types, sz.vars, u.split (sz))
                         pop()
-                        push (s_env (sz.formal, c_forall (sz.vars, u.split (sz), sz.type)))
+                        push (s_env (sz.names, schemes))
+                        # record for posterity
+                        for i in range (len (sz.names)):
+                            if not is_a (schemes[i], t_var):
+                                # if it's a real type, assign it to the node
+                                sz.names[i].type = schemes[i]
+                            pvars[sz.names[i]] = schemes[i]
                         c = sz.body
                 elif is_a (sz, s_env):
-                    # record the type scheme associated with this program variable
-                    pvars.append ((sz.formal, sz.type.type))
                     self.dprint ('s-pop-env')
                     pop()
                 elif is_a (sz, s_empty):
@@ -751,6 +778,39 @@ class solver:
             else:
                 raise ValueError ("no rule applies")
 
+    def build_type_schemes (self, vars, qvs, eqs):
+        # I'm trying to do the 'obvious' thing here - use U2 to compute the type scheme
+        #   that should be attached to each pvar's tvar.  I think I may be throwing away
+        #   too much info, though.  e.g., this may work for computing a straightforward
+        #   type signature but will fail to propagate the kinds of extra info that a
+        #   constraint solver can give us.  [thought: we could maybe fix this by including
+        #   in the scheme/constraint any equation that references the variable as well].
+        def p (t):
+            if is_a (t, t_var):
+                if eqs.has_key (t):
+                    return p (eqs[t])
+                else:
+                    used.add (t)
+                    return t
+            elif is_a (t, t_predicate):
+                return t_predicate (t.name, [p(x) for x in t.args])
+            else:
+                return t
+        if not eqs:
+            return vars
+        else:
+            result = []
+            qvs = set (qvs)
+            for var in vars:
+                used = set()
+                scheme = p (var)
+                used = used.intersection (qvs)
+                if used:
+                    result.append (c_forall (used, scheme))
+                else:
+                    result.append (scheme)
+            return result
+
     def move_exists (self, s, vars):
         # this implements the various S-EX-? rules that attach a set of tvars to
         #   the nearest <let> on the stack.
@@ -762,6 +822,39 @@ class solver:
         else:
             self.exists.extend (vars)
 
+    def instantiate (self, scheme):
+        if not is_a (scheme, c_forall):
+            return scheme
+        else:
+            vars = scheme.vars
+            nvars = []
+            map = {}
+            for v in vars:
+                # fresh tvar for each quantified tvar
+                tv = t_var()
+                map[v] = tv
+                nvars.append (tv)
+            def f (c):
+                if is_a (c, c_equals):
+                    return c_equals (f (c.args[0]), f (c.args[1]))
+                elif is_a (c, c_and):
+                    return c_and (f (c.args[0]), f (c.args[1]))
+                elif is_a (c, t_predicate):
+                    return t_predicate (c.name, [f(x) for x in c.args])
+                elif is_a (c, t_var):
+                    if c in vars:
+                        return map[c]
+                    else:
+                        return c
+                elif is_a (c, t_base):
+                    return c
+                elif is_a (c, c_true):
+                    return c
+                else:
+                    # what other objects can we expect here? exists/forall??
+                    raise ValueError
+            return c_forall (nvars, f (scheme.constraint))
+
     def lookup (self, x, s):
         n = -1
         while 1:
@@ -772,98 +865,16 @@ class solver:
             elif is_a (f, s_exists):
                 continue
             elif is_a (f, s_let):
-                if f.formal == x:
-                    raise ValueError ("shouldn't happen?")
                 continue
             elif is_a (f, s_env):
-                if f.formal != x:
-                    continue
-                else:
-                    return f.type
+                for i in range (len (f.names)):
+                    if f.names[i].name == x:
+                        return f.types[i]
             elif is_a (f, s_empty):
                 break
-        return self.instantiate (self.lookup_special_names (x))
-
-    def instantiate (self, scheme):
-        map = {}
-        def walk (t):
-            if is_a (t, int):
-                if not map.has_key (t):
-                    map[t] = t_var()
-                return map[t]
-            elif is_a (t, t_predicate):
-                return t_predicate (t.name, [walk(x) for x in t.args])
             else:
-                return t
-        scheme = walk (scheme)
-        tvars = tuple (map.values())
-        return c_forall (tvars, c_true(), scheme)
-
-    def make_prim_env (self):
-        # build type schemes for builtins/primitives
-        # these are written in an unusual fashion, using integers as place holders
-        #   for type variables that will be instantiated fresh with each lookup.
-        # XXX I think that is probably overkill, just using unique tvars within this
-        #  environment is probably enough.
-        int = t_int()
-        char = t_char()
-        bool = t_bool()
-        e = {
-            '%+' : arrow (int, int, int),
-            '%-' : arrow (int, int, int),
-            '%*' : arrow (int, int, int),
-            '%=' : arrow (bool, int, int),
-            '%make-pair' : arrow (t_predicate ('pair', (0, 1)), 0, 1),
-            '%pair/first' : arrow (t_predicate ('pair', (0, 1)), 0),
-            '%pair/second' : arrow (t_predicate ('pair', (0, 1)), 1),
-            '%char->int' : arrow (int, char),
-            '%int->char' : arrow (char, int),
-            '%zed' : arrow (int),
-            # rows
-            '%abs' : arrow (t_predicate ('abs', ())), # arg discarded,
-            '%pre' : arrow (t_predicate ('pre', (0,)), 0),
-            # make a defaulted record
-            '%rmake' : arrow (product (rdefault (0)), 0),
-            # make an empty variant
-            '%vmake' : arrow (sum (rdefault (abs())), 0),
-            }
-        # label-related row types are in the 'lookup_special' method
-        return e
-
-    def lookup_special_names (self, name):
-        # we need this hack for row-related label lookups, since the label
-        #  is part of the name.
-        if self.prim_env.has_key (name):
-            # the normal path
-            return self.prim_env[name]
-        elif name.startswith ('%rextend/'):
-            what, label = name.split ('/')
-            # XXX pre(X)
-            # ∀XYZ.Π(l:X;Y) → Z → Π(l:Z;Y)
-            return arrow (
-                product (rlabel (label, 2, 1)),
-                product (rlabel (label, 0, 1)),
-                2
-                )
-        elif name.startswith ('%raccess/'):
-            what, label = name.split ('/')
-            # XXX pre(X)
-            # ∀XY.Π(l:X;Y) → X
-            return arrow (0, product (rlabel (label, 0, 1)))
-        elif name.startswith ('%vextend/'):
-            what, label = name.split ('/')
-            # ∀XY.X → Σ(l:pre X;Y)
-            return arrow (sum (rlabel (label, pre(0), 1)), 0)
-        elif name.startswith ('%vcase/'):
-            what, label = name.split ('/')
-            # ∀XYX'Y'.(X → Y) → (Σ(l:X';Y') → Y) → Σ(l:pre X;Y') → Y
-            # ∀XYX'Y'.f0 → f1 → s1 → Y
-            f0 = arrow (1, 0)
-            f1 = arrow (1, sum (rlabel (label, 2, 3)))
-            s1 = sum (rlabel (label, pre (0), 3))
-            return arrow (1, f0, f1, s1)
-        else:
-            raise UnboundVariable (name)
+                raise ValueError ("I'm confused")
+        raise UnboundVariable (x)
 
     def pprint_stack (self, s):
 
@@ -882,9 +893,11 @@ class solver:
             elif is_a (si, s_exists):
                 W ('exists%r.[]' % si.vars)
             elif is_a (si, s_let):
-                W ('let %s: forall%r[[]].%r in %r' % (si.formal, si.vars, si.type, si.body))
+                names = ';'.join (['%s:%r' % (si.names[i].name, si.types[i]) for i in range (len (si.names))])
+                W ('let %s: forall%r[[]] in %r' % (names, si.vars, si.body))
             elif is_a (si, s_env):
-                W ('env %s: %r in []' % (si.formal, si.type))
+                names = ';'.join (['%s:%r' % (si.names[i].name, si.types[i]) for i in range (len (si.names))])
+                W ('env %s: in []' % (names,))
             else:
                 raise NotImplementedError
             W ('\n')
@@ -918,45 +931,11 @@ def ftv (s, t):
         raise ValueError ("unknown type object")
 
 def print_solution (pvars, u, top_tv):
-
-    print pvars
+    from pprint import pprint as pp
+    pp (pvars)
     u.pprint()
     print top_tv
-
-    def lookup (x):
-        # XXX this can probably be simplified because of u.simplify
-        if is_a (x, t_var):
-            if x.eq:
-                if x.eq.type:
-                    return lookup (x.eq.type)
-                else:
-                    return x.eq.rep
-            else:
-                return x
-        elif is_a (x, t_predicate):
-            return t_predicate (x.name, [lookup(y) for y in x.args])
-        elif is_a (x, t_base):
-            return x
-        elif is_a (x, str):
-            # XXX row labels
-            return x
-        else:
-            raise ValueError ("unknown type object")
-
-    for pvar, tvar in pvars:
-        print '%r: %r' % (pvar, lookup (tvar))
-
-    print 'program: %r' % lookup (top_tv)
-
-def base_n (n, base, digits):
-    # return a string representation of <n> in <base>, using <digits>
-    s = []
-    while 1:
-        n, r = divmod (n, base)
-        s.insert (0, digits[r])
-        if not n:
-            break
-    return ''.join (s)
+    print 'program: %r' % u.decode (top_tv)
 
 def read_string (s):
     import cStringIO
@@ -965,26 +944,40 @@ def read_string (s):
     r = lisp_reader.reader (sf)
     return r.read()
 
+class typer:
+    def __init__ (self, scc_graph, verbose):
+        self.scc_graph = scc_graph
+        self.verbose = verbose
+    def go (self, exp):
+        cg = constraint_generator (self.scc_graph)
+        c, top_tv = cg.go (exp)
+        pprint_constraint (c)
+        #self.verbose = False
+        m, u = solver (self.verbose).solve (c)
+        #u.simplify()
+        u.renumber()
+        print_solution (m, u, top_tv)
+
 def test (s, step=True):
+    import transform
     import nodes
+    from pprint import pprint as pp
     global tvar_counter
-    tvar_counter = 0
+    tvar_counter = -1
     # wrap everything in a top-level <let>
-    # if we omit this, s-compress won't work on top-level exists
-    print 'expression=', s
     s = "(let ((top %s)) top)" % s
     exp = read_string (s)
+    t = transform.transformer (1)
+    exp2 = t.go ([exp])
     w = nodes.walker()
-    exp2 = w.go (exp)
+    exp3 = w.go (exp2)
     # alpha conversion
-    nodes.rename_variables (exp2)
-    cg = constraint_generator()
-    c, top_tv = cg.go (exp2)
-    print 'constraint=', c
-    m, u = solver(step).solve(c)
-    u.simplify()
-    u.renumber()
-    print_solution (m, u, top_tv)
+    var_dict = nodes.rename_variables (exp3)
+    t = typer (step)
+    c = t.go (exp3)
+    pprint_constraint (c)
+    u = solver(step).solve (c)
+    print u
 
 tests = [
     "5",
