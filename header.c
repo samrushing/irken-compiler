@@ -6,20 +6,20 @@ void
 verify (object * ob, pxll_int tc)
 {
   if (IMMEDIATE (ob)) {
-    pxll_int ob_tc = (pxll_int)ob & 0xff;
+    unsigned char ob_tc = (pxll_int)ob & 0xff;
     if (tc == TC_INT) { 
       if (!IS_INTEGER (ob)) {
 	fprintf (stderr, "ERROR: Got immediate TC=0x%02x, expected integer %d\n", ob_tc, !(ob_tc&1));
 	abort();
       }
     } else if (tc != ob_tc) {
-      fprintf (stderr, "ERROR: Got immediate TC=0x%02x, expected 0x%02x\n", ob_tc, tc);
+      fprintf (stderr, "ERROR: Got immediate TC=0x%02x, expected 0x%02x\n", ob_tc, (unsigned int) tc);
       abort();
     }
   } else {
-    pxll_int ob_tc = (pxll_int)*((pxll_int *)ob) & 0xff;
+    unsigned char ob_tc = (pxll_int)*((pxll_int *)ob) & 0xff;
     if (tc != ob_tc) {
-      fprintf (stderr, "ERROR: Got object with TC=0x%02x, expected TC=0x%02x\n", ob_tc, tc);
+      fprintf (stderr, "ERROR: Got object with TC=0x%02x, expected TC=0x%02x\n", ob_tc, (unsigned int) tc);
       abort();
     }
   }
@@ -433,7 +433,7 @@ vm (int argc, char * argv[])
     size = freep - start;
     offset = (pxll_int) heap0;
     // XXX add endian indicator...
-    fprintf (dump_file, "(pxll image %d %p)\n", sizeof (pxll_int), start);
+    fprintf (dump_file, "(pxll image %ld %p)\n", sizeof (pxll_int), start);
     fwrite (&offset, sizeof(pxll_int), 1, dump_file);
     fwrite (&size, sizeof(pxll_int), 1, dump_file);
     fwrite (start, sizeof(pxll_int), size, dump_file);
