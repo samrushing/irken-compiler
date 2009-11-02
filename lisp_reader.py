@@ -55,6 +55,8 @@ class reader:
             raise EOFError, "Unexpected end of file"
         elif ch == '(':
             result = self.read_list()
+        elif ch == '{':
+            result = self.read_record()
         elif ch == '"':
             result = self.read_string()
         elif ch == "'":
@@ -97,6 +99,10 @@ class reader:
                 result = atom ('undefined', 'undefined')
             elif ch == '(':
                 result = atom ('vector', self.read_list())
+            # it's arguable: "{...}" or "#{...}" - the latter is more scheme-like
+            #   but pointlessly noisier.
+            #elif ch == '{':
+            #    result = atom ('record', self.read_record())
             else:
                 raise SyntaxError, 'Illegal #-escape character: "%s"' % ch
         elif ch in '-0123456789':
@@ -119,12 +125,9 @@ class reader:
         # hack to support postfix array-reference syntax
         self.skip_whitespace()
         ch = self.peek()
-        if ch != '' and ch in '[{':
+        if ch != '' and ch == '[':
             index = self.read_array_index()
-            if ch == '[':
-                return ['%%array-ref', result, index]
-            else:
-                return ['%%product-ref', result, index]
+            return ['%%array-ref', result, index]
         else:
             return result
 
@@ -186,6 +189,36 @@ class reader:
                     self.read_include (exp, result)
                 else:
                     result.append (exp)
+
+    def read_name (self):
+        result = []
+        while 1:
+            p = self.peek()
+            if not (p in string.letters or p in string.digits):
+                return ''.join (result)
+            else:
+                result.append (p)
+                self.next()
+
+    def read_record (self):
+        # { label=value label=value }
+        result = []
+        # skip open bracket
+        self.next()
+        while 1:
+            self.skip_whitespace()
+            p = self.peek()
+            if p == '}':
+                self.next()
+                return atom ('record', result)
+            else:
+                name = self.read_name()
+                self.skip_whitespace()
+                if self.next() != '=':
+                    raise SyntaxError ("expected '=' in record literal")
+                else:
+                    val = self.read()
+                    result.append ((name, val))
 
     def read_array_index (self):
         # throw away open bracket
