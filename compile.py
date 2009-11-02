@@ -18,6 +18,17 @@ def read_string (s):
     r = lisp_reader.reader (sf)
     return r.read()
 
+class context:
+    # maintain some context between passes
+    # XXX this could be a 'compiler' class
+    def __init__ (self):
+        self.datatypes = {}
+        self.dep_graph = None
+        self.scc_graph = None
+        self.scc_map = None
+        self.var_dict = None
+        self.record_types = None
+
 def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=False, trace=False):
     base, ext = os.path.splitext (name)
     r = lisp_reader.reader (f)
@@ -30,7 +41,9 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
     # XXX might go easier on memory if we discarded the results of
     #  each pass after using it... 8^)
 
-    t = transform.transformer (safety)
+    c = context()
+
+    t = transform.transformer (safety, c)
     exp2 = t.go (exp)
     if verbose:
         print '--- transform ---'
@@ -40,28 +53,27 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
     exp3 = w.go (exp2)
 
     # alpha conversion
-    var_dict = nodes.rename_variables (exp3)
-
-    dep_graph = graph.build_dependency_graph (exp3)
+    c.var_dict = nodes.rename_variables (exp3, c.datatypes)
     # find strongly connected components
-    scc_graph, scc_map = graph.strongly (dep_graph)
-    # type inference needs scc_graph to rearrange each <fix>.
-    t = solver.typer (scc_graph, verbose)
+    c.dep_graph = graph.build_dependency_graph (exp3)
+    c.scc_graph, c.scc_map = graph.strongly (c.dep_graph)
+    # run the constraint generator and solver to find types
+    t = solver.typer (c, verbose)
     t.go (exp3)
 
     if verbose:
         print '--- typing ---'
         exp3.pprint()
 
-    a = analyze.analyzer (var_dict, safety, noinline, verbose)
+    a = analyze.analyzer (c, safety, noinline, verbose)
     exp4 = a.analyze (exp3)
 
     if verbose:
         print '--- analyzer ---'
         exp4.pprint()
 
-    c = cps.irken_compiler (safety=safety, verbose=verbose)
-    exp5 = c.go (exp4)
+    ic = cps.irken_compiler (c, safety=safety, verbose=verbose)
+    exp5 = ic.go (exp4)
 
     if verbose:
         print '--- cps ---'
@@ -69,7 +81,7 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
         #import sys; sys.stdout.write ('-'*40 + '\n')
     fo = open ('%s.c' % base, 'wb')
     num_regs = cps.the_register_allocator.max_reg
-    b = backend.c_backend (fo, name, num_regs, safety=safety, annotate=annotate, trace=trace)
+    b = backend.c_backend (fo, name, num_regs, c, safety=safety, annotate=annotate, trace=trace)
     b.emit (exp5)
     b.done()
     fo.close()
