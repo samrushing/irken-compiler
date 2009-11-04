@@ -476,7 +476,7 @@ class c_backend:
         closure_reg, args_reg = insn.regs
         fun = insn.params
         # call
-        self.verify (1, 'verify (r%d, TC_CLOSURE);' % (closure_reg,))
+        #self.verify (1, 'verify (r%d, TC_CLOSURE);' % (closure_reg,))
         #   extend closure's environment with args, jump
         if fun:
             label = 'goto %s' % (self.function_label (fun),)
@@ -497,7 +497,7 @@ class c_backend:
         saves = ' '.join (saves)
         self.write ('t[1] = k; t[2] = lenv; t[3] = &&%s; %s k = t;' % (return_label, saves))
         # call
-        self.verify (1, 'verify (r%d, TC_CLOSURE);' % (closure_reg,))
+        #self.verify (1, 'verify (r%d, TC_CLOSURE);' % (closure_reg,))
         #   extend closure's environment with args, jump
         if fun:
             label = 'goto %s' % (self.function_label (fun,),)
@@ -517,7 +517,7 @@ class c_backend:
         for i in range (nregs):
             restores.append ('r%d = k[%d];' % (free_regs[i], i+4))
         restores = ' '.join (restores)
-        self.verify (1, 'verify (k, TC_SAVE);')
+        #self.verify (1, 'verify (k, TC_SAVE);')
         self.write ('%s; lenv = k[2]; k = k[1];' % restores)
         if insn.target is not 'dead':
             self.write ('r%d = result;' % (insn.target,))
@@ -539,7 +539,7 @@ class c_backend:
         assert (insn.target == 'dead')
         val_reg = insn.regs[0]
         tc, safety = insn.params
-        self.verify (safety, 'verify (r%d, %s);' % (val_reg, tc))
+        #self.verify (safety, 'verify (r%d, %s);' % (val_reg, tc))
 
     def insn_fetch_const (self, insn):
         index = insn.params
