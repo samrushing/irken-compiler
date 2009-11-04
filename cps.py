@@ -178,11 +178,8 @@ class compiler:
                 dead_cont (k[1], self.compile_sequence (tail_pos, exps[1:], lenv, k))
                 )
 
-    # XXX this needs to be fixed
-    simple_conditionals = set (('%==', '%eq?', '%zero?', '%ge?', '%gt?', '%lt?', '%le?'))
-
     def compile_conditional (self, tail_pos, exp, lenv, k):
-        if exp.test_exp.is_a ('primapp') and exp.test_exp.name in self.simple_conditionals:
+        if exp.test_exp.is_a ('cexp'):
             return self.compile_simple_conditional (tail_pos, exp, lenv, k)
         else:
             return self.compile_exp (
@@ -200,7 +197,7 @@ class compiler:
     def compile_simple_conditional (self, tail_pos, exp, lenv, k):
         def finish (regs):
             return self.gen_simple_test (
-                exp.test_exp.name,
+                exp.test_exp.params,
                 regs,
                 self.compile_exp (tail_pos, exp.then_exp, lenv, cont (k[1], lambda reg: self.gen_jump (reg, k))),
                 self.compile_exp (tail_pos, exp.else_exp, lenv, cont (k[1], lambda reg: self.gen_jump (reg, k))),
