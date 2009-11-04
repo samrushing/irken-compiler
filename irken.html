@@ -25,9 +25,11 @@
 <h2>The Plan</h2>
 
 <ol>
- <li> implement the irken compiler.</li>
- <li> write a VM for the python-like language in irken.</li>
- <li> rewrite the irken compiler in the python-like language</li>
+ <li> Implement the irken compiler.</li>
+ <li> Write a VM for the python-like language in Irken.</li>
+ <li> Rewrite the irken compiler in the python-like language.</li>
+ <li> ?? </li>
+ <li> Profit! </li>
 </ol>
 
 <p>Currently, I'm in stage 2 - though about 90% of the work is still in stage 1.</p>
@@ -39,7 +41,7 @@
 start life as a much smaller language.  My current thinking is that it
 will be dynamically typed (just like Python), though I may experiment
 with some kind of type inference.  PLL will use a VM, implemented in Irken.
-<i>Yes, I need a better name than 'PLL'.</i>  Originally, I had planned to call the two languages 'Irken-Low' and 'Irken-High', but this would just be confusing since they have almost nothing in common.
+<i>Yes, I need a better name than 'PLL'.</i>  Originally, I had planned to call the two languages 'Irken-Low' and 'Irken-High', but this would just be confusing since they have almost nothing in common.  Also, I believe Irken will be useful on its own.
 </p>
 
 <h3>Irken</h3>
@@ -115,14 +117,17 @@ support for GC will be useless without a stack.</p>
   <br>output: s-exp
 </dd>
 
-<dt>lambda_tree.py</dt>
+<dt>nodes.py</dt>
 <dd>  convert the s-expression into a tree of nodes.
   <br>input: s-exp
   <br>output: node tree
 </dd>
 
 <dt>typing.py</dt>
-<dd>  hindley-milner polymorphic type inference [still in progress] </dd>
+<dd>  hindley-milner polymorphic type inference [obsolete] </dd>
+
+<dt>solver.py</dt>
+<dd>  constraint-based type inference, based on ATTPL Chapter 10 </dd>      
 
 <dt>analyze.py</dt>
 <dd>  alpha conversion, tree shaker, inliner, some simplification
@@ -194,18 +199,17 @@ python compile.py -f tests/tak20.scm
            tests/tak20.c and then
            tests/tak20
 
-python compile.py -f -O tests/tak20.scm
- - compile with "gcc -O3"
-
-python compile.py -f -O tests/tak20.scm -s 0
- - compile with safety level '0'
+'-a': include cps insn annotation in generated C code
+'-v': verbose compiler output
+'-f': compile this file
+'-O': optimize (gcc -O3)
 
 </pre>
 
     <hr>
 <!-- Created: Wed Sep 30 13:54:40 PDT 2009 -->
 <!-- hhmts start -->
-Last modified: Wed Sep 30 13:54:58 PDT 2009
+Last modified: Tue Nov  3 16:41:30 PST 2009
 <!-- hhmts end -->
   </body>
 </html>
