@@ -1,11 +1,13 @@
 # -*- Mode: Python -*-
 
+from pdb import set_trace as trace
+
 is_a = isinstance
 
 class compiler:
 
-    def __init__ (self, safety=1, verbose=False):
-        self.line = 0
+    def __init__ (self, context, safety=1, verbose=False):
+        self.context = context
         self.safety = safety
         self.verbose = verbose
         self.constants = {}
@@ -137,7 +139,19 @@ class compiler:
         return self.collect_primargs (args, [], lenv, k, lambda regs: self.gen_primop (op, regs, k))
 
     def compile_primapp (self, tail_pos, exp, lenv, k):
-        if exp.name == '%%vector-literal':
+        if exp.name.startswith ('%raccess'):
+            ignore, field = exp.name.split ('/')
+            # try to get constant-time field access... [this would be much nicer if the type solver
+            #  would just annotate every node.  urgh.]
+            if exp.args[0].is_a ('varref'):
+                var, addr, is_top = self.lexical_address (lenv, exp.args[0].name)
+                index = var.sig.index (field)
+            else:
+                index = None
+            return self.compile_primargs (exp.args, ('%record-get', field, index), lenv, k)
+        elif exp.name.startswith ('%rextend'):
+            return self.compile_record_literal (exp, lenv, k)
+        elif exp.name == '%%vector-literal':
             if len (exp.args) < 5:
                 return self.compile_primargs (exp.args, ('%make-tuple', exp.type, 'vector'), lenv, k)
             else:
@@ -277,6 +291,45 @@ class compiler:
                 )
             )
 
+    def compile_record_literal (self, exp, lenv, k):
+        # unwind row primops into a record literal
+        # (%rextend/field0 (%rextend/field1 (%rmake) ...)) => {field0=x field1=y}
+        fields = []
+        while 1:
+            if exp.name == '%rmake':
+                # we're done...
+                break
+            elif exp.name.startswith ('%rextend/'):
+                ignore, field = exp.name.split ('/')
+                fields.append ((field, exp.args[1]))
+                exp = exp.args[0]
+            else:
+                return self.compile_record_extension (fields, exp, lenv, k)
+        # put the names into canonical order (sorted by label)
+        fields.sort (lambda a,b: cmp (a[0],b[0]))
+        # lookup the runtime tag for this record
+        sig = tuple ([x[0] for x in fields])
+        tag = self.context.record_types[sig]
+        # now compile the expression as a %make-tuple
+        args = [x[1] for x in fields]
+        return self.compile_primargs (args, ('%make-tuple', sig, tag), lenv, k)
+
+    def compile_record_extension (self, fields, exp, lenv, k):
+        import itypes
+        sig = itypes.get_record_sig (exp.type)
+        # ok, we have a source record {a,b} to which we want to add
+        #   one or more fields {c,d}.  We'll need to compile a
+        #   'make-tuple' with args fetched from the source record
+        #   mixed in with new args, all in the correct order.
+        # XXX fails with duplicate labels
+        labels = [x[0] for x in fields]
+        labels.sort()
+        args = [x[1] for x in fields]
+        new_sig = list(set(sig).union (set(labels)))
+        new_sig.sort()
+        new_sig = tuple (new_sig)
+        new_tag = self.context.record_types[new_sig]
+        return self.compile_primargs ([exp] + args, ('%extend-tuple', labels, sig, new_tag), lenv, k)
 
 # the allocator and cont stuff *should* be in the compiler instance...
 
@@ -308,7 +361,6 @@ def box (n):
 
 class INSN:
 
-    typecheck = None
     allocates = 0
 
     def __init__ (self, name, regs, params, k):
