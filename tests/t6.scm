@@ -28,7 +28,7 @@
 ;;    }
 ;;    PXLL_RETURN(0);
 
-;; gcc compiles *that* (with -O3) to:
+;; gcc -O3 compiles *that* to:
 ;; L130:
 ;; 	movq	(%r12), %rax
 ;; 	sarq	%rax
@@ -42,3 +42,21 @@
 ;; 	movq	%rax, (%r12)
 ;; 	jmp	L130
 
+;; gcc-llvm does even better:
+;;LBB6_1:
+;;	cmpq	$1, %rdx
+;;	ja	LBB6_4
+;;	cmpq	$2, 24(%rcx)
+;;	je	LBB6_1
+;;Llabel47:
+;;Llabel24:
+;;	popq	%rbp
+;;	ret
+;;LBB6_4:
+;;	addq	$-2, %rdx
+;;	orq	$1, %rdx
+;;	movq	%rdx, 120(%rcx)
+;;	jmp	LBB6_1
+
+;; dunno why, but gcc gives about 8 cycles per loop,
+;   and the llvm gives around *2* cycles per loop.
