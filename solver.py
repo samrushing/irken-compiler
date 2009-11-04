@@ -205,88 +205,105 @@ class constraint_generator:
     def gen (self, exp, t):
         if is_a (t, t_var):
             t.node = exp
-        if exp.is_a ('varref'):
-            return c_is (exp.name, t)
-        elif exp.is_a ('function'):
-            if is_pred (t, 'arrow'):
-                # lemma 10.4.7
-                rtv, args = t.args[0], list(t.args[1:])
-            else:
-                rtv, args = t_var(), [t_var() for x in exp.formals]
-            if len(args):
-                c = c_let (exp.formals, args, c_true(), self.gen (exp.body, rtv))
-            else:
-                c = self.gen (exp.body, rtv)
-            # XXX: in ATTPL, this is a c_supertype relation
-            if is_pred (t, 'arrow'):
-                return c
-            else:
-                sub1 = c_equals (t, arrow (rtv, *args))
-                return c_exists ([rtv] + args, c_and (c, sub1))
-        elif exp.is_a ('application'):
-            args = [t_var() for x in exp.rands]
-            c = self.gen (exp.rator, arrow (t, *args))
-            for i in range (len(exp.rands)):
-                c = c_and (c, self.gen (exp.rands[i], args[i]))
-            return c_exists (args, c)
-        elif exp.is_a ('primapp'):
-            args = [t_var() for x in exp.args]
-            c = c_is (exp.name, arrow (t, *args))
-            for i in range (len(exp.args)):
-                c = c_and (c, self.gen (exp.args[i], args[i]))
-            return c_exists (args, c)
-        elif exp.is_a ('cexp'):
-            sig = parse_cexp_type (exp.type_sig)
-            r = c_equals (t, sig.args[0]) # result type
-            for i in range (len (exp.args)):
-                r = c_and (r, self.gen (exp.args[i], sig.args[i+1]))
-            return r
-        elif exp.is_a ('let_splat'):
-            r = self.gen (exp.body, t)
-            n = len (exp.names)
-            for i in range (n-1,-1,-1):
-                name = exp.names[i]
-                init = exp.inits[i]
-                var = t_var()
-                r = c_let ([name], [var], c_forall ((var,), self.gen (init, var)), r)
-            return r
-        elif exp.is_a ('fix'):
-            partition = graph.reorder_fix (exp, self.scc_graph)
-            partition.reverse()
-            c0 = self.gen (exp.body, t)
-            # XXX deep partitioning magic here
-            for part in partition:
-                names = [exp.names[i] for i in part]
-                funs  = [exp.inits[i] for i in part]
-                # one var for each function
-                fvars = tuple ([t_var() for x in names])
-                c1 = list_to_conj (
-                    [self.gen (funs[i], fvars[i]) for i in range (len (part))]
-                    )
-                # inner/monomorphic binding
-                c1 = c_let (names, fvars, c_true(), c1)
-                # outer/polymorphic binding
-                c1 = c_let (names, fvars, c_forall (fvars, c1), c0)
-                c0 = c1
-            return c0
-        elif exp.is_a ('conditional'):
-            test_exp = self.gen (exp.test_exp, t_bool())
-            then_exp = self.gen (exp.then_exp, t)
-            else_exp = self.gen (exp.else_exp, t)
-            return c_and (test_exp, c_and (then_exp, else_exp))
-        elif exp.is_a ('sequence'):
-            n = len (exp.subs)
-            tvars = [t_var() for x in range (n-1)]
-            c = self.gen (exp.subs[-1], t)
-            for i in range (n-1):
-                # everything but the last, type it as don't-care
-                c = c_and (c, self.gen (exp.subs[i], tvars[i]))
-            return c_exists (tvars, c)
-        elif exp.is_a ('literal'):
-            return c_equals (t, base_types[exp.type])
+        name = 'gen_%s' % exp.kind
+        probe = getattr (self, name)
+        if probe:
+            probe (exp, t)
         else:
-            raise ValueError
+            raise ValueError (exp.kind)
+        
+    def gen_varref (self, exp, t):
+        return c_is (exp.name, t)
 
+    def gen_function (self, exp, t):
+        if is_pred (t, 'arrow'):
+            # lemma 10.4.7
+            rtv, args = t.args[0], list(t.args[1:])
+        else:
+            rtv, args = t_var(), [t_var() for x in exp.formals]
+        if len(args):
+            c = c_let (exp.formals, args, c_true(), self.gen (exp.body, rtv))
+        else:
+            c = self.gen (exp.body, rtv)
+        # XXX: in ATTPL, this is a c_supertype relation
+        if is_pred (t, 'arrow'):
+            return c
+        else:
+            sub1 = c_equals (t, arrow (rtv, *args))
+            return c_exists ([rtv] + args, c_and (c, sub1))
+
+    def gen_application (self, exp, t):
+        args = [t_var() for x in exp.rands]
+        c = self.gen (exp.rator, arrow (t, *args))
+        for i in range (len(exp.rands)):
+            c = c_and (c, self.gen (exp.rands[i], args[i]))
+        return c_exists (args, c)
+
+    def gen_primapp (self, exp, t):
+        args = [t_var() for x in exp.args]
+        c = c_is (exp.name, arrow (t, *args))
+        for i in range (len(exp.args)):
+            c = c_and (c, self.gen (exp.args[i], args[i]))
+        return c_exists (args, c)
+
+    def gen_cexp (self, exp, t):
+        sig = parse_cexp_type (exp.type_sig)
+        r = c_equals (t, sig.args[0]) # result type
+        for i in range (len (exp.args)):
+            r = c_and (r, self.gen (exp.args[i], sig.args[i+1]))
+        return r
+
+    def gen_let_splat (self, exp, t):
+        r = self.gen (exp.body, t)
+        n = len (exp.names)
+        for i in range (n-1,-1,-1):
+            name = exp.names[i]
+            init = exp.inits[i]
+            var = t_var()
+            r = c_let ([name], [var], c_forall ((var,), self.gen (init, var)), r)
+        return r
+
+    def gen_fix (self, exp, t):
+        partition = graph.reorder_fix (exp, self.scc_graph)
+        partition.reverse()
+        c0 = self.gen (exp.body, t)
+        # XXX deep partitioning magic here
+        for part in partition:
+            names = [exp.names[i] for i in part]
+            funs  = [exp.inits[i] for i in part]
+            # one var for each function
+            fvars = tuple ([t_var() for x in names])
+            c1 = list_to_conj (
+                [self.gen (funs[i], fvars[i]) for i in range (len (part))]
+                )
+            # inner/monomorphic binding
+            c1 = c_let (names, fvars, c_true(), c1)
+            # outer/polymorphic binding
+            c1 = c_let (names, fvars, c_forall (fvars, c1), c0)
+            c0 = c1
+        return c0
+
+    def gen_conditional (self, exp, t):
+        test_exp = self.gen (exp.test_exp, t_bool())
+        then_exp = self.gen (exp.then_exp, t)
+        else_exp = self.gen (exp.else_exp, t)
+        return c_and (test_exp, c_and (then_exp, else_exp))
+
+    def gen_sequence (self, exp, t):
+        n = len (exp.subs)
+        tvars = [t_var() for x in range (n-1)]
+        c = self.gen (exp.subs[-1], t)
+        for i in range (n-1):
+            # everything but the last, type it as don't-care
+            c = c_and (c, self.gen (exp.subs[i], tvars[i]))
+        return c_exists (tvars, c)
+
+    def gen_literal (self, exp, t):
+        return c_equals (t, base_types[exp.type])
+
+    def gen_vcase (self, exp, t):
+        # type as a series of variant primitives
+        pass
 
 class UnboundVariable (Exception):
     pass
@@ -600,8 +617,8 @@ class unifier:
 
 class solver:
 
-    def __init__ (self, datatypes, step=True):
-        self.datatypes = datatypes
+    def __init__ (self, context, step=True):
+        self.context = context
         self.step = step
 
     def dprint (self, msg):
@@ -859,8 +876,10 @@ class solver:
             what, label = name.split ('/')
             # ∀XY.Π(l:pre(X);Y) → X
             return c_forall ((0,1), arrow (0, product (rlabel (label, pre(0), 1))))
-        elif name.startswith ('%vextend/'):
+        elif name.startswith ('%vcon/'):
             what, label = name.split ('/')
+            # remember each unique variant label
+            self.remember_variant_label (label)
             # ∀XY.X → Σ(l:pre X;Y)
             return c_forall ((0,1), arrow (sum (rlabel (label, pre(0), 1)), 0))
         elif name.startswith ('%vcase/'):
@@ -873,6 +892,12 @@ class solver:
             return c_forall ((0,1,2,3), arrow (1, f0, f1, s1))
         else:
             raise UnboundVariable (name)
+
+    # XXX consider recording record labels at this point as well
+    def remember_variant_label (self, label):
+        vl = self.context.variant_labels
+        if not vl.has_key (label):
+            vl[label] = len (vl)
 
     def pprint_stack (self, s):
 
@@ -947,13 +972,14 @@ class typer:
     def __init__ (self, context, verbose):
         self.context = context
         self.verbose = verbose
+        self.context.variant_labels = {}
 
     def go (self, exp):
         cg = constraint_generator (self.context.scc_graph)
         c, top_tv = cg.go (exp)
         pprint_constraint (c)
         self.verbose = False
-        m, u = solver (self.context.datatypes, self.verbose).solve (c)
+        m, u = solver (self.context, self.verbose).solve (c)
         # I *think* that any remaining 'unsolved' types (i.e., ones for which we assigned
         # a tvar as the type rather than a scheme) are now solved with <u>.  I also think
         # that any unclosed types (for example an unclosed row type) should throw a
