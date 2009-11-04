@@ -291,23 +291,19 @@ class analyzer:
                 if exp.get_rator().is_a ('varref'):
                     ref = exp.get_rator()
                     name = ref.params
-                    if name.startswith ('&'):
-                        # row-related primitives
-                        pass
-                    else:
-                        var = self.vars[name]
-                        if var.function:
-                            fun = var.function
-                            if lookup_fun (fun, fenv):
-                                # mark both the function and the application as recursive
-                                fun.params[2] = True
-                                exp.params = True
-                            else:
-                                exp.params = False
-                            exp.function = fun
-                            self.note_funcall (name)
+                    var = self.vars[name]
+                    if var.function:
+                        fun = var.function
+                        if lookup_fun (fun, fenv):
+                            # mark both the function and the application as recursive
+                            fun.params[2] = True
+                            exp.params = True
                         else:
-                            exp.function = None
+                            exp.params = False
+                        exp.function = fun
+                        self.note_funcall (name)
+                    else:
+                        exp.function = None
                 else:
                     exp.function = None
             for sub in exp.subs:
@@ -400,17 +396,13 @@ class analyzer:
         for exp in initial_expressions:
             for node in exp:
                 if node.one_of ('varref', 'varset'):
-                    if node.params.startswith ('&'):
-                        # row-related prims
-                        pass
+                    var = self.lookup_var (node)
+                    if var.function:
+                        fun = var.function
+                        fun.params[0] = var.name # alpha conversion
+                        to_scan[var] = fun
                     else:
-                        var = self.lookup_var (node)
-                        if var.function:
-                            fun = var.function
-                            fun.params[0] = var.name # alpha conversion
-                            to_scan[var] = fun
-                        else:
-                            to_scan[var] = None
+                        to_scan[var] = None
         #print 'find_applications, to_scan=', to_scan
         # find all (named) functions referenced by those in <to_scan>
         seen = to_scan.copy()
@@ -486,8 +478,6 @@ class analyzer:
                 rator = node.get_rator()
                 if rator.is_a ('varref'):
                     name = rator.params
-                    if name.startswith ('&'):
-                        return node
                     var = self.lookup_var (rator)
                     fun = var.function
                     # (<varref xxx> ...) doesn't always refer to a known
