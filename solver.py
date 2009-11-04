@@ -208,7 +208,7 @@ class constraint_generator:
         name = 'gen_%s' % exp.kind
         probe = getattr (self, name)
         if probe:
-            probe (exp, t)
+            return probe (exp, t)
         else:
             raise ValueError (exp.kind)
         
@@ -300,10 +300,6 @@ class constraint_generator:
 
     def gen_literal (self, exp, t):
         return c_equals (t, base_types[exp.type])
-
-    def gen_vcase (self, exp, t):
-        # type as a series of variant primitives
-        pass
 
 class UnboundVariable (Exception):
     pass
