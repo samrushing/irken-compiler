@@ -110,7 +110,7 @@ def cc (name, force_32=False, optimize=False, cc='gcc'):
     # doesn't work as of os x 10.6
     #cc = '/Developer/usr/bin/clang'
     # *does* work as of os x 10.6
-    #cc = '/Developer/usr/bin/llvm-gcc'
+    cc = '/Developer/usr/bin/llvm-gcc'
     cmd = '%s -I. -g %s %s %s.c -o %s' % (cc, arch, optimize, base, base)
     print cmd
     os.system (cmd)
