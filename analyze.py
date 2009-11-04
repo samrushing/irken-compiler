@@ -26,10 +26,10 @@ class analyzer:
 
     """identify the definition and use of variables (and functions)."""
 
-    def __init__ (self, vars, safety=1, noinline=False, verbose=False):
+    def __init__ (self, context, safety=1, noinline=False, verbose=False):
         self.node_counter = 0
         self.safety=safety
-        self.vars = vars
+        self.vars = context.var_dict
         self.constants = {}
         self.inline = not noinline
         self.verbose = verbose
@@ -225,20 +225,20 @@ class analyzer:
     # Unfortunately, these two expose the C backend up here
     #  where they shouldn't.  Should probably just make these
     #  user functions?
-    def transform_1_get (self, node):
-        [ob] = node.subs
-        field_name = node.params
-        c = typing.datatypes[ob.type.name]
-        offset = c.get_field_offset (field_name)
-        return nodes.cexp ("UOBJ_GET(%%s,%d)" % (offset,), ('?', ('?')), [ob])
+#     def transform_1_get (self, node):
+#         [ob] = node.subs
+#         field_name = node.params
+#         c = typing.datatypes[ob.type.name]
+#         offset = c.get_field_offset (field_name)
+#         return nodes.cexp ("UOBJ_GET(%%s,%d)" % (offset,), ('?', ('?')), [ob])
 
-    def transform_1_set (self, node):
-        #(%%cexp "((pxll_vector*)(%s))->val[%s] = %s" ob offset x))
-        [ob, val] = node.subs
-        field_name = node.params
-        c = typing.datatypes[ob.type.name]
-        offset = c.get_field_offset (field_name)
-        return nodes.cexp ("UOBJ_SET(%%s,%d,%%s)" % (offset,), ('undefined', ('?', '?')), [ob, val])
+#     def transform_1_set (self, node):
+#         #(%%cexp "((pxll_vector*)(%s))->val[%s] = %s" ob offset x))
+#         [ob, val] = node.subs
+#         field_name = node.params
+#         c = typing.datatypes[ob.type.name]
+#         offset = c.get_field_offset (field_name)
+#         return nodes.cexp ("UOBJ_SET(%%s,%d,%%s)" % (offset,), ('undefined', ('?', '?')), [ob, val])
 
     def replace (self, orig_node, fun):
         # apply replacement-fun() to all of <node>
@@ -291,19 +291,23 @@ class analyzer:
                 if exp.get_rator().is_a ('varref'):
                     ref = exp.get_rator()
                     name = ref.params
-                    var = self.vars[name]
-                    if var.function:
-                        fun = var.function
-                        if lookup_fun (fun, fenv):
-                            # mark both the function and the application as recursive
-                            fun.params[2] = True
-                            exp.params = True
-                        else:
-                            exp.params = False
-                        exp.function = fun
-                        self.note_funcall (name)
+                    if name.startswith ('&'):
+                        # row-related primitives
+                        pass
                     else:
-                        exp.function = None
+                        var = self.vars[name]
+                        if var.function:
+                            fun = var.function
+                            if lookup_fun (fun, fenv):
+                                # mark both the function and the application as recursive
+                                fun.params[2] = True
+                                exp.params = True
+                            else:
+                                exp.params = False
+                            exp.function = fun
+                            self.note_funcall (name)
+                        else:
+                            exp.function = None
                 else:
                     exp.function = None
             for sub in exp.subs:
@@ -396,13 +400,17 @@ class analyzer:
         for exp in initial_expressions:
             for node in exp:
                 if node.one_of ('varref', 'varset'):
-                    var = self.lookup_var (node)
-                    if var.function:
-                        fun = var.function
-                        fun.params[0] = var.name # alpha conversion
-                        to_scan[var] = fun
+                    if node.params.startswith ('&'):
+                        # row-related prims
+                        pass
                     else:
-                        to_scan[var] = None
+                        var = self.lookup_var (node)
+                        if var.function:
+                            fun = var.function
+                            fun.params[0] = var.name # alpha conversion
+                            to_scan[var] = fun
+                        else:
+                            to_scan[var] = None
         #print 'find_applications, to_scan=', to_scan
         # find all (named) functions referenced by those in <to_scan>
         seen = to_scan.copy()
@@ -477,8 +485,10 @@ class analyzer:
             if node.is_a ('application'):
                 rator = node.get_rator()
                 if rator.is_a ('varref'):
-                    var = self.lookup_var (rator)
                     name = rator.params
+                    if name.startswith ('&'):
+                        return node
+                    var = self.lookup_var (rator)
                     fun = var.function
                     # (<varref xxx> ...) doesn't always refer to a known
                     #  fun, in this case calls == 0...
