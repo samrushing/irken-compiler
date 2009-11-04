@@ -1009,11 +1009,6 @@ class typer:
         self.context.record_types = all2
         self.context.record_labels = labels
 
-def record_signature (t):
-    # given a full record, return its 'signature'
-    assert (t.name == 'product')
-    return result
-
 def test (s, step=True):
     import transform
     import nodes
