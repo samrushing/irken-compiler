@@ -53,7 +53,6 @@ class node:
     #     attribute might hold a single expression, and others might hold sets
     #     of them.
 
-    typecheck = None
     # generic flag
     flag = False
     constructor = False
@@ -456,6 +455,9 @@ class walker:
             node.fix_attribute_names()
         return exp
 
+# these worked by inserting the constructor definitions directly
+#  into the node tree.  I think we want to avoid this now, since
+#  we won't know the exact shape of each record until after typing.
 def add_constructors (root):
     names = []
     inits = []
@@ -469,17 +471,13 @@ def add_constructors (root):
             fname, fun = dt.gen_constructor()
             names.append (vardef (fname))
             inits.append (fun)
-        elif is_a (dt, typing.klass):
-            fname, fun = dt.gen_constructor()
-            names.append (vardef (fname))
-            inits.append (fun)
         else:
             raise ValueError ("unknown datatype")
     return fix (names, inits, root)
 
 # alpha conversion
 
-def rename_variables (exp):
+def rename_variables (exp, datatypes):
     vars = []
 
     def lookup_var (name, lenv):
@@ -491,7 +489,12 @@ def rename_variables (exp):
                 x = rib[i]
                 if x.name == name:
                     return x
-        raise ValueError ("unbound variable: %r" % (name,))
+        if datatypes.has_key (name):
+            return None
+        elif name.startswith ('&'):
+            return None
+        else:
+            raise ValueError ("unbound variable: %r" % (name,))
 
     # walk <exp>, inventing a new name for each <vardef>,
     #   renaming varref/varset as we go...
@@ -543,11 +546,13 @@ def rename_variables (exp):
                 rename (alt, lenv)
         elif exp.one_of ('varref', 'varset'):
             name = exp.params
-            exp.var = lookup_var (name, lenv)
-            if exp.is_a ('varset'):
-                if exp.var.nary:
-                    raise ValueError ("can't assign to a varargs argument")
-            exp.params = exp.name = '%s_%d' % (name, exp.var.alpha)
+            probe = lookup_var (name, lenv)
+            if probe:
+                exp.var = probe
+                if exp.is_a ('varset'):
+                    if probe.nary:
+                        raise ValueError ("can't assign to a varargs argument")
+                exp.params = exp.name = '%s_%d' % (name, exp.var.alpha)
             for sub in exp.subs:
                 rename (sub, lenv)
         else:
@@ -567,5 +572,4 @@ def rename_variables (exp):
     for vd in vars:
         result[vd.name] = vd
     return result
-
 
