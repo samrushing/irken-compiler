@@ -1,6 +1,8 @@
 
 #include "pxll.h"
 
+static int lookup_field (int tag, int label);
+
 static
 void
 verify (object * ob, pxll_int tc)
@@ -374,30 +376,6 @@ vm (int argc, char * argv[])
     *freep = (object*) (size<<8 | (tc & 0xff));
     freep += size + 1;
     return save;  
-  }
-
-  // used only with safety > 3
-  object * varref_safe (pxll_int depth, pxll_int index)
-  {
-    object * walk = lenv;
-    while (depth--) {
-      verify (walk, TC_TUPLE);
-      walk = walk[1];
-    }
-    verify (walk, TC_TUPLE);
-    return walk[index+2];
-  }
-
-  // used only with safety > 3
-  void varset_safe (pxll_int depth, pxll_int index, object * val)
-  {
-    object * walk = lenv;
-    while (depth--) {
-      verify (walk, TC_TUPLE);
-      walk = walk[1];
-    }
-    verify (walk, TC_TUPLE);
-    walk[index+2] = val;
   }
 
   // gcc inlines/unrolls these nicely, they allow more compact code
