@@ -32,12 +32,17 @@ class t_undefined (t_base):
     def __repr__ (self):
         return 'undefined'
 
+class t_unit (t_base):
+    def __repr__ (self):
+        return 'unit'
+
 base_types = {
     'int' : t_int(),
     'bool' : t_bool(),
     'char' : t_char(),
     'string' : t_string(),
     'undefined' : t_undefined(),
+    'unit': t_unit(),
     }
 
 def base_n (n, base, digits):
