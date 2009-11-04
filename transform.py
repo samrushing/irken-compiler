@@ -4,8 +4,11 @@ from lisp_reader import atom
 
 import lisp_reader
 import typing
+import itypes
 
 is_a = isinstance
+
+from pdb import set_trace as trace
 
 # this file implements the scheme 'derived expression' transformations.
 #   it converts 'high-level' expressions types into lower-level expressions
@@ -20,10 +23,10 @@ is_a = isinstance
 
 class transformer:
 
-    def __init__ (self, safety):
+    def __init__ (self, safety, context):
         self.constants = {}
         self.safety = safety
-        self.classes = []
+        self.context = context
 
     gensym_counter = 0
 
@@ -62,7 +65,7 @@ class transformer:
             self.constants[key] = var
             return var
 
-    def add_constants_and_classes (self, exp):
+    def add_constants (self, exp):
         if exp[0] != 'fix':
             # if it's a really simple top-level expr, wrap it in a fix
             exp = ['fix', [], [], exp]
@@ -77,11 +80,6 @@ class transformer:
                 inits.insert (0, ['string->symbol', atom ('string', value)])
             else:
                 raise ValueError
-        for c in self.classes:
-            if is_a (c, typing.klass):
-                for mname, init in c.methods:
-                    names.insert (0, '&%s-%s' % (c.name, mname))
-                    inits.insert (0, init)
         return exp
 
     def go (self, exp):
@@ -90,8 +88,8 @@ class transformer:
             exp = self.expand_body (exp)
         else:
             exp = self.expand_exp (exp[0])
-        if len(self.constants) or len(self.classes):
-            exp = self.add_constants_and_classes (exp)
+        if len(self.constants):
+            exp = self.add_constants (exp)
         return exp
 
     def expand_exp (self, exp):
@@ -105,6 +103,8 @@ class transformer:
                 return self.get_constant_binding (exp)
             elif exp.kind == 'vector':
                 return self.build_vector (exp)
+            elif exp.kind == 'record':
+                return self.build_record (exp)
             else:
                 return exp
         elif is_a (exp, list):
@@ -130,7 +130,8 @@ class transformer:
             result = parts[0]
             while len(parts) > 1:
                 parts.pop (0)
-                result = ['get', result, parts[0]]
+                #result = ['get', result, parts[0]]
+                result = ['%%raccess/%s' % parts[0], result]
             return result
         else:
             return exp
@@ -430,6 +431,7 @@ class transformer:
         # (datatype <name> (union (tag0 type0 type1 ...) (tag1 type0 type1 ...) ...))
         name = exp[1]
         defn = exp[2]
+        datatypes = self.context.datatypes
         # for now
         if defn[0] == 'union':
             # XXX a function in <typing> to add these?
@@ -440,13 +442,34 @@ class transformer:
                     return typing.unit()
                 else:
                     return typing.product (x)
-            typing.datatypes[name] = typing.union (
+            datatypes[name] = typing.union (
                 name,
                 [(x[0], maybe_product (x[1:])) for x in defn[1:]]
                 )
         elif defn[0] == 'product':
             # (datatype <name> (product type0 type1 type2))
-            typing.datatypes[name] = typing.product (defn[1:], name)
+            datatypes[name] = typing.product (defn[1:], name)
+        elif defn[0] == 'record':
+            # OK, I've jumped the gun here.  Need syntax for literal records
+            #   first.
+            # (datatype <name> (record (tag0 type0) (tag1 type1) ...))
+            t = itypes.rdefault (itypes.abs())
+            vars = {}
+            for [tag, type] in defn[1:]:
+                if is_a (type, list) and type[0] == 'quote':
+                    # a type variable
+                    tv = type[1]
+                    if not vars.has_key (tv):
+                        vars[tv] = itypes.t_var()
+                    type = vars[tv]
+                else:
+                    type = itypes.parse_cexp_type (type)
+                t = itypes.rlabel (tag, type, t)
+            t = itypes.product (t)
+            if len(vars):
+                import solver
+                t = solver.c_forall (vars.values(), t)
+            datatypes[name] = t
         else:
             raise ValueError ("unknown datatype constructor")
         return ['begin']
@@ -473,11 +496,19 @@ class transformer:
     def build_vector (self, exp):
         return self.expand_exp (['%%vector-literal'] + [self.expand_exp (x) for x in exp.value])
 
+    def build_record (self, exp):
+        # convert a record literal into a set of row primops
+        r = ['%rmake']
+        for name, val in exp.value:
+            r = ['%%rextend/%s' % name, r, val]
+        return self.expand_exp (r)
+
     def build_literal (self, exp):
         if is_a (exp, atom):
             if exp.kind == 'string':
                 return self.get_constant_binding (exp)
             elif exp.kind == 'vector':
+                # XXX notreached?
                 return self.build_vector (exp)
             else:
                 # char, int, bool
@@ -497,41 +528,3 @@ class transformer:
             return self.get_constant_binding (atom ('symbol', exp))
         else:
             raise SyntaxError (exp)
-    
-    # --------------------------------------------------------------------------------
-    # classes
-    # --------------------------------------------------------------------------------        
-
-    def expand_class (self, exp):
-        # (class name (fields)
-        #    (method0 ...)
-        #    (method1 ...)
-        #   )
-        # a string
-        cname = exp[1]
-        # a list of optionally-typed names
-        fields = []
-        for field in exp[2]:
-            if ':' in field:
-                fname, type = field.split (':')
-            else:
-                fname, type = field, None
-            fields.append ((fname, type))
-        # method definitions
-        methods = []
-        for fun in exp[3:]:
-            assert (is_a (fun, list) and len(fun) and fun[0] == 'define')
-            assert (fun[1][1] == 'self')
-            # prepend the method with its class name
-            mname = fun[1][0]
-            # the '&' tells the renamer to leave it alone
-            fun[1][0] = '&%s-%s' % (cname, mname)
-            # set the type of <self>
-            fun[1][1] = 'self:%s' % (cname)
-            [name, init] = self.exp_define (fun)
-            methods.append ((mname, self.expand_exp (init)))
-        c = typing.klass (cname, fields, methods)
-        self.classes.append (c)
-        typing.datatypes[cname] = c
-        # this will get optimized away to nothing...
-        return ['begin']
