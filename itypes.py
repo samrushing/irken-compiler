@@ -19,20 +19,25 @@ class t_char (t_base):
     def __repr__ (self):
         return 'char'
 
-class t_str (t_base):
+class t_string (t_base):
     def __repr__ (self):
-        return 'str'
+        return 'string'
 
 # XXX consider using a true/false variant, then implementing 'if' as a filter.
 class t_bool (t_base):
     def __repr__ (self):
         return 'bool'
 
+class t_undefined (t_base):
+    def __repr__ (self):
+        return 'undefined'
+
 base_types = {
     'int' : t_int(),
     'bool' : t_bool(),
     'char' : t_char(),
-    'str' : t_str(),
+    'string' : t_string(),
+    'undefined' : t_undefined(),
     }
 
 def base_n (n, base, digits):
@@ -83,7 +88,6 @@ def arrow (*sig):
 # row types
 def product (row):
     # a.k.a. 'Π'
-    # XXX kind-check that args[0] is a row?
     return t_predicate ('product', (row,))
 
 def sum (row):
@@ -111,4 +115,21 @@ def parse_cexp_type (t):
         return base_types[t]
     else:
         raise ValueError (t)
-        
+    
+def get_record_sig (t):
+    # product (rlabel (...))
+    assert (is_pred (t, 'product'))
+    labels = []
+    t = t.args[0]
+    while 1:
+        if is_pred (t, 'rlabel'):
+            label, type, rest = t.args
+            if is_pred (type, 'pre'):
+                labels.append (label)
+            t = rest
+        elif is_pred (t, 'rdefault'):
+            break
+        else:
+            return None
+    labels.sort()
+    return tuple (labels)
