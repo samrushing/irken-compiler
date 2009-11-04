@@ -1,5 +1,0 @@
-(include "lib/string.scm")
-(include "lib/pair.scm")
-(%printn (list->string (string->list "howdy")))
-(%printn (list->string (string->list "howdy")))
-(length (string->list "howdy"))
