@@ -51,34 +51,20 @@ class c_backend:
             "  return (pxll_int) result;\n"
             "}\n"
             )
-        # write out the record field lookup function
-        self.out.write (
-            "static int lookup_field (int tag, int label)\n"
-            "{ switch (tag) {\n"
-            )
-        # static int lookup_field (int tag, int label)
-        # {
-        #   switch (tag) {
-        #   case 0:
-        #     switch (label) {
-        #     case 0: return 0; break;
-        #     case 1: return 1; break;
-        #     }
-        #     break;
-        #   case 1:
-        #     switch (label) {
-        #     case 1: return 0; break;
-        #     }
-        #   }
-        # }
-        for rec, tag in self.context.record_types.iteritems():
-            self.out.write ("  case %d:\n" % tag)
-            self.out.write ("  switch (label) {\n")
-            for i in range (len (rec)):
-                label = rec[i]
-                self.out.write ("    case %d: return %d; break;\n" % (self.context.record_labels[label], i))
-            self.out.write ("  } break;\n")
-        self.out.write ("}}\n")
+        if len(self.context.record_types):
+            # write out the record field lookup function
+            self.out.write (
+                "static int lookup_field (int tag, int label)\n"
+                "{ switch (tag) {\n"
+                )
+            for rec, tag in self.context.record_types.iteritems():
+                self.out.write ("  case %d:\n" % tag)
+                self.out.write ("  switch (label) {\n")
+                for i in range (len (rec)):
+                    label = rec[i]
+                    self.out.write ("    case %d: return %d; break;\n" % (self.context.record_labels[label], i))
+                self.out.write ("  } break;\n")
+            self.out.write ("}}\n")
 
     label_counter = 0
 
@@ -260,11 +246,16 @@ class c_backend:
             raise ValueError ("unknown primop")
 
     def insn_test (self, insn):
-        name, then_code, else_code = insn.params
-        if name:
-            code, types = primop_types[name]
+        cexp, then_code, else_code = insn.params
+        if cexp:
+            # if we know we're testing a bool-valued cexp, just inline it here:
+            #  avoid casting to a boolean type and testing for PXLL_FALSE.
+            code, sig = cexp
+            result_type, arg_types = sig
+            assert (result_type == 'bool') # guaranteed by the type system
             regs = tuple ('r%d' % x for x in insn.regs)
-            self.write ('if PXLL_IS_TRUE(%s) {' % (code % regs,))
+            regs = self.wrap_in (arg_types, regs)
+            self.write ('if (%s) {' % (code % regs,))
         else:
             # this is a scheme-like definition of test/#t/#f
             self.write ('if PXLL_IS_TRUE(r%d) {' % (insn.regs[0],))
