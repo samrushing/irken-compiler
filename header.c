@@ -4,30 +4,6 @@
 static int lookup_field (int tag, int label);
 
 static
-void
-verify (object * ob, pxll_int tc)
-{
-  if (IMMEDIATE (ob)) {
-    unsigned char ob_tc = (pxll_int)ob & 0xff;
-    if (tc == TC_INT) { 
-      if (!IS_INTEGER (ob)) {
-	fprintf (stderr, "ERROR: Got immediate TC=0x%02x, expected integer %d\n", ob_tc, !(ob_tc&1));
-	abort();
-      }
-    } else if (tc != ob_tc) {
-      fprintf (stderr, "ERROR: Got immediate TC=0x%02x, expected 0x%02x\n", ob_tc, (unsigned int) tc);
-      abort();
-    }
-  } else {
-    unsigned char ob_tc = (pxll_int)*((pxll_int *)ob) & 0xff;
-    if (tc != ob_tc) {
-      fprintf (stderr, "ERROR: Got object with TC=0x%02x, expected TC=0x%02x\n", ob_tc, (unsigned int) tc);
-      abort();
-    }
-  }
-}
-
-static
 pxll_int
 get_typecode (object * ob)
 {
