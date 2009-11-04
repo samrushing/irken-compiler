@@ -4,6 +4,8 @@ import sys
 import typing
 W = sys.stderr.write
 
+from pdb import set_trace as trace
+
 is_a = isinstance
 
 class RegisterError:
@@ -11,11 +13,12 @@ class RegisterError:
 
 class c_backend:
 
-    def __init__ (self, out, src, num_regs, safety=1, annotate=True, trace=False):
+    def __init__ (self, out, src, num_regs, context, safety=1, annotate=True, trace=False):
         self.out = out
         self.src = src
         self.num_regs = num_regs
         self.indent = 1
+        self.context = context
         self.safety = safety
         self.annotate = annotate
         self.trace = trace
@@ -40,13 +43,6 @@ class c_backend:
                 self.write ('// %s' % (insn.print_info(),))
             fun = getattr (self, name, None)
             fun (insn)
-            if insn.typecheck:
-                print insn, insn.typecheck
-                self.emit_typecheck (insn)
-
-    def emit_typecheck (self, insn):
-        if insn.target != 'dead':
-            self.write ('verify (r%d, TC_%s);' % (insn.target, insn.typecheck.upper()))
 
     def done (self):
         # close out the vm() function...
@@ -55,6 +51,34 @@ class c_backend:
             "  return (pxll_int) result;\n"
             "}\n"
             )
+        # write out the record field lookup function
+        self.out.write (
+            "static int lookup_field (int tag, int label)\n"
+            "{ switch (tag) {\n"
+            )
+        # static int lookup_field (int tag, int label)
+        # {
+        #   switch (tag) {
+        #   case 0:
+        #     switch (label) {
+        #     case 0: return 0; break;
+        #     case 1: return 1; break;
+        #     }
+        #     break;
+        #   case 1:
+        #     switch (label) {
+        #     case 1: return 0; break;
+        #     }
+        #   }
+        # }
+        for rec, tag in self.context.record_types.iteritems():
+            self.out.write ("  case %d:\n" % tag)
+            self.out.write ("  switch (label) {\n")
+            for i in range (len (rec)):
+                label = rec[i]
+                self.out.write ("    case %d: return %d; break;\n" % (self.context.record_labels[label], i))
+            self.out.write ("  } break;\n")
+        self.out.write ("}}\n")
 
     label_counter = 0
 
@@ -114,7 +138,7 @@ class c_backend:
 
     def insn_return (self, insn):
         val_reg = insn.regs[0]
-        self.verify (1, 'verify (k, TC_SAVE);')
+        #self.verify (1, 'verify (k, TC_SAVE);')
         self.write ('PXLL_RETURN(%d);' % (val_reg,))
 
     def insn_jump (self, insn):
@@ -195,6 +219,43 @@ class c_backend:
             [base, index, val] = insn.regs
             self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
             self.write ('((pxll_vector*)r%d)->val[unbox(r%d)] = r%d;' % (base, index, val))
+        elif primop[0] == '%record-get':
+            [record] = insn.regs
+            ignore, label, index = primop
+            label_code = self.context.record_labels[label]
+            if index is None:
+                # runtime lookup
+                self.write (
+                    'r%d = ((pxll_vector*)r%d)->val[lookup_field((GET_TYPECODE(*r%d)-TC_USEROBJ)>>2,%d)];' % (
+                        insn.target, record, record, label_code
+                        )
+                    )
+            else:
+                # compile-time lookup
+                self.write ('r%d = ((pxll_vector*)r%d)->val[%d];' % (insn.target, record, index))
+        elif primop[0] == '%extend-tuple':
+            # extend a pre-existing tuple by merging it with one or more new field=value pairs.
+            src = insn.regs[0]
+            data = insn.regs[1:]
+            ignore, new_fields, old_fields, new_tag = insn.params
+            new_fields = list (new_fields)
+            old_fields = list (old_fields)
+            new_len = len (new_fields) + len (old_fields)
+            new_tag = '(TC_USEROBJ+%d)' % (new_tag * 4)
+            self.write ('t = alloc_no_clear (%s, %d);' % (new_tag, new_len))
+            j = 0
+            for i in range (new_len):
+                if not old_fields or new_fields and new_fields[0] < old_fields[0]:
+                    # storing a new field value
+                    self.write ('t[%d] = r%d;' % (i+1, data[0]))
+                    new_fields.pop (0)
+                    data.pop(0)
+                else:
+                    # copying an old field value
+                    self.write ('t[%d] = r%d[%d];' % (i+1, src, j+1))
+                    j += 1
+                    old_fields.pop (0)
+            self.write ('r%d = t;' % (insn.target,))
         else:
             raise ValueError ("unknown primop")
 
@@ -315,7 +376,7 @@ class c_backend:
     def insn_store_env (self, insn):
         [arg_reg, tuple_reg] = insn.regs
         i, n = insn.params
-        self.verify (2, 'verify (r%d, TC_TUPLE);' % tuple_reg)
+        #self.verify (2, 'verify (r%d, TC_TUPLE);' % tuple_reg)
         self.write ('r%d[%d] = r%d;' % (tuple_reg, i+2, arg_reg))
         # XXX this is a bit of a hack. Because of the confusing implementation of compile_rands,
         #     we have no way of passing the tuple to its continuation (when it's needed)
@@ -349,20 +410,16 @@ class c_backend:
         name = var.name
         depth, index = addr
         if insn.target != 'dead':
-            if self.safety > 3:
-                # a version that checks TC_TUPLE on every rib
-                self.write ('r%d = varref_safe (%d, %d);' % (insn.target, depth, index))
+            #self.verify (2, 'verify (lenv, TC_TUPLE);')
+            if is_top:
+                self.write ('r%d = top[%d];' % (insn.target, index+2))
+            elif var.nary:
+                # ref the environment rib, not one particular argument
+                self.write ('r%d = ((object *%s) lenv) %s;' % (insn.target, '*' * depth, '[1]' * depth))
             else:
-                self.verify (2, 'verify (lenv, TC_TUPLE);')
-                if is_top:
-                    self.write ('r%d = top[%d];' % (insn.target, index+2))
-                elif var.nary:
-                    # ref the environment rib, not one particular argument
-                    self.write ('r%d = ((object *%s) lenv) %s;' % (insn.target, '*' * depth, '[1]' * depth))
-                else:
-                    # gcc generates identical code for these, and the latter is cleaner.
-                    #self.write ('r%d = ((object *%s) lenv) %s[%d];' % (insn.target, '*' * depth, '[1]' * depth, index+2))
-                    self.write ('r%d = varref (%d,%d);' % (insn.target, depth, index))
+                # gcc generates identical code for these, and the latter is cleaner.
+                #self.write ('r%d = ((object *%s) lenv) %s[%d];' % (insn.target, '*' * depth, '[1]' * depth, index+2))
+                self.write ('r%d = varref (%d,%d);' % (insn.target, depth, index))
 
     def insn_varset (self, insn):
         val_reg = insn.regs[0]
@@ -370,17 +427,13 @@ class c_backend:
         if insn.target != 'dead':
             print '[set! result used]',
         depth, index = addr
-        if self.safety > 3:
-            # a version that checks TC_TUPLE on every rib
-            self.write ('varset_safe (%d, %d, r%d);' % (depth, index, val_reg))
+        #self.verify (2, 'verify (lenv, TC_TUPLE);')
+        if is_top:
+            self.write ('top[%d] = r%d;' % (index+2, val_reg))
         else:
-            self.verify (2, 'verify (lenv, TC_TUPLE);')
-            if is_top:
-                self.write ('top[%d] = r%d;' % (index+2, val_reg))
-            else:
-                # gcc generates identical code for these, and the latter is cleaner.
-                #self.write ('((object *%s)lenv)%s[%d] = r%d;' % ('*' * depth, '[1]' * depth, index+2, val_reg))
-                self.write ('varset (%d, %d, r%d);' % (depth, index, val_reg))
+            # gcc generates identical code for these, and the latter is cleaner.
+            #self.write ('((object *%s)lenv)%s[%d] = r%d;' % ('*' * depth, '[1]' * depth, index+2, val_reg))
+            self.write ('varset (%d, %d, r%d);' % (depth, index, val_reg))
 
     def insn_move (self, insn):
         reg_var, reg_src = insn.regs
