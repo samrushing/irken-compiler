@@ -65,6 +65,10 @@ class reader:
         elif ch == ",":
             self.next()
             result = ['comma', self.read()]
+        elif ch == ':':
+            # (for constructor syntax)
+            self.next()
+            result = ['colon', self.read()]
         # unquote, etc.. can be found in old lumberjack code if needed.
         elif ch == '#':
             self.next()
