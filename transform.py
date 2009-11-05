@@ -179,6 +179,11 @@ class transformer:
         else:
             return self.build_literal (exp[1])
 
+    def expand_colon (self, exp):
+        # constructor syntax
+        assert (len(exp) == 2 and is_a (exp[1], str))
+        return '%%vcon/%s' % exp[1]
+
     def expand_lambda (self, exp):
         return self.exp_function (None, exp[1], self.expand_body (exp[2:]))
 
@@ -427,6 +432,7 @@ class transformer:
         return ['%%make-tuple', exp[1]] + self.expand_all (exp[2:])
     
     # ----------- datatype ------------
+    # XXX about to be discarded XXX
     def expand_datatype (self, exp):
         # (datatype <name> (union (tag0 type0 type1 ...) (tag1 type0 type1 ...) ...))
         name = exp[1]
@@ -450,8 +456,6 @@ class transformer:
             # (datatype <name> (product type0 type1 type2))
             datatypes[name] = typing.product (defn[1:], name)
         elif defn[0] == 'record':
-            # OK, I've jumped the gun here.  Need syntax for literal records
-            #   first.
             # (datatype <name> (record (tag0 type0) (tag1 type1) ...))
             t = itypes.rdefault (itypes.abs())
             vars = {}
@@ -474,36 +478,34 @@ class transformer:
             raise ValueError ("unknown datatype constructor")
         return ['begin']
 
-    def expand_typecase (self, exp):
-        # (typecase <type> <exp>
-        #    ((kind0 var0 var1) ...)
-        #    ((kind1 var0 ...) ...)
-        #    ...)
-        type = exp[1]
-        val = exp[2]
-        # for now, only allow a varref for <exp>... later we'll automatically
-        #    wrap this thing in a let if it's not.
-        assert is_a (val, str)
-        alts = exp[3:]
-        formals = [x[0] for x in alts]
-        formals = [ (x[0], x[1:]) for x in formals ]
-        bodies = [self.expand_body (x[1:]) for x in alts]
-        return ['typecase', type, val, formals, bodies]
-
     def expand_vcase (self, exp):
         # (vcase <exp>
         #    ((kind0 var0 var1) <body0>)
         #    ((kind1 var0) <body1>)
-        #    ...)
+        #    (else <body>))
         val = exp[1]
         # for now, only allow a varref for <exp>... later we'll automatically
         #    wrap this thing in a let if it's not.
         assert is_a (val, str)
         alts = exp[2:]
-        formals = [x[0] for x in alts]
-        formals = [ (x[0], x[1:]) for x in formals ]
-        bodies = [self.expand_body (x[1:]) for x in alts]
-        return ['vcase', val, formals, bodies]
+        r = None
+        while alts:
+            selector, body = alts.pop()
+            if selector == 'else':
+                # override %vfail
+                r = ['lambda', ['velse'], body]
+            else:
+                [colon, label] = selector[0]
+                formals = selector[1:]
+                s = ['lambda', formals, body]
+                if r is None:
+                    # no else clause
+                    r = ['lambda', ['vfail'], ['%vfail', 'vfail']]
+                r = ['lambda', ['vval'], ['%%vcase/%s' % label, s, r, 'vval']]
+        # discard the outermost lambda binding, use <val> instead
+        r = r[2]
+        r[-1] = val
+        return self.expand_exp (r)
 
     # --------------------------------------------------------------------------------
     # literal expressions are almost like a sub-language
