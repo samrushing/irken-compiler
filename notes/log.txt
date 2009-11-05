@@ -1,3 +1,13 @@
+091104:
+records, variants now limping along.  still need to correctly implement
+  record extension when the label is already present.
+vcase:
+ this is done strangely - a 'case' form will be supported, but will be
+  immediately transformed into a series of %vcase/%vmake primapps so the
+  solver can do its work without modification.  that code is then
+  turned *back* into a vcase node in analyze.py, so we can emit
+  reasonable code - rather than a series of pointless lambdas, bindings, etc...
+
 091028:
 first gluing of the constraint solver to irken.
 
