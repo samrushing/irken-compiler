@@ -90,35 +90,6 @@ class analyzer:
                     names[i].function = inits[i]
         return node
 
-    def transform_0_typecase (self, node):
-        # (typecase type x 
-        #    ((<select0> <formal0> <formal1> ...) <body0>)
-        #    ((<select1> <formal0> <formal1> ...) <body1>)
-        #    ...)
-        # =>
-        # (typecase type x
-        #    ((let ((f0 x.0) (f1 x.1) (f2 x.2)) <body0>) ...))
-        #
-        alts = []
-        for i in range (len (node.alts)):
-            formals = []
-            inits = []
-            alt_formals = node.alt_formals[i]
-            for j in range (len (alt_formals)):
-                formal = alt_formals[j]
-                if formal.name != '_':
-                    formals.append (formal)
-                    inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?',)), [node.value]))
-            if len(formals):
-                alts.append (nodes.let_splat (formals, inits, node.alts[i]))
-            else:
-                alts.append (node.alts[i])
-        assert (len(alts) == len(node.alts))
-        node.alts = alts
-        node.params = node.vtype, node.alts
-        node.subs = [node.value] + node.alts
-        return node
-
     def transform_0_primapp (self, node):
         if node.name.startswith ('%vcase/'):
             return self.transform_vcase (node)
@@ -156,7 +127,7 @@ class analyzer:
         names = node.params
         inits = node.subs[:-1]
         body = node.subs[-1]
-        # this is generated often by typecase: (let (x <init>) x)
+        # this is generated often by vcase: (let (x <init>) x)
         if len(names) == 1 and body.is_a ('varref') and body.params == names[0].name:
             return inits[0]
         elif body.is_a ('let_splat'):
@@ -230,9 +201,6 @@ class analyzer:
                     subs.append (sub)
             return nodes.sequence (subs)
 
-    # here is where we'll change continuation functions into let_splats
-    # probably also unwind embedded (%vcase <case0> (%vcase <case1> ...))
-    # into something like typecase.
     def transform_vcase (self, node, val=None):
         ignore, label = node.name.split ('/')
         success, failure, value = node.subs
@@ -240,11 +208,13 @@ class analyzer:
             val = value
         if failure.body.is_a ('primapp') and failure.body.name.startswith ('%vcase/'):
             vcase = self.transform_vcase (failure.body, value)
+        elif failure.body.is_a ('primapp') and failure.body.name.startswith ('%vfail'):
+            vcase = nodes.vcase (val, [], [])
         else:
             # reach in and grab the type of this variant
             # sum (rlabel (<label>, pre (<vtype>), ...))
             vtype = value.type.args[0].args[1].args[0]
-            alt_formals = (None, vtype, failure.formals)
+            alt_formals = (label, vtype, failure.formals)
             init = nodes.cexp ("UOBJ_GET(%s,0)", ('?', ('?',)), [val])
             clause = nodes.let_splat (failure.formals, [init], failure.body)
             vcase = nodes.vcase (val, [alt_formals], [clause])
