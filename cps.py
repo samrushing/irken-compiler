@@ -58,6 +58,8 @@ class compiler:
             return self.compile_primapp (tail_pos, exp, lenv, k)
         elif exp.is_a ('typecase'):
             return self.compile_typecase (tail_pos, exp, lenv, k)
+        elif exp.is_a ('vcase'):
+            return self.compile_vcase (tail_pos, exp, lenv, k)            
         else:
             raise NotImplementedError
 
@@ -162,6 +164,10 @@ class compiler:
             return self.compile_primargs (exp.args, ('%array-ref',), lenv, k)
         elif exp.name == '%%array-set':
             return self.compile_primargs (exp.args, ('%array-set',), lenv, k)
+        elif exp.name.startswith ('%vcon/'):
+            ignore, label = exp.name.split ('/')
+            tag = self.context.variant_labels[label]
+            return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
         else:
             raise ValueError ("Unknown primop: %r" % (exp.name,))
 
@@ -210,6 +216,14 @@ class compiler:
             jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
             return self.gen_typecase (test_reg, exp.vtype, alts, k)
+        return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
+
+    def compile_vcase (self, tail_pos, exp, lenv, k):
+        def finish (test_reg):
+            jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
+            alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
+            types = [type for label, type, formals in exp.alt_formals]
+            return self.gen_vcase (test_reg, types, alts, k)
         return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
 
     def compile_function (self, tail_pos, exp, lenv, k):
@@ -457,6 +471,9 @@ class irken_compiler (compiler):
     def gen_typecase (self, test_reg, type, alts, k):
         return INSN ('typecase', [test_reg], (type, alts), k)
 
+    def gen_vcase (self, test_reg, types, alts, k):
+        return INSN ('vcase', [test_reg], (types, alts), k)
+
     def gen_invoke_tail (self, fun, closure_reg, args_reg, k):
         return INSN ('invoke_tail', [closure_reg, args_reg], fun, None)
 
@@ -500,6 +517,9 @@ def flatten (exp):
         elif exp.name == 'typecase':
             type, alts = exp.params
             exp.params = type, [flatten (x) for x in alts]
+        elif exp.name == 'vcase':
+            types, alts = exp.params
+            exp.params = types, [flatten (x) for x in alts]
         r.append (exp)
         exp = next
     return r
