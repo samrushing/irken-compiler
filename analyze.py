@@ -107,7 +107,10 @@ class analyzer:
         else:
             return node
 
-    opt_apply_lambda_to_let = True
+    # I think we want to leave this off - it interferes with inlining, which is actually
+    #    superior to this hack in every way. [for example, the inliner will actually turn
+    #    this into a let when the inits are complex]
+    opt_apply_lambda_to_let = False
 
     def transform_1_application (self, node):
         rator = node.get_rator()
@@ -215,13 +218,13 @@ class analyzer:
             # sum (rlabel (<label>, pre (<vtype>), ...))
             vtype = value.type.args[0].args[1].args[0]
             alt_formals = (label, vtype, failure.formals)
-            init = nodes.cexp ("UOBJ_GET(%s,0)", ('?', ('?',)), [val])
-            clause = nodes.let_splat (failure.formals, [init], failure.body)
+            init = nodes.cexp ("UOBJ_GET(%s,0)", (vtype, ('?',)), [val])
+            clause = nodes.application (failure, [init])
             vcase = nodes.vcase (val, [alt_formals], [clause])
         vtype = value.type.args[0].args[1].args[0]
         alt_formals = (label, vtype, success.formals)
-        init = nodes.cexp ("UOBJ_GET(%s,0)", ('?', ('?',)), [val])
-        clause = nodes.let_splat (success.formals, [init], success.body)
+        init = nodes.cexp ("UOBJ_GET(%s,0)", (vtype, ('?',)), [val])
+        clause = nodes.application (success, [init])
         vcase.params.insert (0, alt_formals)
         vcase.subs.insert (1, clause)
         return vcase
@@ -487,6 +490,13 @@ class analyzer:
                             return result
                     else:
                         return node
+                elif rator.is_a ('function'):
+                    node.function = rator
+                    result = self.inline_application (node)
+                    if result.is_a ('application'):
+                        return replacer (result)
+                    else:
+                        return result
                 else:
                     return node
             else:
