@@ -6,6 +6,8 @@
 
 import typing
 
+from pdb import set_trace as trace
+
 # used to generate a unique identifier for each node.  it's important that these
 #   be *unique*, because the serial number of a node is later used as a type
 #   variable during type inference!
@@ -210,6 +212,10 @@ class node:
             self.vtype, self.alt_formals = self.params
             self.value = self.subs[0]
             self.alts = self.subs[1:]
+        elif self.kind == 'vcase':
+            self.alt_formals = self.params
+            self.value = self.subs[0]
+            self.alts = self.subs[1:]
         else:
             raise ValueError (self.kind)
 
@@ -258,6 +264,8 @@ def to_scheme (node):
         return ['get', to_scheme (node.ob), node.name]
     elif node.is_a ('typecase'):
         return ['typecase', node.params[0], node.params[1], [to_scheme (x) for x in node.alts]]
+    elif node.is_a ('vcase'):
+        return ['vcase', [[x[0], x[2]] for x in node.params], [to_scheme (x) for x in node.alts]]
     else:
         raise ValueError
 
@@ -353,6 +361,9 @@ def set (ob, name, val):
 def typecase (vtype, value, alt_formals, alts):
     return node ('typecase', (vtype, alt_formals), [value] + alts)
 
+def vcase (value, alt_formals, alts):
+    return node ('vcase', alt_formals, [value] + alts)
+
 # ================================================================================
 
 class ConfusedError (Exception):
@@ -438,6 +449,10 @@ class walker:
                     ignore, vtype, value, alt_formals, alts = exp
                     alt_formals = [ (selector, [vardef (name) for name in formals]) for selector, formals in alt_formals ]
                     return typecase (vtype, WALK(value), alt_formals, [WALK (x) for x in alts])
+                elif rator == 'vcase':
+                    ignore, value, alt_formals, alts = exp
+                    alt_formals = [ (selector, type, [vardef (name) for name in formals]) for selector, type, formals in alt_formals ]
+                    return vcase (WALK(value), alt_formals, [WALK (x) for x in alts])
                 else:
                     # a varref application
                     return application (WALK (rator), [WALK (x) for x in exp[1:]])
@@ -532,7 +547,7 @@ def rename_variables (exp, datatypes):
                             exp.subs[i].params[0] = '%s_%d' % (defs[i].name, defs[i].alpha)
             for sub in exp.subs:
                 rename (sub, lenv)
-        elif exp.is_a ('typecase'):
+        elif exp.is_a ('typecase') or exp.is_a ('vcase'):
             # this is a strangely shaped binding construct
             rename (exp.value, lenv)
             n = len (exp.alts)
