@@ -1,7 +1,7 @@
 # -*- Mode: Python -*-
 
 import sys
-import typing
+import itypes
 W = sys.stderr.write
 
 from pdb import set_trace as trace
@@ -282,6 +282,48 @@ class c_backend:
                 units.append (i)
             else:
                 tuples.append (i)
+        closes = 0
+        if len(units):
+            self.write ('switch (GET_TYPECODE(r%d)) {' % test_reg)
+            closes += 1
+            for index in units:
+                self.indent += 1
+                self.write ('case (TC_USERIMM+%d): {' % (index * 4))
+                self.indent += 1
+                self.emit (alts[index])
+                self.indent -= 1
+                self.write ('} break;')
+                self.indent -= 1
+            if len(tuples):
+                self.write ('default: {')
+                closes += 1
+        if len(tuples):
+            self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
+            closes += 1
+            for index in tuples:
+                alt = alts[index]
+                self.indent += 1
+                self.write ('case TC_USEROBJ+%d: {' % (index * 4,))
+                self.indent += 1
+                self.emit (alt)
+                self.indent -= 1
+                self.write ('} break;')
+                self.indent -= 1
+        self.write ('}' * closes)
+
+    def insn_vcase (self, insn):
+        [test_reg] = insn.regs
+        types, alts = insn.params
+        units = []
+        tuples = []
+        # if there are any unit types, we need to test for immediate types first,
+        #   and only then dereference the pointer to get the tuple type code.
+        for i in range (len (types)):
+            if is_a (types[i], itypes.t_unit):
+                units.append (i)
+            else:
+                tuples.append (i)
+        trace()
         closes = 0
         if len(units):
             self.write ('switch (GET_TYPECODE(r%d)) {' % test_reg)
