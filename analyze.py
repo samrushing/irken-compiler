@@ -7,6 +7,8 @@
 import nodes
 import typing
 
+from pdb import set_trace as trace
+
 is_a = isinstance
 
 class UnboundVariableError (Exception):
@@ -106,7 +108,7 @@ class analyzer:
                 formal = alt_formals[j]
                 if formal.name != '_':
                     formals.append (formal)
-                    inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?')), [node.value]))
+                    inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % (j,), ('?', ('?',)), [node.value]))
             if len(formals):
                 alts.append (nodes.let_splat (formals, inits, node.alts[i]))
             else:
@@ -116,6 +118,12 @@ class analyzer:
         node.params = node.vtype, node.alts
         node.subs = [node.value] + node.alts
         return node
+
+    def transform_0_primapp (self, node):
+        if node.name.startswith ('%vcase/'):
+            return self.transform_vcase (node)
+        else:
+            return node
 
     def transform_1_conditional (self, node):
         # (if #t x y) => x
@@ -222,23 +230,31 @@ class analyzer:
                     subs.append (sub)
             return nodes.sequence (subs)
 
-    # Unfortunately, these two expose the C backend up here
-    #  where they shouldn't.  Should probably just make these
-    #  user functions?
-#     def transform_1_get (self, node):
-#         [ob] = node.subs
-#         field_name = node.params
-#         c = typing.datatypes[ob.type.name]
-#         offset = c.get_field_offset (field_name)
-#         return nodes.cexp ("UOBJ_GET(%%s,%d)" % (offset,), ('?', ('?')), [ob])
-
-#     def transform_1_set (self, node):
-#         #(%%cexp "((pxll_vector*)(%s))->val[%s] = %s" ob offset x))
-#         [ob, val] = node.subs
-#         field_name = node.params
-#         c = typing.datatypes[ob.type.name]
-#         offset = c.get_field_offset (field_name)
-#         return nodes.cexp ("UOBJ_SET(%%s,%d,%%s)" % (offset,), ('undefined', ('?', '?')), [ob, val])
+    # here is where we'll change continuation functions into let_splats
+    # probably also unwind embedded (%vcase <case0> (%vcase <case1> ...))
+    # into something like typecase.
+    def transform_vcase (self, node, val=None):
+        ignore, label = node.name.split ('/')
+        success, failure, value = node.subs
+        if val is None:
+            val = value
+        if failure.body.is_a ('primapp') and failure.body.name.startswith ('%vcase/'):
+            vcase = self.transform_vcase (failure.body, value)
+        else:
+            # reach in and grab the type of this variant
+            # sum (rlabel (<label>, pre (<vtype>), ...))
+            vtype = value.type.args[0].args[1].args[0]
+            alt_formals = (None, vtype, failure.formals)
+            init = nodes.cexp ("UOBJ_GET(%s,0)", ('?', ('?',)), [val])
+            clause = nodes.let_splat (failure.formals, [init], failure.body)
+            vcase = nodes.vcase (val, [alt_formals], [clause])
+        vtype = value.type.args[0].args[1].args[0]
+        alt_formals = (label, vtype, success.formals)
+        init = nodes.cexp ("UOBJ_GET(%s,0)", ('?', ('?',)), [val])
+        clause = nodes.let_splat (success.formals, [init], success.body)
+        vcase.params.insert (0, alt_formals)
+        vcase.subs.insert (1, clause)
+        return vcase
 
     def replace (self, orig_node, fun):
         # apply replacement-fun() to all of <node>
