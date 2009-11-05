@@ -248,14 +248,13 @@ class c_backend:
     def insn_test (self, insn):
         cexp, then_code, else_code = insn.params
         if cexp:
-            # if we know we're testing a bool-valued cexp, just inline it here:
-            #  avoid casting to a boolean type and testing for PXLL_FALSE.
+            # if we know we're testing a cexp, just inline it here
             code, sig = cexp
             result_type, arg_types = sig
-            assert (result_type == 'bool') # guaranteed by the type system
             regs = tuple ('r%d' % x for x in insn.regs)
             regs = self.wrap_in (arg_types, regs)
-            self.write ('if (%s) {' % (code % regs,))
+            exp = self.wrap_out (result_type, code % regs)
+            self.write ('if PXLL_IS_TRUE(%s) {' % exp)
         else:
             # this is a scheme-like definition of test/#t/#f
             self.write ('if PXLL_IS_TRUE(r%d) {' % (insn.regs[0],))
