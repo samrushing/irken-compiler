@@ -855,8 +855,6 @@ class solver:
     def lookup_special_names (self, name):
         if name == '%rmake':
             return c_forall ((), arrow (product (rdefault (abs()))))
-        elif name == '%vmake':
-            return c_forall ((), arrow (sum (rdefault (abs()))))
         elif name.startswith ('%rextend/'):
             what, label = name.split ('/')
             # ∀XYZ.(Π(l:X;Y), Z) → Π(l:pre(Z);Y)
@@ -872,6 +870,8 @@ class solver:
             what, label = name.split ('/')
             # ∀XY.Π(l:pre(X);Y) → X
             return c_forall ((0,1), arrow (0, product (rlabel (label, pre(0), 1))))
+        elif name == '%vfail':
+            return c_forall ((0,), arrow (0, sum (rdefault (abs()))))
         elif name.startswith ('%vcon/'):
             what, label = name.split ('/')
             # remember each unique variant label
