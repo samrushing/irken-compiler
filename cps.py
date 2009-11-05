@@ -56,8 +56,6 @@ class compiler:
             return self.compile_primargs (exp.args, ('%make-tuple', exp.type, exp.tag), lenv, k)
         elif exp.is_a ('primapp'):
             return self.compile_primapp (tail_pos, exp, lenv, k)
-        elif exp.is_a ('typecase'):
-            return self.compile_typecase (tail_pos, exp, lenv, k)
         elif exp.is_a ('vcase'):
             return self.compile_vcase (tail_pos, exp, lenv, k)            
         else:
@@ -210,13 +208,6 @@ class compiler:
                 k
                 )
         return self.collect_primargs (exp.test_exp.args, [], lenv, k, finish)
-
-    def compile_typecase (self, tail_pos, exp, lenv, k):
-        def finish (test_reg):
-            jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
-            alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
-            return self.gen_typecase (test_reg, exp.vtype, alts, k)
-        return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
 
     def compile_vcase (self, tail_pos, exp, lenv, k):
         def finish (test_reg):
@@ -386,7 +377,7 @@ class INSN:
             return '%s %r %r' % (self.name, self.regs, self.params[0])
         elif self.name == 'close':
             return '%s %r %r' % (self.name, self.regs, self.params[0].name)
-        elif self.name == 'typecase':
+        elif self.name == 'vcase':
             return '%s %r %r' % (self.name, self.params[0], self.regs)
         else:
             return '%s %r %r' % (self.name, self.regs, self.params)
@@ -468,9 +459,6 @@ class irken_compiler (compiler):
     def gen_simple_test (self, name, regs, then_code, else_code, k):
         return INSN ('test', regs, (name, then_code, else_code), k)
 
-    def gen_typecase (self, test_reg, type, alts, k):
-        return INSN ('typecase', [test_reg], (type, alts), k)
-
     def gen_vcase (self, test_reg, types, alts, k):
         return INSN ('vcase', [test_reg], (types, alts), k)
 
@@ -514,9 +502,6 @@ def flatten (exp):
         elif exp.name == 'close':
             node, body, free = exp.params
             exp.params = node, flatten (body), free
-        elif exp.name == 'typecase':
-            type, alts = exp.params
-            exp.params = type, [flatten (x) for x in alts]
         elif exp.name == 'vcase':
             types, alts = exp.params
             exp.params = types, [flatten (x) for x in alts]
@@ -545,8 +530,8 @@ def pretty_print (insns, depth=0):
         elif insn.name == 'close':
             node, body, free = insn.params
             pretty_print (body, depth+1)
-        elif insn.name == 'typecase':
-            type, alts = insn.params
+        elif insn.name == 'vcase':
+            types, alts = insn.params
             for alt in alts:
                 pretty_print (alt, depth+1)
 
@@ -576,8 +561,8 @@ def walk_function (insns):
                 yield x
             for x in walk_function (else_code):
                 yield x
-        elif insn.name == 'typecase':
-            type, alts = insn.params
+        elif insn.name == 'vcase':
+            types, alts = insn.params
             for alt in alts:
                 for x in walk_function (alt):
                     yield x
