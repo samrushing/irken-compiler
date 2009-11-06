@@ -4,10 +4,13 @@
 (define (= a b)
   (%%cexp (int int -> bool) "%s==%s" a b))
 
+(define (zero? x)
+  (%%cexp (int -> bool) "%s==0" x))
+
 ;; test the raw speed of an integer loop
 
 (let loop ((n 1000000))
-  (if (= n 0)
+  (if (zero? n)
       "done"
       (loop (- n 1))))
 
