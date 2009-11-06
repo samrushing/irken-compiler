@@ -241,7 +241,11 @@ class constraint_generator:
 
     def gen_primapp (self, exp, t):
         args = [t_var() for x in exp.args]
-        c = c_is (exp.name, arrow (t, *args))
+        if exp.name.startswith ('%vcon/'):
+            # XXX don't like having to do this here.
+            c = c_is (exp.name, arrow (t, product (*args)))
+        else:
+            c = c_is (exp.name, arrow (t, *args))
         for i in range (len(exp.args)):
             c = c_and (c, self.gen (exp.args[i], args[i]))
         return c_exists (args, c)
@@ -873,19 +877,38 @@ class solver:
         elif name == '%vfail':
             return c_forall ((0,), arrow (0, sum (rdefault (abs()))))
         elif name.startswith ('%vcon/'):
-            what, label = name.split ('/')
+            what, label, arity = name.split ('/')
+            arity = int(arity)
             # remember each unique variant label
             self.remember_variant_label (label)
-            # ∀XY.X → Σ(l:pre X;Y)
-            return c_forall ((0,1), arrow (sum (rlabel (label, pre(0), 1)), 0))
+            if arity == 0:
+                # ∀X.() → Σ(l:pre (unit);X)
+                return c_forall ((1,), arrow (sum (rlabel (label, pre (product()), 1)), product()))
+            elif arity == 1:
+                # ∀XY.X → Σ(l:pre X;Y)
+                return c_forall ((0,1), arrow (sum (rlabel (label, pre(0), 1)), 0))
+            else:
+                # ∀ABCD.(A,B,C) → Σ(l:pre (product (A,B,C));D)
+                args = tuple(range (arity))
+                return c_forall (range(arity+1), arrow (sum (rlabel (label, pre (product(*args)), arity)), product (*args)))
         elif name.startswith ('%vcase/'):
-            what, label = name.split ('/')
-            # ∀XYX'Y'.(X → Y) → (Σ(l:X';Y') → Y) → Σ(l:pre X;Y') → Y
-            # ∀XYX'Y'.f0 → f1 → s1 → Y
-            f0 = arrow (1, 0)
-            f1 = arrow (1, sum (rlabel (label, 2, 3)))
-            s1 = sum (rlabel (label, pre (0), 3))
-            return c_forall ((0,1,2,3), arrow (1, f0, f1, s1))
+            what, label, arity = name.split ('/')
+            arity = int (arity)
+            # ∀012345.(3,4,5 → 0), (Σ(l:1;2) → 0), Σ(l:pre(product(3,4,5);2) → 0
+            # ∀012345.f0,f1,s1 → 0
+            # X == 345...
+            args = range (3, arity+3)
+            # success continuation
+            f0 = arrow (0, *args)
+            # failure continuation
+            f1 = arrow (0, sum (rlabel (label, 1, 2)))
+            # the sum argument
+            if arity == 1:
+                t = args[0]
+            else:
+                t = product (*args)
+            s1 = sum (rlabel (label, pre (t), 2))
+            return c_forall (range(arity+3), arrow (0, f0, f1, s1))
         else:
             raise UnboundVariable (name)
 
