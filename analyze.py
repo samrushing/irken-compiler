@@ -5,7 +5,7 @@
 #
 
 import nodes
-import typing
+import itypes
 
 from pdb import set_trace as trace
 
@@ -205,7 +205,8 @@ class analyzer:
             return nodes.sequence (subs)
 
     def transform_vcase (self, node, val=None):
-        ignore, label = node.name.split ('/')
+        ignore, label, arity = node.name.split ('/')
+        arity = int (arity)
         success, failure, value = node.subs
         if val is None:
             val = value
@@ -214,6 +215,7 @@ class analyzer:
         elif failure.body.is_a ('primapp') and failure.body.name.startswith ('%vfail'):
             vcase = nodes.vcase (val, [], [])
         else:
+            # [is this only when there's an else clause?]
             # reach in and grab the type of this variant
             # sum (rlabel (<label>, pre (<vtype>), ...))
             vtype = value.type.args[0].args[1].args[0]
@@ -223,8 +225,14 @@ class analyzer:
             vcase = nodes.vcase (val, [alt_formals], [clause])
         vtype = value.type.args[0].args[1].args[0]
         alt_formals = (label, vtype, success.formals)
-        init = nodes.cexp ("UOBJ_GET(%s,0)", (vtype, ('?',)), [val])
-        clause = nodes.application (success, [init])
+        # don't trigger this for variant records!
+        if arity > 1:
+            inits = [nodes.cexp ("UOBJ_GET(%%s,%d)" % i, (vtype.args[i], ('?',)), [val]) for i in range (len (vtype.args))]
+        elif arity == 0:
+            inits = []
+        else:
+            inits = [nodes.cexp ("UOBJ_GET(%s,0)", (vtype, ('?',)), [val])]
+        clause = nodes.application (success, inits)
         vcase.params.insert (0, alt_formals)
         vcase.subs.insert (1, clause)
         return vcase
