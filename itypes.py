@@ -8,33 +8,33 @@ class _type:
     pass
 
 class t_base (_type):
+    name = 'base'
     def __cmp__ (self, other):
         return cmp (self.__class__, other.__class__)
+    def __repr__ (self):
+        return self.name
+    def __hash__ (self):
+        return hash (self.name)
 
 class t_int (t_base):
-    def __repr__ (self):
-        return 'int'
+    name = 'int'
 
 class t_char (t_base):
-    def __repr__ (self):
-        return 'char'
+    name = 'char'
 
 class t_string (t_base):
-    def __repr__ (self):
-        return 'string'
+    name = 'string'
 
 # XXX consider using a true/false variant, then implementing 'if' as a filter.
 class t_bool (t_base):
-    def __repr__ (self):
-        return 'bool'
+    name = 'bool'
 
 class t_undefined (t_base):
-    def __repr__ (self):
-        return 'undefined'
+    name = 'undefined'
 
+# XXX may use product() instead...
 class t_unit (t_base):
-    def __repr__ (self):
-        return 'unit'
+    name = 'unit'
 
 base_types = {
     'int' : t_int(),
