@@ -91,9 +91,9 @@ def arrow (*sig):
     return t_predicate ('arrow', sig)
     
 # row types
-def product (row):
+def product (*args):
     # a.k.a. 'Π'
-    return t_predicate ('product', (row,))
+    return t_predicate ('product', args)
 
 def sum (row):
     # a.k.a. 'Σ'
