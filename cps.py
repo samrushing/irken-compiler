@@ -141,8 +141,7 @@ class compiler:
     def compile_primapp (self, tail_pos, exp, lenv, k):
         if exp.name.startswith ('%raccess'):
             ignore, field = exp.name.split ('/')
-            # try to get constant-time field access... [this would be much nicer if the type solver
-            #  would just annotate every node.  urgh.]
+            # try to get constant-time field access...
             if exp.args[0].is_a ('varref'):
                 var, addr, is_top = self.lexical_address (lenv, exp.args[0].name)
                 index = var.sig.index (field)
@@ -163,7 +162,7 @@ class compiler:
         elif exp.name == '%%array-set':
             return self.compile_primargs (exp.args, ('%array-set',), lenv, k)
         elif exp.name.startswith ('%vcon/'):
-            ignore, label = exp.name.split ('/')
+            ignore, label, arity = exp.name.split ('/')
             tag = self.context.variant_labels[label]
             return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
         else:
