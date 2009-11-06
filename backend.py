@@ -274,8 +274,9 @@ class c_backend:
         tuples = []
         # if there are any unit types, we need to test for immediate types first,
         #   and only then dereference the pointer to get the tuple type code.
+        trace()
         for i in range (len (types)):
-            if is_a (types[i], itypes.t_unit):
+            if itypes.is_pred (types[i], 'product') and len(types[i].args) == 0:
                 units.append (i)
             else:
                 tuples.append (i)
