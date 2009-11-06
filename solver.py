@@ -578,7 +578,12 @@ class unifier:
 
     def decode (self, t):
         # decode this type as much as possible (i.e., follow every known tvar)
+        seen = set()
         def p (t):
+            if t in seen:
+                return t
+            else:
+                seen.add (t)
             if is_a (t, t_var):
                 if t.eq:
                     if t.eq.type is None:
@@ -762,15 +767,19 @@ class solver:
         #  caused by a big fix full of tens of functions.  This is less likely to happen
         #  with the partitioning/reordering code since it will collect only truly mutually
         #  recursive functions together, most funs will each get their own <let>]
-        def p (t):
+        def p (t, seen):
+            if t in seen:
+                return t
+            else:
+                seen.add (t)
             if is_a (t, t_var):
                 if eqs.has_key (t):
-                    return p (eqs[t])
+                    return p (eqs[t], seen)
                 else:
                     used.add (t)
                     return t
             elif is_a (t, t_predicate):
-                return t_predicate (t.name, [p(x) for x in t.args])
+                return t_predicate (t.name, [p(x,seen) for x in t.args])
             else:
                 return t
         if not eqs:
@@ -780,7 +789,7 @@ class solver:
             qvs = set (qvs)
             for var in vars:
                 used = set()
-                scheme = p (var)
+                scheme = p (var, set())
                 used = used.intersection (qvs)
                 if used:
                     result.append (c_forall (tuple(used), scheme))
@@ -1015,23 +1024,25 @@ class typer:
             for v in eq.vars:
                 if hasattr (v, 'node'):
                     v.node.type = decoded
-        self.find_records (m, u)
+        self.find_records (m, u, top_tv)
         print_solution (m, u, top_tv)
 
-    def find_records (self, m, u):
+    def find_records (self, m, u, top_tv):
         all = []
         def p (t, a):
-            if is_pred (t, 'rlabel'):
+            if is_pred (t, 'product') and len(t.args) == 1 and is_pred (t.args[0], 'rlabel'):
+                p (t.args[0], [])
+            elif is_pred (t, 'rlabel') and a is not None:
                 label, type, rest = t.args
                 p (type, [])    # records within records...
                 p (rest, [label]+a)
-            elif is_pred (t, 'rdefault'):
+            elif is_pred (t, 'rdefault') and a is not None:
                 all.append (a)
             elif is_a (t, t_predicate):
                 for arg in t.args:
-                    p (arg, a)
+                    p (arg, None)
             elif is_a (t, c_forall):
-                p (t.constraint, [])
+                p (t.constraint, None)
             else:
                 pass
         for key, val in m.iteritems():
@@ -1040,6 +1051,7 @@ class typer:
                 key.sig = get_record_sig (val)
             elif is_a (val, c_forall) and is_pred (val.constraint, 'product'):
                 key.sig = get_record_sig (val.constraint)
+        p (u.decode (top_tv), [])
         labels = {}
         all2 = {}
         for rec in all:
