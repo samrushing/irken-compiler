@@ -212,8 +212,7 @@ class compiler:
         def finish (test_reg):
             jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
-            types = [type for label, type, formals in exp.alt_formals]
-            return self.gen_vcase (test_reg, types, alts, k)
+            return self.gen_vcase (test_reg, exp.alt_formals, alts, k)
         return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
 
     def compile_function (self, tail_pos, exp, lenv, k):
@@ -234,7 +233,7 @@ class compiler:
                 k[1],
                 lambda tuple_reg: self.gen_push_env (
                     tuple_reg,
-                    dead_cont (k[1], self.compile_tuple_rands (0, exp.inits, tuple_reg, [tuple_reg] + k[1], (exp.names, lenv), k_body))
+                    dead_cont (k[1], self.compile_store_rands (0, 1, exp.inits, tuple_reg, [tuple_reg] + k[1], (exp.names, lenv), k_body))
                     )
                 )
             )
@@ -260,36 +259,35 @@ class compiler:
             else:
                 return self.gen_new_env (
                     len (rands),
-                    cont (k[1], lambda tuple_reg: self.compile_tuple_rands (0, rands, tuple_reg, [tuple_reg] + k[1], lenv, k))
+                    cont (k[1], lambda tuple_reg: self.compile_store_rands (0, 1, rands, tuple_reg, [tuple_reg] + k[1], lenv, k))
                     )
 
-        def compile_tuple_rands (self, i, rands, tuple_reg, free_regs, lenv, k):
-            return self.compile_exp (
-                False, rands[i], lenv, cont (
-                    free_regs,
-                    lambda arg_reg: self.gen_store_env (
-                        arg_reg, tuple_reg, i, len(rands),
-                        (dead_cont (free_regs, self.compile_tuple_rands (i+1, rands, tuple_reg, free_regs, lenv, k)) if i+1 < len(rands) else k)
-                        )
-                    )
-                )
-
-    # ugh, this nearly completely duplicates <compile_rands>/<compile_tuple_rands>
-    def compile_vector_literal (self, rands, lenv, k):
-        return self.gen_new_vector (
-            len (rands),
-            cont (k[1], lambda vec_reg: self.compile_vector_rands (0, rands, vec_reg, [vec_reg] + k[1], lenv, k))
-            )
-
-    def compile_vector_rands (self, i, rands, vec_reg, free_regs, lenv, k):
+    # if we use collect_primargs() to populate literal vectors and records, the code
+    #   emitted consumes one register for each arg before finally storing all the registers
+    #   in one pass.  As the literals become larger, the register usage becomes very wasteful.
+    # instead, this function accumulates the args one at a time, and stores them individually
+    #   into the tuple.
+        
+    def compile_store_rands (self, i, offset, rands, tuple_reg, free_regs, lenv, k):
+        # offset is an additional offset from the beginning of the tuple - used only
+        #  when storing into environment ribs (because of the <next> pointer immediately
+        #  after the tag).
         return self.compile_exp (
             False, rands[i], lenv, cont (
                 free_regs,
-                lambda arg_reg: self.gen_store_vec (
-                    arg_reg, vec_reg, i, len(rands),
-                    (dead_cont (free_regs, self.compile_vector_rands (i+1, rands, vec_reg, free_regs, lenv, k)) if i+1 < len(rands) else k)
+                lambda arg_reg: self.gen_store_tuple (
+                    offset, arg_reg, tuple_reg, i, len(rands),
+                    (dead_cont (free_regs, self.compile_store_rands (i+1, offset, rands, tuple_reg, free_regs, lenv, k)) if i+1 < len(rands) else k)
                     )
                 )
+            )
+
+    def compile_vector_literal (self, rands, lenv, k):
+        # XXX fixme, this constant doesn't belong here
+        PXLL_VECTOR = 0x14
+        return self.gen_new_tuple (
+            PXLL_VECTOR, len (rands),
+            cont (k[1], lambda vec_reg: self.compile_store_rands (0, 0, rands, vec_reg, [vec_reg] + k[1], lenv, k))
             )
 
     def compile_record_literal (self, exp, lenv, k):
@@ -310,10 +308,14 @@ class compiler:
         fields.sort (lambda a,b: cmp (a[0],b[0]))
         # lookup the runtime tag for this record
         sig = tuple ([x[0] for x in fields])
-        tag = self.context.record_types[sig]
+        TC_USEROBJ = 0x20
+        tag = TC_USEROBJ + self.context.record_types[sig]
         # now compile the expression as a %make-tuple
         args = [x[1] for x in fields]
-        return self.compile_primargs (args, ('%make-tuple', sig, tag), lenv, k)
+        return self.gen_new_tuple (
+            tag, len (args),
+            cont (k[1], lambda rec_reg: self.compile_store_rands (0, 0, args, rec_reg, [rec_reg] + k[1], lenv, k))
+            )
 
     def compile_record_extension (self, fields, exp, lenv, k):
         import itypes
@@ -419,9 +421,6 @@ class irken_compiler (compiler):
     def gen_new_env (self, size, k):
         return INSN ('new_env', [], size, k)
 
-    def gen_store_env (self, arg_reg, tuple_reg, i, n, k):
-        return INSN ('store_env', [arg_reg, tuple_reg], (i, n), k)
-
     def gen_build_env (self, regs, k):
         return INSN ('build_env', regs, None, k)
 
@@ -431,23 +430,17 @@ class irken_compiler (compiler):
     def gen_pop_env (self, reg, k):
         return INSN ('pop_env', [reg], None, k)
 
-    def gen_new_vector (self, size, k):
-        return INSN ('new_vector', [], size, k)
+    def gen_new_tuple (self, tag, size, k):
+        return INSN ('new_tuple', [], (tag, size), k)
 
-    def gen_store_vec (self, arg_reg, vec_reg, i, n, k):
-        return INSN ('store_vec', [arg_reg, vec_reg], (i, n), k)
+    def gen_store_tuple (self, offset, arg_reg, tuple_reg, i, n, k):
+        return INSN ('store_tuple', [arg_reg, tuple_reg], (i, offset, n), k)
 
     def gen_varref (self, addr, is_top, var, k):
         return INSN ('varref', [], (addr, is_top, var), k)
     
     def gen_assign (self, addr, is_top, var, reg, k):
         return INSN ('varset', [reg], (addr, is_top, var), k)
-
-    def gen_move (self, reg_var, reg_src, name, k):
-        return INSN ('move', [reg_var, reg_src], name, k)
-
-    def gen_save (self, free_regs, k):
-        return INSN ('save', [free_regs], None, k)
 
     def gen_closure (self, fun, body, k):
         return INSN ('close', [], (fun, body, k[1]), k)
@@ -576,7 +569,7 @@ def find_allocation (insns, verbose):
             if insn.name == 'primop' and insn.params[0] == '%make-tuple' and len(insn.regs):
                 # we're looking for non-immediate constructors (i.e., list/cons but not list/nil)
                 fun.allocates += 1
-            elif insn.name in ('new_env', 'build_env', 'new_vector'):
+            elif insn.name in ('new_env', 'build_env', 'new_tuple'):
                 fun.allocates += 1
         if verbose:
             print 'allocates %d %s' % (fun.allocates, fun.params[0].name)
