@@ -103,6 +103,8 @@ class transformer:
                 return self.get_constant_binding (exp)
             elif exp.kind == 'vector':
                 return self.build_vector (exp)
+            elif exp.kind == 'record':
+                return self.build_record (exp)
             else:
                 return exp
         elif is_a (exp, list):
@@ -520,7 +522,7 @@ class transformer:
         return self.expand_exp (['%%vector-literal'] + [self.expand_exp (x) for x in exp.value])
 
     def build_record (self, exp):
-        # convert a record literal into a set of row primops
+        # convert a record literal into a set of record primapps
         r = ['%rmake']
         for name, val in exp.value:
             r = ['%%rextend/%s' % name, r, val]
