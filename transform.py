@@ -103,20 +103,26 @@ class transformer:
                 return self.get_constant_binding (exp)
             elif exp.kind == 'vector':
                 return self.build_vector (exp)
-            elif exp.kind == 'record':
-                return self.build_record (exp)
             else:
                 return exp
         elif is_a (exp, list):
-            if len(exp) and is_a (exp[0], str):
-                frobbed = self.frob_name (exp[0])
-                name = 'expand_%s' % (frobbed)
-                probe = getattr (self, name, None)
-                if probe:
-                    exp[0] = frobbed
-                    return probe (exp)
+            if len(exp):
+                rator = self.expand_exp (exp[0])
+                if is_a (rator, str):
+                    if '/' in rator:
+                        # handle names with encoded meta-parameters like %vcon
+                        selector = rator.split('/')[0]
+                    else:
+                        selector = rator
+                    name = 'expand_%s' % (self.frob_name (selector))
+                    probe = getattr (self, name, None)
+                    if probe:
+                        exp[0] = rator
+                        return probe (exp)
+                    else:
+                        return [rator] + [self.expand_exp (x) for x in exp[1:]]
                 else:
-                    return [self.expand_atom (exp[0])] + [self.expand_exp (x) for x in exp[1:]]
+                    return [self.expand_exp (x) for x in exp]
             else:
                 return [self.expand_exp (x) for x in exp]
         else:
@@ -172,17 +178,17 @@ class transformer:
 
     def expand_quote (self, exp):
         # literal data
-        if exp[1] == []:
-            # not sure where's the best place to do this...
-            #return ['quote', atom ('nil', 'nil')]
-            return ['list/nil']
-        else:
-            return self.build_literal (exp[1])
+        return self.build_literal (exp[1])
 
     def expand_colon (self, exp):
         # constructor syntax
         assert (len(exp) == 2 and is_a (exp[1], str))
         return '%%vcon/%s' % exp[1]
+
+    def expand__percentvcon (self, exp):
+        # add some metadata about the arity of this constructor
+        nargs = len(exp) - 1
+        return ['%s/%d' % (exp[0], nargs)] + [self.expand_exp (x) for x in exp[1:]]
 
     def expand_lambda (self, exp):
         return self.exp_function (None, exp[1], self.expand_body (exp[2:]))
@@ -501,7 +507,7 @@ class transformer:
                 if r is None:
                     # no else clause
                     r = ['lambda', ['vfail'], ['%vfail', 'vfail']]
-                r = ['lambda', ['vval'], ['%%vcase/%s' % label, s, r, 'vval']]
+                r = ['lambda', ['vval'], ['%%vcase/%s/%d' % (label, len(formals)), s, r, 'vval']]
         # discard the outermost lambda binding, use <val> instead
         r = r[2]
         r[-1] = val
