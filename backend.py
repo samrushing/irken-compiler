@@ -164,6 +164,7 @@ class c_backend:
             return exp
 
     def insn_primop (self, insn):
+        # XXX consider making some of these insns in their own right?
         regs = insn.regs
         primop = insn.params
         if primop[0] == '%cexp':
@@ -269,24 +270,25 @@ class c_backend:
 
     def insn_vcase (self, insn):
         [test_reg] = insn.regs
-        types, alts = insn.params
+        alt_formals, alts = insn.params
         units = []
         tuples = []
         # if there are any unit types, we need to test for immediate types first,
         #   and only then dereference the pointer to get the tuple type code.
-        trace()
-        for i in range (len (types)):
-            if itypes.is_pred (types[i], 'product') and len(types[i].args) == 0:
-                units.append (i)
+        for i in range (len (alts)):
+            label, type, formals = alt_formals[i]
+            tag = self.context.variant_labels[label]
+            if itypes.is_pred (type, 'product') and len(type.args) == 0:
+                units.append ((i, tag))
             else:
-                tuples.append (i)
+                tuples.append ((i, tag))
         closes = 0
         if len(units):
             self.write ('switch (GET_TYPECODE(r%d)) {' % test_reg)
             closes += 1
-            for index in units:
+            for index, tag in units:
                 self.indent += 1
-                self.write ('case (TC_USERIMM+%d): {' % (index * 4))
+                self.write ('case (TC_USERIMM+%d): {' % (tag * 4))
                 self.indent += 1
                 self.emit (alts[index])
                 self.indent -= 1
@@ -298,10 +300,10 @@ class c_backend:
         if len(tuples):
             self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
             closes += 1
-            for index in tuples:
+            for index, tag in tuples:
                 alt = alts[index]
                 self.indent += 1
-                self.write ('case TC_USEROBJ+%d: {' % (index * 4,))
+                self.write ('case TC_USEROBJ+%d: {' % (tag * 4,))
                 self.indent += 1
                 self.emit (alt)
                 self.indent -= 1
@@ -332,16 +334,18 @@ class c_backend:
             self.toplevel_env = True
             self.write ('top = r%d;' % (insn.target,))
 
-    def insn_new_vector (self, insn):
-        size = insn.params
-        self.write ('r%d = allocate (TC_VECTOR, %d);' % (insn.target, size))
+    def insn_new_tuple (self, insn):
+        tag, size = insn.params
+        self.write ('r%d = allocate (%d, %d);' % (insn.target, tag, size))
 
-    def insn_store_vec (self, insn):
-        [arg_reg, vec_reg] = insn.regs
-        i, n = insn.params
-        self.write ('r%d[%d] = r%d;' % (vec_reg, i+1, arg_reg))
-        if insn.target != 'dead' and insn.target != vec_reg:
-            self.write ('r%d = r%d;' % (insn.target, vec_reg))
+    def insn_store_tuple (self, insn):
+        [arg_reg, tuple_reg] = insn.regs
+        i, offset, n = insn.params
+        self.write ('r%d[%d] = r%d;' % (tuple_reg, i+1+offset, arg_reg))
+        # XXX this is a bit of a hack. Because of the confusing implementation of compile_rands,
+        #     we have no way of passing the tuple to its continuation (when it's needed)
+        if insn.target != 'dead' and insn.target != tuple_reg:
+            self.write ('r%d = r%d;' % (insn.target, tuple_reg))
 
     def c_string (self, s):
         r = repr(s)
@@ -362,16 +366,6 @@ class c_backend:
                 insn.target, self.c_string (s), ls, ls)
             )
         
-    def insn_store_env (self, insn):
-        [arg_reg, tuple_reg] = insn.regs
-        i, n = insn.params
-        #self.verify (2, 'verify (r%d, TC_TUPLE);' % tuple_reg)
-        self.write ('r%d[%d] = r%d;' % (tuple_reg, i+2, arg_reg))
-        # XXX this is a bit of a hack. Because of the confusing implementation of compile_rands,
-        #     we have no way of passing the tuple to its continuation (when it's needed)
-        if insn.target != 'dead' and insn.target != tuple_reg:
-            self.write ('r%d = r%d;' % (insn.target, tuple_reg))
-
     def insn_build_env (self, insn):
         regs = insn.regs
         size = len (regs)
@@ -399,7 +393,6 @@ class c_backend:
         name = var.name
         depth, index = addr
         if insn.target != 'dead':
-            #self.verify (2, 'verify (lenv, TC_TUPLE);')
             if is_top:
                 self.write ('r%d = top[%d];' % (insn.target, index+2))
             elif var.nary:
@@ -416,24 +409,12 @@ class c_backend:
         if insn.target != 'dead':
             print '[set! result used]',
         depth, index = addr
-        #self.verify (2, 'verify (lenv, TC_TUPLE);')
         if is_top:
             self.write ('top[%d] = r%d;' % (index+2, val_reg))
         else:
             # gcc generates identical code for these, and the latter is cleaner.
             #self.write ('((object *%s)lenv)%s[%d] = r%d;' % ('*' * depth, '[1]' * depth, index+2, val_reg))
             self.write ('varset (%d, %d, r%d);' % (depth, index, val_reg))
-
-    def insn_move (self, insn):
-        reg_var, reg_src = insn.regs
-        if reg_src is not None:
-            # this is from varset
-            self.write ('r%d = r%d;' % (reg_var, reg_src))
-        else:
-            # this is from varref
-            # XXX not needed because of cps.remove_moves()
-            #self.write ('r%d = r%d;' % (insn.target, reg_var))
-            pass
 
     def insn_close (self, insn):
         fun, body, free = insn.params
