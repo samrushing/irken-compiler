@@ -740,7 +740,7 @@ class solver:
                             if not is_a (schemes[i], t_var):
                                 # if it's a real type, assign it to the node
                                 sz.names[i].type = schemes[i]
-                            print '%s=%r' % (sz.names[i].name, schemes[i])
+                            #print '%s=%r' % (sz.names[i].name, schemes[i])
                             pvars[sz.names[i]] = schemes[i]
                         c = sz.body
                 elif is_a (sz, s_env):
@@ -1005,7 +1005,8 @@ class typer:
     def go (self, exp):
         cg = constraint_generator (self.context.scc_graph)
         c, top_tv = cg.go (exp)
-        pprint_constraint (c)
+        if self.verbose:
+            pprint_constraint (c)
         self.verbose = False
         m, u = solver (self.context, self.verbose).solve (c)
         # I *think* that any remaining 'unsolved' types (i.e., ones for which we assigned
@@ -1025,7 +1026,8 @@ class typer:
                 if hasattr (v, 'node'):
                     v.node.type = decoded
         self.find_records (m, u, top_tv)
-        print_solution (m, u, top_tv)
+        if self.verbose:
+            print_solution (m, u, top_tv)
 
     def find_records (self, m, u, top_tv):
         all = []
@@ -1062,7 +1064,8 @@ class typer:
             for label in rec:
                 if not labels.has_key (label):
                     labels[label] = len(labels)
-        print 'record types', all2
+        if self.verbose:
+            print 'record types', all2
         self.context.record_types = all2
         self.context.record_labels = labels
 
