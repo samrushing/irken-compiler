@@ -4,7 +4,6 @@ import lisp_reader
 import transform
 import graph
 import nodes
-import typing
 import solver
 import analyze
 import cps
