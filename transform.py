@@ -3,7 +3,6 @@
 from lisp_reader import atom
 
 import lisp_reader
-import typing
 import itypes
 
 is_a = isinstance
@@ -439,53 +438,6 @@ class transformer:
         # (%%make-tuple <typecode-string> arg0 arg1 ...)
         return ['%%make-tuple', exp[1]] + self.expand_all (exp[2:])
     
-    # ----------- datatype ------------
-    # XXX about to be discarded XXX
-    def expand_datatype (self, exp):
-        # (datatype <name> (union (tag0 type0 type1 ...) (tag1 type0 type1 ...) ...))
-        name = exp[1]
-        defn = exp[2]
-        datatypes = self.context.datatypes
-        # for now
-        if defn[0] == 'union':
-            # XXX a function in <typing> to add these?
-            def maybe_product (x):
-                if len(x) == 1:
-                    return x[0]
-                elif len(x) == 0:
-                    return typing.unit()
-                else:
-                    return typing.product (x)
-            datatypes[name] = typing.union (
-                name,
-                [(x[0], maybe_product (x[1:])) for x in defn[1:]]
-                )
-        elif defn[0] == 'product':
-            # (datatype <name> (product type0 type1 type2))
-            datatypes[name] = typing.product (defn[1:], name)
-        elif defn[0] == 'record':
-            # (datatype <name> (record (tag0 type0) (tag1 type1) ...))
-            t = itypes.rdefault (itypes.abs())
-            vars = {}
-            for [tag, type] in defn[1:]:
-                if is_a (type, list) and type[0] == 'quote':
-                    # a type variable
-                    tv = type[1]
-                    if not vars.has_key (tv):
-                        vars[tv] = itypes.t_var()
-                    type = vars[tv]
-                else:
-                    type = itypes.parse_cexp_type (type)
-                t = itypes.rlabel (tag, type, t)
-            t = itypes.product (t)
-            if len(vars):
-                import solver
-                t = solver.c_forall (vars.values(), t)
-            datatypes[name] = t
-        else:
-            raise ValueError ("unknown datatype constructor")
-        return ['begin']
-
     def expand_vcase (self, exp):
         # (vcase <exp>
         #    ((kind0 var0 var1) <body0>)
