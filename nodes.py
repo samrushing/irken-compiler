@@ -2,10 +2,6 @@
 
 # lambda language
 
-# XXX why not name this module 'nodes'?
-
-import typing
-
 from pdb import set_trace as trace
 
 # used to generate a unique identifier for each node.  it's important that these
@@ -451,31 +447,9 @@ class walker:
 
     def go (self, exp):
         exp = self.walk_exp (exp)
-        if len (typing.datatypes):
-            exp = add_constructors (exp)
         for node in exp:
             node.fix_attribute_names()
         return exp
-
-# these worked by inserting the constructor definitions directly
-#  into the node tree.  I think we want to avoid this now, since
-#  we won't know the exact shape of each record until after typing.
-def add_constructors (root):
-    names = []
-    inits = []
-    for name, dt in typing.datatypes.items():
-        if is_a (dt, typing.union):
-            for sname, stype in dt.alts:
-                fname, fun = dt.gen_constructor (sname)
-                names.append (vardef (fname))
-                inits.append (fun)
-        elif is_a (dt, typing.product):
-            fname, fun = dt.gen_constructor()
-            names.append (vardef (fname))
-            inits.append (fun)
-        else:
-            raise ValueError ("unknown datatype")
-    return fix (names, inits, root)
 
 # alpha conversion
 
