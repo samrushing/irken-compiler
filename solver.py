@@ -108,6 +108,31 @@ class c_forall (constraint):
         self.vars = vars
         self.constraint = constraint
 
+
+def parse_cexp_type (t):
+    tvars = {}
+
+    def get_tvar (t):
+        if not tvars.has_key (t):
+            tvars[t] = t_var()
+        return tvars[t]
+
+    def p (t):
+        if is_a (t, tuple):
+            result_type, arg_types = t
+            return arrow (p (result_type), *[p (x) for x in arg_types])
+        elif is_a (t, str):
+            return base_types[t]
+        elif is_a (t, t_var):
+            return get_tvar (t)
+        else:
+            raise ValueError (t)
+    r = p (t)
+    if len(tvars):
+        return c_forall (set(tvars.values()), r)
+    else:
+        return r
+
 def flatten_conj (c):
     l = []
     def p (c):
@@ -252,10 +277,19 @@ class constraint_generator:
 
     def gen_cexp (self, exp, t):
         sig = parse_cexp_type (exp.type_sig)
-        r = c_equals (t, sig.args[0]) # result type
+        if is_a (sig, c_forall):
+            sig0 = sig.constraint
+        else:
+            sig0 = sig
+        # result type
+        c = c_equals (t, sig0.args[0])
         for i in range (len (exp.args)):
-            r = c_and (r, self.gen (exp.args[i], sig.args[i+1]))
-        return r
+            # arg types
+            c = c_and (c, self.gen (exp.args[i], sig0.args[i+1]))
+        if is_a (sig, c_forall):
+            return c_exists (sig.vars, c)
+        else:
+            return c
 
     def gen_let_splat (self, exp, t):
         r = self.gen (exp.body, t)
@@ -891,19 +925,19 @@ class solver:
             # remember each unique variant label
             self.remember_variant_label (label)
             if arity == 0:
-                # ∀X.() → Σ(l:pre (unit);X)
+                # ∀X.() → Σ(l:pre (Π());X)
                 return c_forall ((1,), arrow (sum (rlabel (label, pre (product()), 1)), product()))
             elif arity == 1:
                 # ∀XY.X → Σ(l:pre X;Y)
                 return c_forall ((0,1), arrow (sum (rlabel (label, pre(0), 1)), 0))
             else:
-                # ∀ABCD.(A,B,C) → Σ(l:pre (product (A,B,C));D)
+                # ∀ABCD.Π(A,B,C) → Σ(l:pre (Π(A,B,C));D)
                 args = tuple(range (arity))
                 return c_forall (range(arity+1), arrow (sum (rlabel (label, pre (product(*args)), arity)), product (*args)))
         elif name.startswith ('%vcase/'):
             what, label, arity = name.split ('/')
             arity = int (arity)
-            # ∀012345.(3,4,5 → 0), (Σ(l:1;2) → 0), Σ(l:pre(product(3,4,5);2) → 0
+            # ∀012345.(3,4,5) → 0, Σ(l:1;2) → 0, Σ(l:pre(Π(3,4,5);2) → 0
             # ∀012345.f0,f1,s1 → 0
             # X == 345...
             args = range (3, arity+3)
