@@ -356,20 +356,39 @@ def vcase (value, alt_formals, alts):
 class ConfusedError (Exception):
     pass
 
+# ok, this is a problem.  we have two different ways of doing type
+#  signatures here - solver.py uses an 'arrow' predicate to represent
+#  what we are doing here with a tuple.  also, the arrow predicate orders
+#  the result-type/args thing differently.  FIX ME.
+
+import itypes
+
 def parse_type (exp):
-    assert (len (exp) >= 2)
-    assert (is_a (x, str) for x in exp)
-    assert (exp[-2] == '->')
+
+    tvars = {}
+
+    def get_tvar (name):
+        if not tvars.has_key (name):
+            tvars[name] = itypes.t_var()
+        return tvars[name]
 
     def pfun (x):
         if is_a (x, list):
-            return parse_type (x)
+            if len(x) and x[0] == 'quote':
+                # a type variable
+                return get_tvar (x[1])
+            else:
+                # an arrow type
+                assert (len(x) >= 2)
+                assert (x[-2] == '->')
+                result_type = pfun (x[-1])
+                arg_types = tuple ([pfun(y) for y in x[:-2]])
+                return (result_type, arg_types)
         else:
             return x
 
-    result_type = pfun (exp[-1])
-    arg_types = tuple ([pfun(x) for x in exp[:-2]])
-    return (result_type, arg_types)
+    r = pfun (exp)
+    return r
 
 from lisp_reader import atom
 
