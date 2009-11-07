@@ -1,6 +1,6 @@
 # -*- Mode: Python -*-
 
-from pprint import pprint as pp
+#from pprint import pprint as pp
 
 def build_dependency_graph (root):
     g = {}
@@ -20,7 +20,7 @@ def build_dependency_graph (root):
                 search (sub, current_fun)
     g['top'] = set()
     search (root, g['top'])
-    pp (g)
+    #pp (g)
     return g
 
 def transpose (g):
