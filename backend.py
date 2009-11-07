@@ -138,18 +138,22 @@ class c_backend:
         result = []
         for i in range (len (types)):
             t = types[i]
-            if '/' in t:
-                [t, option] = t.split('/')
-            else:
-                option = ''
-            if t == 'int':
-                result.append ('unbox(%s)' % (args[i],))
-            elif t == 'string':
-                if option != 'raw':
-                    result.append ('((pxll_string*)(%s))->data' % (args[i],))
+            if is_a (t, str):
+                if '/' in t:
+                    [t, option] = t.split('/')
                 else:
-                    result.append ('((pxll_string*)(%s))' % (args[i],))
+                    option = ''
+                if t == 'int':
+                    result.append ('unbox(%s)' % (args[i],))
+                elif t == 'string':
+                    if option != 'raw':
+                        result.append ('((pxll_string*)(%s))->data' % (args[i],))
+                    else:
+                        result.append ('((pxll_string*)(%s))' % (args[i],))
+                else:
+                    result.append (args[i])
             else:
+                # tvars in cexp types
                 result.append (args[i])
         return tuple (result)
 
