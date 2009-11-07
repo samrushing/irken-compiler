@@ -112,15 +112,6 @@ def abs():
 def pre (x):
     return t_predicate ('pre', (x,))
 
-def parse_cexp_type (t):
-    if is_a (t, tuple):
-        result_type, arg_types = t
-        return arrow (parse_cexp_type (result_type), *[parse_cexp_type (x) for x in arg_types])
-    elif is_a (t, str):
-        return base_types[t]
-    else:
-        raise ValueError (t)
-    
 def get_record_sig (t):
     # product (rlabel (...))
     assert (is_pred (t, 'product'))
