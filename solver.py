@@ -565,7 +565,12 @@ class unifier:
             if is_pred (ty1, 'rdefault'):
                 # ensure that ty0 is the rdefault/δ
                 ty0, ty1 = ty1, ty0
-            if is_a (ty1, t_predicate):
+            if is_pred (ty1, 'rdefault'):
+                # they're both rdefault - normal decompose here
+                assert (len(ty0.args) == 1 and len(ty1.args) == 1)
+                self.add2 (ty0.args[0], ty1.args[0])
+                self.add (tvs, ty0)
+            elif is_a (ty1, t_predicate):
                 # some other predicate
                 self.dprint ('s-mutate-gd')
                 n = len (ty1.args)
@@ -939,7 +944,6 @@ class solver:
             arity = int (arity)
             # ∀012345.(3,4,5) → 0, Σ(l:1;2) → 0, Σ(l:pre(Π(3,4,5);2) → 0
             # ∀012345.f0,f1,s1 → 0
-            # X == 345...
             args = range (3, arity+3)
             # success continuation
             f0 = arrow (0, *args)
