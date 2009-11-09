@@ -281,7 +281,10 @@ class c_backend:
         #   and only then dereference the pointer to get the tuple type code.
         for i in range (len (alts)):
             label, type, formals = alt_formals[i]
-            tag = self.context.variant_labels[label]
+            try:
+                tag = self.context.variant_labels[label]
+            except KeyError:
+                raise ValueError ('variant constructor ":%s" never called!' % label)
             if itypes.is_pred (type, 'product') and len(type.args) == 0:
                 units.append ((i, tag))
             else:
