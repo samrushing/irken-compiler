@@ -71,10 +71,10 @@ class node:
         print '%3d' % (self.serial,),
         print '  ' * depth, self.kind,
         print '[%d]' % (self.size,),
-        if self.type:
-            print '%s ' % (self.type,),
-        else:
-            print '? ',
+        #if self.type:
+        #    print '%s ' % (self.type,),
+        #else:
+        #    print '? ',
         if self.params:
             print self.params
         else:
@@ -498,11 +498,8 @@ def rename_variables (exp, datatypes):
             defs = exp.get_names()
             for vd in defs:
                 # hack to avoid renaming methods
-                if vd.name.startswith ('&'):
-                    vars.append (vd)
-                elif vd.name != '_':
-                    vd.alpha = len (vars)
-                    vars.append (vd)
+                vd.alpha = len (vars)
+                vars.append (vd)
             if exp.is_a ('let_splat'):
                 # this one is tricky
                 names = []
@@ -560,7 +557,7 @@ def rename_variables (exp, datatypes):
     for vd in vars:
         if vd.name.startswith ('&'):
             vd.name = vd.name[1:]
-        elif vd.name != '_':
+        else:
             vd.name = '%s_%d' % (vd.name, vd.alpha)
 
     result = {}
