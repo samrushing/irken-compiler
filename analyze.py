@@ -30,6 +30,7 @@ class analyzer:
 
     def __init__ (self, context, safety=1, noinline=False, verbose=False):
         self.node_counter = 0
+        self.context = context
         self.safety=safety
         self.vars = context.var_dict
         self.constants = {}
@@ -211,31 +212,57 @@ class analyzer:
         if val is None:
             val = value
         if failure.body.is_a ('primapp') and failure.body.name.startswith ('%vcase/'):
-            vcase = self.transform_vcase (failure.body, value)
+            vcase = self.transform_vcase (failure.body, val)
         elif failure.body.is_a ('primapp') and failure.body.name.startswith ('%vfail'):
             vcase = nodes.vcase (val, [], [])
         else:
             # [is this only when there's an else clause?]
             # reach in and grab the type of this variant
             # sum (rlabel (<label>, pre (<vtype>), ...))
+            raise NotImplementedError
             vtype = value.type.args[0].args[1].args[0]
             alt_formals = (label, vtype, failure.formals)
             init = nodes.cexp ("UOBJ_GET(%s,0)", (vtype, ('?',)), [val])
             clause = nodes.application (failure, [init])
             vcase = nodes.vcase (val, [alt_formals], [clause])
-        vtype = value.type.args[0].args[1].args[0]
+        vtype = self.find_vcase_label_type (value.type.args[0], label)
         alt_formals = (label, vtype, success.formals)
+        # filter out don't-care variable bindings
+        n = len (success.formals)
+        formals = []
+        kept = []
+        for i in range (n):
+            f = success.formals[i]
+            if not f.name.startswith ('_'):
+                formals.append (f)
+                kept.append (i)
+        success.formals = formals
         # don't trigger this for variant records!
+        inits = []
         if arity > 1:
-            inits = [nodes.cexp ("UOBJ_GET(%%s,%d)" % i, (vtype.args[i], ('?',)), [val]) for i in range (len (vtype.args))]
+            for i in kept:
+                inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % i, (vtype.args[i], ('?',)), [val]))
         elif arity == 0:
             inits = []
         else:
-            inits = [nodes.cexp ("UOBJ_GET(%s,0)", (vtype, ('?',)), [val])]
+            if 0 in kept:
+                inits = [nodes.cexp ("UOBJ_GET(%s,0)", (vtype, ('?',)), [val])]
+            else:
+                inits = []
         clause = nodes.application (success, inits)
         vcase.params.insert (0, alt_formals)
         vcase.subs.insert (1, clause)
         return vcase
+
+    def find_vcase_label_type (self, type, label):
+        while type.name == 'rlabel':
+            if type.args[0] == label:
+                assert (itypes.is_pred (type.args[1], 'pre'))
+                return type.args[1].args[0]
+            else:
+                type = type.args[2]
+        else:
+            raise ValueError ("unknown label?")
 
     def replace (self, orig_node, fun):
         # apply replacement-fun() to all of <node>
