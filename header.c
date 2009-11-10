@@ -305,8 +305,8 @@ vm (int argc, char * argv[])
   register object * k = PXLL_NIL;
 %%%REGISTER_DECLARATIONS%%%
   object * top = PXLL_NIL; // top-level (i.e. 'global') environment
-  object * t = 0; // temp - for swaps & stuff
-  object * result; // LAME?
+  object * t = 0; // temp - for swaps & building tuples
+  object * result;
   object * limit = heap0 + (heap_size - 1024);
   object * freep = heap0;
   
