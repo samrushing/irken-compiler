@@ -450,14 +450,16 @@ class transformer:
         alts = exp[2:]
         r = None
         while alts:
-            selector, body = alts.pop()
+            alt = alts.pop()
+            selector = alt[0]
+            body = alt[1:]
             if selector == 'else':
                 # override %vfail
-                r = ['lambda', ['velse'], body]
+                r = ['lambda', ['velse']] + body
             else:
                 [colon, label] = selector[0]
                 formals = selector[1:]
-                s = ['lambda', formals, body]
+                s = ['lambda', formals] + body
                 if r is None:
                     # no else clause
                     r = ['lambda', ['vfail'], ['%vfail', 'vfail']]
