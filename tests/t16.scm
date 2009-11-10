@@ -1,6 +1,30 @@
 
+(define (random)
+  (%%cexp (-> int) "random()"))
+
+(define (+ a b)
+  (%%cexp (int int -> int) "%s+%s" a b))
+
+(define (- a b)
+  (%%cexp (int int -> int) "%s-%s" a b))
+
+(define (= a b)
+  (%%cexp (int int -> bool) "%s==%s" a b))
+
 (define (< a b)
   (%%cexp (int int -> bool) "%s<%s" a b))
+
+(define (> a b)
+  (%%cexp (int int -> bool) "%s>%s" a b))
+
+(define (print x)
+  (%%cexp ('a -> undefined) "dump_object (%s, 0)" x))
+
+(define (printn x)
+  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+
+(define (print-string s)
+  (%%cexp (string -> int) "fputs (%s, stdout)" s))
 
 ;; a quick translation of okasaki's pure functional red-black tree
 
@@ -80,7 +104,76 @@
       ((:empty) s) ;; impossible, should raise something here?
       )))
 
-(let ((t (:empty)))
-  (let ((t (insert t < 19 2000)))
-    (let ((t (insert t < 43 1000)))
-      t)))
+(define (member root < key)
+  (let member0 ((n root))
+    (vcase n
+       ((:empty) (:no))
+       ((:red l r k v)
+	(cond ((< key k) (member0 l))
+	      ((< k key) (member0 r))
+	      (else (:yes v))))
+       ((:purple l r k v)
+	(cond ((< key k) (member0 l))
+	      ((< k key) (member0 r))
+	      (else (:yes v)))))))
+
+(define (inorder t p)
+  (let inorder0 ((n t))
+    (vcase n
+      ((:empty) #f)
+      ((:red l r k v)    (inorder0 l) (p k v) (inorder0 r) #f)
+      ((:purple l r k v) (inorder0 l) (p k v) (inorder0 r) #f)
+      )))
+
+(define (reverse n p)
+  (let reverse0 ((n n))
+    (vcase n
+      ((:empty) #f)
+      ((:red l r k v)    (reverse0 r) (p k v) (reverse0 l) #f)
+      ((:purple l r k v) (reverse0 r) (p k v) (reverse0 l) #f)
+      )))
+
+(define (n-random n)
+  (let loop ((n n)
+	     (t (:empty)))
+    (if (= n 0)
+	t
+	(loop (- n 1) (insert t < (random) (random))))))
+
+(define (print-spaces n)
+  (let loop ((n n))
+    (cond ((> n 0)
+	   (print-string "  ")
+	   (loop (- n 1))))))
+
+(define (print-item k v d)
+  (print-spaces d)
+  (print k)
+  (print-string ":")
+  (print v)
+  (print-string "\n"))
+
+(define (print-tree n)
+  (let p ((n n) (d 0))
+    (vcase n
+      ((:empty) #u)
+      ((:red l r k v)    (begin (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
+      ((:purple l r k v) (begin (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))))
+    ))
+
+(define (print-kv k v)
+  (print k)
+  (print-string " ")
+  (print v)
+  (print-string "\n"))
+
+(let ((t (n-random 20)))
+  (print-string "inorder:\n")
+  (inorder t print-kv)
+  (print-string "reverse:\n")
+  (reverse t print-kv)
+  (set! t (insert t < 1234 5000))
+  (printn (member t < 1234))
+  (printn (member t < 9999))
+  (print-tree t)
+  )
