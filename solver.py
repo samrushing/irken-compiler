@@ -240,6 +240,19 @@ class constraint_generator:
     def gen_varref (self, exp, t):
         return c_is (exp.name, t)
 
+    def gen_varset (self, exp, t):
+        x = t_var()
+        return c_exists (
+            (x,),
+            c_and (
+                c_and (
+                    c_is (exp.name, x),
+                    self.gen (exp.value, x)
+                    ),
+                c_equals (t, t_undefined())
+                )
+            )
+
     def gen_function (self, exp, t):
         if is_pred (t, 'arrow'):
             # lemma 10.4.7
@@ -403,7 +416,8 @@ class unifier:
             type = self.try_name_1 (type)
 
         if (not type and len(vars) == 1) or (type and len(vars) == 0):
-            self.dprint ('s-single')
+            #self.dprint ('s-single')
+            pass
         else:
             # any of these vars already present?
             for v in vars:
@@ -454,7 +468,7 @@ class unifier:
                 # XXX row labels, must be a better way.
                 args2.append (arg)
             elif not is_a (arg, t_var):
-                self.dprint ('s-name-1')
+                #self.dprint ('s-name-1')
                 x = t_var()
                 self.exists.append (x)
                 self.add (set([x]), arg)
@@ -479,7 +493,7 @@ class unifier:
         # is a three-way fuse possible? (e.g. A=T0 B=T1; A=B=T2)
         # I don't think so, so let's ignore that possibility for now.
         self.forget (eq)
-        self.dprint ('s-fuse')
+        #self.dprint ('s-fuse')
         if ty0 and ty1:
             # must unify types
             # A=B=T0 ^ B=C=T1 => A=B=C=T0=T1
@@ -500,20 +514,20 @@ class unifier:
         elif (is_a (ty0, t_predicate) and is_a (ty1, t_predicate)
               and ty0.name == ty1.name
               and len(ty0.args) == len(ty1.args)):
-            self.dprint ('s-decompose')
+            #self.dprint ('s-decompose')
             # P(a,b,c)=P(d,e,f)=ε => a=d ^ b=e ^ c=f ^ P(a,b,c)=ε
             for i in range (len (ty0.args)):
                 self.add2 (ty0.args[i], ty1.args[i])
             self.add (tvs, ty0)
         else:
-            self.dprint ('s-clash')
+            #self.dprint ('s-clash')
             raise TypeError ((ty0, ty1))
 
     def unify_rows (self, ty0, ty1, tvs):
         if is_pred (ty0, 'rlabel') and is_pred (ty1, 'rlabel'):
             if ty0.args[0] != ty1.args[0]:
                 # distinct head labels
-                self.dprint ('s-mutate-ll')
+                #self.dprint ('s-mutate-ll')
                 # XXX be concerned about how one of these may have types
                 #     and the other has variables.  do we need to check
                 #     and reorder them?
@@ -537,7 +551,7 @@ class unifier:
                 # ensure that ty0 is the rlabel
                 ty0, ty1 = ty1, ty0
             if is_pred (ty1, 'rdefault'):
-                self.dprint ('s-mutate-dl')
+                #self.dprint ('s-mutate-dl')
                 x = ty1.args[0]
                 assert (is_a (x, t_var))
                 self.add2 (x, ty0.args[1])
@@ -545,7 +559,7 @@ class unifier:
                 self.add (tvs, ty1)
             elif is_a (ty1, t_predicate):
                 # some other predicate
-                self.dprint ('s-mutate-gl')
+                #self.dprint ('s-mutate-gl')
                 n = len (ty1.args)
                 tvars0 = [t_var() for x in ty1.args]
                 tvars1 = [t_var() for x in ty1.args]
@@ -559,7 +573,7 @@ class unifier:
                     self.add2 (ty1.args[i], rlabel (l0, tvars0[i], tvars1[i]))
                 self.add (tvs, ty1)
             else:
-                self.dprint ('s-clash')
+                #self.dprint ('s-clash')
                 raise TypeError ((ty0, ty1))
         elif is_pred (ty0, 'rdefault',) or is_pred (ty1, 'rdefault'):
             if is_pred (ty1, 'rdefault'):
@@ -572,7 +586,7 @@ class unifier:
                 self.add (tvs, ty0)
             elif is_a (ty1, t_predicate):
                 # some other predicate
-                self.dprint ('s-mutate-gd')
+                #self.dprint ('s-mutate-gd')
                 n = len (ty1.args)
                 g = ty1.name
                 tvars = [ t_var() for x in ty1.args ]
@@ -582,10 +596,10 @@ class unifier:
                     self.add2 (ty1.args[i], rdefault (tvars[i]))
                 self.add (tvs, ty0)
             else:
-                self.dprint ('s-clash')
+                #self.dprint ('s-clash')
                 raise TypeError ((ty0, ty1))
         else:
-            self.dprint ('s-clash')
+            #self.dprint ('s-clash')
             raise TypeError ((ty0, ty1))
 
     def split (self, sz):
@@ -617,13 +631,15 @@ class unifier:
 
     def decode (self, t):
         # decode this type as much as possible (i.e., follow every known tvar)
+        # XXX this is an expensive operation!
         seen = set()
         def p (t):
-            if t in seen:
-                return t
-            else:
-                seen.add (t)
             if is_a (t, t_var):
+                # this avoids cycles
+                if t.id in seen:
+                    return t
+                else:
+                    seen.add (t.id)
                 if t.eq:
                     if t.eq.type is None:
                         return t.eq.rep
@@ -672,7 +688,7 @@ class solver:
 
     def solve (self, c):
 
-        self.dprint ('\nHit <return> at each pause (or "t<return>" to enter the debugger)')
+        #self.dprint ('\nHit <return> at each pause (or "t<return>" to enter the debugger)')
 
         pvars = {}
         self.exists = []
@@ -710,40 +726,40 @@ class solver:
             # --- solver ---            
 
             if u.exists:
-                self.dprint ('s-ex-1')
+                #self.dprint ('s-ex-1')
                 self.move_exists (s, u.exists)
                 u.exists = []
             elif is_a (sz, s_exists):
-                self.dprint ('s-record-ex')
+                #self.dprint ('s-record-ex')
                 self.exists.extend (sz.vars)
                 pop()
             elif is_a (c, c_equals):
-                self.dprint ('s-solve-eq')
+                #self.dprint ('s-solve-eq')
                 u.add2 (*c.args)
                 c = c_true()
             elif is_a (c, c_is) and is_a (c.x, str):
-                self.dprint ('s-solve-id')
+                #self.dprint ('s-solve-id')
                 scheme = self.lookup (c.x, s)
                 scheme = self.instantiate (scheme)
                 # "Recall that if σ is of the form ∀X0..XN[U].X
                 # where X0..XN#ftv(T), then c_is(σ, T) stands for ∃X0..XN.(U ^ X=T)."
-                self.dprint ('name=%s' % (c.x,))
-                self.dprint ('scheme= %r' % (scheme,))
-                self.dprint ('type=%r' % c.t)
+                #self.dprint ('name=%s' % (c.x,))
+                #self.dprint ('scheme= %r' % (scheme,))
+                #self.dprint ('type=%r' % c.t)
                 if is_a (scheme, c_forall):
                     c = c_exists (scheme.vars, c_equals (scheme.constraint, c.t))
                 else:
                     c = c_equals (scheme, c.t)
             elif is_a (c, c_and):
-                self.dprint ('s-solve-and')
+                #self.dprint ('s-solve-and')
                 push (s_and (c.args[1]))
                 c = c.args[0]
             elif is_a (c, c_exists):
-                self.dprint ('s-solve-ex')
+                #self.dprint ('s-solve-ex')
                 self.move_exists (s, c.vars)
                 c = c.sub
             elif is_a (c, c_let):
-                self.dprint ('s-solve-let')
+                #self.dprint ('s-solve-let')
                 if is_a (c.constraint, c_forall):
                     push (s_let (c.names, c.vars, c.constraint.vars, c.body, rank))
                     c = c.constraint.constraint
@@ -753,24 +769,29 @@ class solver:
                     c = c_true()
             elif is_a (c, c_true):
                 if is_a (sz, s_and):
-                    self.dprint ('s-pop-and')
+                    #self.dprint ('s-pop-and')
                     pop()
                     c = sz.constraint
                 elif is_a (sz, s_let):
                     unname = []
                     for var in sz.vars:
+                        # XXX checking out 'rank' feature for is_free()
+                        if var.rank < sz.rank:
+                            print 'var is out-ranked, is it free?'
+                            trace()
                         # XXX this isn't quite right - we can subst sz.type with var.rep
-                        if var.next and not u.is_free (var) and var not in sz.types:
+                        #if var.next and not u.is_free (var) and var not in sz.types:
+                        if var.next and var.rank >= sz.rank and var not in sz.types:
                             unname.append (var)
                     if unname:
-                        self.dprint ('s-unname %r' % (unname,))
+                        #self.dprint ('s-unname %r' % (unname,))
                         vars = [x for x in sz.vars if x not in unname]
-                        self.dprint ('  new vars=%r' % (vars,))
+                        #self.dprint ('  new vars=%r' % (vars,))
                         pop()
                         push (s_let (sz.names, sz.types, vars, sz.body, sz.rank))
                     else:
                         # the conditions have been met; turn the <let> into an <env>.
-                        self.dprint ('s-pop-let')
+                        #self.dprint ('s-pop-let')
                         schemes = self.build_type_schemes (sz.types, sz.vars, u.split (sz))
                         pop()
                         push (s_env (sz.names, schemes))
@@ -783,12 +804,12 @@ class solver:
                             pvars[sz.names[i]] = schemes[i]
                         c = sz.body
                 elif is_a (sz, s_env):
-                    self.dprint ('s-pop-env')
+                    #self.dprint ('s-pop-env')
                     pop()
                 elif is_a (sz, s_empty):
                     # we're done!
-                    self.dprint ('exists=%r' % self.exists)
-                    self.dprint ('constraint=%r' % orig_c)
+                    #self.dprint ('exists=%r' % self.exists)
+                    #self.dprint ('constraint=%r' % orig_c)
                     return pvars, u
                 else:
                     raise ValueError ("unexpected")
@@ -1058,11 +1079,12 @@ class typer:
                 key.type = val
         #u.renumber()
         # one last pass of decoding...
-        for eq in u.eqs:
-            decoded = u.decode (eq.rep)
-            for v in eq.vars:
-                if hasattr (v, 'node'):
-                    v.node.type = decoded
+        if False:
+            for eq in u.eqs:
+                decoded = u.decode (eq.rep)
+                for v in eq.vars:
+                    if hasattr (v, 'node'):
+                        v.node.type = decoded
         self.find_records (m, u, top_tv)
         if self.verbose:
             print_solution (m, u, top_tv)
