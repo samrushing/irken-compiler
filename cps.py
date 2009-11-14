@@ -150,7 +150,7 @@ class compiler:
             return self.compile_primargs (exp.args, ('%record-get', field, index), lenv, k)
         elif exp.name.startswith ('%rextend'):
             return self.compile_record_literal (exp, lenv, k)
-        elif exp.name == '%%vector-literal':
+        elif exp.name.startswith ('%vector-literal/'):
             if len (exp.args) < 5:
                 return self.compile_primargs (exp.args, ('%make-tuple', exp.type, 'vector'), lenv, k)
             else:
