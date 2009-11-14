@@ -90,6 +90,9 @@ def arrow (*sig):
     # XXX this might be more clear as (<arg0>, <arg1>, ... <result>)
     return t_predicate ('arrow', sig)
     
+def vector (type):
+    return t_predicate ('vector', (type,))
+
 # row types
 def product (*args):
     # a.k.a. 'Π'
