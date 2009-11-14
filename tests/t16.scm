@@ -26,17 +26,7 @@
 (define (print-string s)
   (%%cexp (string -> int) "fputs (%s, stdout)" s))
 
-;; a quick translation of okasaki's pure functional red-black tree
-
-;; A more 'natural' representation might be:
-;; (datatype node (union (empty) (full bool node node ? ?)))
-;; where the color is stored as a bool in each node.
-;;
-;; this saves space by encoding the color into the header of each node,
-;;   but leads to some minor code duplication (due to the lack of real
-;;   pattern matching).  another issue: the fact that I don't have proper
-;;   type variables in this syntax means there's no way to expression that
-;;   red and black nodes have the same key and value types.
+;; okasaki's pure functional red-black trees (or, in honor of the Almighty Tallest, "red-purple" trees).
 
 (define (lbalance l r k v)
   (vcase l
