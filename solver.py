@@ -977,6 +977,10 @@ class solver:
                 t = product (*args)
             s1 = sum (rlabel (label, pre (t), 2))
             return c_forall (range(arity+3), arrow (0, f0, f1, s1))
+        elif name.startswith ('%vector-literal/'):
+            what, arity = name.split ('/')
+            arg_types = (0,) * int (arity)
+            return c_forall ((0,), arrow (vector(0), *arg_types))
         else:
             raise UnboundVariable (name)
 
