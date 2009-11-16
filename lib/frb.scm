@@ -13,138 +13,114 @@
 ;;   way to expression that red and purple nodes have the same key and
 ;;   value types.
 
-(datatype node
-  (union
-    (empty)
-    (red node node ? ?)
-    (purple node node ? ?)
-    ))
 
-(define (node:lbalance l r k v)
-  (typecase node l
-    ((red ll lr lk lv)
-     (typecase node ll
-       ((red lll llr llk llv)
-	(node/red (node/purple lll llr llk llv) (node/purple lr r k v) lk lv))
-       ((purple _ _ _ _)
-	(typecase node lr
-           ((red lrl lrr lrk lrv)
-	    (node/red (node/purple ll lrl lk lv) (node/purple lrr r k v) lrk lrv))
-	   ((purple _ _ _ _)
-	    (node/purple l r k v))
-	   ((empty)
-	    (node/purple l r k v))))
-       ((empty)
-	(node/purple l r k v))))
-    ((purple _ _ _ _)
-     (node/purple l r k v))
-    ((empty)
-     (node/purple l r k v))))
+(define (tree:insert root < k v)
 
-(define (node:rbalance l r k v)
-  (typecase node r
-    ((red rl rr rk rv)
-     (typecase node rr
-       ((red rrl rrr rrk rrv)
-	(node/red (node/purple l rl k v) (node/purple rrl rrr rrk rrv) rk rv))
-       ((purple _ _ _ _)
-	(typecase node rl
-          ((red rll rlr rlk rlv)
-	   (node/red (node/purple l rll k v) (node/purple rlr rr rk rv) rlk rlv))
-	  ((purple _ _ _ _)
-	   (node/purple l r k v))
-	  ((empty)
-	   (node/purple l r k v))))
-       ((empty)
-	(node/purple l r k v))))
-    ((purple _ _ _ _)
-     (node/purple l r k v))
-    ((empty)
-     (node/purple l r k v))))
+  (define (lbalance l r k v)
+    (vcase l
+      ((:red ll lr lk lv)
+       (vcase ll
+         ((:red lll llr llk llv)
+  	(:red (:purple lll llr llk llv) (:purple lr r k v) lk lv))
+         ((:purple _ _ _ _)
+  	(vcase lr
+  	  ((:red lrl lrr lrk lrv)
+  	   (:red (:purple ll lrl lk lv) (:purple lrr r k v) lrk lrv))
+  	  ((:purple _ _ _ _)
+  	   (:purple l r k v))
+  	  ((:empty)
+  	   (:purple l r k v))))
+         ((:empty)
+  	(:purple l r k v))))
+      ((:purple _ _ _ _)
+       (:purple l r k v))
+      ((:empty)
+       (:purple l r k v))))
+  
+  (define (rbalance l r k v)
+    (vcase r
+      ((:red rl rr rk rv)
+       (vcase rr
+         ((:red rrl rrr rrk rrv)
+  	(:red (:purple l rl k v) (:purple rrl rrr rrk rrv) rk rv))
+         ((:purple _ _ _ _)
+  	(vcase rl
+            ((:red rll rlr rlk rlv)
+  	   (:red (:purple l rll k v) (:purple rlr rr rk rv) rlk rlv))
+  	  ((:purple _ _ _ _)
+  	   (:purple l r k v))
+  	  ((:empty)
+  	   (:purple l r k v))))
+         ((:empty)
+  	(:purple l r k v))))
+      ((:purple _ _ _ _)
+       (:purple l r k v))
+      ((:empty)
+       (:purple l r k v))))
 
-(define (node:insert root < k v)
   (define (ins n)
-    (typecase node n
-      ((empty)
-       (node/red (node/empty) (node/empty) k v))
-      ((red l r k2 v2)
+    (vcase n
+      ((:empty)
+       (:red (:empty) (:empty) k v))
+      ((:red l r k2 v2)
        (cond ((< k k2)
-	      (node/red (ins l) r k2 v2))
+	      (:red (ins l) r k2 v2))
 	     ((< k2 k)
-	      (node/red l (ins r) k2 v2))
+	      (:red l (ins r) k2 v2))
 	     (else n)))
-      ((purple l r k2 v2)
+      ((:purple l r k2 v2)
        (cond ((< k k2)
-	      (node:lbalance (ins l) r k2 v2))
+	      (lbalance (ins l) r k2 v2))
 	     ((< k2 k)
-	      (node:rbalance l (ins r) k2 v2))
+	      (rbalance l (ins r) k2 v2))
 	     (else n)))))
+
   (let ((s (ins root)))
-    (typecase node s
-      ((purple _ _ _ _) s)
-      ((red l r k v) (node/purple l r k v))
-      ((empty) s) ;; impossible, should raise something here?
+    (vcase s
+      ((:purple _ _ _ _) s)
+      ((:red l r k v) (:purple l r k v))
+      ((:empty) s) ;; impossible, should raise something here?
       )))
 
-(define (node:member root < key)
+(define (tree:member root < key)
   (let member0 ((n root))
-    (typecase node n
-       ((empty) (maybe/no))
-       ((red l r k v)
+    (vcase n
+       ((:empty) (:no))
+       ((:red l r k v)
 	(cond ((< key k) (member0 l))
 	      ((< k key) (member0 r))
-	      (else (maybe/yes v))))
-       ((purple l r k v)
+	      (else (:yes v))))
+       ((:purple l r k v)
 	(cond ((< key k) (member0 l))
 	      ((< k key) (member0 r))
-	      (else (maybe/yes v)))))))
+	      (else (:yes v)))))))
 
-(define (print-spaces n)
-  (let loop ((n n))
-    (cond ((> n 0)
-	   (print-string "  ")
-	   (loop (- n 1))))))
-
-(define (print-item k v d)
-  (print-spaces d)
-  (print k)
-  (print-string ":")
-  (print v)
-  (print-string "\n"))
-
-(define (node:print n)
-  (let p ((n n) (d 0))
-    (typecase node n
-      ((empty) #u)
-      ((red l r k v)    (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))
-      ((purple l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
-    ))
-
-(define (node:inorder n p)
-  (let inorder0 ((n n))
-    (typecase node n
-      ((empty))
-      ((red l r k v)    (inorder0 l) (p k v) (inorder0 r))
-      ((purple l r k v) (inorder0 l) (p k v) (inorder0 r))
+(define (tree:inorder t p)
+  (let inorder0 ((n t))
+    (vcase n
+      ((:empty) #f)
+      ((:red l r k v)    (inorder0 l) (p k v) (inorder0 r) #f)
+      ((:purple l r k v) (inorder0 l) (p k v) (inorder0 r) #f)
       )))
 
-(define (node:reverse n p)
+(define (tree:reverse n p)
   (let reverse0 ((n n))
-    (typecase node n
-      ((empty))
-      ((red l r k v)    (reverse0 r) (p k v) (reverse0 l))
-      ((purple l r k v) (reverse0 r) (p k v) (reverse0 l))
+    (vcase n
+      ((:empty) #f)
+      ((:red l r k v)    (reverse0 r) (p k v) (reverse0 l) #f)
+      ((:purple l r k v) (reverse0 r) (p k v) (reverse0 l) #f)
       )))
+
 
 ;; the defn of make-generator, call/cc, etc... makes it pretty hard
 ;;  to pass more than one arg through a continuation.  so instead we'll
 ;;  use a 'pair' constructor to iterate through the tree...
 
-(define (node:make-generator tree end-key end-val)
+(define (tree:make-generator tree end-key end-val)
   (make-generator
    (lambda (consumer)
-     (node:inorder tree (lambda (k v) (consumer (pair k v))))
+     (tree:inorder tree (lambda (k v) (consumer (:pair k v))))
      (let loop ()
-       (consumer (pair end-key end-val))
+       (consumer (:pair end-key end-val))
        (loop))
      )))
