@@ -31,38 +31,38 @@
 (define (close fd)
   (%%cexp (int -> int) "close (%s)" fd))
 
-(class readfile
+;; (class readfile
 
-  (fd:int buffer:string pos:int end:int)
+;;   (fd:int buffer:string pos:int end:int)
 
-  (define (fill-buffer self)
-    (let ((n (read-into-buffer self.fd self.buffer)))
-      (set! self.end n)
-      (set! self.pos 0)
-      n))
+;;   (define (fill-buffer self)
+;;     (let ((n (read-into-buffer self.fd self.buffer)))
+;;       (set! self.end n)
+;;       (set! self.pos 0)
+;;       n))
 	     
-  (define (read-buffer self)
-    ;; get an entire buffer-full at a time
-    (cond ((< self.pos self.end)
-	   (let ((opos self.pos))
-	     (set! self.pos self.end)
-	     (substring self.buffer opos self.end)))
-	  ((= (self.read-buffer) 0) "")
-	  (else
-	   (set! self.end 0)
-	   (set! self.pos 0)
-	   self.buffer)))
+;;   (define (read-buffer self)
+;;     ;; get an entire buffer-full at a time
+;;     (cond ((< self.pos self.end)
+;; 	   (let ((opos self.pos))
+;; 	     (set! self.pos self.end)
+;; 	     (substring self.buffer opos self.end)))
+;; 	  ((= (self.read-buffer) 0) "")
+;; 	  (else
+;; 	   (set! self.end 0)
+;; 	   (set! self.pos 0)
+;; 	   self.buffer)))
 
-  (define (read-char self)
-    (cond ((< self.pos self.end)
-	   (set! self.pos (+ self.pos 1))
-	   (maybe/yes (string-ref self.buffer (- self.pos 1))))
-	  ((= (self.read-buffer) 0)
-	   (maybe/no))
-	  (else
-	   (self.read-char))))
-  )
+;;   (define (read-char self)
+;;     (cond ((< self.pos self.end)
+;; 	   (set! self.pos (+ self.pos 1))
+;; 	   (maybe/yes (string-ref self.buffer (- self.pos 1))))
+;; 	  ((= (self.read-buffer) 0)
+;; 	   (maybe/no))
+;; 	  (else
+;; 	   (self.read-char))))
+;;   )
 
-(define (open-readfile path buffer-size)
-  (readfile (open path 0 0) (make-string buffer-size) 0 0))
+;; (define (open-readfile path buffer-size)
+;;   (readfile (open path 0 0) (make-string buffer-size) 0 0))
 
