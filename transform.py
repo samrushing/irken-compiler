@@ -188,8 +188,11 @@ class transformer:
 
     def expand__percentvcon (self, exp):
         # add some metadata about the arity of this constructor
-        nargs = len(exp) - 1
-        return ['%s/%d' % (exp[0], nargs)] + [self.expand_exp (x) for x in exp[1:]]
+        if exp[0].count ('/') < 2:
+            nargs = len(exp) - 1
+            return ['%s/%d' % (exp[0], nargs)] + [self.expand_exp (x) for x in exp[1:]]
+        else:
+            return [exp[0]] + [self.expand_exp (x) for x in exp[1:]]
 
     def expand_lambda (self, exp):
         return self.exp_function (None, exp[1], self.expand_body (exp[2:]))
@@ -433,11 +436,6 @@ class transformer:
         # (%%cexp <type> <format-string> arg0 arg1 ...)
         return ['%%cexp', exp[1], exp[2]] + self.expand_all (exp[3:])
 
-    # this is to avoid treating the format string as a literal
-    def expand__percent_percentmake_tuple (self, exp):
-        # (%%make-tuple <typecode-string> arg0 arg1 ...)
-        return ['%%make-tuple', exp[1]] + self.expand_all (exp[2:])
-    
     def expand_vcase (self, exp):
         # (vcase <exp>
         #    ((kind0 var0 var1) <body0>)
