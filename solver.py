@@ -15,6 +15,10 @@
 #   be a pretty easy thing to change, once I'm ready to wrap my head around it.
 #
 
+# XXX: only fully decode types that are needed by the rest of the
+#   compiler.  The decoding process is pretty expensive, and if we
+#   don't need to do it for every node we may speed things up.
+
 import nodes
 import graph
 import sys
@@ -122,6 +126,9 @@ def parse_cexp_type (t):
             result_type, arg_types = t
             return arrow (p (result_type), *[p (x) for x in arg_types])
         elif is_a (t, str):
+            if '/' in t:
+                # type/raw...
+                t = t.split ('/')[0]
             return base_types[t]
         elif is_a (t, t_var):
             return get_tvar (t)
@@ -281,7 +288,11 @@ class constraint_generator:
         args = [t_var() for x in exp.args]
         if exp.name.startswith ('%vcon/'):
             # XXX don't like having to do this here.
-            c = c_is (exp.name, arrow (t, product (*args)))
+            if len(args) == 1:
+                sig = args[0]
+            else:
+                sig = product (*args)
+            c = c_is (exp.name, arrow (t, sig))
         else:
             c = c_is (exp.name, arrow (t, *args))
         for i in range (len(exp.args)):
@@ -350,6 +361,9 @@ class constraint_generator:
         return c_exists (tvars, c)
 
     def gen_literal (self, exp, t):
+        return c_equals (t, base_types[exp.type])
+
+    def gen_make_tuple (self, exp, t):
         return c_equals (t, base_types[exp.type])
 
 class UnboundVariable (Exception):
@@ -735,7 +749,10 @@ class solver:
                 pop()
             elif is_a (c, c_equals):
                 #self.dprint ('s-solve-eq')
-                u.add2 (*c.args)
+                try:
+                    u.add2 (*c.args)
+                except TypeError as terr:
+                    self.print_type_error (terr, c.args, u, s)
                 c = c_true()
             elif is_a (c, c_is) and is_a (c.x, str):
                 #self.dprint ('s-solve-id')
@@ -802,6 +819,7 @@ class solver:
                                 sz.names[i].type = schemes[i]
                             #print '%s=%r' % (sz.names[i].name, schemes[i])
                             pvars[sz.names[i]] = schemes[i]
+                            sz.names[i].type = schemes[i]
                         c = sz.body
                 elif is_a (sz, s_env):
                     #self.dprint ('s-pop-env')
@@ -925,24 +943,29 @@ class solver:
                 raise ValueError ("I'm confused")
         return self.lookup_special_names (x)
 
+    # A trick I've used here is to encode the arity into the name of
+    #  some of the prims, making it possible to return a correct arrow
+    #  type for each.  I'm not entirely happy with it, but at least
+    #  it's clear.
+
     def lookup_special_names (self, name):
         if name == '%rmake':
-            return c_forall ((), arrow (product (rdefault (abs()))))
+            return c_forall ((), arrow (rproduct (rdefault (abs()))))
         elif name.startswith ('%rextend/'):
             what, label = name.split ('/')
             # ∀XYZ.(Π(l:X;Y), Z) → Π(l:pre(Z);Y)
             return c_forall (
                 (0,1,2),
                 arrow (
-                    product (rlabel (label, pre(2), 1)),
-                    product (rlabel (label, 0, 1)),
+                    rproduct (rlabel (label, pre(2), 1)),
+                    rproduct (rlabel (label, 0, 1)),
                     2
                     )
                 )
         elif name.startswith ('%raccess/'):
             what, label = name.split ('/')
             # ∀XY.Π(l:pre(X);Y) → X
-            return c_forall ((0,1), arrow (0, product (rlabel (label, pre(0), 1))))
+            return c_forall ((0,1), arrow (0, rproduct (rlabel (label, pre(0), 1))))
         elif name == '%vfail':
             return c_forall ((0,), arrow (0, sum (rdefault (abs()))))
         elif name.startswith ('%vcon/'):
@@ -981,6 +1004,8 @@ class solver:
             what, arity = name.split ('/')
             arg_types = (0,) * int (arity)
             return c_forall ((0,), arrow (vector(0), *arg_types))
+        elif name == '%%array-ref':
+            return c_forall ((0,), arrow (0, vector (0), t_int()))
         else:
             raise UnboundVariable (name)
 
@@ -1015,6 +1040,12 @@ class solver:
             else:
                 raise NotImplementedError
             W ('\n')
+
+    def print_type_error (self, terr, args, u, s):
+        self.pprint_stack (s)
+        ty0, ty1 = terr.args[0]
+        print 'Type Error', args
+        raise TypeError (u.decode (ty0), u.decode (ty1))
 
 def list_to_conj (l):
     # convert list <l> into a conjunction built with <c_and>
@@ -1096,7 +1127,7 @@ class typer:
     def find_records (self, m, u, top_tv):
         all = []
         def p (t, a):
-            if is_pred (t, 'product') and len(t.args) == 1 and is_pred (t.args[0], 'rlabel'):
+            if is_pred (t, 'rproduct') and len(t.args) == 1 and is_pred (t.args[0], 'rlabel'):
                 p (t.args[0], [])
             elif is_pred (t, 'rlabel') and a is not None:
                 label, type, rest = t.args
@@ -1113,9 +1144,9 @@ class typer:
                 pass
         for key, val in m.iteritems():
             p (val, [])
-            if is_pred (val, 'product'):
+            if is_pred (val, 'rproduct'):
                 key.sig = get_record_sig (val)
-            elif is_a (val, c_forall) and is_pred (val.constraint, 'product'):
+            elif is_a (val, c_forall) and is_pred (val.constraint, 'rproduct'):
                 key.sig = get_record_sig (val.constraint)
         p (u.decode (top_tv), [])
         labels = {}
