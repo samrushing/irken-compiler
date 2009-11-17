@@ -155,6 +155,8 @@ class compiler:
                 return self.compile_primargs (exp.args, ('%make-tuple', exp.type, 'vector'), lenv, k)
             else:
                 return self.compile_vector_literal (exp.args, lenv, k)
+        elif exp.name.startswith ('%make-vector'):
+            return self.compile_primargs (exp.args, ('%make-vector',), lenv, k)
         elif exp.name in ('%%array-ref', '%%product-ref'):
             # XXX need two different insns, to handle constant index
             # XXX could support strings as character arrays by passing down a hint?
