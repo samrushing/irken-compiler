@@ -247,8 +247,13 @@ class c_backend:
                     j += 1
                     old_fields.pop (0)
             self.write ('r%d = t;' % (insn.target,))
+        elif primop[0] == '%make-vector':
+            [vlen, vval] = insn.regs
+            self.write ('t = alloc_no_clear (TC_VECTOR, unbox(r%d));' % (vlen,))
+            self.write ('for (i=0; i < unbox(r%d); i++) { t[i+1] = r%d; }' % (vlen, vval))
+            self.write ('r%d = t;' % (insn.target,))
         else:
-            raise ValueError ("unknown primop")
+            raise ValueError ("unknown primop: %s" % primop[0])
 
     def insn_test (self, insn):
         cexp, then_code, else_code = insn.params
