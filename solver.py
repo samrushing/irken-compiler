@@ -1004,8 +1004,12 @@ class solver:
             what, arity = name.split ('/')
             arg_types = (0,) * int (arity)
             return c_forall ((0,), arrow (vector(0), *arg_types))
+        elif name.startswith ('%make-vector'):
+            return c_forall ((0,), arrow (vector(0), t_int(), 0))
         elif name == '%%array-ref':
             return c_forall ((0,), arrow (0, vector (0), t_int()))
+        elif name == '%%array-set':
+            return c_forall ((0,), arrow (t_undefined(), vector (0), t_int(), 0))
         else:
             raise UnboundVariable (name)
 
