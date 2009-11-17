@@ -96,9 +96,19 @@
 (define (sys:argc)
   (%%cexp (-> int) "argc"))
 
-(define (sys:argv n)
-  (let* ((len (%%cexp (int -> int) "strlen(argv[%s])" n))
-	 (r (make-string len)))
-    (%%cexp (string int int -> undefined)
-	    "(memcpy (%s, argv[%s], %s), PXLL_UNDEFINED)" r n len)
-    r))
+(define sys:argv
+
+  (let ((nargs (sys:argc))
+	(v (%make-vector nargs "")))
+
+    (define (argv n)
+      (let* ((len (%%cexp (int -> int) "strlen(argv[%s])" n))
+	     (r (make-string len)))
+	(%%cexp (string int int -> undefined) "(memcpy (%s, argv[%s], %s), PXLL_UNDEFINED)" r n len)
+	r))
+
+    (let loop ((n (sys:argc)))
+      (cond ((zero? n) v)
+	    (else
+	     (set! v[(- n 1)] (argv (- n 1)))
+	     (loop (- n 1)))))))
