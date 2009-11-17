@@ -1,4 +1,6 @@
 ;; bring vectors back from the dead
 
-(let ((x #(1 2 3 4 5 6 7 8 9)))
-  x)
+(let ((x #(1 2 3 4 5 6 7 8 9))
+      (y #("id" "while" "begin" "end" "if" "then"))
+      )
+  (:pair y x[5]))
