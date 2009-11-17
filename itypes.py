@@ -25,12 +25,18 @@ class t_char (t_base):
 class t_string (t_base):
     name = 'string'
 
+class t_symbol (t_base):
+    name = 'symbol'
+
 # XXX consider using a true/false variant, then implementing 'if' as a filter.
 class t_bool (t_base):
     name = 'bool'
 
 class t_undefined (t_base):
     name = 'undefined'
+
+class t_continuation (t_base):
+    name = 'continuation'
 
 # XXX may use product() instead...
 class t_unit (t_base):
@@ -43,6 +49,8 @@ base_types = {
     'string' : t_string(),
     'undefined' : t_undefined(),
     'unit': t_unit(),
+    'continuation' : t_continuation(),
+    'symbol' : t_symbol(),
     }
 
 def base_n (n, base, digits):
@@ -93,7 +101,6 @@ def arrow (*sig):
 def vector (type):
     return t_predicate ('vector', (type,))
 
-# row types
 def product (*args):
     # a.k.a. 'Π'
     return t_predicate ('product', args)
@@ -101,6 +108,15 @@ def product (*args):
 def sum (row):
     # a.k.a. 'Σ'
     return t_predicate ('sum', (row,))
+
+# row types
+def rproduct (*args):
+    # a.k.a. 'Π'
+    return t_predicate ('rproduct', args)
+
+def rsum (row):
+    # a.k.a. 'Σ'
+    return t_predicate ('rsum', (row,))
 
 def rdefault (arg):
     # a.k.a. 'δ'
