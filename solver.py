@@ -751,7 +751,7 @@ class solver:
                 #self.dprint ('s-solve-eq')
                 try:
                     u.add2 (*c.args)
-                except TypeError as terr:
+                except TypeError, terr:
                     self.print_type_error (terr, c.args, u, s)
                 c = c_true()
             elif is_a (c, c_is) and is_a (c.x, str):
