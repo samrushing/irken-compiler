@@ -47,14 +47,12 @@
 (define (string-compare a b)
   ;; it'd be nice if the compiler could get rid of this let*,
   ;;   it sucks to have to allocate in order to compare two strings.
-  (let* ((alen (string-length a))
-	 (blen (string-length b))
-	 (min (if (< alen blen) alen blen))
+  (let* ((min (min (string-length a) (string-length b)))
 	 (cmp (%%cexp (string string int -> int) "memcmp (%s, %s, %s)" a b min)))
     (cond ((= cmp 0)
-	   (if (= alen blen)
+	   (if (= (string-length a) (string-length b))
 	       0
-	       (if (< alen blen) -1 1)))
+	       (if (< (string-length a) (string-length b)) -1 1)))
 	  (else cmp))))
 
 (define (string-=? s1 s2)
@@ -80,22 +78,20 @@
 ;;                   (copy-loop (+ j 1) (+ pos jlen)))
 ;;                 r))))))
 
-;; [waiting to decide how I will deal with lists]
+(define (list->string l)
+  (let ((buffer (make-string (length l))))
+    (let loop ((l l) (i 0))
+      (vcase l
+	 ((:nil) buffer)
+	 ((:cons hd tl)
+	  (string-set! buffer i hd)
+	  (loop tl (+ i 1)))))))
 
-;; (define (list->string l)
-;;   (let ((buffer (make-string (length l))))
-;;     (let loop ((l l) (i 0))
-;;       (if (null? l)
-;; 	  buffer
-;; 	  (begin
-;; 	    (string-set! buffer i (car l))
-;; 	    (loop (cdr l) (+ i 1)))))))
-
-;; (define (string->list s)
-;;   (let loop ((l '()) (n (string-length s)))
-;;     (if (= n 0)
-;; 	l
-;; 	(loop (cons (string-ref s (- n 1)) l) (- n 1)))))
+(define (string->list s)
+  (let loop ((l (:nil)) (n (string-length s)))
+    (if (= n 0)
+	l
+	(loop (:cons (string-ref s (- n 1)) l) (- n 1)))))
 
 (define (sys:argc)
   (%%cexp (-> int) "argc"))
