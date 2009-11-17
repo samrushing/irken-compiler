@@ -1,9 +1,9 @@
 
 (define (printn x)
-  (%%cexp (? -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (print x)
-  (%%cexp (? -> undefined) "dump_object (%s, 0)" x))
+  (%%cexp ('a -> undefined) "dump_object (%s, 0)" x))
 
 (define (print-string s)
   (%%cexp (string -> int) "fputs (%s, stdout)" s))
@@ -16,6 +16,9 @@
 
 (define (= a b)
   (%%cexp (int int -> bool) "%s==%s" a b))
+
+(define (zero? a)
+  (%%cexp (int -> bool) "%s==0" a))
 
 (define (< a b)
   (%%cexp (int int -> bool) "%s<%s" a b))
@@ -41,30 +44,24 @@
 (define (/ a b)
   (%%cexp (int int -> int) "%s/%s" a b))
 
+(define (min x y)
+  (if (< x y) x y))
+
 (define (eq? a b)
-  (%%cexp (? ? -> bool) "%s==%s" a b))
+  (%%cexp ('a 'b -> bool) "%s==%s" a b))
 
 (define (not x)
   (eq? x #f))
 
+;; this is a little harsh. 8^)
+;; think of it as a placeholder for something better to come.
 (define (error x)
   (printn x)
-  (%%cexp (-> ?) "(abort(), PXLL_UNDEFINED)"))
+  ;; note: keep that 'a there... it allows a call to <error> to
+  ;;   take any type...
+  (%%cexp (-> 'a) "(abort(), PXLL_UNDEFINED)"))
 
 (define (id x) x)
-
-;; SML's <option>, Haskell's <maybe>
-(datatype maybe
-  (union
-   (no)
-   (yes ?)
-   ))
-
-(datatype pair
-  (product ? ?))
-
-;; need to find a way to describe tuples to the type system?
-;; [i.e., tuple-ref, etc for nary args]
 
 ;; the '^' prefix tells the compiler to never inline this
 ;;  function - which would not work correctly otherwise
@@ -75,7 +72,7 @@
   (%%cexp (-> continuation) "k"))
 
 (define (putcc k r)
-  (%%cexp (continuation ? -> ?) "(k=%s, %s)" k r))
+  (%%cexp (continuation 'a -> 'a) "(k=%s, %s)" k r))
 
 (define (^call/cc p)
   (let ((k (getcc)))
@@ -105,6 +102,8 @@
 
 ;; based on:
 ;;   http://www.cs.brown.edu/pipermail/plt-scheme/2006-April/012418.html
+
+;; would this be any cleaner with let/cc instead of call/cc??
 
 (define (make-generator producer)
   (let ((ready #f)
