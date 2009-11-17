@@ -1,134 +1,15 @@
 
-(define (random)
-  (%%cexp (-> int) "random()"))
-
-(define (+ a b)
-  (%%cexp (int int -> int) "%s+%s" a b))
-
-(define (- a b)
-  (%%cexp (int int -> int) "%s-%s" a b))
-
-(define (= a b)
-  (%%cexp (int int -> bool) "%s==%s" a b))
-
-(define (< a b)
-  (%%cexp (int int -> bool) "%s<%s" a b))
-
-(define (> a b)
-  (%%cexp (int int -> bool) "%s>%s" a b))
-
-(define (print x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0)" x))
-
-(define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
-
-(define (print-string s)
-  (%%cexp (string -> int) "fputs (%s, stdout)" s))
-
-;; okasaki's pure functional red-black trees (or, in honor of the Almighty Tallest, "red-purple" trees).
-
-(define (lbalance l r k v)
-  (vcase l
-    ((:red ll lr lk lv)
-     (vcase ll
-       ((:red lll llr llk llv)
-	(:red (:purple lll llr llk llv) (:purple lr r k v) lk lv))
-       ((:purple _ _ _ _)
-	(vcase lr
-	  ((:red lrl lrr lrk lrv)
-	   (:red (:purple ll lrl lk lv) (:purple lrr r k v) lrk lrv))
-	  ((:purple _ _ _ _)
-	   (:purple l r k v))
-	  ((:empty)
-	   (:purple l r k v))))
-       ((:empty)
-	(:purple l r k v))))
-    ((:purple _ _ _ _)
-     (:purple l r k v))
-    ((:empty)
-     (:purple l r k v))))
-
-(define (rbalance l r k v)
-  (vcase r
-    ((:red rl rr rk rv)
-     (vcase rr
-       ((:red rrl rrr rrk rrv)
-	(:red (:purple l rl k v) (:purple rrl rrr rrk rrv) rk rv))
-       ((:purple _ _ _ _)
-	(vcase rl
-          ((:red rll rlr rlk rlv)
-	   (:red (:purple l rll k v) (:purple rlr rr rk rv) rlk rlv))
-	  ((:purple _ _ _ _)
-	   (:purple l r k v))
-	  ((:empty)
-	   (:purple l r k v))))
-       ((:empty)
-	(:purple l r k v))))
-    ((:purple _ _ _ _)
-     (:purple l r k v))
-    ((:empty)
-     (:purple l r k v))))
-
-(define (insert root < k v)
-  (define (ins n)
-    (vcase n
-      ((:empty)
-       (:red (:empty) (:empty) k v))
-      ((:red l r k2 v2)
-       (cond ((< k k2)
-	      (:red (ins l) r k2 v2))
-	     ((< k2 k)
-	      (:red l (ins r) k2 v2))
-	     (else n)))
-      ((:purple l r k2 v2)
-       (cond ((< k k2)
-	      (lbalance (ins l) r k2 v2))
-	     ((< k2 k)
-	      (rbalance l (ins r) k2 v2))
-	     (else n)))))
-  (let ((s (ins root)))
-    (vcase s
-      ((:purple _ _ _ _) s)
-      ((:red l r k v) (:purple l r k v))
-      ((:empty) s) ;; impossible, should raise something here?
-      )))
-
-(define (member root < key)
-  (let member0 ((n root))
-    (vcase n
-       ((:empty) (:no))
-       ((:red l r k v)
-	(cond ((< key k) (member0 l))
-	      ((< k key) (member0 r))
-	      (else (:yes v))))
-       ((:purple l r k v)
-	(cond ((< key k) (member0 l))
-	      ((< k key) (member0 r))
-	      (else (:yes v)))))))
-
-(define (inorder t p)
-  (let inorder0 ((n t))
-    (vcase n
-      ((:empty) #f)
-      ((:red l r k v)    (inorder0 l) (p k v) (inorder0 r) #f)
-      ((:purple l r k v) (inorder0 l) (p k v) (inorder0 r) #f)
-      )))
-
-(define (reverse n p)
-  (let reverse0 ((n n))
-    (vcase n
-      ((:empty) #f)
-      ((:red l r k v)    (reverse0 r) (p k v) (reverse0 l) #f)
-      ((:purple l r k v) (reverse0 r) (p k v) (reverse0 l) #f)
-      )))
+(include "lib/core.scm")
+(include "lib/string.scm")
+(include "lib/random.scm")
+(include "lib/frb.scm")
 
 (define (n-random n)
   (let loop ((n n)
 	     (t (:empty)))
     (if (= n 0)
 	t
-	(loop (- n 1) (insert t < (random) (random))))))
+	(loop (- n 1) (tree:insert t < (random) (random))))))
 
 (define (print-spaces n)
   (let loop ((n n))
@@ -143,12 +24,12 @@
   (print v)
   (print-string "\n"))
 
-(define (print-tree n)
+(define (tree:print n)
   (let p ((n n) (d 0))
     (vcase n
       ((:empty) #u)
-      ((:red l r k v)    (begin (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
-      ((:purple l r k v) (begin (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))))
+      ((:red l r k v)    (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))
+      ((:purple l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
     ))
 
 (define (print-kv k v)
@@ -157,13 +38,22 @@
   (print v)
   (print-string "\n"))
 
-(let ((t (n-random 20)))
+(let ((t (n-random 20))
+      (t2 (:empty))
+      )
   (print-string "inorder:\n")
-  (inorder t print-kv)
+  (tree:inorder t print-kv)
   (print-string "reverse:\n")
-  (reverse t print-kv)
-  (set! t (insert t < 1234 5000))
-  (printn (member t < 1234))
-  (printn (member t < 9999))
-  (print-tree t)
+  (tree:reverse t print-kv)
+  (set! t (tree:insert t < 1234 5000))
+  (printn (tree:member t < 1234))
+  (printn (tree:member t < 9999))
+  (tree:print t)
+  (set! t2 (tree:insert t2 string-<? "howdy" 0))
+  (set! t2 (tree:insert t2 string-<? "there" 2))
+  (tree:print t2)
+  (let ((probe (tree:member t2 string-<? "there")))
+    (vcase probe
+      ((:no) (printn "nope") #t)
+      ((:yes sym) (printn sym) #t)))
   )
