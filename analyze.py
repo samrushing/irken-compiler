@@ -216,17 +216,9 @@ class analyzer:
         elif failure.body.is_a ('primapp') and failure.body.name.startswith ('%vfail'):
             vcase = nodes.vcase (val, [], [])
         else:
-            # [is this only when there's an else clause?]
-            # reach in and grab the type of this variant
-            # sum (rlabel (<label>, pre (<vtype>), ...))
+            # else clause - tbd
             raise NotImplementedError
-            vtype = value.type.args[0].args[1].args[0]
-            alt_formals = (label, vtype, failure.formals)
-            init = nodes.cexp ("UOBJ_GET(%s,0)", (vtype, ('?',)), [val])
-            clause = nodes.application (failure, [init])
-            vcase = nodes.vcase (val, [alt_formals], [clause])
-        vtype = self.find_vcase_label_type (value.type.args[0], label)
-        alt_formals = (label, vtype, success.formals)
+        vtype = self.find_vcase_label_type (val, label)
         # filter out don't-care variable bindings
         n = len (success.formals)
         formals = []
@@ -236,7 +228,10 @@ class analyzer:
             if not f.name.startswith ('_'):
                 formals.append (f)
                 kept.append (i)
+        # ugh, always a bad idea to edit nodes in place.
         success.formals = formals
+        success.params[1] = formals
+        alt_formals = (label, vtype, success.formals)
         # don't trigger this for variant records!
         inits = []
         if arity > 1:
@@ -254,7 +249,21 @@ class analyzer:
         vcase.subs.insert (1, clause)
         return vcase
 
-    def find_vcase_label_type (self, type, label):
+    def find_vcase_label_type (self, val, label):
+        # XXX trying this hard to find the exact type... probably a sign I've
+        #   fucked something up...
+        import solver
+        if val.type is None or is_a (val.type, itypes.t_var):
+            # try to get it from the vardef object
+            type = val.var.type
+            if is_a (type, solver.c_forall):
+                type = type.constraint
+        else:
+            # hope it's directly attached to this varref
+            type = val.type
+        assert (itypes.is_pred (type, 'sum'))
+        assert (itypes.is_pred (type.args[0], 'rlabel'))
+        type = type.args[0]
         while type.name == 'rlabel':
             if type.args[0] == label:
                 assert (itypes.is_pred (type.args[1], 'pre'))
