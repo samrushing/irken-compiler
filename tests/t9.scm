@@ -1,3 +1,6 @@
+
+;; do some allocation in the loop
+
 (define (- a b)
   (%%cexp (int int -> int) "%s-%s" a b))
 
