@@ -53,7 +53,12 @@ dump_object (object * ob, int depth)
     int tc = is_immediate (ob);
     switch (tc) {
     case TC_CHAR:
-      fprintf (stdout, "#\\%c", (char)((pxll_int)ob>>8));
+      if ((pxll_int)ob>>8 == 257) {
+	// deliberately out-of-range character
+	fprintf (stdout, "#\\eof");
+      } else {
+	fprintf (stdout, "#\\%c", (char)((pxll_int)ob>>8));
+      }
       break;
     case TC_BOOL:
       fprintf (stdout, ((pxll_int)ob >> 8) & 0xff ? "#t" : "#f");
