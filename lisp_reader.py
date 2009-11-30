@@ -80,6 +80,8 @@ class reader:
                     ch = '\n'
                 elif probe == 'space':
                     ch = ' '
+                elif probe == 'eof':
+                    ch = 'eof'
                 else:
                     ch = probe[0]
                 result = atom ('char', ch)
