@@ -71,10 +71,10 @@ class node:
         print '%3d' % (self.serial,),
         print '  ' * depth, self.kind,
         print '[%d]' % (self.size,),
-        #if self.type:
-        #    print '%s ' % (self.type,),
-        #else:
-        #    print '? ',
+        if self.type:
+            print '%s ' % (self.type,),
+        else:
+            print '? ',
         if self.params:
             print self.params
         else:
@@ -116,8 +116,7 @@ class node:
         # special-case: binding positions are not nodes or sub-expressions, but
         #   we want fresh copies of them as well...
         if r.binds():
-            # XXX urgh, we'll lose type information here.
-            binds = [ vardef (x.name) for x in r.get_names() ]
+            binds = [ vardef (x.name, x.type) for x in r.get_names() ]
             if self.is_a ('let_splat'):
                 r.params = binds
             elif self.is_a ('fix'):
@@ -166,7 +165,7 @@ class node:
             self.name = self.params
             self.value = self.subs[0]
         elif self.kind == 'literal':
-            self.type, self.value = self.params
+            self.ltype, self.value = self.params
         elif self.kind == 'primapp':
             self.name = self.params
             self.args = self.subs
@@ -202,7 +201,7 @@ class node:
             [self.ob, self.val] = self.subs
             self.name = self.params
         elif self.kind == 'make_tuple':
-            (self.type, self.tag) = self.params
+            (self.ttype, self.tag) = self.params
             self.args = self.subs
         elif self.kind == 'vcase':
             self.alt_formals = self.params
@@ -228,7 +227,7 @@ def to_scheme (node):
     elif node.is_a ('varset'):
         return ['set!', node.name, to_scheme (node.value)]
     elif node.is_a ('literal'):
-        if node.type == 'string':
+        if node.ltype == 'string':
             return scheme_string (node.value)
         else:
             return node.value
@@ -249,7 +248,7 @@ def to_scheme (node):
     elif node.is_a ('application'):
         return [to_scheme (node.rator)] + [to_scheme (x) for x in node.rands]
     elif node.is_a ('make_tuple'):
-        return ['make_tuple', node.type] + [to_scheme (x) for x in node.args]
+        return ['make_tuple', node.ttype] + [to_scheme (x) for x in node.args]
     elif node.is_a ('set'):
         return ['set', to_scheme (node.ob), node.name, to_scheme (node.val)]
     elif node.is_a ('get'):
@@ -387,8 +386,7 @@ def parse_type (exp):
         else:
             return x
 
-    r = pfun (exp)
-    return r
+    return pfun (exp)
 
 from lisp_reader import atom
 
