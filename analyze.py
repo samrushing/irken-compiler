@@ -1,7 +1,7 @@
 # -*- Mode: Python -*-
 
 #
-# analysis on the lambda tree.
+# analysis on the lambda tree - inlining, simplification, etc...
 #
 
 import nodes
@@ -97,6 +97,12 @@ class analyzer:
         else:
             return node
 
+    if False:
+        def transform_0_let_splat (self, node):
+            # XXX if this is a small let, convert to ((lambda (var0 var1) ...) arg0 arg1)
+            #    giving the inliner a chance...
+            return node
+
     def transform_1_conditional (self, node):
         # (if #t x y) => x
         [test_exp, then_exp, else_exp] = node.subs
@@ -105,23 +111,6 @@ class analyzer:
                 return then_exp
             else:
                 return else_exp
-        else:
-            return node
-
-    # I think we want to leave this off - it interferes with inlining, which is actually
-    #    superior to this hack in every way. [for example, the inliner will actually turn
-    #    this into a let when the inits are complex]
-    opt_apply_lambda_to_let = False
-
-    def transform_1_application (self, node):
-        rator = node.get_rator()
-        if self.opt_apply_lambda_to_let and rator.is_a ('function'):
-            # ((lambda (var0 var1 ... ) <body>) <arg0>) => (let* ((var0 arg0) ...) <body>)
-            # [it's ok to use let* because we alpha-converted everything]
-            rands = node.get_rands()
-            name, formals, recursive, type = rator.params
-            body = rator.get_body()
-            return self.transform (nodes.let_splat (formals, rands, body), 1)
         else:
             return node
 
@@ -218,7 +207,7 @@ class analyzer:
         else:
             # else clause - tbd
             raise NotImplementedError
-        vtype = self.find_vcase_label_type (val, label)
+        #vtype = self.find_vcase_label_type (val, label)
         # filter out don't-care variable bindings
         n = len (success.formals)
         formals = []
@@ -231,17 +220,21 @@ class analyzer:
         # ugh, always a bad idea to edit nodes in place.
         success.formals = formals
         success.params[1] = formals
-        alt_formals = (label, vtype, success.formals)
+        alt_formals = (label, n, success.formals)
         # don't trigger this for variant records!
         inits = []
+        TV = itypes.t_var
+        sum_type = TV()
         if arity > 1:
             for i in kept:
-                inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % i, (vtype.args[i], ('?',)), [val]))
+                #inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % i, (vtype.args[i], (itypes.t_var(),)), [val]))
+                inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % i, (TV(),(sum_type,)), [val]))
         elif arity == 0:
             inits = []
         else:
             if 0 in kept:
-                inits = [nodes.cexp ("UOBJ_GET(%s,0)", (vtype, ('?',)), [val])]
+                #inits = [nodes.cexp ("UOBJ_GET(%s,0)", (vtype, (itypes.t_var(),)), [val])]
+                inits = [nodes.cexp ("UOBJ_GET(%s,0)", (TV(),(sum_type,)), [val])]
             else:
                 inits = []
         clause = nodes.application (success, inits)
@@ -261,7 +254,7 @@ class analyzer:
         else:
             # hope it's directly attached to this varref
             type = val.type
-        assert (itypes.is_pred (type, 'sum'))
+        assert (itypes.is_pred (type, 'rsum'))
         assert (itypes.is_pred (type.args[0], 'rlabel'))
         type = type.args[0]
         while type.name == 'rlabel':
@@ -564,6 +557,9 @@ class analyzer:
         # 1) if the arguments are all simple (lit or varref), then we inline textually.
         # 2) if any of the arguments are complex, then we translate to let*.
         # 3) if a complex argument is only referred to once, treat it like a simple arg.
+        #
+        # XXX might we consider a primapp a simple arg? (say, depending on its size?)
+        #
         simple = []
         complex = []
         rator = node.get_rator()
@@ -598,6 +594,7 @@ class analyzer:
             names = []
             inits = []
             for i in complex:
+                # propagate types as well
                 name = '%s_i%d' % (formals[i].name, analyzer.rename_counter)
                 var = nodes.vardef (name)
                 var.type = formals[i].type
@@ -606,6 +603,7 @@ class analyzer:
                 inits.append (rands[i])
                 varref = nodes.varref (names[-1].name)
                 varref.type = names[-1].type
+                varref.var = var
                 substs.append ((formals[i], varref))
                 analyzer.rename_counter += 1
             body = self.substitute (body, substs)
