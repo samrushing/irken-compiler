@@ -5,6 +5,6 @@
   (+ 3 m.left))
 
 (let ((x {right=#\A left=19}))
-  (let ((y {right=(lambda (x) x)}))
+  (let ((y {right=(lambda (c) c)}))
     (let ((z y.right))
       (z (z (thing x))))))
