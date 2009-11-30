@@ -1,7 +1,7 @@
 ;; -*- Mode: Scheme -*-
 
 (define (open path oflag mode)
-  (let ((fd (%%cexp (string int int -> int) "open (%s, %s, %s)" path oflag mode)))
+  (let ((fd (%%cexp (string int int -> int) "open (%s, %s, %s)" (zero-terminate path) oflag mode)))
     (if (>= fd 0)
 	fd
 	(error "open() failed"))))
