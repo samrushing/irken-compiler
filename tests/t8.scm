@@ -1,4 +1,5 @@
 ;; testing variants
+;; this will currently fail because case <else> is not yet implemented
 
 (define (+ a b)
   (%%cexp (int int -> int) "%s+%s" a b))
