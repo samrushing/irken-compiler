@@ -26,6 +26,8 @@ class c_backend:
         self.write_header()
 
     def write_header (self):
+        for header in self.context.cincludes:
+            self.out.write ('#include <%s>\n' % (header,))
         header = open ('header.c').read()
         tag = '%%%REGISTER_DECLARATIONS%%%'
         stop = header.find (tag)
@@ -51,18 +53,19 @@ class c_backend:
             "  return (pxll_int) result;\n"
             "}\n"
             )
-        if len(self.context.record_types):
+        if len(self.context.records2):
             # write out the record field lookup function
             self.out.write (
                 "static int lookup_field (int tag, int label)\n"
-                "{ switch (tag) {\n"
+                # "{ fprintf (stderr, \"[%d %d]\", tag, label);"
+                "{  switch (tag) {\n"
                 )
-            for rec, tag in self.context.record_types.iteritems():
+            for rec, tag in self.context.records2.iteritems():
                 self.out.write ("  case %d:\n" % tag)
                 self.out.write ("  switch (label) {\n")
                 for i in range (len (rec)):
                     label = rec[i]
-                    self.out.write ("    case %d: return %d; break;\n" % (self.context.record_labels[label], i))
+                    self.out.write ("    case %d: return %d; break;\n" % (self.context.labels2[label], i))
                 self.out.write ("  } break;\n")
             self.out.write ("}}\n")
 
@@ -167,13 +170,34 @@ class c_backend:
         else:
             return exp
 
+    def guess_record_type (self, row):
+        # XXX memoize
+        orow = row
+        row = set(row)
+        row.discard ('...')
+        # can we disambiguate this row type?
+        candidates = []
+        for sig, tag in self.context.records2.iteritems():
+            if set(sig).issuperset (row):
+                candidates.append (sig)
+        print self.context.records2
+        if len(candidates) == 1:
+            print 'unambiguous', orow, candidates[0]
+            return candidates[0]
+        else:
+            print 'ambiguous', orow, candidates
+            return None
+
     def insn_primop (self, insn):
         # XXX consider making some of these insns in their own right?
         regs = insn.regs
         primop = insn.params
         if primop[0] == '%cexp':
             ignore, form, sig = primop
-            result_type, arg_types = sig
+            if is_a (sig, tuple):
+                result_type, arg_types = sig
+            else:
+                result_type, arg_types = sig, ()
             regs = tuple('r%d' % x for x in regs)
             regs = self.wrap_in (arg_types, regs)
             exp = self.wrap_out (result_type, form % regs)
@@ -212,9 +236,10 @@ class c_backend:
             self.write ('((pxll_vector*)r%d)->val[unbox(r%d)] = r%d;' % (base, index, val))
         elif primop[0] == '%record-get':
             [record] = insn.regs
-            ignore, label, index = primop
-            label_code = self.context.record_labels[label]
-            if index is None:
+            ignore, label, sig = primop
+            sig = self.guess_record_type (sig)
+            label_code = self.context.labels2[label]
+            if not sig:
                 # runtime lookup
                 self.write (
                     'r%d = ((pxll_vector*)r%d)->val[lookup_field((GET_TYPECODE(*r%d)-TC_USEROBJ)>>2,%d)];' % (
@@ -223,7 +248,22 @@ class c_backend:
                     )
             else:
                 # compile-time lookup
-                self.write ('r%d = ((pxll_vector*)r%d)->val[%d];' % (insn.target, record, index))
+                self.write ('r%d = ((pxll_vector*)r%d)->val[%d];' % (insn.target, record, sig.index (label)))
+        elif primop[0] == '%record-set':
+            [record, val] = insn.regs
+            ignore, label, sig = primop
+            sig = self.guess_record_type (sig)
+            label_code = self.context.labels2[label]
+            if not sig:
+                # runtime lookup
+                self.write (
+                    '((pxll_vector*)r%d)->val[lookup_field((GET_TYPECODE(*r%d)-TC_USEROBJ)>>2,%d)] = r%d;' % (
+                        record, record, label_code, val
+                        )
+                    )
+            else:
+                # compile-time lookup
+                self.write ('((pxll_vector*)r%d)->val[%d] = r%d;' % (record, sig.index (label), val))
         elif primop[0] == '%extend-tuple':
             # extend a pre-existing tuple by merging it with one or more new field=value pairs.
             src = insn.regs[0]
@@ -285,12 +325,12 @@ class c_backend:
         # if there are any unit types, we need to test for immediate types first,
         #   and only then dereference the pointer to get the tuple type code.
         for i in range (len (alts)):
-            label, type, formals = alt_formals[i]
+            label, orig_arity, formals = alt_formals[i]
             try:
                 tag = self.context.variant_labels[label]
             except KeyError:
                 raise ValueError ('variant constructor ":%s" never called!' % label)
-            if itypes.is_pred (type, 'product') and len(type.args) == 0:
+            if orig_arity == 0:
                 units.append ((i, tag))
             else:
                 tuples.append ((i, tag))
@@ -522,7 +562,3 @@ class c_backend:
         val_reg = insn.regs[0]
         tc, safety = insn.params
         #self.verify (safety, 'verify (r%d, %s);' % (val_reg, tc))
-
-    def insn_fetch_const (self, insn):
-        index = insn.params
-        self.write ('r%d = pxll_constants[%d];' % (insn.target, index))
