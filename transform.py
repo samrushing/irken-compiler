@@ -159,10 +159,10 @@ class transformer:
 
     def expand_set_bang (self, exp):
         if is_a (exp[1], str) and '.' in exp[1]:
-            # expand_atom ('x.y.z') => (get (get x y) z)
-            # (set! x.y.z 3) => (set (get x y) z 3)
-            ignore, loc, name = self.expand_atom (exp[1])
-            return ['set', loc, name, self.expand_exp (exp[2])]
+            raccess, base = self.expand_atom (exp[1])
+            assert (raccess.startswith ('%raccess/'))
+            ignore, label = raccess.split ('/')
+            return ['%%rset/%s' % (label,), base, self.expand_exp (exp[2])]
         elif is_a (exp[1], list) and exp[1][0] == '%%array-ref':
             [ignore, base, index] = exp[1]
             value = exp[2]
@@ -175,7 +175,14 @@ class transformer:
         if len(exp) == 2:
             return self.expand_exp (exp[1])
         else:
-            return ['begin'] + self.expand_all (exp[1:])
+            exps = []
+            for exp in self.expand_all (exp[1:]):
+                if is_a (exp, list) and len(exp) and exp[0] == 'begin':
+                    # merge with this set
+                    exps.extend (exp[1:])
+                else:
+                    exps.append (exp)
+            return ['begin'] + exps
 
     def expand_quote (self, exp):
         # literal data
@@ -190,6 +197,15 @@ class transformer:
         # add some metadata about the arity of this constructor
         if exp[0].count ('/') < 2:
             nargs = len(exp) - 1
+            return ['%s/%d' % (exp[0], nargs)] + [self.expand_exp (x) for x in exp[1:]]
+        else:
+            return [exp[0]] + [self.expand_exp (x) for x in exp[1:]]
+
+    def expand__percentvcase (self, exp):
+        # in case anyone wants to use the raw prim rather than 'vcase'
+        assert (exp[1][0] == 'lambda')
+        if exp[0].count ('/') < 2:
+            nargs = len (exp[1][1])
             return ['%s/%d' % (exp[0], nargs)] + [self.expand_exp (x) for x in exp[1:]]
         else:
             return [exp[0]] + [self.expand_exp (x) for x in exp[1:]]
@@ -466,6 +482,10 @@ class transformer:
         r = r[2]
         r[-1] = val
         return self.expand_exp (r)
+
+    def expand_cinclude (self, exp):
+        self.context.cincludes.add (exp[1].value)
+        return ['begin']
 
     # --------------------------------------------------------------------------------
     # literal expressions are almost like a sub-language
