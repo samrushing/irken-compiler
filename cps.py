@@ -2,6 +2,8 @@
 
 from pdb import set_trace as trace
 
+import solver
+
 is_a = isinstance
 
 class compiler:
@@ -139,16 +141,16 @@ class compiler:
         return self.collect_primargs (args, [], lenv, k, lambda regs: self.gen_primop (op, regs, k))
 
     def compile_primapp (self, tail_pos, exp, lenv, k):
-        if exp.name.startswith ('%raccess'):
-            ignore, field = exp.name.split ('/')
+        if exp.name.startswith ('%raccess/') or exp.name.startswith ('%rset/'):
+            prim, field = exp.name.split ('/')
             # try to get constant-time field access...
-            if exp.args[0].is_a ('varref'):
-                var, addr, is_top = self.lexical_address (lenv, exp.args[0].name)
-                index = var.sig.index (field)
+            sig = None
+            sig = solver.get_record_sig (exp.args[0].type)
+            if prim == '%raccess':
+                return self.compile_primargs (exp.args, ('%record-get', field, sig), lenv, k)
             else:
-                index = None
-            return self.compile_primargs (exp.args, ('%record-get', field, index), lenv, k)
-        elif exp.name.startswith ('%rextend'):
+                return self.compile_primargs (exp.args, ('%record-set', field, sig), lenv, k)                
+        elif exp.name.startswith ('%rextend/'):
             return self.compile_record_literal (exp, lenv, k)
         elif exp.name.startswith ('%vector-literal/'):
             if len (exp.args) < 5:
@@ -292,6 +294,16 @@ class compiler:
             cont (k[1], lambda vec_reg: self.compile_store_rands (0, 0, rands, vec_reg, [vec_reg] + k[1], lenv, k))
             )
 
+    def get_record_tag (self, sig):
+        print 'get record tag', sig
+        c = self.context
+        if not c.records2.has_key (sig):
+            c.records2[sig] = len (c.records2)
+            for label in sig:
+                if not c.labels2.has_key (label):
+                    c.labels2[label] = len (c.labels2)
+        return c.records2[sig]
+
     def compile_record_literal (self, exp, lenv, k):
         # unwind row primops into a record literal
         # (%rextend/field0 (%rextend/field1 (%rmake) ...)) => {field0=x field1=y}
@@ -311,7 +323,7 @@ class compiler:
         # lookup the runtime tag for this record
         sig = tuple ([x[0] for x in fields])
         TC_USEROBJ = 0x20
-        tag = TC_USEROBJ + self.context.record_types[sig]
+        tag = TC_USEROBJ + (self.get_record_tag (sig) << 2)
         # now compile the expression as a %make-tuple
         args = [x[1] for x in fields]
         return self.gen_new_tuple (
@@ -320,21 +332,27 @@ class compiler:
             )
 
     def compile_record_extension (self, fields, exp, lenv, k):
-        import itypes
-        sig = itypes.get_record_sig (exp.type)
         # ok, we have a source record {a,b} to which we want to add
         #   one or more fields {c,d}.  We'll need to compile a
         #   'make-tuple' with args fetched from the source record
         #   mixed in with new args, all in the correct order.
-        # XXX fails with duplicate labels
+        sig = solver.get_record_sig (exp.type)
         labels = [x[0] for x in fields]
         labels.sort()
         args = [x[1] for x in fields]
         new_sig = list(set(sig).union (set(labels)))
         new_sig.sort()
         new_sig = tuple (new_sig)
-        new_tag = self.context.record_types[new_sig]
-        return self.compile_primargs ([exp] + args, ('%extend-tuple', labels, sig, new_tag), lenv, k)
+        if sig == new_sig:
+            # identical, it's actually an update
+            # XXX should consider doing copy+update instead, for functional cred.
+            # XXX another option: consider it an error.
+            # the last sounds best: principle of least surprise.
+            assert (len(fields) == 1)
+            return self.compile_primargs ([exp, args[0]], ('%record-set', fields[0][0], sig), lenv, k)
+        else:
+            new_tag = self.get_record_tag (new_sig)
+            return self.compile_primargs ([exp] + args, ('%extend-tuple', labels, sig, new_tag), lenv, k)
 
 # the allocator and cont stuff *should* be in the compiler instance...
 
@@ -394,21 +412,26 @@ class irken_compiler (compiler):
 
 
     def gen_lit (self, lit, k):
-        if lit.type == 'int':
+        if lit.ltype == 'int':
             return INSN ('lit', [], box (lit.value), k)
-        elif lit.type == 'bool':
+        elif lit.ltype == 'bool':
             if lit.value == 'true':
                 n = 0x106
             else:
                 n = 0x6
             return INSN ('lit', [], n, k)
-        elif lit.type == 'char':
-            return INSN ('lit', [], (ord(lit.value)<<8)|0x02, k)
-        elif lit.type == 'string':
+        elif lit.ltype == 'char':
+            if lit.value == 'eof':
+                # special case
+                val = 257<<8|0x02
+            else:
+                val = ord(lit.value)<<8|0x02
+            return INSN ('lit', [], val, k)
+        elif lit.ltype == 'string':
             return INSN ('make_string', [], lit.value, k)
-        elif lit.type == 'undefined':
+        elif lit.ltype == 'undefined':
             return INSN ('lit', [], 0x0e, k)
-        elif lit.type == 'nil':
+        elif lit.ltype == 'nil':
             return INSN ('lit', [], 0x0a, k)
         else:
             raise SyntaxError
