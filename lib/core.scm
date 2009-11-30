@@ -53,13 +53,18 @@
 (define (not x)
   (eq? x #f))
 
+(define (char=? a b)
+  (%%cexp (char char -> bool) "%s==%s" a b))
+
 ;; this is a little harsh. 8^)
 ;; think of it as a placeholder for something better to come.
 (define (error x)
   (printn x)
-  ;; note: keep that 'a there... it allows a call to <error> to
-  ;;   take any type...
-  (%%cexp (-> 'a) "(abort(), PXLL_UNDEFINED)"))
+  (%%cexp (-> 'a) "goto Lreturn")
+  ;; NOTREACHED
+  ;; note: keep the 'a there... it allows a call to <error> to take any type...
+  (%%cexp (-> 'a) "PXLL_UNDEFINED")
+  )
 
 (define (id x) x)
 
