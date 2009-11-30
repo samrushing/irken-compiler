@@ -1,5 +1,6 @@
 
 (include "lib/core.scm")
+(include "lib/pair.scm")
 (include "lib/string.scm")
 (include "lib/random.scm")
 (include "lib/frb.scm")
