@@ -19,8 +19,11 @@ class context:
         self.scc_map = None
         self.var_dict = None
         self.record_types = None
+        self.cincludes = set()
+        self.records2 = {}
+        self.labels2 = {}
 
-def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=False, trace=False):
+def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=False, trace=False, step_solver=False):
     base, ext = os.path.splitext (name)
     r = lisp_reader.reader (f)
     exp = r.read_all()
@@ -49,7 +52,7 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
     c.dep_graph = graph.build_dependency_graph (exp3)
     c.scc_graph, c.scc_map = graph.strongly (c.dep_graph)
     # run the constraint generator and solver to find types
-    t = solver.typer (c, verbose)
+    t = solver.typer (c, verbose, step=step_solver)
 
     #import cProfile
     #cProfile.runctx ("t.go (exp3)", globals(), locals())
@@ -64,6 +67,12 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
 
     if verbose:
         print '--- analyzer ---'
+        exp4.pprint()
+
+    t2 = solver.typer (c, verbose, step=step_solver)
+    t.go (exp4)
+    if verbose:
+        print '--- typing 2 ---'
         exp4.pprint()
 
     ic = cps.irken_compiler (c, safety=safety, verbose=verbose)
@@ -129,6 +138,7 @@ if __name__ == '__main__':
     trace    = argtest ('-t')
     noinline = argtest ('-ni')
     force_32 = argtest ('-f32')
+    step_solver = argtest ('-ss')
 
     if '-s' in sys.argv:
         i = sys.argv.index ('-s')
@@ -141,5 +151,5 @@ if __name__ == '__main__':
     if '-f' in sys.argv:
         sys.argv.remove ('-f')
         name = sys.argv[1]
-        compile_file (open (name, 'rb'), name, safety, annotate, noinline, verbose, trace)
-        cc (sys.argv[1], optimize=optimize)
+        compile_file (open (name, 'rb'), name, safety, annotate, noinline, verbose, trace, step_solver)
+        cc (name, optimize=optimize)
