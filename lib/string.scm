@@ -62,6 +62,14 @@
 (define (string->? s1 s2)
   (> (string-compare s1 s2) 0))
 
+(define (zero-terminate s)
+  (if (char=? (string-ref s (- (string-length s) 1)) #\null)
+      s
+      (let ((n (string-length s))
+	    (s2 (make-string (+ n 1))))
+	(buffer-copy s 0 n s2 0)
+	s2)))
+
 ;; [waiting for type inference to support nary args]
 ;; (define (string-join . strings)
 ;;   (let size-loop ((i 0)
