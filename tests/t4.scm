@@ -1,9 +1,15 @@
-;; this currently fails - it adds c=0 twice
-(define (bigger z)
-  (%rextend/c z 0))
+
+(define (printn x)
+  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+
+(define (bigger z n)
+  (%rextend/c z n))
 
 (let ((x {a=1 b=#t})
-      (y (bigger x))
-      (z (bigger y)))
-  z)
+      (y (bigger x 34)))
+  (printn x)
+  (printn y)
+  (let ((z (bigger y 19)))
+    (printn z)))
+
   
