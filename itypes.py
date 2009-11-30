@@ -130,21 +130,3 @@ def abs():
 
 def pre (x):
     return t_predicate ('pre', (x,))
-
-def get_record_sig (t):
-    # product (rlabel (...))
-    assert (is_pred (t, 'product'))
-    labels = []
-    t = t.args[0]
-    while 1:
-        if is_pred (t, 'rlabel'):
-            label, type, rest = t.args
-            if is_pred (type, 'pre'):
-                labels.append (label)
-            t = rest
-        elif is_pred (t, 'rdefault'):
-            break
-        else:
-            return None
-    labels.sort()
-    return tuple (labels)
