@@ -205,9 +205,8 @@ class analyzer:
         elif failure.body.is_a ('primapp') and failure.body.name.startswith ('%vfail'):
             vcase = nodes.vcase (val, [], [])
         else:
-            # else clause - tbd
-            raise NotImplementedError
-        #vtype = self.find_vcase_label_type (val, label)
+            # since <failure> cannot bind any variables, we just beta reduce it here.
+            vcase = nodes.vcase (val, [], [failure.body])
         # filter out don't-care variable bindings
         n = len (success.formals)
         formals = []
