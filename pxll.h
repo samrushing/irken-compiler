@@ -164,3 +164,14 @@ string_tuple_length (pxll_int n)
   pxll_int nwords = HOW_MANY (n + len_size, word_size);
   return nwords;
 }
+
+inline
+pxll_int
+get_safe_typecode (object * ob)
+{
+  if (is_immediate (ob)) {
+    return GET_TYPECODE (ob);
+  } else {
+    return GET_TYPECODE (*ob);
+  }
+}
