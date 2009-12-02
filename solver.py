@@ -15,10 +15,6 @@
 #   be a pretty easy thing to change, once I'm ready to wrap my head around it.
 #
 
-# XXX: only fully decode types that are needed by the rest of the
-#   compiler.  The decoding process is pretty expensive, and if we
-#   don't need to do it for every node we may speed things up.
-
 import nodes
 import graph
 import sys
@@ -699,57 +695,6 @@ class unifier:
             sys.stderr.write ('\n')
             self.pprint()
 
-    def decode (self, t, free=None):
-        # decode this type as much as possible (i.e., follow every known tvar)
-        # XXX this is an expensive operation!
-        if self.decoded.has_key (t):
-            return self.decoded[t]
-        seen = set()
-        def p (t):
-            if is_a (t, t_var):
-                if t.next:
-                    t = t.next
-                # this avoids cycles
-                if t.id in seen:
-                    if free is not None:
-                        free.add (t)
-                    return t
-                else:
-                    seen.add (t.id)
-                    pass
-                if self.vars.has_key (t):
-                    eq = self.vars[t]
-                    if eq.type is None:
-                        if free is not None:
-                            free.add (eq.rep)
-                        return eq.rep
-                    else:
-                        return p (eq.type)
-                else:
-                    if free is not None:
-                        free.add (t)
-                    return t
-            elif is_a (t, t_predicate):
-                return t_predicate (t.name, [p(x) for x in t.args])
-            else:
-                return t
-        r = p (t)
-        self.decoded[t] = r
-        return r
-
-    def renumber (self):
-        # first, collect every tvar referenced
-        tvars = set()
-        for eq in self.eqs:
-            tvars.update (eq.vars)
-            tvars.update (eq.free)
-        tvars = list(tvars)
-        tvars.sort (lambda a,b: cmp (a.id, b.id))
-        print 'renumbering, %d tvars' % (len(tvars),)
-        # heh, don't look!
-        for i in range (len (tvars)):
-            tvars[i].id = i
-
     def sanity (self):
         all = set()
         for eq in self.eqs:
@@ -1329,7 +1274,9 @@ class solver:
         self.pprint_stack (s)
         ty0, ty1 = terr.args[0]
         print 'Type Error', args
-        raise TypeError (u.decode (ty0), u.decode (ty1))
+        # XXX decode() is gone...
+        #raise TypeError (u.decode (ty0), u.decode (ty1))
+        raise TypeError (ty0, ty1)
 
 def list_to_conj (l):
     # convert list <l> into a conjunction built with <c_and>
