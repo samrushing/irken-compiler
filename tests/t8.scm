@@ -1,13 +1,16 @@
-;; testing variants
-;; this will currently fail because case <else> is not yet implemented
+;; testing variant with else clause
 
 (define (+ a b)
   (%%cexp (int int -> int) "%s+%s" a b))
 
-(let ((x (:fnord 12))
-      (y (:blort #f)))
-  (vcase y
+(let ((w (:doubleu))
+      (x (:fnord 12))
+      (y (:blort #f))
+      (z (:norg))
+      )
+  (vcase z
     ((:fnord a) (+ a 5))
     ((:blort b) (if b 9 8))
+    ((:doubleu) 99)
     (else 12)
     ))

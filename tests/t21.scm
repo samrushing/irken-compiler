@@ -69,19 +69,13 @@
 	 (file:flush self)
 	 (file:write-char self ch))))
 
-(printn #O644)
-
-(printn "A")
-
 ;; copy file to stdout
-;; (let ((f (file:open-read "gc.c")))
-;;   (let loop ((buffer (file:read-buffer f)))
-;;     (cond ((> (string-length buffer) 0)
-;; 	   (write 1 buffer)
-;; 	   (loop (file:read-buffer f)))))
-;;   (file:close f))
-
-(printn "B")
+(let ((f (file:open-read "gc.c")))
+  (let loop ((buffer (file:read-buffer f)))
+    (cond ((> (string-length buffer) 0)
+	   (write 1 buffer)
+	   (loop (file:read-buffer f)))))
+  (file:close f))
 
 ;; read a few characters...
 (let ((f (file:open-read "gc.c")))
@@ -91,8 +85,6 @@
 	   (printn (file:read-char f))
 	   (loop (- n 1)))))
   (file:close f))
-
-(printn "C")
 
 ;; write a file by chars...
 (let ((f (file:open-write "thing.txt" #t #o644)))
@@ -107,4 +99,3 @@
   (file:close f)
   )
   
-(printn "D")
