@@ -144,7 +144,6 @@ class compiler:
         if exp.name.startswith ('%raccess/') or exp.name.startswith ('%rset/'):
             prim, field = exp.name.split ('/')
             # try to get constant-time field access...
-            sig = None
             sig = solver.get_record_sig (exp.args[0].type)
             if prim == '%raccess':
                 return self.compile_primargs (exp.args, ('%record-get', field, sig), lenv, k)
