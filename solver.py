@@ -198,14 +198,14 @@ class s_let (frame):
             raise ValueError
         self.names = names
         self.types = types
-        self.vars = vars
+        self.vars = set (vars)
         self.body = body
         self.rank = rank
         for v in vars:
             v.rank = rank
 
     def add_vars (self, vars):
-        self.vars += tuple (vars)
+        self.vars.update (vars)
         for v in vars:
             v.rank = self.rank
 
@@ -215,7 +215,7 @@ class s_env (frame):
     def __init__ (self, names, types, vars, u):
         self.names = names
         self.types = types
-        self.vars = vars
+        self.vars = set (vars)
         self.u = u
 
 # this is a two-phase algorithm
@@ -379,11 +379,17 @@ class constraint_generator:
         # the last alt binds against either "else" (not yet implemented),
         # or rdefault(abs()).
         alts = exp.alts[:]
-        # this is the type of the entire expression.  each <alt> has this type.
         vars = []
-        row = rdefault (abs())
         cons = []
-        for i in range (len (alts)):
+        if len(alts) == len (exp.alt_formals):
+            # no else clause, a closed sum type
+            row = rdefault (abs())
+        else:
+            # with an else clause, open sum type
+            row = t_var()
+            vars.append (row)
+            cons.append (self.gen (alts[-1], t))
+        for i in range (len (exp.alt_formals)):
             alt = alts[i]
             label, type, formals = exp.alt_formals[i]
             # row type extended with this label and its type
@@ -403,6 +409,7 @@ class constraint_generator:
                 cons.append (c_let (formals, args, c_true(), self.gen (alt, t)))
             else:
                 cons.append (self.gen (alt, t))
+        
         cons.append (self.gen (exp.value, rsum (row)))
         r = c_exists (vars, list_to_conj (cons))
         return r
@@ -476,7 +483,7 @@ class unifier:
                 self.vars[v] = eq
         #self.sanity()
 
-    def add (self, vars, type=None):
+    def add (self, vars, type):
         # add a term to the conjunction, e.g. A=B=C=T  (where T is optional)
         assert (is_a (vars, set))
         assert (not is_a (type, t_var))
@@ -484,7 +491,7 @@ class unifier:
         if is_a (type, t_predicate):
             type = self.try_name_1 (type)
 
-        if (not type and len(vars) == 1) or (type and len(vars) == 0):
+        if (type is None and len(vars) == 1) or len(vars) == 0:
             #self.dprint ('s-single')
             pass
         else:
@@ -498,6 +505,7 @@ class unifier:
             eq = multi (vars, type)
             for v in vars:
                 self.vars[v] = eq
+            
             self.eqs.add (eq)
 
     def add2 (self, *args):
@@ -681,10 +689,6 @@ class unifier:
             for var in eq.vars:
                 del self.vars[var]
         #print 'u: %d eqs u2: %d eqs' % (len(self.eqs), len (u2.eqs))
-        ##self.sanity()
-        #u2.simplify()
-        #if len(u2.eqs):
-        #    u2.prune (sz.types)
         #self.sanity()
         return u2
 
@@ -808,8 +812,6 @@ class unifier:
     def prune (self, types, vars):
         # cut this conjunction down to equations referenced by <types>
         if len (self.eqs) == 0:
-            if len(vars) > len(types):
-                trace()
             # XXX could we still trim vars via types?
             return vars
         keep = set()
@@ -894,7 +896,6 @@ class unifier:
         seen = set()
         while y:
             v = y.pop(0)
-            print len(y),
             if v not in seen:
                 seen.add (v)
                 if v in xbar:
@@ -918,7 +919,7 @@ class solver:
     def __init__ (self, context, verbose=False, step=False):
         self.context = context
         self.step = step
-        self.u3 = unifier()
+        #self.u3 = unifier()
         # xxx need to split the notion of verbose and step
         self.step = step
 
@@ -958,7 +959,9 @@ class solver:
                 u.pprint()
                 print 'C:', c
                 print 'exists:', self.exists
+
             steps += 1
+
             #u.sanity()
 
             # the top two elements of the stack
@@ -1065,7 +1068,9 @@ class solver:
                         u2 = u.split (sz)
                         #print 'split'
                         #u2.pprint()
-                        self.u3.merge (u2)
+                        #self.u3.merge (u2)
+                        # if we do this, we lose detail with row types.  not sure what
+                        #   other effects it may cause.
                         sz.vars = u2.prune (sz.types, sz.vars)
                         pop()
                         #sys.stderr.write ('[%d %d]%r\n' % (len (sz.vars), len(u.eqs), sz.names))
@@ -1079,7 +1084,7 @@ class solver:
                     # we're done!
                     #self.dprint ('exists=%r' % self.exists)
                     #self.dprint ('constraint=%r' % orig_c)
-                    self.u3.merge (u)
+                    #self.u3.merge (u)
                     return pvars
                 else:
                     raise ValueError ("unexpected")
@@ -1153,9 +1158,11 @@ class solver:
         used = set()
         eqs = list(env.u.eqs)
         conj = []
+        #print 'new=', new
         for i in range (len (eqs)):
             eq = eqs[i]
-            new_var = new.get (eq.rep, eq.rep)
+            new_vars = [new.get (x,x) for x in eq.vars]
+            new_vars.sort (lambda a,b: cmp (a.id, b.id))
             if is_a (eq.type, t_predicate):
                 new_args = []
                 for arg in eq.type.args:
@@ -1181,8 +1188,16 @@ class solver:
                 #   have been simplified to pick the highest-ranking variable,
                 #   so a type-less equation is not useful.
                 #raise ValueError
-                pass
-            conj.append (c_equals (new_var, new_type))
+                new_type = None
+            # v=v=v=t => v=v & v=v & v=v & v=t
+            if new_type:
+                obs = new_vars + [new_type]
+            else:
+                obs = new_vars
+            c = c_equals (obs[0], obs[1])
+            for ob in obs[2:]:
+                c = c_and (c, c_equals (obs[0], ob))
+            conj.append (c)
         # XXX we should remove any vars from new_vars that were not referenced!
         if scheme in env.vars:
             scheme = new[scheme]
@@ -1194,20 +1209,14 @@ class solver:
         while 1:
             f = s[n]
             n -= 1
-            if is_a (f, s_and):
-                continue
-            elif is_a (f, s_exists):
-                continue
-            elif is_a (f, s_let):
-                continue
-            elif is_a (f, s_env):
+            if is_a (f, s_env):
                 for i in range (len (f.names)):
                     if f.names[i].name == x:
                         return self.instantiate_constraint (i, f, t)
-            elif is_a (f, s_empty):
+            elif f is empty:
                 break
             else:
-                raise ValueError ("I'm confused")
+                continue
         return self.instantiate_scheme (self.lookup_special_names (x), t)
 
     # A trick I've used here is to encode the arity into the name of
@@ -1393,15 +1402,11 @@ class typer:
         c, top_tv = cg.go (exp)
         if self.verbose:
             pprint_constraint (c)
-        self.verbose = True
         s = solver (self.context, self.verbose, self.step)
         m = s.solve (c)
-        self.find_records (m, s.u3, top_tv)
+        #self.find_records (m, s.u3, top_tv)
         for node in exp:
             node.type = self.decode (node.tv)
-        if self.verbose:
-            print 'U3 =='
-            s.u3.pprint()
 
     def decode (self, t):
         seen = set()
