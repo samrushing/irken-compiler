@@ -9,6 +9,15 @@ for file in files:
         base, ext = os.path.splitext (file)
         path = os.path.join ('tests', file)
         print 'compiling', path
-        compile.compile_file (open (path, 'rb'), path)
-        compile.cc (path, optimize=True)
-        os.system ('tests/%s' % (base,))
+        fail = file.startswith ('f')
+        try:
+            compile.compile_file (open (path, 'rb'), path)
+        except:
+            if not fail:
+                raise
+        else:
+            if fail:
+                raise ValueError ("oops - expected compilation to fail")
+            compile.cc (path, optimize=True)
+            # XXX capture output and compare it
+            os.system ('tests/%s' % (base,))
