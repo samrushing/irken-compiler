@@ -318,50 +318,35 @@ class c_backend:
         self.write ('}')
 
     def insn_vcase (self, insn):
+        # this version uses get_safe_typecode() to avoid segregating into
+        #   immediate/pointer cases...
         [test_reg] = insn.regs
         alt_formals, alts = insn.params
         units = []
         tuples = []
-        # if there are any unit types, we need to test for immediate types first,
-        #   and only then dereference the pointer to get the tuple type code.
+        self.write ('switch (get_safe_typecode (r%d)) {' % test_reg)
         for i in range (len (alts)):
-            label, orig_arity, formals = alt_formals[i]
-            try:
-                tag = self.context.variant_labels[label]
-            except KeyError:
-                raise ValueError ('variant constructor ":%s" never called!' % label)
-            if orig_arity == 0:
-                units.append ((i, tag))
+            if i < len(alt_formals):
+                label, orig_arity, formals = alt_formals[i]
+                try:
+                    tag = self.context.variant_labels[label]
+                except KeyError:
+                    raise ValueError ('variant constructor ":%s" never called!' % label)
+                if orig_arity == 0:
+                    tag = 'TC_USERIMM+%d' % (tag * 4)
+                else:
+                    tag = 'TC_USEROBJ+%d' % (tag * 4)
+                case = 'case (%s): {' % (tag,)
             else:
-                tuples.append ((i, tag))
-        closes = 0
-        if len(units):
-            self.write ('switch (GET_TYPECODE(r%d)) {' % test_reg)
-            closes += 1
-            for index, tag in units:
-                self.indent += 1
-                self.write ('case (TC_USERIMM+%d): {' % (tag * 4))
-                self.indent += 1
-                self.emit (alts[index])
-                self.indent -= 1
-                self.write ('} break;')
-                self.indent -= 1
-            if len(tuples):
-                self.write ('default: {')
-                closes += 1
-        if len(tuples):
-            self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
-            closes += 1
-            for index, tag in tuples:
-                alt = alts[index]
-                self.indent += 1
-                self.write ('case TC_USEROBJ+%d: {' % (tag * 4,))
-                self.indent += 1
-                self.emit (alt)
-                self.indent -= 1
-                self.write ('} break;')
-                self.indent -= 1
-        self.write ('}' * closes)
+                case = 'default: {'
+            self.indent += 1
+            self.write (case)
+            self.indent += 1
+            self.emit (alts[i])
+            self.indent -= 1
+            self.write ('} break;')
+            self.indent -= 1
+        self.write ('}')
 
     def check_free_regs (self, free_regs):
         "describe the free_regs to new_env() for gc"
