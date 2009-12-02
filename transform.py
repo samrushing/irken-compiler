@@ -100,6 +100,8 @@ class transformer:
         elif is_a (exp, atom):
             if exp.kind == 'string':
                 return self.get_constant_binding (exp)
+            if exp.kind == 'symbol':
+                return self.get_constant_binding (exp)
             elif exp.kind == 'vector':
                 return self.build_vector (exp)
             elif exp.kind == 'record':
@@ -491,7 +493,7 @@ class transformer:
     # literal expressions are almost like a sub-language
 
     def build_vector (self, exp):
-        return self.expand_exp (['%%vector-literal/%d' % len(exp.value)] + [self.expand_exp (x) for x in exp.value])
+        return self.expand_exp (['%%vector-literal/%d' % len(exp.value)] + exp.value)
 
     def build_record (self, exp):
         # convert a record literal into a set of record primapps
@@ -513,14 +515,14 @@ class transformer:
         elif is_a (exp, list):
             if not len(exp):
                 #return atom ('nil', 'nil')
-                return ['list/nil']
+                return self.expand_exp ([['colon', 'nil']])
             elif len(exp) == 3 and exp[1] == '.':
-                return ['cons', self.build_literal (exp[0]), self.build_literal (exp[2])]
+                return self.expand_exp ([['colon', 'cons'], self.build_literal (exp[0]), self.build_literal (exp[2])])
             elif exp[0] == 'comma':
                 # lame attempt at backquote
                 return self.expand_exp (exp[1])
             else:
-                return ['cons', self.build_literal (exp[0]), self.build_literal (exp[1:])]
+                return self.expand_exp ([['colon', 'cons'], self.build_literal (exp[0]), self.build_literal (exp[1:])])
         elif is_a (exp, str):
             return self.get_constant_binding (atom ('symbol', exp))
         else:
