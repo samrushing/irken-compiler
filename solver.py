@@ -1404,7 +1404,6 @@ class typer:
             pprint_constraint (c)
         s = solver (self.context, self.verbose, self.step)
         m = s.solve (c)
-        #self.find_records (m, s.u3, top_tv)
         for node in exp:
             node.type = self.decode (node.tv)
 
@@ -1427,46 +1426,6 @@ class typer:
                 return t
         return p (t)
         
-    def find_records (self, m, u, top_tv):
-        all = []
-        def p (t, a):
-            if is_pred (t, 'rproduct') and len(t.args) == 1 and is_pred (t.args[0], 'rlabel'):
-                p (t.args[0], [])
-            elif is_pred (t, 'rlabel') and a is not None:
-                label, type, rest = t.args
-                p (type, [])    # records within records...
-                p (rest, [label]+a)
-            elif is_pred (t, 'rdefault') and a is not None:
-                all.append (a)
-            elif is_a (t, t_predicate):
-                for arg in t.args:
-                    p (arg, None)
-            elif is_a (t, c_forall):
-                p (t.constraint, None)
-            else:
-                pass
-        for key, val in m.iteritems():
-            p (val, [])
-            if is_pred (val, 'rproduct'):
-                key.sig = get_record_sig (val)
-            elif is_a (val, c_forall) and is_pred (val.constraint, 'rproduct'):
-                key.sig = get_record_sig (val.constraint)
-        p (u.decode (top_tv), [])
-        labels = {}
-        all2 = {}
-        for rec in all:
-            rec.sort()
-            rec = tuple(rec)
-            if not all2.has_key (rec):
-                all2[rec] = len(all2)
-            for label in rec:
-                if not labels.has_key (label):
-                    labels[label] = len(labels)
-        if self.verbose:
-            print 'record types', all2
-        self.context.record_types = all2
-        self.context.record_labels = labels
-
 def test (s, step=True):
     import transform
     import nodes
