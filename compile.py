@@ -23,7 +23,7 @@ class context:
         self.records2 = {}
         self.labels2 = {}
 
-def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=False, trace=False, step_solver=False):
+def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=False, trace=False, step_solver=False, typetype=False):
     base, ext = os.path.splitext (name)
     r = lisp_reader.reader (f)
     exp = r.read_all()
@@ -56,10 +56,11 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
 
     #import cProfile
     #cProfile.runctx ("t.go (exp3)", globals(), locals())
-    t.go (exp3)
+    if typetype:
+        t.go (exp3)
 
     if verbose:
-        print '--- typing ---'
+        print '--- typing 1 ---'
         exp3.pprint()
 
     a = analyze.analyzer (c, safety, noinline, verbose)
@@ -139,6 +140,8 @@ if __name__ == '__main__':
     noinline = argtest ('-ni')
     force_32 = argtest ('-f32')
     step_solver = argtest ('-ss')
+    # run the type solver *before* inlining as well as after.
+    typetype = argtest ('-tt')
 
     if '-s' in sys.argv:
         i = sys.argv.index ('-s')
@@ -151,5 +154,5 @@ if __name__ == '__main__':
     if '-f' in sys.argv:
         sys.argv.remove ('-f')
         name = sys.argv[1]
-        compile_file (open (name, 'rb'), name, safety, annotate, noinline, verbose, trace, step_solver)
+        compile_file (open (name, 'rb'), name, safety, annotate, noinline, verbose, trace, step_solver, typetype)
         cc (name, optimize=optimize)
