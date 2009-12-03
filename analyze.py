@@ -91,16 +91,11 @@ class analyzer:
                     names[i].function = inits[i]
         return node
 
+
     def transform_0_primapp (self, node):
         if node.name.startswith ('%vcase/'):
             return self.transform_vcase (node)
         else:
-            return node
-
-    if False:
-        def transform_0_let_splat (self, node):
-            # XXX if this is a small let, convert to ((lambda (var0 var1) ...) arg0 arg1)
-            #    giving the inliner a chance...
             return node
 
     def transform_1_conditional (self, node):
@@ -222,48 +217,22 @@ class analyzer:
         alt_formals = (label, n, success.formals)
         # don't trigger this for variant records!
         inits = []
-        TV = itypes.t_var
-        sum_type = TV()
         if arity > 1:
             for i in kept:
-                #inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % i, (vtype.args[i], (itypes.t_var(),)), [val]))
-                inits.append (nodes.cexp ("UOBJ_GET(%%s,%d)" % i, (TV(),(sum_type,)), [val]))
+                inits.append (nodes.primapp ('%%vget/%s/%d/%d' % (label, arity, i), [val]))
         elif arity == 0:
             inits = []
         else:
             if 0 in kept:
-                #inits = [nodes.cexp ("UOBJ_GET(%s,0)", (vtype, (itypes.t_var(),)), [val])]
-                inits = [nodes.cexp ("UOBJ_GET(%s,0)", (TV(),(sum_type,)), [val])]
+                inits.append (nodes.primapp ('%%vget/%s/%d/0' % (label, arity,), [val]))
             else:
                 inits = []
+        for x in inits:
+            x.fix_attribute_names()
         clause = nodes.application (success, inits)
         vcase.params.insert (0, alt_formals)
         vcase.subs.insert (1, clause)
         return vcase
-
-    def find_vcase_label_type (self, val, label):
-        # XXX trying this hard to find the exact type... probably a sign I've
-        #   fucked something up...
-        import solver
-        if val.type is None or is_a (val.type, itypes.t_var):
-            # try to get it from the vardef object
-            type = val.var.type
-            if is_a (type, solver.c_forall):
-                type = type.constraint
-        else:
-            # hope it's directly attached to this varref
-            type = val.type
-        assert (itypes.is_pred (type, 'rsum'))
-        assert (itypes.is_pred (type.args[0], 'rlabel'))
-        type = type.args[0]
-        while type.name == 'rlabel':
-            if type.args[0] == label:
-                assert (itypes.is_pred (type.args[1], 'pre'))
-                return type.args[1].args[0]
-            else:
-                type = type.args[2]
-        else:
-            raise ValueError ("unknown label?")
 
     def replace (self, orig_node, fun):
         # apply replacement-fun() to all of <node>
