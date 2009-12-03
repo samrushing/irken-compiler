@@ -292,6 +292,8 @@ class c_backend:
             self.write ('t = alloc_no_clear (TC_VECTOR, unbox(r%d));' % (vlen,))
             self.write ('for (i=0; i < unbox(r%d); i++) { t[i+1] = r%d; }' % (vlen, vval))
             self.write ('r%d = t;' % (insn.target,))
+        elif primop[0] == '%vget':
+            self.write ('r%d = UOBJ_GET(r%d,%s);' % (insn.target, insn.regs[0], primop[1]))
         else:
             raise ValueError ("unknown primop: %s" % primop[0])
 
