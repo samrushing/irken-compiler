@@ -8,17 +8,17 @@
 
 (define (glort0 a)
   (vcase a
-     ((:blurb) 20)
+     ((:blurb x) x)
      ((:blort a b c) (+ a (+ b c)))
      ((:urk) 666)))
     
 (define (glort1 a)
   (vcase a
-     ((:blurb) 20)
+     ((:blurb x) x)
      ((:blort _ _ _ ) 42)
      ((:urk) 666)))
 
-(let ((x (:blurb))
+(let ((x (:blurb 9))
       (y (:blort 12 13 14))
       (z (:urk))
       )
