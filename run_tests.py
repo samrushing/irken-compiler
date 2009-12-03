@@ -18,6 +18,6 @@ for file in files:
         else:
             if fail:
                 raise ValueError ("oops - expected compilation to fail")
-            compile.cc (path, optimize=True)
+            compile.cc (path, optimize=False)
             # XXX capture output and compare it
             os.system ('tests/%s' % (base,))
