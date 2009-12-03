@@ -168,6 +168,9 @@ class compiler:
             ignore, label, arity = exp.name.split ('/')
             tag = self.context.variant_labels[label]
             return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
+        elif exp.name.startswith ('%vget/'):
+            ignore, label, arity, index = exp.name.split ('/')
+            return self.compile_primargs (exp.args, ('%vget', index), lenv, k)
         else:
             raise ValueError ("Unknown primop: %r" % (exp.name,))
 
