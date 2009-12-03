@@ -410,6 +410,7 @@ class constraint_generator:
         r = c_exists (vars, list_to_conj (cons))
         return r
 
+
 class UnboundVariable (Exception):
     pass
 
@@ -1225,6 +1226,19 @@ class solver:
                 t = product (*args)
             s1 = rsum (rlabel (label, pre (t), 2))
             return c_forall (range(arity+3), arrow (0, f0, f1, s1))
+        elif name.startswith ('%vget/'):
+            what, label, arity, index = name.split ('/')
+            arity = int (arity)
+            index = int (index)
+            args = range (arity)
+            rest = arity
+            # e.g., to pick the second arg:
+            # ∀0123. Σ(l:pre (0,1,2);3) → 1
+            if arity > 1:
+                vtype = rsum (rlabel (label, pre (product (*args)), rest))
+            else:
+                vtype = rsum (rlabel (label, pre (args[0]), rest))
+            return c_forall (args + [arity], arrow (args[index], vtype))
         elif name.startswith ('%vector-literal/'):
             what, arity = name.split ('/')
             arg_types = (0,) * int (arity)
