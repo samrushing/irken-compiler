@@ -463,22 +463,13 @@ class unifier:
     #  algorithm, this would be called the 'subst'.  It implements the
     #  'union find' algorithm ('disjoint set' data structure).
 
-    def __init__ (self, eqs=(), step=False):
+    def __init__ (self, step=False):
         self.step = step
-        self.vars = {}
         self.eqs = set()
-        if eqs:
-            self.merge (eqs)
         self.exists = []
         # memoize decoded tvars
         self.decoded = {}
-
-    def merge (self, other):
-        for eq in other.eqs:
-            self.eqs.add (eq)
-            for v in eq.vars:
-                self.vars[v] = eq
-        #self.sanity()
+        self.counter = 0
 
     def add (self, vars, type):
         # add a term to the conjunction, e.g. A=B=C=T  (where T is optional)
@@ -494,14 +485,14 @@ class unifier:
         else:
             # any of these vars already present?
             for v in vars:
-                if self.vars.has_key (v):
+                if v.in_u is self:
                     # if so, then fuse
-                    self.fuse (self.vars[v], vars, type)
+                    self.fuse (v.eq, vars, type)
                     return
             # nope, a new equation
             eq = multi (vars, type)
             for v in vars:
-                self.vars[v] = eq
+                v.in_u = self
             
             self.eqs.add (eq)
 
@@ -549,8 +540,7 @@ class unifier:
     def forget (self, eq):
         self.eqs.remove (eq)
         for v in eq.vars:
-            del self.vars[v]
-            #v.next = None
+            v.in_u = False
 
     def fuse (self, eq, tvs0, ty0):
         tvs1 = eq.vars
@@ -684,7 +674,7 @@ class unifier:
         for eq in remove:
             self.eqs.remove (eq)
             for var in eq.vars:
-                del self.vars[var]
+                var.in_u = False
         #print 'u: %d eqs u2: %d eqs' % (len(self.eqs), len (u2.eqs))
         #self.sanity()
         return u2
@@ -700,7 +690,7 @@ class unifier:
         all = set()
         for eq in self.eqs:
             for v in eq.vars:
-                if not self.vars.has_key (v):
+                if not v.in_u:
                     print 'wtf?'
                     raise ValueError
                 all.add (v)
@@ -718,10 +708,9 @@ class unifier:
         #    return r
         def p (t):
             if is_a (t, t_var):
-                if self.vars.has_key (t):
+                if t.in_u is self:
                     # if it's in our set, return its rep
-                    eq = self.vars[t]
-                    return eq.rep
+                    return t.eq.rep
                 else:
                     # free variable
                     return t
@@ -747,7 +736,7 @@ class unifier:
             #    # 'j=j' helps no one.
             #    forget.add (eq)
         for v in unname:
-            del self.vars[v]
+            v.in_u = False
         for eq in forget:
             self.forget (eq)
         if also:
@@ -764,8 +753,8 @@ class unifier:
         seen = set()
         def p (v):
             seen.add (v)
-            if self.vars.has_key (v):
-                eq = self.vars[v]
+            if v.in_u is self:
+                eq = v.eq
                 if not eq in keep:
                     keep.add (eq)
                     t = eq.type
@@ -786,7 +775,7 @@ class unifier:
         total = len(vars)
         new_vars = []
         for v in vars:
-            if self.vars.has_key (v) or v in seen:
+            if v.in_u is self or v in seen:
                 new_vars.append (v)
         #print 'pruned %d vars out of %d' % (total-len(new_vars), total)
         return new_vars
@@ -865,7 +854,6 @@ class solver:
     def __init__ (self, context, verbose=False, step=False):
         self.context = context
         self.step = step
-        #self.u3 = unifier()
         # xxx need to split the notion of verbose and step
         self.step = step
 
@@ -1014,7 +1002,6 @@ class solver:
                         u2 = u.split (sz)
                         #print 'split'
                         #u2.pprint()
-                        #self.u3.merge (u2)
                         # if we do this, we lose detail with row types.  not sure what
                         #   other effects it may cause.
                         sz.vars = u2.prune (sz.types, sz.vars)
@@ -1030,7 +1017,6 @@ class solver:
                     # we're done!
                     #self.dprint ('exists=%r' % self.exists)
                     #self.dprint ('constraint=%r' % orig_c)
-                    #self.u3.merge (u)
                     return pvars
                 else:
                     raise ValueError ("unexpected")
@@ -1256,7 +1242,8 @@ class solver:
     def remember_variant_label (self, label):
         vl = self.context.variant_labels
         if not vl.has_key (label):
-            vl[label] = len (vl)
+            # adjust for the hacked pre-installed labels like 'cons' and 'nil'.
+            vl[label] = len (vl) - self.context.nvariant_offset
 
     def pprint_stack (self, s):
 
@@ -1356,15 +1343,16 @@ class typer:
         self.context = context
         self.verbose = verbose
         self.step = step
-        self.context.variant_labels = {}
 
     def go (self, exp):
         cg = constraint_generator (self.context.scc_graph)
         c, top_tv = cg.go (exp)
+        print 'solving...'
         if self.verbose:
             pprint_constraint (c)
         s = solver (self.context, self.verbose, self.step)
         m = s.solve (c)
+        print 'decoding...'
         for node in exp:
             node.type = self.decode (node.tv)
 
