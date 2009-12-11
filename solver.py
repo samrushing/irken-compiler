@@ -470,6 +470,7 @@ class unifier:
         # memoize decoded tvars
         self.decoded = {}
         self.counter = 0
+        self.max_size = 0
 
     def add (self, vars, type):
         # add a term to the conjunction, e.g. A=B=C=T  (where T is optional)
@@ -495,6 +496,7 @@ class unifier:
                 v.in_u = self
             
             self.eqs.add (eq)
+            self.max_size = max (self.max_size, len(self.eqs))
 
     def add2 (self, *args):
         # add an equation between a random collection of variables and types
@@ -664,17 +666,20 @@ class unifier:
         self.split_count += 1
         young = set (sz.vars)
         u2 = unifier()
+        to_add = []
         remove = []
         #self.sanity()
         for eq in self.eqs:
             #print 'split eq=',eq
             if eq.rep in young or eq.free.intersection (young):
-                u2.add (eq.vars, eq.type)
+                to_add.append ((eq.vars, eq.type))
                 remove.append (eq)
         for eq in remove:
             self.eqs.remove (eq)
             for var in eq.vars:
                 var.in_u = False
+        for vars, type in to_add:
+            u2.add (vars, type)
         #print 'u: %d eqs u2: %d eqs' % (len(self.eqs), len (u2.eqs))
         #self.sanity()
         return u2
@@ -1017,6 +1022,7 @@ class solver:
                     # we're done!
                     #self.dprint ('exists=%r' % self.exists)
                     #self.dprint ('constraint=%r' % orig_c)
+                    print 'max_size', u.max_size
                     return pvars
                 else:
                     raise ValueError ("unexpected")
@@ -1100,8 +1106,8 @@ class solver:
                 for arg in eq.type.args:
                     if is_a (arg, t_var):
                         # first, replace any var with its rep
-                        if env.u.vars.has_key (arg):
-                            v = env.u.vars[arg].rep
+                        if arg.in_u is env.u:
+                            v = arg.eq.rep
                         else:
                             v = arg
                         # then, rename it if applicable
