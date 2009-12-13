@@ -1,5 +1,12 @@
 ;; -*- Mode: Scheme -*-
 
+(cinclude "fcntl.h")
+
+(define O_RDONLY (%%cexp int "O_RDONLY"))
+(define O_WRONLY (%%cexp int "O_WRONLY"))
+(define O_RDWR   (%%cexp int "O_RDWR"))
+(define O_CREAT  (%%cexp int "O_CREAT"))
+
 (define (open path oflag mode)
   (let ((fd (%%cexp (string int int -> int) "open (%s, %s, %s)" (zero-terminate path) oflag mode)))
     (if (>= fd 0)
@@ -31,38 +38,58 @@
 (define (close fd)
   (%%cexp (int -> int) "close (%s)" fd))
 
-;; (class readfile
+;; file I/O 'object'
 
-;;   (fd:int buffer:string pos:int end:int)
+(define (file:open-read path)
+  { fd = (open path O_RDONLY 0)
+    buf = (make-string 16384)
+    pos = 0
+    end = 0 })
 
-;;   (define (fill-buffer self)
-;;     (let ((n (read-into-buffer self.fd self.buffer)))
-;;       (set! self.end n)
-;;       (set! self.pos 0)
-;;       n))
-	     
-;;   (define (read-buffer self)
-;;     ;; get an entire buffer-full at a time
-;;     (cond ((< self.pos self.end)
-;; 	   (let ((opos self.pos))
-;; 	     (set! self.pos self.end)
-;; 	     (substring self.buffer opos self.end)))
-;; 	  ((= (self.read-buffer) 0) "")
-;; 	  (else
-;; 	   (set! self.end 0)
-;; 	   (set! self.pos 0)
-;; 	   self.buffer)))
+(define (file:open-write path create? mode)
+  { fd = (open path (if create? (+ O_WRONLY O_CREAT) O_WRONLY) mode)
+    buf = (make-string 16384)
+    pos = 0 })
 
-;;   (define (read-char self)
-;;     (cond ((< self.pos self.end)
-;; 	   (set! self.pos (+ self.pos 1))
-;; 	   (maybe/yes (string-ref self.buffer (- self.pos 1))))
-;; 	  ((= (self.read-buffer) 0)
-;; 	   (maybe/no))
-;; 	  (else
-;; 	   (self.read-char))))
-;;   )
+(define (file:close self)
+  (close self.fd))
 
-;; (define (open-readfile path buffer-size)
-;;   (readfile (open path 0 0) (make-string buffer-size) 0 0))
+(define (file:fill-buffer self)
+  (let ((n (read-into-buffer self.fd self.buf)))
+    (set! self.end n)
+    (set! self.pos 0)
+    n))
 
+(define (file:read-buffer self)
+  (cond ((< self.pos self.end)
+	 (let ((opos self.pos))
+	   (set! self.pos self.end)
+	   (substring self.buf opos self.end)))
+	((= (file:fill-buffer self) 0) "")
+	(else
+	 (set! self.end 0)
+	 (set! self.pos 0)
+	 self.buf)))
+
+(define (file:read-char self)
+  (cond ((< self.pos self.end)
+	 (set! self.pos (+ self.pos 1))
+	 (string-ref self.buf (- self.pos 1)))
+	((= (file:fill-buffer self) 0) #\eof)
+	(else
+	 (file:read-char self))))
+
+(define (file:flush self)
+  (let loop ((start 0))
+    (let ((n (write-substring self.fd self.buf start self.pos)))
+      (if (< n self.pos)
+	  (loop n)
+	  #u))))
+
+(define (file:write-char self ch)
+  (cond ((< self.pos (string-length self.buf))
+	 (string-set! self.buf self.pos ch)
+	 (set! self.pos (+ self.pos 1)))
+	(else
+	 (file:flush self)
+	 (file:write-char self ch))))
