@@ -143,6 +143,9 @@ if __name__ == '__main__':
         else:
             return False
 
+    # raise this from the default 1000
+    sys.setrecursionlimit (10000)
+
     optimize = argtest ('-O')
     annotate = argtest ('-a')
     verbose  = argtest ('-v')
