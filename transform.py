@@ -341,7 +341,7 @@ class transformer:
                 # XXX assert this is the last clause...
                 cond_clauses.append (['else'] + seq)
             elif len(keys) == 1:
-                cond_clauses.append ([['%eq?', keysym, ['quote', keys[0]]]] + seq)
+                cond_clauses.append ([['eq?', keysym, ['quote', keys[0]]]] + seq)
             else:
                 or_clauses = self.expand_exp (['bor'] + [['eq?', keysym, ['quote', k]] for k in keys])
                 cond_clauses.append ([or_clauses] + seq)
@@ -517,12 +517,12 @@ class transformer:
                 #return atom ('nil', 'nil')
                 return self.expand_exp ([['colon', 'nil']])
             elif len(exp) == 3 and exp[1] == '.':
-                return self.expand_exp ([['colon', 'cons'], self.build_literal (exp[0]), self.build_literal (exp[2])])
+                return self.expand_exp (['cons', self.build_literal (exp[0]), self.build_literal (exp[2])])
             elif exp[0] == 'comma':
                 # lame attempt at backquote
                 return self.expand_exp (exp[1])
             else:
-                return self.expand_exp ([['colon', 'cons'], self.build_literal (exp[0]), self.build_literal (exp[1:])])
+                return self.expand_exp (['cons', self.build_literal (exp[0]), self.build_literal (exp[1:])])
         elif is_a (exp, str):
             return self.get_constant_binding (atom ('symbol', exp))
         else:
