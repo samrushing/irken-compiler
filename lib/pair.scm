@@ -5,6 +5,9 @@
     ;; could/should use 'else' here.
     ((:cons _ _ ) #f)))
 
+(define (cons a b)
+  (:cons a b))
+
 ;; http://groups.google.com/group/comp.lang.scheme/msg/0055f311d1e1ce08
 
 (define (reverse-onto l1 l2)
@@ -41,11 +44,11 @@
 	     (l (:nil)))
     (if (= n 0)
 	l
-	(loop (- n 1) (:cons n l)))))
+	(loop (- n 1) (cons n l)))))
 
 (define (n-of n x)
   (let loop ((n n)
 	     (l (:nil)))
     (if (= n 0)
 	l
-	(loop (- n 1) (:cons x l)))))
+	(loop (- n 1) (cons x l)))))
