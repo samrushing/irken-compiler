@@ -105,7 +105,7 @@ class node:
 
     def deep_copy (self):
         # XXX ugliness.  because self.params is sometimes a list, it would behoove
-        #   use to use a copy of that list!  However it's not always a list.
+        #   us to use a copy of that list!  However it's not always a list.
         if is_a (self.params, list):
             params = self.params[:]
         else:
