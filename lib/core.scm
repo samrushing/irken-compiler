@@ -48,7 +48,7 @@
   (if (< x y) x y))
 
 (define (eq? a b)
-  (%%cexp ('a 'b -> bool) "%s==%s" a b))
+  (%%cexp ('a 'a -> bool) "%s==%s" a b))
 
 (define (not x)
   (eq? x #f))
@@ -76,8 +76,9 @@
 (define (getcc)
   (%%cexp (-> continuation) "k"))
 
+;; using 'b here - is that hand-waving?
 (define (putcc k r)
-  (%%cexp (continuation 'a -> 'a) "(k=%s, %s)" k r))
+  (%%cexp (continuation 'a -> 'b) "(k=%s, %s)" k r))
 
 (define (^call/cc p)
   (let ((k (getcc)))
@@ -106,29 +107,49 @@
 ;; *********************************************************************
 
 ;; based on:
-;;   http://www.cs.brown.edu/pipermail/plt-scheme/2006-April/012418.html
+;;   http://list.cs.brown.edu/pipermail/plt-scheme/2006-April/012418.html
+;;  urgh, they've broken that link now.  try this instead:
+;;   http://hkn.eecs.berkeley.edu/~dyoo/plt/generator/
+;;  this might be the original message:
+;;  http://list.cs.brown.edu/pipermail/plt-scheme/2006-April/012456.html
 
-;; would this be any cleaner with let/cc instead of call/cc??
+;; (define (make-generator producer)
+;;   (let ((ready #f)
+;;         ;; just holding useless continuations
+;;         (caller (call/cc id))
+;;         (saved-point (call/cc id)))
+
+;;     (define (entry-point)
+;;       (call/cc
+;;        (lambda (k)
+;;          (set! caller k)
+;;          (if ready
+;;              (saved-point #f)
+;;              (producer yield)))))
+
+;;     (define (yield v)
+;;       (call/cc
+;;        (lambda (k)
+;;          (set! ready #t)
+;;          (set! saved-point k)
+;;          (caller v))))
+;;     entry-point
+;;     ))
 
 (define (make-generator producer)
   (let ((ready #f)
-        ;; just holding useless continuations
-        (caller (call/cc id))
-        (saved-point (call/cc id)))
-
+        ;; holding useless continuations
+        (caller (getcc))
+        (saved-point (getcc))
+        )
     (define (entry-point)
-      (call/cc
-       (lambda (k)
-         (set! caller k)
-         (if ready
-             (saved-point #f)
-             (producer yield)))))
-
+      (set! caller (getcc))
+      (if ready
+          (putcc saved-point #u)
+          (producer yield)))
     (define (yield v)
-      (call/cc
-       (lambda (k)
-         (set! ready #t)
-         (set! saved-point k)
-         (caller v))))
+      (set! saved-point (getcc))
+      (set! ready #t)
+      (putcc caller v))
     entry-point
     ))
