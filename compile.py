@@ -131,6 +131,9 @@ def cc (name, force_32=False, optimize=False, cc='gcc'):
 
 from pprint import pprint as pp
 
+# raise this from the default 1000
+sys.setrecursionlimit (10000)
+
 if __name__ == '__main__':
     import os
     import sys
@@ -142,9 +145,6 @@ if __name__ == '__main__':
             return True
         else:
             return False
-
-    # raise this from the default 1000
-    sys.setrecursionlimit (10000)
 
     optimize = argtest ('-O')
     annotate = argtest ('-a')
