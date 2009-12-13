@@ -69,6 +69,7 @@ class t_var (_type):
     letters = 'abcdefghijklmnopqrstuvwxyz'
     eq = None
     counter = 0
+    in_u = False
     def __init__ (self):
         self.id = t_var.counter
         t_var.counter += 1
@@ -83,9 +84,9 @@ class t_predicate (_type):
         # special case
         if self.name == 'arrow':
             if len(self.args) == 2:
-                return '%r->%r' % (self.args[1], self.args[0])
+                return '(%r->%r)' % (self.args[1], self.args[0])
             else:
-                return '%r->%r' % (self.args[1:], self.args[0])
+                return '(%r->%r)' % (self.args[1:], self.args[0])
         else:
             return '%s%r' % (self.name, self.args)
 
