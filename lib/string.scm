@@ -34,15 +34,13 @@
 
 (define (string-ref s n)
   ;; XXX need range-check
-  (%%cexp (string int -> char) "TO_CHAR(%s[%s])" s n)
-  )
+  (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%s)[%s])" s n))
 
 (define (string-set! s n c)
   ;; XXX need range-check
   (%%cexp
    (string int char -> undefined)
-   "(%s[%s] = GET_CHAR (%s), PXLL_UNDEFINED)" s n c)
-  )
+   "(%s[%s] = GET_CHAR (%s), PXLL_UNDEFINED)" s n c))
 
 (define (string-compare a b)
   ;; it'd be nice if the compiler could get rid of this let*,
@@ -69,22 +67,6 @@
 	    (s2 (make-string (+ n 1))))
 	(buffer-copy s 0 n s2 0)
 	s2)))
-
-;; [waiting for type inference to support nary args]
-;; (define (string-join . strings)
-;;   (let size-loop ((i 0)
-;;                   (size 0))
-;;     (if (< i (tuple-length strings))
-;;         (size-loop (+ i 1) (+ size (string-length (tuple-ref strings i))))
-;;         (let ((r (make-string size)))
-;;           (let copy-loop ((j 0)
-;;                           (pos 0))
-;;             (if (< j (tuple-length strings))
-;;                 (let* ((jstr (tuple-ref strings j))
-;;                        (jlen (string-length jstr)))
-;;                   (buffer-copy jstr 0 jlen r pos)
-;;                   (copy-loop (+ j 1) (+ pos jlen)))
-;;                 r))))))
 
 (define (list->string l)
   (let ((buffer (make-string (length l))))
