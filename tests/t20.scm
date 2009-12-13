@@ -122,7 +122,9 @@
 	  (loop (next-token))))
     ))
 
-(parse sys:argv[1])
+(if (> (sys:argc) 1)
+    (parse sys:argv[1])
+    (parse "nodes.py"))
 (printn actions)
 
 ;; (let ((f (file:open-read "nodes.py")))
