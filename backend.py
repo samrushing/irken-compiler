@@ -220,14 +220,24 @@ class c_backend:
                     self.write ('r%d = (object*)(TC_USERIMM+%d);' % (insn.target, tag * 4))
                 else:
                     # tuple type
-                    if is_a (tag, int):
-                        tag = '(TC_USEROBJ+%d)' % (tag * 4,)
+                    if nargs == 0:
+                        # we can't have empty tuples - it breaks the sentinel trick used
+                        #   in the garbage collector to avoid address range checks.
+                        # each tuple type (that might be empty) needs a corresponding immediate
+                        #   type to represent the empty version of it.
+                        if tag == 'vector':
+                            self.write ('r%d = (object *) TC_EMPTY_VECTOR;' % insn.target)
+                        else:
+                            raise ValueError ("attempt to create unsupported empty tuple type")
                     else:
-                        tag = 'TC_%s' % (tag.upper(),)
-                    self.write ('t = alloc_no_clear (%s, %d);' % (tag, nargs))
-                    for i in range (nargs):
-                        self.write ('t[%d] = r%d;' % (i+1, regs[i]))
-                    self.write ('r%d = t;' % (insn.target,))
+                        if is_a (tag, int):
+                            tag = '(TC_USEROBJ+%d)' % (tag * 4,)
+                        else:
+                            tag = 'TC_%s' % (tag.upper(),)
+                        self.write ('t = alloc_no_clear (%s, %d);' % (tag, nargs))
+                        for i in range (nargs):
+                            self.write ('t[%d] = r%d;' % (i+1, regs[i]))
+                        self.write ('r%d = t;' % (insn.target,))
         elif primop[0] == '%array-ref':
             [base, index] = insn.regs
             self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
@@ -291,9 +301,12 @@ class c_backend:
             self.write ('r%d = t;' % (insn.target,))
         elif primop[0] == '%make-vector':
             [vlen, vval] = insn.regs
-            self.write ('t = alloc_no_clear (TC_VECTOR, unbox(r%d));' % (vlen,))
-            self.write ('for (i=0; i < unbox(r%d); i++) { t[i+1] = r%d; }' % (vlen, vval))
-            self.write ('r%d = t;' % (insn.target,))
+            #self.write ('t = alloc_no_clear (TC_VECTOR, unbox(r%d));' % (vlen,))
+            self.write ('if (unbox(r%d) == 0) { r%d = (object *) TC_EMPTY_VECTOR; } else {' % (vlen, insn.target))
+            self.write ('  t = alloc_no_clear (TC_VECTOR, unbox(r%d));' % (vlen,))
+            self.write ('  for (i=0; i < unbox(r%d); i++) { t[i+1] = r%d; }' % (vlen, vval))
+            self.write ('  r%d = t;' % (insn.target,))
+            self.write ('}')
         elif primop[0] == '%vget':
             self.write ('r%d = UOBJ_GET(r%d,%s);' % (insn.target, insn.regs[0], primop[1]))
         else:
