@@ -69,6 +69,9 @@ dump_object (object * ob, int depth)
     case TC_UNDEFINED:
       fprintf (stdout, "#u");
       break;
+    case TC_EMPTY_VECTOR:
+      fprintf (stdout, "#()");
+      break;
     case 0: {
       // structure
       header h = (header) (ob[0]);
