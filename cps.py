@@ -297,7 +297,7 @@ class compiler:
             )
 
     def get_record_tag (self, sig):
-        print 'get record tag', sig
+        #print 'get record tag', sig
         c = self.context
         if not c.records2.has_key (sig):
             c.records2[sig] = len (c.records2)
