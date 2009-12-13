@@ -1,5 +1,6 @@
 # -*- Mode: Python -*-
 
+import string
 import sys
 import itypes
 W = sys.stderr.write
@@ -183,7 +184,8 @@ class c_backend:
         print self.context.records2
         if len(candidates) == 1:
             print 'unambiguous', orow, candidates[0]
-            return candidates[0]
+            # cast to list for python < 2.6 for 'index' method
+            return list(candidates[0])
         else:
             print 'ambiguous', orow, candidates
             return None
@@ -213,7 +215,7 @@ class c_backend:
             else:
                 regs = insn.regs
                 nargs = len (regs)
-                if nargs == 0:
+                if nargs == 0 and is_a (tag, int):
                     # unit type - use an immediate
                     self.write ('r%d = (object*)(TC_USERIMM+%d);' % (insn.target, tag * 4))
                 else:
@@ -386,14 +388,29 @@ class c_backend:
         if insn.target != 'dead' and insn.target != tuple_reg:
             self.write ('r%d = r%d;' % (insn.target, tuple_reg))
 
+            
+    # based on string.printable, but without the surprises at the end.
+    isprint = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ ' # \t\n\r\x0b\x0c'
+    safe_for_c_string = {
+        '\r' : '\\r',
+        '\n' : '\\n',
+        '\t' : '\\t',
+        '\\' : '\\\\',
+        '"'  : '\\"',
+        }
+
     def c_string (self, s):
-        r = repr(s)
-        if r[0] == "'":
-            # 'thingy"blue"thingy'
-            return '"' + r.replace ('"', '\\"')[1:-1] + '"'
-        else:
-            # "thingy'blue'thingy"
-            return r
+        r = []
+        for ch in s:
+            if self.safe_for_c_string.has_key (ch):
+                r.append (self.safe_for_c_string[ch])
+            elif ch in self.isprint:
+                r.append (ch)
+            else:
+                # originally, used hex escapes here.  but the tricksy modern C spec allows for more than
+                #  two digits (for non-ascii charsets).  that means \x0155 is one char, not three.  octal.
+                r.append ('\\%03o' % (ord (ch)))
+        return ''.join (r)
 
     def insn_make_string (self, insn):
         s = insn.params
@@ -401,7 +418,7 @@ class c_backend:
         self.write ('r%d = allocate (TC_STRING, string_tuple_length (%d));' % (insn.target, ls))
         self.write (
             '{ pxll_string * s = (pxll_string *) r%d;'
-            ' memcpy (s->data, %s, %d); s->len = %d; }' % (
+            ' memcpy (s->data, "%s", %d); s->len = %d; }' % (
                 insn.target, self.c_string (s), ls, ls)
             )
         
