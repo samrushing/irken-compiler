@@ -199,11 +199,13 @@ class s_let (frame):
         self.rank = rank
         for v in vars:
             v.rank = rank
+        self.counter = 0
 
     def add_vars (self, vars):
         self.vars.update (vars)
         for v in vars:
             v.rank = self.rank
+        self.counter += len (vars)
 
 class s_env (frame):
     # after a <let> type scheme has been solved, an <env> frame
@@ -430,10 +432,7 @@ class multi:
                 v.next = self.rep
             v.eq = self
         self.rank = self.rep.rank
-        # this is kinda stupid, since at most <type> will be a predicate
-        #  with exactly this set... (i.e., predicates always have tvar args).
-        self.free = set()
-        ftv (self.free, type)
+        #sys.stderr.write ('(%d)' %(len(vars)))
 
     def min_rank (self):
         # choose the variable with lowest <rank,id>
@@ -448,6 +447,14 @@ class multi:
                     mv = v
         return mv
 
+    def free (self):
+        free = set()
+        if is_a (self.type, t_predicate):
+            for arg in self.type.args:
+                if is_a (arg, t_var):
+                    free.add (arg)
+        return free
+
     def __repr__ (self):
         vars = list(self.vars)
         vars.sort (lambda a,b: cmp (a.id, b.id))
@@ -456,6 +463,18 @@ class multi:
             return r + '=%r' % (self.type,)
         else:
             return r
+
+def get_compress_key (t):
+    if is_a (t, t_base):
+        return t.name
+    elif is_a (t, str):
+        return ('str', t)
+    elif is_a (t, t_var):
+        return t.id
+    elif is_a (t, t_predicate):
+        return (t.name,) + tuple([get_compress_key (arg) for arg in t.args])
+    else:
+        raise ValueError
 
 class unifier:
 
@@ -469,7 +488,6 @@ class unifier:
         self.exists = []
         # memoize decoded tvars
         self.decoded = {}
-        self.counter = 0
         self.max_size = 0
 
     def add (self, vars, type):
@@ -492,11 +510,11 @@ class unifier:
                     return
             # nope, a new equation
             eq = multi (vars, type)
+
             for v in vars:
                 v.in_u = self
             
             self.eqs.add (eq)
-            self.max_size = max (self.max_size, len(self.eqs))
 
     def add2 (self, *args):
         # add an equation between a random collection of variables and types
@@ -549,8 +567,8 @@ class unifier:
         ty1  = eq.type
         # is a three-way fuse possible? (e.g. A=T0 B=T1; A=B=T2)
         # I don't think so, so let's ignore that possibility for now.
-        self.forget (eq)
         #self.dprint ('s-fuse')
+        self.forget (eq)
         if ty0 and ty1:
             # must unify types
             # A=B=T0 ^ B=C=T1 => A=B=C=T0=T1
@@ -664,14 +682,14 @@ class unifier:
         # leave in only equations made entirely of 'old' variables
         # this is the U1,U2 split from the rule S-POP-LET
         self.split_count += 1
-        young = set (sz.vars)
+        young = sz.vars
         u2 = unifier()
         to_add = []
         remove = []
         #self.sanity()
         for eq in self.eqs:
             #print 'split eq=',eq
-            if eq.rep in young or eq.free.intersection (young):
+            if eq.rep in young or eq.free().intersection (young):
                 to_add.append ((eq.vars, eq.type))
                 remove.append (eq)
         for eq in remove:
@@ -705,7 +723,6 @@ class unifier:
     def simplify (self, vars, also=None):
         #print 'before simplify'
         #self.pprint()
-        vars = set(vars)
         #self.sanity()
         #def p (t):
         #    r = _p (t)
@@ -861,6 +878,7 @@ class solver:
         self.step = step
         # xxx need to split the notion of verbose and step
         self.step = step
+        self.try_unname = False
 
     def dprint (self, msg):
         if self.step:
@@ -910,6 +928,9 @@ class solver:
                 print '-----------------------------'
                 if raw_input().startswith ('t'):
                     trace()
+
+            if self.try_unname:
+                self.do_extra_unname (u, s)
 
             # --- solver ---            
 
@@ -975,8 +996,11 @@ class solver:
                         self.dprint ('  new vars=%r' % (vars,))
                         self.dprint ('  old types=%r' % (sz.types,))
                         self.dprint ('  new types=%r' % (types,))
-                        pop()
-                        push (s_let (sz.names, types, vars, sz.body, sz.rank))
+                        print 'unnamed %s %d' % (sz.names, len(unname))
+                        sz.vars.difference_update (unname)
+                        sz.types = types
+                        #pop()
+                        #push (s_let (sz.names, types, vars, sz.body, sz.rank))
                     else:
                         if len(sz.vars):
                             free = u.find_free (set (sz.vars))
@@ -1022,7 +1046,6 @@ class solver:
                     # we're done!
                     #self.dprint ('exists=%r' % self.exists)
                     #self.dprint ('constraint=%r' % orig_c)
-                    print 'max_size', u.max_size
                     return pvars
                 else:
                     raise ValueError ("unexpected")
@@ -1040,9 +1063,26 @@ class solver:
                     if v in s[i].vars:
                         trace()
                 s[i].add_vars (vars)
+                # 1000 - empirically gives the fastest solver times
+                if s[i].counter > 1000:
+                    self.try_unname = True
+                    s[i].counter = 0
+                #sys.stderr.write ('{%d}' % (len(s[i].vars)))
                 break
         else:
             self.exists.extend (vars)
+
+    def do_extra_unname (self, u, s):
+        # find the first s_let on the stack
+        i = -1
+        while 1:
+            if is_a (s[i], s_let):
+                si = s[i]
+                break
+            i -= 1
+        unname, ignore = u.simplify (si.vars)
+        si.vars.difference_update (unname)
+        self.try_unname = False
 
     def instantiate_scheme (self, scheme, t):
         # instantiate a human-style type scheme (as returned from lookup_special_names())
@@ -1296,22 +1336,6 @@ def list_to_conj (l):
         for x in l[1:]:
             r = c_and (r, x)
         return r
-
-def ftv (s, t):
-    # accumulate free type variables into the set <s>
-    if is_a (t, t_var):
-        s.add (t)
-    elif is_a (t, t_predicate):
-        for arg in t.args:
-            ftv (s, arg)
-    elif is_a (t, t_base):
-        pass
-    elif is_a (t, str):
-        pass
-    elif t is None:
-        pass
-    else:
-        raise ValueError ("unknown type object")
 
 def read_string (s):
     import cStringIO
