@@ -1,5 +1,6 @@
 # -*- Mode: Python -*-
 
+from pdb import set_trace as trace
 from pprint import pprint as pp
 is_a = isinstance
 
@@ -22,11 +23,19 @@ def gensym (name):
     return r
 
 class translator:
-    def __init__ (self, grammar):
+    def __init__ (self, grammar, start=None, lits=None):
         self.grammar = grammar
+        if start is None:
+            start = self.grammar[0][0]
+        self.start = start
         self.rules = []
+        if lits is None:
+            lits = {}
+        self.lits = lits
     
     def emit (self, name, *items):
+        if None in items:
+            raise ValueError
         self.rules.append ((name, items))
 
     def walk (self, nt, prod):
@@ -56,6 +65,18 @@ class translator:
                     else:
                         self.emit (nt1, nt0)
                     return nt1
+                elif prod[0] == 'optional':
+                    r0 = walk_prod (name, prod[1], depth+1)
+                    nt0 = gensym (name)
+                    self.emit (nt0, r0)
+                    self.emit (nt0)
+                    return nt0
+                elif prod[0] == 'lit':
+                    # XXX consider recording all terminals here rather than 'guessing'
+                    # strip off the quotes
+                    return self.name_literal (prod[1][1:-1])
+                else:
+                    raise ValueError
             elif is_a (prod, list):
                 # straightforward concatentation of sets of alts
                 r = [walk_prod (name, x, depth+1) for x in prod]
@@ -69,6 +90,22 @@ class translator:
                 raise ValueError
         alts = walk_prod (nt, prod, 0)
         self.emit (nt, alts)
+
+    def name_literal (self, lit):
+        if self.lits.has_key (lit):
+            return self.lits[lit]
+        else:
+            safe = True
+            for ch in lit:
+                if not (ch.isalpha() or ch == '_'):
+                    safe = False
+                    break
+            if not safe:
+                name = 'term_%d' % (len(self.lits))
+            else:
+                name = lit
+            self.lits[lit] = name
+            return name
 
     def simplify (self):
         # eliminate trivial reductions, find terminals
@@ -99,7 +136,7 @@ class translator:
                     use[item] += 1
         # find trivial reductions
         for nt, prods in map.iteritems():
-            if len(prods) == 1:
+            if len(prods) == 1 and nt != self.start:
                 if len(prods[0]) == 1:
                     # trivial reduction
                     simp[nt] = prods[0][0]
@@ -138,17 +175,18 @@ class translator:
         W ('NT = Parsing.Nonterm\n\n')
         # emit token classes
         for tok in self.terminals:
-            W ('class t_%s (T):\n' % (tok,))
-            W ('    "%%token %s"\n' % (tok,))
+            lname = self.lits.get (tok, tok)
+            W ('class t_%s (T):\n' % (lname,))
+            W ('    "%%token %s [p1]"\n' % (lname,))
             W ('\n')
         # emit production classes
+        W ('class p1 (Parsing.Precedence):\n    "%right p1"\n')
         last_nt = None
         i = 0
         for nt, prod in self.rules:
             if last_nt != nt:
                 W ('class %s (NT):\n' % (nt,))
-                if last_nt is None:
-                    # first rule is start
+                if nt == self.start:
                     W ('    "%start"\n')
                 else:
                     W ('    "%nonterm"\n')
@@ -156,20 +194,28 @@ class translator:
                 i = 0
             # production
             W ('    def r_%d (self, *args):\n' % (i,))
-            W ('        "%%reduce %s"\n' % (' '.join (prod)))
+            W ('        "%%reduce %s [p1]"\n' % (' '.join (prod)))
             i += 1
         W ('\n\n')
         W ('spec = Parsing.Spec (sys.modules[__name__], skinny=False, logFile="%s.log", verbose=True)\n' % (name,))
 
-if __name__ == '__main__':
+def go (filename, start):
     import meta
     import os
-    import sys
-    name = sys.argv[1]
     base, ext = os.path.splitext (name)
     g = meta.parse_grammar (name)
-    t = translator (g)
+    t = translator (g, start)
     t.gen()
-    pp (t.rules)
-    pp (t.terminals)
+    #pp (t.rules)
+    #pp (t.terminals)
+    pp (t.lits)
     t.emit_python (base)
+
+if __name__ == '__main__':
+    import sys
+    name = sys.argv[1]
+    if len (sys.argv) > 2:
+        start = sys.argv[2]
+    else:
+        start = None
+    go (name, start)
