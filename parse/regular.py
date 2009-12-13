@@ -10,7 +10,7 @@ class operator:
         return self.s
 
 # operators
-CONCAT   = operator ('+')
+CONCAT   = operator ('.')
 STAR     = operator ('*')
 OR       = operator ('|')
 PLUS     = operator ('+')
