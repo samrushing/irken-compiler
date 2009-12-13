@@ -996,7 +996,7 @@ class solver:
                         self.dprint ('  new vars=%r' % (vars,))
                         self.dprint ('  old types=%r' % (sz.types,))
                         self.dprint ('  new types=%r' % (types,))
-                        print 'unnamed %s %d' % (sz.names, len(unname))
+                        #print 'unnamed %s %d' % (sz.names, len(unname))
                         sz.vars.difference_update (unname)
                         sz.types = types
                         #pop()
