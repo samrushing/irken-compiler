@@ -22,6 +22,16 @@ class context:
         self.cincludes = set()
         self.records2 = {}
         self.labels2 = {}
+        self.variant_labels = {
+            # Hack.  since pxll.h and header.c:dump_object() already
+            #   know about the 'builtin' cons and nil constructors, we
+            #   hard-code them in here.  You'll note that TC_PAIR is
+            #   two entries before TC_USEROBJ, likewise with TC_NIL.
+            'cons': -2,
+            'nil': -2,
+            }
+        # don't throw away precious tag space.
+        self.nvariant_offset = len(self.variant_labels)
 
 def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=False, trace=False, step_solver=False, typetype=False):
     base, ext = os.path.splitext (name)
@@ -54,8 +64,6 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
     # run the constraint generator and solver to find types
     t = solver.typer (c, verbose, step=step_solver)
 
-    #import cProfile
-    #cProfile.runctx ("t.go (exp3)", globals(), locals())
     if typetype:
         t.go (exp3)
 
@@ -72,6 +80,8 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
 
     t2 = solver.typer (c, verbose, step=step_solver)
     t.go (exp4)
+    #import cProfile
+    #cProfile.runctx ("t.go (exp4)", globals(), locals())
     if verbose:
         print '--- typing 2 ---'
         exp4.pprint()
