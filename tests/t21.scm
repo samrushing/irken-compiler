@@ -7,68 +7,6 @@
 (include "lib/string.scm")
 (include "lib/io.scm")
 
-(cinclude "fcntl.h")
-
-(define O_RDONLY (%%cexp int "O_RDONLY"))
-(define O_WRONLY (%%cexp int "O_WRONLY"))
-(define O_RDWR   (%%cexp int "O_RDWR"))
-(define O_CREAT  (%%cexp int "O_CREAT"))
-
-(define (file:open-read path)
-  (let ((fd (open path O_RDONLY 0))
-	(buf (make-string 16384)))
-    {fd=fd buf=buf pos=0 end=0}))
-
-(define (file:open-write path create? mode)
-  (let ((fd (open path (if create? (+ O_WRONLY O_CREAT) O_WRONLY) mode))
-	(buf (make-string 16384)))
-    {fd=fd buf=buf pos=0}))
-
-(define (file:close self)
-  (close self.fd))
-
-(define (file:fill-buffer self)
-  (let ((n (read-into-buffer self.fd self.buf)))
-    (set! self.end n)
-    (set! self.pos 0)
-    n))
-
-(define (file:read-buffer self)
-  (cond ((< self.pos self.end)
-	 (let ((opos self.pos))
-	   (set! self.pos self.end)
-	   (substring self.buf opos self.end)))
-	((= (file:fill-buffer self) 0) "")
-	(else
-	 (set! self.end 0)
-	 (set! self.pos 0)
-	 self.buf)))
-
-;; could we instead define an 'eof' character?
-(define (file:read-char self)
-  (cond ((< self.pos self.end)
-	 (let ((opos self.pos))
-	   (set! self.pos (+ self.pos 1))
-	   (:yes (string-ref self.buf (- self.pos 1)))))
-	((= (file:fill-buffer self) 0) (:no))
-	(else
-	 (file:read-char self))))
-
-(define (file:flush self)
-  (let loop ((start 0))
-    (let ((n (write-substring self.fd self.buf start self.pos)))
-      (if (< n self.pos)
-	  (loop n)
-	  #u))))
-
-(define (file:write-char self ch)
-  (cond ((< self.pos (string-length self.buf))
-	 (string-set! self.buf self.pos ch)
-	 (set! self.pos (+ self.pos 1)))
-	(else
-	 (file:flush self)
-	 (file:write-char self ch))))
-
 ;; copy file to stdout
 (let ((f (file:open-read "gc.c")))
   (let loop ((buffer (file:read-buffer f)))
