@@ -132,6 +132,7 @@ def cc (name, force_32=False, optimize=False, cc='gcc'):
 from pprint import pprint as pp
 
 # raise this from the default 1000
+import sys
 sys.setrecursionlimit (10000)
 
 if __name__ == '__main__':
