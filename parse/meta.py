@@ -21,7 +21,7 @@ class token (Parsing.Token):
 T = token
 
 class t_IDENT (T):
-    "%token IDENT [p1]"
+    "%token IDENT"
 
 class t_STRING (T):
     "%token STRING"
@@ -52,9 +52,6 @@ class t_VBAR (T):
 
 class t_NEWLINE (T):
     "%token NEWLINE"
-
-class p1 (Parsing.Precedence):
-    "%right p1"
 
 NT = Parsing.Nonterm
 
@@ -88,10 +85,10 @@ class alts (NT):
 class items (NT):
     "%nonterm"
     def reduce_0 (self, *args):
-        "%reduce item [p1]"
+        "%reduce item"
         self.val = args[0].val
     def reduce_1 (self, *args):
-        "%reduce item items [p1]"
+        "%reduce item items"
         self.val = args[0].val + args[1].val
 
 class item (NT):
@@ -137,7 +134,7 @@ class optional (NT):
     "%nonterm"
     def reduce_0 (self, *args):
         "%reduce LBRACKET alts RBRACKET"
-        self.val = ('optional', args[1])
+        self.val = ('optional', args[1].val)
 
 class parser (Parsing.Lr):
     
