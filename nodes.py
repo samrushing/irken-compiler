@@ -66,6 +66,7 @@ class node:
             size += sub.size
         self.size = size
         self.type = type
+        self.fix_attribute_names()
 
     def pprint (self, depth=0):
         print '%3d' % (self.serial,),
@@ -292,6 +293,8 @@ class vardef:
         self.function = None
         self.serial = serial.next()
         self.escapes = False
+        self.inline = None
+
     def __repr__ (self):
         #return '{%s.%d}' % (self.name, self.serial)
         if self.type:
@@ -542,6 +545,9 @@ def rename_variables (exp, datatypes):
                 if exp.is_a ('varset'):
                     if probe.nary:
                         raise ValueError ("can't assign to a varargs argument")
+                    probe.assigns.append (node)
+                else:
+                    probe.refs.append (node)
                 exp.params = exp.name = '%s_%d' % (name, exp.var.alpha)
             for sub in exp.subs:
                 rename (sub, lenv)
