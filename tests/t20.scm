@@ -115,17 +115,94 @@
 		 ((whitespace comment) (loop))
 		 (else tok)))))
 	))
-    (let loop ((tok (next-token)))
-      (printn tok)
-      (if (eq? tok eof-token)
-	  eof-token
-	  (loop (next-token))))
-    ))
 
-(if (> (sys:argc) 1)
-    (parse sys:argv[1])
-    (parse "nodes.py"))
-(printn actions)
+    (let ((stack (:nil)))
+
+      ;; stack = (:elem item state stack) | (:nil)
+      ;; item  = (:nt kind args) | (:t val)
+      ;; args  = (:cons item args) | (:nil)
+      ;; state = int
+      ;; kind  = symbol
+
+      (define (get-state)
+	(vcase stack
+	  ((:nil) 0)
+	  ((:elem _ state _) state)))
+	   
+      (define (lookup-action state-actions kind)
+	(let loop ((n 0))
+	  (let ((action state-actions[n]))
+	    (vcase action
+	      ((:action tkind shift-or-reduce)
+	       (if (eq? terminals[tkind] kind)
+		   shift-or-reduce
+		   (loop (+ n 1))))))))
+	  
+      (define (lookup-goto map nt)
+	(let loop ((n 0))
+	  (let ((entry map[n]))
+	    (vcase entry
+	      ((:pair nt0 new-state)
+	       (if (eq? nt0 nt)
+		   new-state
+		   (loop (+ n 1))))))))
+
+      (define (pop-n n)
+	(let loop ((n n)
+		   (result (:nil)))
+	  (if (= n 0)
+	      result
+	      (loop (- n 1) (:cons (pop) result)))))
+
+      (define (push item state)
+	(set! stack (:elem item state stack)))
+
+      (define (pop)
+        (vcase stack
+          ((:nil) (error "stack underflow"))
+          ((:elem item _ tail)
+           (set! stack tail)
+           item)))
+
+      (let loop ((tok (next-token)))
+	(cond ((eq? tok eof-token) stack)
+	      (else
+	       (vcase tok
+		 ((:token kind val)
+		  (print-string "\n")
+		  (print-string "stack: ") (printn stack)
+		  (print-string "token: ") (printn tok)
+		  (print-string "state: ") (printn (get-state))
+		  (let ((state-actions actions[(get-state)])
+			(action (lookup-action state-actions kind)))
+		    (vcase action
+		      ((:shift state)
+		       (push val state)
+		       (loop (next-token)))
+		      ((:reduce plen nt)
+		       (let ((args (pop-n plen))
+			     (next-state (lookup-goto goto[(get-state)] nt)))
+			 (print-string "after pop-n: ") (printn stack)
+			 (push (:nt non-terminals[nt] args) next-state))
+		       (loop tok)))))))))
+      )))
+
+;(define (parse-tree->list t r)
+;  (vcase t
+;    ((:nil) r)
+;    ((:elem item state tail)
+;     (vcase item
+;       ((:nt kind args)
+
+;(printn 
+ (if (> (sys:argc) 1)
+     (parse sys:argv[1])
+     (parse "tests/parse_0.py"));)
+
+;(printn actions)
+;(printn goto)
+;(printn terminals)
+;(printn non-terminals)
 
 ;; (let ((f (file:open-read "nodes.py")))
 ;;   (define g (make-lex-generator f))
