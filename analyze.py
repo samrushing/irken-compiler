@@ -510,12 +510,8 @@ class analyzer:
         # now call the replacer
         return self.replace (root, replacer)
 
-    def count_refs (self, name, body):
-        count = 0
-        for node in body:
-            if node.is_var (name):
-                count += 1
-        return count
+    def assigned (self, var):
+        return len (self.context.var_dict[var.name].assigns)
 
     rename_counter = 0
 
@@ -538,13 +534,23 @@ class analyzer:
         name, formals, recursive, type = fun.params
         for i in range (len (rands)):
             arg = rands[i]
-            if arg.one_of ('varref', 'literal'):
+            formal = formals[i]
+            if arg.is_a ('varref'):
+                if self.assigned (arg) or self.assigned (formal):
+                    complex.append (i)
+                else:
+                    simple.append (i)
+            elif arg.is_a ('literal'):
                 simple.append (i)
-            elif self.count_refs (formals[i].name, fun) == 1:
-                # XXX here's the problem.  it's a complex arg, referred to only once.
-                #   hence it gets re-substituted, but without the benefit of inlining.
-                #   somehow making it a sequence fixes things????
-                simple.append (i)
+            # ok, this just fails with the t_stack.scm, because the field selection primapp
+            #   hides the reference to an assigned variable.  think about how important this
+            #   is and try to get it back?
+            #elif len(formal.refs) == 1:
+            #    # XXX here's the problem.  it's a complex arg, referred to only once.
+            #    #   hence it gets re-substituted, but without the benefit of inlining.
+            #    #   somehow making it a sequence fixes things????
+            #    trace()
+            #    simple.append (i)
             else:
                 complex.append (i)
         if self.verbose:
@@ -587,7 +593,10 @@ class analyzer:
                 for k, v in substs:
                     if k.name == node.params:
                         # a match
-                        return v
+                        if node.is_a ('varset'):
+                            return nodes.varset (v.name, node.value)
+                        else:
+                            return v
                 else:
                     return node
             else:
