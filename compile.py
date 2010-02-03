@@ -26,9 +26,9 @@ class context:
             # Hack.  since pxll.h and header.c:dump_object() already
             #   know about the 'builtin' cons and nil constructors, we
             #   hard-code them in here.  You'll note that TC_PAIR is
-            #   two entries before TC_USEROBJ, likewise with TC_NIL.
+            #   two entries before TC_USEROBJ...
             'cons': -2,
-            'nil': -2,
+            'nil': -3,
             }
         # don't throw away precious tag space.
         self.nvariant_offset = len(self.variant_labels)
