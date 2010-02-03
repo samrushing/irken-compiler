@@ -44,17 +44,17 @@ def gen_irken (file, tables):
     items.sort (lambda a,b: cmp (a[1],b[1]))
     W ('(define terminals #(\n')
     for item, index in items:
-        W ('    "%s"\n' % (item,))
+        W ('    \'%s\n' % (item,))
     W ('  ))\n')
     items = ntm.items()
     items.sort (lambda a,b: cmp (a[1],b[1]))
     W ('(define non-terminals #(\n')
     for item, index in items:
-        W ('    "%s"\n' % (item,))
+        W ('    \'%s\n' % (item,))
     W ('  ))\n')
     W ('(define actions #(\n')
     for action in actions:
-        W ('  \'(\n')
+        W ('  #(\n')
         for k, v in action.items():
             shift_reduce, n = v
             if shift_reduce == -1:
@@ -69,8 +69,8 @@ def gen_irken (file, tables):
         l = []
         for k, v in entry.items():
             l.append ('(:pair %d %d)' % (ntm[k], v))
-        W ('  \'(%s)\n' % (' '.join (l)))
-    W ('  )\n')
+        W ('  #(%s)\n' % (' '.join (l)))
+    W ('  ))\n')
 
 if __name__ == '__main__':
     import sys
