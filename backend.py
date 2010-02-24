@@ -334,7 +334,7 @@ class c_backend:
         self.indent -= 1
         self.write ('}')
 
-    def insn_vcase (self, insn):
+    def insn_pvcase (self, insn):
         # this version uses get_safe_typecode() to avoid segregating into
         #   immediate/pointer cases...
         [test_reg] = insn.regs
@@ -364,6 +364,58 @@ class c_backend:
             self.write ('} break;')
             self.indent -= 1
         self.write ('}')
+
+    def insn_nvcase (self, insn):
+        [test_reg] = insn.regs
+        dtype, alts = insn.params
+        dt = self.context.datatypes[dtype]
+        assert (len(dt.alts) == len(alts))
+        units = []
+        tuples = []
+        # if there are any unit types, we need to test for immediate types first,
+        #   and only then dereference the pointer to get the tuple type code.
+        for i in range (len (dt.alts)):
+            sn, st = dt.alts[i]
+            if not st:
+                units.append (i)
+            else:
+                tuples.append (i)
+        closes = 0
+        if len(units):
+            self.write ('switch (GET_TYPECODE(r%d)) {' % test_reg)
+            closes += 1
+            for index in units:
+                self.indent += 1
+                self.write ('case (TC_USERIMM+%d): {' % (index * 4))
+                self.indent += 1
+                self.emit (alts[index])
+                self.indent -= 1
+                self.write ('} break;')
+                self.indent -= 1
+            if len(tuples):
+                self.write ('default: {')
+                closes += 1
+        if len(tuples):
+            if len(tuples) == 1:
+                # avoid the test when possible by just falling through...
+                self.emit (alts[tuples[0]])
+            else:
+                self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
+                closes += 1
+                for index in tuples:
+                    alt = alts[index]
+                    self.indent += 1
+                    if index == tuples[-1]:
+                        # avoid the last test when possible
+                        self.write ('default: {')
+                    else:
+                        self.write ('case TC_USEROBJ+%d: {' % (index * 4,))
+                    self.indent += 1
+                    self.emit (alt)
+                    self.indent -= 1
+                    self.write ('} break;')
+                    self.indent -= 1
+        self.write ('}' * closes)
 
     def check_free_regs (self, free_regs):
         "describe the free_regs to new_env() for gc"
