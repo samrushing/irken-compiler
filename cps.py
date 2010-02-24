@@ -58,8 +58,10 @@ class compiler:
             return self.compile_primargs (exp.args, ('%make-tuple', exp.type, exp.tag), lenv, k)
         elif exp.is_a ('primapp'):
             return self.compile_primapp (tail_pos, exp, lenv, k)
-        elif exp.is_a ('vcase'):
-            return self.compile_vcase (tail_pos, exp, lenv, k)            
+        elif exp.is_a ('pvcase'):
+            return self.compile_pvcase (tail_pos, exp, lenv, k)            
+        elif exp.is_a ('nvcase'):
+            return self.compile_nvcase (tail_pos, exp, lenv, k)            
         else:
             raise NotImplementedError
 
@@ -171,6 +173,13 @@ class compiler:
         elif exp.name.startswith ('%vget/'):
             ignore, label, arity, index = exp.name.split ('/')
             return self.compile_primargs (exp.args, ('%vget', index), lenv, k)
+        elif exp.name.startswith ('%nvget/'):
+            ignore, dtype, label, index = exp.name.split ('/')
+            return self.compile_primargs (exp.args, ('%vget', index), lenv, k)
+        elif exp.name.startswith ('%dtcon/'):
+            ignore, dtname, label = exp.name.split ('/')
+            tag = self.context.datatypes[dtname].tags[label]
+            return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
         else:
             raise ValueError ("Unknown primop: %r" % (exp.name,))
 
@@ -214,11 +223,18 @@ class compiler:
                 )
         return self.collect_primargs (exp.test_exp.args, [], lenv, k, finish)
 
-    def compile_vcase (self, tail_pos, exp, lenv, k):
+    def compile_pvcase (self, tail_pos, exp, lenv, k):
         def finish (test_reg):
             jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
-            return self.gen_vcase (test_reg, exp.alt_formals, alts, k)
+            return self.gen_pvcase (test_reg, exp.alt_formals, alts, k)
+        return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
+
+    def compile_nvcase (self, tail_pos, exp, lenv, k):
+        def finish (test_reg):
+            jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
+            alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
+            return self.gen_nvcase (test_reg, exp.vtype, alts, k)
         return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
 
     def compile_function (self, tail_pos, exp, lenv, k):
@@ -400,7 +416,7 @@ class INSN:
             return '%s %r %r' % (self.name, self.regs, self.params[0])
         elif self.name == 'close':
             return '%s %r %r' % (self.name, self.regs, self.params[0].name)
-        elif self.name == 'vcase':
+        elif self.name in ('pvcase', 'nvcase'):
             return '%s %r %r' % (self.name, self.params[0], self.regs)
         else:
             return '%s %r %r' % (self.name, self.regs, self.params)
@@ -478,8 +494,11 @@ class irken_compiler (compiler):
     def gen_simple_test (self, name, regs, then_code, else_code, k):
         return INSN ('test', regs, (name, then_code, else_code), k)
 
-    def gen_vcase (self, test_reg, types, alts, k):
-        return INSN ('vcase', [test_reg], (types, alts), k)
+    def gen_pvcase (self, test_reg, types, alts, k):
+        return INSN ('pvcase', [test_reg], (types, alts), k)
+
+    def gen_nvcase (self, test_reg, dtype, alts, k):
+        return INSN ('nvcase', [test_reg], (dtype, alts), k)
 
     def gen_invoke_tail (self, fun, closure_reg, args_reg, k):
         return INSN ('invoke_tail', [closure_reg, args_reg], fun, None)
@@ -521,7 +540,7 @@ def flatten (exp):
         elif exp.name == 'close':
             node, body, free = exp.params
             exp.params = node, flatten (body), free
-        elif exp.name == 'vcase':
+        elif exp.name in ('pvcase', 'nvcase'):
             types, alts = exp.params
             exp.params = types, [flatten (x) for x in alts]
         r.append (exp)
@@ -549,7 +568,7 @@ def pretty_print (insns, depth=0):
         elif insn.name == 'close':
             node, body, free = insn.params
             pretty_print (body, depth+1)
-        elif insn.name == 'vcase':
+        elif insn.name in ('pvcase', 'nvcase'):
             types, alts = insn.params
             for alt in alts:
                 pretty_print (alt, depth+1)
@@ -580,7 +599,7 @@ def walk_function (insns):
                 yield x
             for x in walk_function (else_code):
                 yield x
-        elif insn.name == 'vcase':
+        elif insn.name in ('pvcase', 'nvcase'):
             types, alts = insn.params
             for alt in alts:
                 for x in walk_function (alt):
