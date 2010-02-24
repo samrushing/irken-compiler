@@ -204,70 +204,16 @@ class node:
         elif self.kind == 'make_tuple':
             (self.ttype, self.tag) = self.params
             self.args = self.subs
-        elif self.kind == 'vcase':
+        elif self.kind == 'pvcase':
             self.alt_formals = self.params
+            self.value = self.subs[0]
+            self.alts = self.subs[1:]
+        elif self.kind == 'nvcase':
+            self.vtype = self.params
             self.value = self.subs[0]
             self.alts = self.subs[1:]
         else:
             raise ValueError (self.kind)
-
-def scheme_string (s):
-    r = ['"']
-    for ch in s:
-        if s == '"':
-            r.append ('\\')
-            r.append ('"')
-        else:
-            r.append (ch)
-    r.append ('"')
-    return ''.join (r)
-
-def to_scheme (node):
-    if node.is_a ('varref'):
-        return node.name
-    elif node.is_a ('varset'):
-        return ['set!', node.name, to_scheme (node.value)]
-    elif node.is_a ('literal'):
-        if node.ltype == 'string':
-            return scheme_string (node.value)
-        else:
-            return node.value
-    elif node.is_a ('primapp'):
-        return [node.name] + [to_scheme (x) for x in node.args]
-    elif node.is_a ('sequence'):
-        return ['begin'] + [to_scheme (x) for x in node.exprs]
-    elif node.is_a ('cexp'):
-        return ['%%cexp', scheme_string (node.form)] + [to_scheme (x) for x in node.args]
-    elif node.is_a ('conditional'):
-        return ['if', to_scheme(node.test_exp),to_scheme(node.then_exp),to_scheme(node.else_exp)]
-    elif node.is_a ('function'):
-        return ['lambda', [x.name for x in node.formals]] + [to_scheme (node.body)]
-    elif node.is_a ('fix'):
-        return ['letrec', [[x.name, to_scheme (y)] for x,y in zip(node.names, node.inits)], to_scheme (node.body)]
-    elif node.is_a ('let_splat'):
-        return ['let*', [[x.name, to_scheme (y)] for x,y in zip(node.names, node.inits)], to_scheme (node.body)]
-    elif node.is_a ('application'):
-        return [to_scheme (node.rator)] + [to_scheme (x) for x in node.rands]
-    elif node.is_a ('make_tuple'):
-        return ['make_tuple', node.ttype] + [to_scheme (x) for x in node.args]
-    elif node.is_a ('set'):
-        return ['set', to_scheme (node.ob), node.name, to_scheme (node.val)]
-    elif node.is_a ('get'):
-        return ['get', to_scheme (node.ob), node.name]
-    elif node.is_a ('vcase'):
-        return ['vcase', [[x[0], x[2]] for x in node.params], [to_scheme (x) for x in node.alts]]
-    else:
-        raise ValueError
-
-import sys
-def as_sexp (x):
-    if is_a (x, list):
-        r = [as_sexp (y) for y in x]
-        return '(%s)' % (' '.join (r))
-    elif is_a (x, tuple):
-        import pdb; pdb.set_trace()
-    else:
-        return str (x)
 
 def walk_node (n):
     yield n
@@ -350,8 +296,11 @@ def get (ob, name):
 def set (ob, name, val):
     return node ('set', name, [ob, val])
 
-def vcase (value, alt_formals, alts):
-    return node ('vcase', alt_formals, [value] + alts)
+def pvcase (value, alt_formals, alts):
+    return node ('pvcase', alt_formals, [value] + alts)
+
+def nvcase (vtype, value, alts):
+    return node ('nvcase', vtype, [value] + alts)
 
 # ================================================================================
 
@@ -365,9 +314,10 @@ class ConfusedError (Exception):
 
 import itypes
 
-def parse_type (exp):
+def parse_type (exp, tvars=None):
 
-    tvars = {}
+    if tvars is None:
+        tvars = {}
 
     def get_tvar (name):
         if not tvars.has_key (name):
@@ -398,6 +348,9 @@ is_a = isinstance
 class walker:
 
     """The walker converts from 's-expression' => 'node tree' representation"""
+
+    def __init__ (self, context):
+        self.context = context
 
     def walk_exp (self, exp):
         WALK = self.walk_exp
@@ -452,10 +405,15 @@ class walker:
                 elif rator == 'set':
                     ignore, ob, name, val = exp
                     return set (WALK (ob), name, WALK (val))
-                elif rator == 'vcase':
+                elif rator == 'pvcase':
                     ignore, value, alt_formals, alts = exp
                     alt_formals = [ (selector, type, [vardef (name) for name in formals]) for selector, type, formals in alt_formals ]
-                    return vcase (WALK(value), alt_formals, [WALK (x) for x in alts])
+                    return pvcase (WALK(value), alt_formals, [WALK (x) for x in alts])
+                elif rator == 'nvcase':
+                    ignore, vtype, value, alts = exp
+                    dt = self.context.datatypes[vtype]
+                    alts = dt.order_alts (alts)
+                    return nvcase (vtype, WALK(value), [WALK (x) for x in alts])
                 else:
                     # a varref application
                     return application (WALK (rator), [WALK (x) for x in exp[1:]])
@@ -525,7 +483,7 @@ def rename_variables (exp, datatypes):
                             exp.subs[i].params[0] = '%s_%d' % (defs[i].name, defs[i].alpha)
             for sub in exp.subs:
                 rename (sub, lenv)
-        elif exp.is_a ('vcase'):
+        elif exp.is_a ('pvcase'):
             # this is a strangely shaped binding construct
             rename (exp.value, lenv)
             n = len (exp.alts)
