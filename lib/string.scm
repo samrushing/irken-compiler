@@ -78,10 +78,10 @@
 	  (loop tl (+ i 1)))))))
 
 (define (string->list s)
-  (let loop ((l (:nil)) (n (string-length s)))
+  (let loop ((l (list:nil)) (n (string-length s)))
     (if (= n 0)
 	l
-	(loop (:cons (string-ref s (- n 1)) l) (- n 1)))))
+	(loop (list:cons (string-ref s (- n 1)) l) (- n 1)))))
 
 (define (sys:argc)
   (%%cexp (-> int) "argc"))
