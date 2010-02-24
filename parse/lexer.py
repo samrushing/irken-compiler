@@ -260,5 +260,5 @@ if __name__ == '__main__':
     m = lexer (python_lexicon)
     #m.gen_scheme_code()
     #m.gen_scheme_table()
-    #m.gen_irken (open ("lexstep.scm", 'wb'))
-    m.read (open ("../nodes.py"))
+    m.gen_irken (open ("lexstep.scm", 'wb'))
+    #m.read (open ("../nodes.py"))
