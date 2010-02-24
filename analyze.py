@@ -69,10 +69,6 @@ class analyzer:
 
         self.escape_analysis (root)
 
-        if self.verbose:
-            print ' --- as scheme ---'
-            print nodes.as_sexp (nodes.to_scheme (root))
-
         return root
 
     def transform (self, node, stage):
@@ -94,7 +90,7 @@ class analyzer:
 
     def transform_0_primapp (self, node):
         if node.name.startswith ('%vcase/'):
-            return self.transform_vcase (node)
+            return self.transform_pvcase (node)
         else:
             return node
 
@@ -116,6 +112,7 @@ class analyzer:
         inits = node.subs[:-1]
         body = node.subs[-1]
         # this is generated often by vcase: (let (x <init>) x)
+        # XXX probably not true any more XXX
         if len(names) == 1 and body.is_a ('varref') and body.params == names[0].name:
             return inits[0]
         elif body.is_a ('let_splat'):
@@ -189,19 +186,19 @@ class analyzer:
                     subs.append (sub)
             return nodes.sequence (subs)
 
-    def transform_vcase (self, node, val=None):
+    def transform_pvcase (self, node, val=None):
         ignore, label, arity = node.name.split ('/')
         arity = int (arity)
         success, failure, value = node.subs
         if val is None:
             val = value
         if failure.body.is_a ('primapp') and failure.body.name.startswith ('%vcase/'):
-            vcase = self.transform_vcase (failure.body, val)
+            vcase = self.transform_pvcase (failure.body, val)
         elif failure.body.is_a ('primapp') and failure.body.name.startswith ('%vfail'):
-            vcase = nodes.vcase (val, [], [])
+            vcase = nodes.pvcase (val, [], [])
         else:
             # since <failure> cannot bind any variables, we just beta reduce it here.
-            vcase = nodes.vcase (val, [], [failure.body])
+            vcase = nodes.pvcase (val, [], [failure.body])
         # filter out don't-care variable bindings
         n = len (success.formals)
         formals = []
@@ -454,15 +451,6 @@ class analyzer:
                 return node
         return self.replace (root, prune_fix)
 
-    def is_varargs (self, fun):
-        # is this an nary function?
-        if fun:
-            formals = fun.params[1]
-            # XXX fix this when we support non-optional args
-            return len(formals) and formals[0].nary
-        else:
-            return False
-
     inline_threshold = 18
 
     def find_inlines (self, root):
@@ -482,7 +470,6 @@ class analyzer:
                     #     kind of compile-time-environment mechanism
                     if (not name.startswith ('^')
                         and calls > 0
-                        and (not self.is_varargs (fun))
                         and ((fun.size <= self.inline_threshold or calls == 1)
                              and not self.is_recursive (name))
                         ):
@@ -499,6 +486,8 @@ class analyzer:
                     node.function = rator
                     result = self.inline_application (node)
                     if result.is_a ('application'):
+                        print 'inlining lambda...'
+                        node.pprint()
                         return replacer (result)
                     else:
                         return result
@@ -512,6 +501,14 @@ class analyzer:
 
     def assigned (self, var):
         return len (self.context.var_dict[var.name].assigns)
+
+    def safe_nvget_inline (self, rands):
+        r0 = rands[0]
+        if r0.is_a ('primapp') and r0.name.startswith ('%nvget/'):
+            # make sure the variable is not assigned to...
+            if self.assigned (r0.args[0]) == 0:
+                return True
+        return False
 
     rename_counter = 0
 
@@ -546,11 +543,12 @@ class analyzer:
             #   hides the reference to an assigned variable.  think about how important this
             #   is and try to get it back?
             #elif len(formal.refs) == 1:
-            #    # XXX here's the problem.  it's a complex arg, referred to only once.
-            #    #   hence it gets re-substituted, but without the benefit of inlining.
-            #    #   somehow making it a sequence fixes things????
-            #    trace()
+            #    # it's a complex arg, referred to only once.
             #    simple.append (i)
+            # XXX because the case of field selection is so important (otherwise *every* vcase
+            #     expression will allocate), I'm going to special case it here.
+            elif len(formal.refs) == 1 and self.safe_nvget_inline (rands):
+                simple.append (i)
             else:
                 complex.append (i)
         if self.verbose:
