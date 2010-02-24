@@ -11,7 +11,7 @@
   (%%cexp (int -> int) "(pxll_int)malloc(%s)" n))
 
 (define (free n)
-  (%%cexp (int -> undefined) "free(%s); PXLL_UNDEFINED" n))
+  (%%cexp (int -> undefined) "free((void*)%s); PXLL_UNDEFINED" n))
 
 (define (write-int p n)
   (%%cexp (int int -> undefined) "(*(pxll_int *)(%s)) = %s" p n))
