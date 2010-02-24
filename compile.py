@@ -19,6 +19,7 @@ class context:
         self.scc_map = None
         self.var_dict = None
         self.record_types = None
+        self.datatypes = {}
         self.cincludes = set()
         self.records2 = {}
         self.labels2 = {}
@@ -53,7 +54,7 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
         print '--- transform ---'
         pp (exp2)
 
-    w = nodes.walker()
+    w = nodes.walker (c)
     exp3 = w.go (exp2)
 
     # alpha conversion
@@ -118,7 +119,7 @@ def cc (name, force_32=False, optimize=False, cc='gcc'):
     else:
         optimize = ''
     if uname[0] == 'Darwin':
-        # doesn't work as of os x 10.6
+        # doesn't work as of os x 10.6 [and won't work until clang supports lexical funs]
         #cc = '/Developer/usr/bin/clang'
         # *does* work as of os x 10.6
         cc = '/Developer/usr/bin/llvm-gcc'
