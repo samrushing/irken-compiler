@@ -249,6 +249,7 @@ read_header (FILE * file)
   } while (depth);
   // read terminating newline
   fgetc (file);
+  return 0;
 }
 
 // used to check array references.  some day we might try to teach
