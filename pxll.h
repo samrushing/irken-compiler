@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <ctype.h>
 #include <assert.h>
 
 // it's arguable that there's no need for this include file, that it should
