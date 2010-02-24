@@ -1,8 +1,10 @@
 
+;; this should probably become a datatype, or at least a record.
+
 (define (string->uninterned-symbol str)
   (%%make-tuple symbol symbol str))
 
-(define the-symbol-table (:empty))
+(define the-symbol-table (tree:empty))
 
 (define (intern-symbol str)
   (let ((sym (string->uninterned-symbol str)))
@@ -12,7 +14,7 @@
 
 (define (string->symbol str)
   (let ((probe (tree:member the-symbol-table string-<? str)))
-    (vcase probe
+    (vcase maybe probe
       ((:no) (intern-symbol str))
       ((:yes sym) sym))))
 
