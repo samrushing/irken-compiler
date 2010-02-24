@@ -8,65 +8,67 @@
 ;;
 ;; Instead, we save space by encoding the color into the header of
 ;;   each node, which leads to some minor code duplication (due to the
-;;   lack of real pattern matching).  another issue: the fact that I
-;;   don't have proper type variables in this syntax means there's no
-;;   way to expression that red and purple nodes have the same key and
-;;   value types.
+;;   lack of real pattern matching).
 
+(datatype tree
+  (red    tree tree 'a 'b)
+  (purple tree tree 'a 'b)
+  (empty)
+  )
 
 (define (tree:insert root < k v)
 
   (define (lbalance l r k v)
-    (vcase l
+    (vcase tree l
       ((:red ll lr lk lv)
-       (vcase ll
-         ((:red lll llr llk llv)
-  	(:red (:purple lll llr llk llv) (:purple lr r k v) lk lv))
-         ((:purple _ _ _ _)
-  	(vcase lr
-  	  ((:red lrl lrr lrk lrv)
-  	   (:red (:purple ll lrl lk lv) (:purple lrr r k v) lrk lrv))
-  	  ((:purple _ _ _ _)
-  	   (:purple l r k v))
-  	  ((:empty)
-  	   (:purple l r k v))))
-         ((:empty)
-  	(:purple l r k v))))
+       (vcase tree ll
+	 ((:red lll llr llk llv)
+	  (tree:red (tree:purple lll llr llk llv) (tree:purple lr r k v) lk lv))
+	 ((:purple _ _ _ _)
+	  (vcase tree lr
+	    ((:red lrl lrr lrk lrv)
+	     (tree:red (tree:purple ll lrl lk lv) (tree:purple lrr r k v) lrk lrv))
+	    ((:purple _ _ _ _)
+	     (tree:purple l r k v))
+	    ((:empty)
+	     (tree:purple l r k v))))
+	 ((:empty)
+	  (tree:purple l r k v))))
       ((:purple _ _ _ _)
-       (:purple l r k v))
+       (tree:purple l r k v))
       ((:empty)
-       (:purple l r k v))))
+       (tree:purple l r k v))))
   
   (define (rbalance l r k v)
-    (vcase r
+    (vcase tree r
       ((:red rl rr rk rv)
-       (vcase rr
-         ((:red rrl rrr rrk rrv)
-  	(:red (:purple l rl k v) (:purple rrl rrr rrk rrv) rk rv))
-         ((:purple _ _ _ _)
-  	(vcase rl
-            ((:red rll rlr rlk rlv)
-  	   (:red (:purple l rll k v) (:purple rlr rr rk rv) rlk rlv))
-  	  ((:purple _ _ _ _)
-  	   (:purple l r k v))
-  	  ((:empty)
-  	   (:purple l r k v))))
-         ((:empty)
-  	(:purple l r k v))))
+       (vcase tree rr
+	 ((:red rrl rrr rrk rrv)
+	  (tree:red (tree:purple l rl k v) (tree:purple rrl rrr rrk rrv) rk rv))
+	 ((:purple _ _ _ _)
+	  (vcase tree rl
+	    ((:red rll rlr rlk rlv)
+	     (tree:red (tree:purple l rll k v) (tree:purple rlr rr rk rv) rlk rlv))
+	    ((:purple _ _ _ _)
+	     (tree:purple l r k v))
+	    ((:empty)
+	     (tree:purple l r k v))))
+	 ((:empty)
+	  (tree:purple l r k v))))
       ((:purple _ _ _ _)
-       (:purple l r k v))
+       (tree:purple l r k v))
       ((:empty)
-       (:purple l r k v))))
+       (tree:purple l r k v))))
 
   (define (ins n)
-    (vcase n
+    (vcase tree n
       ((:empty)
-       (:red (:empty) (:empty) k v))
+       (tree:red (tree:empty) (tree:empty) k v))
       ((:red l r k2 v2)
        (cond ((< k k2)
-	      (:red (ins l) r k2 v2))
+	      (tree:red (ins l) r k2 v2))
 	     ((< k2 k)
-	      (:red l (ins r) k2 v2))
+	      (tree:red l (ins r) k2 v2))
 	     (else n)))
       ((:purple l r k2 v2)
        (cond ((< k k2)
@@ -76,28 +78,28 @@
 	     (else n)))))
 
   (let ((s (ins root)))
-    (vcase s
+    (vcase tree s
       ((:purple _ _ _ _) s)
-      ((:red l r k v) (:purple l r k v))
+      ((:red l r k v) (tree:purple l r k v))
       ((:empty) s) ;; impossible, should raise something here?
       )))
 
 (define (tree:member root < key)
   (let member0 ((n root))
-    (vcase n
-       ((:empty) (:no))
+    (vcase tree n
+       ((:empty) (maybe:no))
        ((:red l r k v)
 	(cond ((< key k) (member0 l))
 	      ((< k key) (member0 r))
-	      (else (:yes v))))
+	      (else (maybe:yes v))))
        ((:purple l r k v)
 	(cond ((< key k) (member0 l))
 	      ((< k key) (member0 r))
-	      (else (:yes v)))))))
+	      (else (maybe:yes v)))))))
 
 (define (tree:inorder t p)
   (let inorder0 ((n t))
-    (vcase n
+    (vcase tree n
       ((:empty) #f)
       ((:red l r k v)    (inorder0 l) (p k v) (inorder0 r) #f)
       ((:purple l r k v) (inorder0 l) (p k v) (inorder0 r) #f)
@@ -105,7 +107,7 @@
 
 (define (tree:reverse n p)
   (let reverse0 ((n n))
-    (vcase n
+    (vcase tree n
       ((:empty) #f)
       ((:red l r k v)    (reverse0 r) (p k v) (reverse0 l) #f)
       ((:purple l r k v) (reverse0 r) (p k v) (reverse0 l) #f)
