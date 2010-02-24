@@ -171,6 +171,50 @@ def pprint_constraint (c):
     pp (c, 0)
     W ('\n')
 
+def check_constraint (c, top_tv):
+
+    import itypes
+
+    def lookup (v, env):
+        while env is not None:
+            rib, env = env
+            if v in rib:
+                return
+        raise UnboundVariable
+
+    def pp (c, env):
+        if is_a (c, c_let):
+            pp (c.constraint, env)
+            pp (c.body, env)
+        elif is_a (c, c_forall):
+            rib = c.vars
+            pp (c.constraint, (rib, env))
+        elif is_a (c, c_and):
+            for t in flatten_conj (c):
+                pp (t, env)
+        elif is_a (c, c_exists):
+            pp (c.sub, (c.vars, env))
+        elif is_a (c, t_predicate):
+            for arg in c.args:
+                pp (arg, env)
+        elif is_a (c, c_is):
+            pp (c.t, env)
+        elif is_a (c, c_equals):
+            for arg in c.args:
+                pp (arg, env)
+        elif is_a (c, c_true):
+            pass
+        elif is_a (c, t_var):
+            lookup (c, env)
+        elif is_a (c, itypes.t_base):
+            pass
+        elif is_a (c, str):
+            # row labels
+            pass
+        else:
+            raise ValueError
+    pp (c, (set([top_tv]), None))
+
 # stack frames
 class frame:
     kind = 'abstract'
@@ -222,12 +266,14 @@ class s_env (frame):
 
 class constraint_generator:
 
-    def __init__ (self, scc_graph):
-        self.scc_graph = scc_graph
+    def __init__ (self, context):
+        self.context = context
 
     def go (self, exp):
         t = t_var()
-        return self.gen (exp, t), t
+        c, top_tv = self.gen (exp, t), t
+        #check_constraint (c, top_tv)
+        return c, top_tv
 
     def gen (self, exp, t):
         exp.tv = t
@@ -326,13 +372,14 @@ class constraint_generator:
         return r
 
     def gen_fix (self, exp, t):
-        partition = graph.reorder_fix (exp, self.scc_graph)
+        partition = graph.reorder_fix (exp, self.context.scc_graph)
         partition.reverse()
         c0 = self.gen (exp.body, t)
         # XXX deep partitioning magic here
         for part in partition:
             names = [exp.names[i] for i in part]
             funs  = [exp.inits[i] for i in part]
+            print names,
             # one var for each function
             fvars = tuple ([t_var() for x in names])
             c1 = list_to_conj (
@@ -343,6 +390,7 @@ class constraint_generator:
             # outer/polymorphic binding
             c1 = c_let (names, fvars, c_forall (fvars, c1), c0)
             c0 = c1
+        print
         return c0
 
     def gen_conditional (self, exp, t):
@@ -371,14 +419,14 @@ class constraint_generator:
                 c_equals (t, base_types[exp.ttype])
                 ))
 
-    def gen_vcase (self, exp, t):
-        # (vcase <alt_formals> <alt0> <alt1> ...)
+    def gen_pvcase (self, exp, t):
+        # (pvcase <alt_formals> <alt0> <alt1> ...)
         # each <alt> binds a separate set of variables (possibly empty)
         # the last alt binds against either "else" (not yet implemented),
         # or rdefault(abs()).
         alts = exp.alts[:]
         vars = []
-        cons = []
+        conj = []
         if len(alts) == len (exp.alt_formals):
             # no else clause, a closed sum type
             row = rdefault (abs())
@@ -386,32 +434,40 @@ class constraint_generator:
             # with an else clause, open sum type
             row = t_var()
             vars.append (row)
-            cons.append (self.gen (alts[-1], t))
+            conj.append (self.gen (alts[-1], t))
         for i in range (len (exp.alt_formals)):
             alt = alts[i]
             label, type, formals = exp.alt_formals[i]
             # row type extended with this label and its type
             args = [t_var() for x in range (len (formals))]
             vars.extend (args)
-            if False:
-                if len(formals) == 0:
-                    ptype = product()
-                elif len(formals) == 1:
-                    ptype = args[0]
-                else:
-                    ptype = product(*args)
             ptype = t_var()
             vars.append (ptype)
             row = rlabel (label, pre(ptype), row)
             if len(formals):
-                cons.append (c_let (formals, args, c_true(), self.gen (alt, t)))
+                conj.append (c_let (formals, args, c_true(), self.gen (alt, t)))
             else:
-                cons.append (self.gen (alt, t))
+                conj.append (self.gen (alt, t))
         
-        cons.append (self.gen (exp.value, rsum (row)))
-        r = c_exists (vars, list_to_conj (cons))
-        return r
+        conj.append (self.gen (exp.value, rsum (row)))
+        return c_exists (vars, list_to_conj (conj))
 
+    def gen_nvcase (self, exp, t):
+        # (nvcase <vtype> <val> <alt0> <alt1> ...)
+        # like a conditional, but with more branches.
+        dt = self.context.datatypes[exp.vtype]
+        if len(dt.tvars):
+            # it's a type scheme, instantiate it
+            scheme = instantiate_scheme (c_forall (dt.tvars, dt.scheme))
+            conj = [self.gen (exp.value, scheme.constraint)]
+        else:
+            conj = [self.gen (exp.value, dt.scheme)]
+        for alt in exp.alts:
+            conj.append (self.gen (alt, t))
+        if len(dt.tvars):
+            return c_exists (scheme.vars, list_to_conj (conj))
+        else:
+            return list_to_conj (conj)
 
 class UnboundVariable (Exception):
     pass
@@ -594,6 +650,9 @@ class unifier:
             for i in range (len (ty0.args)):
                 self.add2 (ty0.args[i], ty1.args[i])
             self.add (tvs, ty0)
+        elif is_a (ty0, t_predicate):
+            # check for datatype
+            pass
         else:
             #self.dprint ('s-clash')
             raise TypeError ((ty0, ty1))
@@ -720,7 +779,9 @@ class unifier:
         if all != set (self.vars.keys()):
             raise ValueError
 
-    def simplify (self, vars, also=None):
+    def simplify (self, vars, types):
+        # remove/unname extra variables, and replace all tvars in types
+        #   with the rep.
         #print 'before simplify'
         #self.pprint()
         #self.sanity()
@@ -746,7 +807,7 @@ class unifier:
             new_vars = set([eq.rep])
             for v in eq.vars:
                 if v is not eq.rep:
-                    if v in vars:
+                    if v in vars and not v in types:
                         unname.add (v)
                         v.next = eq.rep
                     else:
@@ -761,10 +822,10 @@ class unifier:
             v.in_u = False
         for eq in forget:
             self.forget (eq)
-        if also:
-            also = [p(x) for x in also]
+        if types:
+            types = [p(x) for x in types]
         #self.sanity()
-        return unname, also
+        return unname, types
 
     def prune (self, types, vars):
         # cut this conjunction down to equations referenced by <types>
@@ -870,6 +931,31 @@ class unifier:
         for eq in eqs:
             sys.stdout.write ('\t%r\n' % (eq,))
         sys.stdout.write ('\n')
+
+def instantiate_scheme (scheme):
+    # instantiate a human-style type scheme (as returned from lookup_special_names())
+    if not is_a (scheme, c_forall):
+        return scheme
+    else:
+        vars = scheme.vars
+        nvars = []
+        map = {}
+        for v in vars:
+            # fresh tvar for each quantified tvar
+            tv = t_var()
+            map[v] = tv
+            nvars.append (tv)
+        def f (c):
+            if is_a (c, t_predicate):
+                return t_predicate (c.name, [f(x) for x in c.args])
+            elif is_a (c, t_var) or is_a (c, int):
+                if c in vars:
+                    return map[c]
+                else:
+                    return c
+            else:
+                return c
+        return c_forall (nvars, f (scheme.constraint))
 
 class solver:
 
@@ -1080,59 +1166,21 @@ class solver:
                 si = s[i]
                 break
             i -= 1
-        unname, ignore = u.simplify (si.vars)
+        unname, ignore = u.simplify (si.vars, set())
         si.vars.difference_update (unname)
         self.try_unname = False
 
-    def instantiate_scheme (self, scheme, t):
-        # instantiate a human-style type scheme (as returned from lookup_special_names())
-        if not is_a (scheme, c_forall):
-            return scheme
-        else:
-            vars = scheme.vars
-            nvars = []
-            map = {}
-            for v in vars:
-                # fresh tvar for each quantified tvar
-                tv = t_var()
-                map[v] = tv
-                nvars.append (tv)
-            def f (c):
-                if is_a (c, c_equals):
-                    return c_equals (f (c.args[0]), f (c.args[1]))
-                elif is_a (c, c_and):
-                    return c_and (f (c.args[0]), f (c.args[1]))
-                elif is_a (c, t_predicate):
-                    return t_predicate (c.name, [f(x) for x in c.args])
-                elif is_a (c, t_var) or is_a (c, int):
-                    if c in vars:
-                        return map[c]
-                    else:
-                        return c
-                elif is_a (c, t_base):
-                    return c
-                elif is_a (c, c_true):
-                    return c
-                elif is_a (c, str):
-                    # XXX record labels
-                    return c
-                else:
-                    # what other objects can we expect here? exists/forall??
-                    raise ValueError
-            return c_forall (nvars, c_equals (t, f (scheme.constraint)))
-
-    def instantiate_constraint (self, i, env, t):
+    def instantiate_constraint (self, i, env, t, generalize=True):
         # instantiate a constraint-based type scheme (as found on the stack in an s_env)
         # can we do most of this work inside the unifier class?
         # ok, we have an env frame.  we want to instantiate this scheme.
         # env.vars are the quantified ones, we need to replace them
-        #print 'instantiating', i, env.names, env.vars, env.types, env.u.eqs
-        #print '    decoded=', env.u.decode (env.types[i])
-        #print '    name=', env.names[i]
+        #print 'instantiating', env.names[i], env.vars, env.types, env.u.eqs
         scheme = env.types[i]
         new = {}
-        for v in env.vars:
-            new[v] = t_var()
+        if generalize:
+            for v in env.vars:
+                new[v] = t_var()
         used = set()
         eqs = list(env.u.eqs)
         conj = []
@@ -1177,10 +1225,13 @@ class solver:
                 c = c_and (c, c_equals (obs[0], ob))
             conj.append (c)
         # XXX we should remove any vars from new_vars that were not referenced!
-        if scheme in env.vars:
+        if scheme in env.vars and generalize:
             scheme = new[scheme]
         conj.append (c_equals (t, scheme))
-        return c_forall (new.values(), list_to_conj (conj))
+        if len(new):
+            return c_forall (new.values(), list_to_conj (conj))
+        else:
+            return list_to_conj (conj)
 
     def lookup (self, x, s, t):
         n = -1
@@ -1190,12 +1241,17 @@ class solver:
             if is_a (f, s_env):
                 for i in range (len (f.names)):
                     if f.names[i].name == x:
-                        return self.instantiate_constraint (i, f, t)
+                        # our cheap version of the value restriction: restrict <ref> cells
+                        #  to a monomorphic type.  later, let's do the whole
+                        #  'expansive/non-expansive' version.
+                        generalize = not f.names[i].assigns
+                        return self.instantiate_constraint (i, f, t, generalize)               
             elif f is empty:
                 break
             else:
                 continue
-        return self.instantiate_scheme (self.lookup_special_names (x), t)
+        scheme = instantiate_scheme (self.lookup_special_names (x))
+        return c_forall (scheme.vars, c_equals (t, scheme.constraint))
 
     # A trick I've used here is to encode the arity into the name of
     #  some of the prims, making it possible to return a correct arrow
@@ -1226,6 +1282,14 @@ class solver:
             return c_forall ((0,1), arrow (t_undefined(), rproduct (rlabel (label, pre(0), 1)), 0))
         elif name == '%vfail':
             return c_forall ((0,), arrow (0, rsum (rdefault (abs()))))
+        elif name.startswith ('%dtcon/'):
+            # lookup the type of the particular constructor
+            what, dtname, label = name.split ('/')
+            dt = self.context.datatypes[dtname]
+            # e.g. list := nil | cons X list
+            # %dtcons/list/cons := ∀X.(X,list(X)) → list(X)
+            args = dt.constructors[label]
+            return c_forall (dt.tvars, arrow (dt.scheme, *args))
         elif name.startswith ('%vcon/'):
             what, label, arity = name.split ('/')
             arity = int(arity)
@@ -1271,6 +1335,11 @@ class solver:
             else:
                 vtype = rsum (rlabel (label, pre (args[0]), rest))
             return c_forall (args + [arity], arrow (args[index], vtype))
+        elif name.startswith ('%nvget/'):
+            what, dtype, label, index = name.split ('/')
+            dt = self.context.datatypes[dtype]
+            ti = dt.constructors[label][int(index)]
+            return c_forall (dt.tvars[:], arrow (ti, dt.scheme))
         elif name.startswith ('%vector-literal/'):
             what, arity = name.split ('/')
             arg_types = (0,) * int (arity)
@@ -1309,7 +1378,7 @@ class solver:
                 W ('exists%r.[]' % si.vars)
             elif is_a (si, s_let):
                 names = ';'.join (['%s:%r' % (si.names[i].name, si.types[i]) for i in range (len (si.names))])
-                W ('let %s: forall%r[[]] in %r' % (names, si.vars, si.body))
+                W ('let %s: forall %r[[]] in %r' % (names, si.vars, si.body))
             elif is_a (si, s_env):
                 names = ';'.join (['%s:%r' % (si.names[i].name, si.types[i]) for i in range (len (si.names))])
                 W ('env %s: %r %r in []' % (names, si.vars, si.u.eqs))
@@ -1375,7 +1444,7 @@ class typer:
         self.step = step
 
     def go (self, exp):
-        cg = constraint_generator (self.context.scc_graph)
+        cg = constraint_generator (self.context)
         c, top_tv = cg.go (exp)
         print 'solving...'
         if self.verbose:
@@ -1385,6 +1454,8 @@ class typer:
         print 'decoding...'
         for node in exp:
             node.type = self.decode (node.tv)
+            #if node.is_a ('function') and node.name:
+            #    print node.name, '\t', node.type
 
     def decode (self, t):
         seen = set()
