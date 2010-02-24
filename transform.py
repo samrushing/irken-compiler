@@ -2,15 +2,16 @@
 
 from lisp_reader import atom
 
-import lisp_reader
 import itypes
+import lisp_reader
+import nodes
 
 is_a = isinstance
 
 from pdb import set_trace as trace
 
 # this file implements the scheme 'derived expression' transformations.
-#   it converts 'high-level' expressions types into lower-level expressions
+#   it converts 'high-level' expressions into lower-level expressions
 #   that are understood by the remaining stages of the compiler...
 
 # this needs to be replaced by an automated mechanism.
@@ -26,6 +27,7 @@ class transformer:
         self.constants = {}
         self.safety = safety
         self.context = context
+        self.constructors = []
 
     gensym_counter = 0
 
@@ -81,6 +83,17 @@ class transformer:
                 raise ValueError
         return exp
 
+    def add_constructors (self, exp):
+        if exp[0] != 'fix':
+            # if it's a really simple top-level expr, wrap it in a fix
+            exp = ['fix', [], [], exp]
+        names = exp[1]
+        inits = exp[2]
+        for name, init in self.constructors:
+            names.insert (0, name)
+            inits.insert (0, init)
+        return exp
+
     def go (self, exp):
         # XXX go back later and support single-expression programs if we care
         if len(exp) > 1:
@@ -89,6 +102,8 @@ class transformer:
             exp = self.expand_exp (exp[0])
         if len(self.constants):
             exp = self.add_constants (exp)
+        if len(self.constructors):
+            exp = self.add_constructors (exp)
         return exp
 
     def expand_exp (self, exp):
@@ -220,11 +235,7 @@ class transformer:
 
     def exp_function (self, name, formals, body):
         formals = self.process_formals (formals)
-        if name and ':' in name:
-            name, type = name.split (':')
-        else:
-            name, type = name, None
-        return ['function', (name, type), formals, body]
+        return ['function', (name, None), formals, body]
 
     def process_formals (self, formals):
         # check for variable arity
@@ -454,10 +465,60 @@ class transformer:
         # (%%cexp <type> <format-string> arg0 arg1 ...)
         return ['%%cexp', exp[1], exp[2]] + self.expand_all (exp[3:])
 
+    # ok, let's make two kinds of vcase.  the polymorphic variant,
+    #  and the normal variant.  we can distinguish between the two
+    #  by the presence of the datatype name.
+
     def expand_vcase (self, exp):
+        if is_a (exp[2], str):
+            # normal variant
+            return self.expand_nvcase (exp)
+        else:
+            return self.expand_pvcase (exp)
+
+    def expand_nvcase (self, exp):
+        # (nvcase type x 
+        #    ((<select0> <formal0> <formal1> ...) <body0>)
+        #    ((<select1> <formal0> <formal1> ...) <body1>)
+        #    ...)
+        # =>
+        # (nvcase type x
+        #    ((let ((f0 x.0) (f1 x.1) (f2 x.2)) <body0>) ...))
+        #
+        dtype = exp[1]
+        val = exp[2]
+        # for now, only allow a varref for <exp>... later we'll automatically
+        #    wrap this thing in a let if it's not.
+        assert (is_a (val, str))
+        alts = exp[3:]
+        alt_formals = [ (x[0][0], x[0][1:]) for x in alts]
+        if len(alts) != len (alt_formals):
+            raise ValueError ("variant case does not have correct number of alternatives")
+        alts0 = []
+        for i in range (len (alts)):
+            binds = []
+            label, formals = alt_formals[i]
+            # let's stick with the colon syntax for now, it highlights nicely
+            assert (is_a (label, list) and len(label) == 2 and label[0] == 'colon')
+            label = label[1]
+            for j in range (len (formals)):
+                formal = formals[j]
+                if formal != '_':
+                    binds.append ([formal, ['%%nvget/%s/%s/%d' % (dtype, label, j), val]])
+            body = alts[i][1:]
+            if len(binds):
+                names = [x[0] for x in binds]
+                inits = [x[1] for x in binds]
+                #alts0.append ((label, self.expand_exp ([['lambda', names] + body] + inits)))
+                alts0.append ((label, self.expand_exp (['let', binds] + body)))
+            else:
+                alts0.append ((label, self.expand_exp (['begin'] + body)))
+        return ['nvcase', dtype, self.expand_exp (val), alts0]
+
+    def expand_pvcase (self, exp):
         # (vcase <exp>
-        #    ((kind0 var0 var1) <body0>)
-        #    ((kind1 var0) <body1>)
+        #    ((:kind0 var0 var1) <body0>)
+        #    ((:kind1 var0) <body1>)
         #    (else <body>))
         val = exp[1]
         # for now, only allow a varref for <exp>... later we'll automatically
@@ -487,6 +548,31 @@ class transformer:
 
     def expand_cinclude (self, exp):
         self.context.cincludes.add (exp[1].value)
+        return ['begin']
+
+    # ----------- datatype ------------
+
+    def expand_datatype (self, exp):
+        # defines a variant datatype
+        # we don't need union vs product here, since <product> datatypes should use records instead.
+        # (datatype <name> (tag0 type0 type1 ...) (tag1 type0 type1 ...) ...)
+        name = exp[1]
+        subs = exp[2:]
+        subs.reverse()
+        tvars = {}
+        alts = []
+        for sub in subs:
+            tag = sub[0]
+            assert (is_a (tag, str))
+            prod = [ nodes.parse_type (x, tvars) for x in sub[1:] ]
+            alts.append ((tag, prod))
+            args = ['arg%d' % x for x in range (len (prod))]
+            # build a convenient constructor function
+            self.constructors.append ((
+                    ('%s:%s' % (name, tag)),
+                    self.expand_exp (['lambda', args, ['%%dtcon/%s/%s' % (name, tag)] + args])
+                    ))
+        self.context.datatypes[name] = itypes.datatype (name, alts, tvars)
         return ['begin']
 
     # --------------------------------------------------------------------------------
