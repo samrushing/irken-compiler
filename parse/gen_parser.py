@@ -22,6 +22,10 @@ def gensym (name):
     counter += 1
     return r
 
+# XXXX an idea: when translating things like STAR and PLUS,
+#   give the generated rules names that can be detected on the
+#   other side, and thus automatically build lists.
+
 class translator:
     def __init__ (self, grammar, start=None, lits=None):
         self.grammar = grammar
