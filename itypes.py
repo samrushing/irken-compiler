@@ -75,6 +75,7 @@ class t_var (_type):
         t_var.counter += 1
     def __repr__ (self):
         return base_n (self.id, len(self.letters), self.letters)
+        #return '%s.%d' % (r, self.rank)
 
 class t_predicate (_type):
     def __init__ (self, name, args):
@@ -88,7 +89,7 @@ class t_predicate (_type):
             else:
                 return '(%r->%r)' % (self.args[1:], self.args[0])
         else:
-            return '%s%r' % (self.name, self.args)
+            return '%s(%s)' % (self.name, ', '.join ([repr(x) for x in self.args]))
 
 def is_pred (t, *p):
     # is this a predicate from the set <p>?
@@ -106,17 +107,17 @@ def product (*args):
     # a.k.a. 'Π'
     return t_predicate ('product', args)
 
-def sum (row):
+def sum (*args):
     # a.k.a. 'Σ'
-    return t_predicate ('sum', (row,))
+    # args = ((<tag>, <type>), ...)
+    args.sort()
+    return t_predicate ('sum', args)
 
 # row types
 def rproduct (*args):
-    # a.k.a. 'Π'
     return t_predicate ('rproduct', args)
 
 def rsum (row):
-    # a.k.a. 'Σ'
     return t_predicate ('rsum', (row,))
 
 def rdefault (arg):
@@ -131,3 +132,30 @@ def abs():
 
 def pre (x):
     return t_predicate ('pre', (x,))
+
+# place holder for information about datatypes
+class datatype:
+
+    def __init__ (self, name, alts, tvars):
+        self.name = name
+        self.alts = alts
+        self.tvars = tvars.values()
+        self.scheme = t_predicate (name, self.tvars)
+        self.constructors = {}
+        self.tags = {}
+        for i in range (len (alts)):
+            tag, prod = alts[i]
+            for j in range (len (prod)):
+                p = prod[j]
+                if p == self.name:
+                    # recursion!
+                    prod[j] = self.scheme
+            self.constructors[tag] = prod
+            self.tags[tag] = i
+            
+    def order_alts (self, alts):
+        r = [None] * len (alts)
+        for i in range (len (alts)):
+            tag, alt = alts[i]
+            r[self.tags[tag]] = alt
+        return r
