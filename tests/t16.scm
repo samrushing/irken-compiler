@@ -7,7 +7,7 @@
 
 (define (n-random n)
   (let loop ((n n)
-	     (t (:empty)))
+	     (t (tree:empty)))
     (if (= n 0)
 	t
 	(loop (- n 1) (tree:insert t < (random) (random))))))
@@ -27,7 +27,7 @@
 
 (define (tree:print n)
   (let p ((n n) (d 0))
-    (vcase n
+    (vcase tree n
       ((:empty) #u)
       ((:red l r k v)    (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))
       ((:purple l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
@@ -40,7 +40,7 @@
   (print-string "\n"))
 
 (let ((t (n-random 20))
-      (t2 (:empty))
+      (t2 (tree:empty))
       )
   (print-string "inorder:\n")
   (tree:inorder t print-kv)
@@ -54,7 +54,7 @@
   (set! t2 (tree:insert t2 string-<? "there" 2))
   (tree:print t2)
   (let ((probe (tree:member t2 string-<? "there")))
-    (vcase probe
+    (vcase maybe probe
       ((:no) (printn "nope") #t)
-      ((:yes sym) (printn sym) #t)))
+      ((:yes val) (printn val) #t)))
   )
