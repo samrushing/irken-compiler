@@ -89,7 +89,7 @@
 (define call-with-current-continuation ^call/cc)
 
 ;; haskell maybe /ml option
-(datatype maybe (yes 'a) (no))
+(datatype maybe (:yes 'a) (:no))
 
 ;; world save/load
 ;; is this is a big restriction - requiring that the thunk return an int?
