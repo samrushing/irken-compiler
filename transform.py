@@ -563,7 +563,8 @@ class transformer:
         alts = []
         for sub in subs:
             tag = sub[0]
-            assert (is_a (tag, str))
+            assert (is_a (tag, list) and len(tag) == 2 and tag[0] == 'colon')
+            tag = tag[1]
             prod = [ nodes.parse_type (x, tvars) for x in sub[1:] ]
             alts.append ((tag, prod))
             args = ['arg%d' % x for x in range (len (prod))]
@@ -572,7 +573,7 @@ class transformer:
                     ('%s:%s' % (name, tag)),
                     self.expand_exp (['lambda', args, ['%%dtcon/%s/%s' % (name, tag)] + args])
                     ))
-        self.context.datatypes[name] = itypes.datatype (name, alts, tvars)
+        self.context.datatypes[name] = itypes.datatype (self.context, name, alts, tvars)
         return ['begin']
 
     # --------------------------------------------------------------------------------
@@ -604,9 +605,6 @@ class transformer:
                 return self.expand_exp ([['colon', 'nil']])
             elif len(exp) == 3 and exp[1] == '.':
                 return self.expand_exp (['cons', self.build_literal (exp[0]), self.build_literal (exp[2])])
-            elif exp[0] == 'comma':
-                # lame attempt at backquote
-                return self.expand_exp (exp[1])
             else:
                 return self.expand_exp (['cons', self.build_literal (exp[0]), self.build_literal (exp[1:])])
         elif is_a (exp, str):
