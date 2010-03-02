@@ -136,7 +136,8 @@ def pre (x):
 # place holder for information about datatypes
 class datatype:
 
-    def __init__ (self, name, alts, tvars):
+    def __init__ (self, context, name, alts, tvars):
+        self.context = context
         self.name = name
         self.alts = alts
         self.tvars = tvars.values()
@@ -145,11 +146,6 @@ class datatype:
         self.tags = {}
         for i in range (len (alts)):
             tag, prod = alts[i]
-            for j in range (len (prod)):
-                p = prod[j]
-                if p == self.name:
-                    # recursion!
-                    prod[j] = self.scheme
             self.constructors[tag] = prod
             self.tags[tag] = i
             
