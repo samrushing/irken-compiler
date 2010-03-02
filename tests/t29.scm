@@ -9,7 +9,7 @@
   (%%cexp (int int -> bool) "%s<%s" a b))
 
 (define (string-length s)
-  (%%cexp (string/raw -> int) "%s->len" s))
+  (%%cexp ((raw string) -> int) "%s->len" s))
 
 (define (string-compare a b)
   (define (min x y)
