@@ -2,9 +2,15 @@ import sys
 import compile
 import os
 
+PJ = os.path.join
 files = os.listdir ('tests')
-print files
-for file in files:
+
+# When looking for things that are broken, I prefer to work with the smallest
+#  test that reproduces a problem.  Thus, run the tests in source-size order...
+files = [ (os.stat(PJ ('tests', x)).st_size, x) for x in files ]
+files.sort()
+
+for size, file in files:
     if file.endswith ('.scm'):
         base, ext = os.path.splitext (file)
         path = os.path.join ('tests', file)
