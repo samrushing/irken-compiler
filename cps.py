@@ -6,6 +6,18 @@ import solver
 
 is_a = isinstance
 
+class register_rib:
+    def __init__ (self, formals, regs):
+        self.formals = formals
+        self.regs = regs
+        assert (len (formals) == len (regs))
+    def lookup (self, name):
+        lf = len (self.formals)
+        for i in range (lf):
+            if name == self.formals[i].name:
+                return self.formals[i], self.regs[i]
+        return None
+
 class compiler:
 
     def __init__ (self, context, safety=1, verbose=False):
@@ -18,10 +30,17 @@ class compiler:
         x = 0
         while lenv:
             rib, lenv = lenv
-            for y in range (len (rib)):
-                if rib[y].name == name:
-                    return rib[y], (x, y), self.use_top and lenv == None
-            x += 1
+            if isinstance (rib, register_rib):
+                probe = rib.lookup (name)
+                if probe is not None:
+                    var, reg = probe
+                    return var, (None, reg), False
+            else:
+                for y in range (len (rib)):
+                    if rib[y].name == name:
+                        return rib[y], (x, y), self.use_top and lenv == None
+                # only real 'ribs' increase lexical depth
+                x += 1
         else:
             raise ValueError, "unbound variable: %r" % (name,)
 
@@ -52,8 +71,13 @@ class compiler:
             return self.compile_function (tail_pos, exp, lenv, k)
         elif exp.is_a ('application'):
             return self.compile_application (tail_pos, exp, lenv, k)
-        elif exp.one_of ('fix', 'let_splat'):
+        elif exp.is_a ('fix'):
             return self.compile_let_splat (tail_pos, exp, lenv, k)
+        elif exp.is_a ('let_splat'):
+            if exp.leaf and len(exp.names) < 4:
+                return self.compile_let_reg (tail_pos, exp, lenv, k)
+            else:
+                return self.compile_let_splat (tail_pos, exp, lenv, k)
         elif exp.is_a ('make_tuple'):
             return self.compile_primargs (exp.args, ('%make-tuple', exp.type, exp.tag), lenv, k)
         elif exp.is_a ('primapp'):
@@ -100,23 +124,33 @@ class compiler:
         assert (var.name == exp.name)
         return self.gen_varref (addr, is_top, var, k)
 
+    def compile_varref (self, tail_pos, exp, lenv, k):
+        var, addr, is_top = self.lexical_address (lenv, exp.name)
+        if addr[0] is None:
+            # register variable
+            return self.gen_move (addr[1], None, k)
+        else:
+            return self.gen_varref (addr, is_top, var, k)
+
     def compile_varset (self, tail_pos, exp, lenv, k):
         var, addr, is_top = self.lexical_address (lenv, exp.name)
         assert (var.name == exp.name)
-        return self.compile_exp (
-            False, exp.value, lenv, cont (
-                k[1], lambda reg: self.gen_assign (addr, is_top, var, reg, k)
-                )
-            )
+        if addr[0] is None:
+            # register variable
+            fun = lambda reg: self.gen_move (addr[1], reg, k)
+        else:
+            fun = lambda reg: self.gen_assign (addr, is_top, var, reg, k)
+        return self.compile_exp (False, exp.value, lenv, cont (k[1], fun))
 
     # collect_primargs is used by primops, simple_conditional, and tr_call.
     #   in order to avoid the needless consumption of registers, we re-arrange
     #   the eval order of these args - by placing the complex args first.
 
-    def collect_primargs (self, args, regs, lenv, k, ck):
-        # sort args by size/complexity
+    def collect_primargs (self, args, regs, lenv, k, ck, reorder=True):
         args = [(args[i], i) for i in range (len (args))]
-        args.sort (lambda x,y: cmp (y[0].size, x[0].size))
+        if reorder:
+            # sort args by size/complexity
+            args.sort (lambda x,y: cmp (y[0].size, x[0].size))
         perm = [x[1] for x in args]
         args = [x[0] for x in args]
         #print 'collect_primargs, len(args)=', len(args)
@@ -259,6 +293,27 @@ class compiler:
                     )
                 )
             )
+
+    def compile_let_reg (self, tail_pos, exp, lenv, k):
+
+        def loop (names, inits, lenv, regs):
+            if len(inits) == 0:
+                return self.compile_exp (tail_pos, exp.body, lenv, (k[0], k[1] + regs, k[2]))
+            else:
+                lenv0 = (register_rib ([names[0]], [inits[0]]), lenv)
+                return self.compile_exp (
+                    False, inits[0], lenv, cont (
+                        regs + k[1],
+                        lambda reg: loop (
+                            names[1:],
+                            inits[1:],
+                            (register_rib ([names[0]], [reg]), lenv),
+                            regs + [reg]
+                            )
+                        )
+                    )
+
+        return loop (exp.names, exp.inits, lenv, [])
 
     opt_collect_args_in_regs = False
 
@@ -424,7 +479,7 @@ class INSN:
     def __repr__ (self):
         return '<INSN %s>' % (self.print_info())
 
-class irken_compiler (compiler):
+class cps (compiler):
 
     """generates 'register' CPS"""
 
@@ -456,6 +511,9 @@ class irken_compiler (compiler):
 
     def gen_primop (self, primop, regs, k):
         return INSN ('primop', regs, primop, k)
+
+    def gen_move (self, reg_var, reg_src, k):
+        return INSN ('move', [reg_var, reg_src], None, k)
 
     def gen_jump (self, reg, k):
         # k[0] is the target for the whole conditional
@@ -518,6 +576,8 @@ class irken_compiler (compiler):
         self.use_top = exp.is_a ('fix')
         result = self.compile_exp (True, exp, lenv, cont ([], self.gen_return))
         result = flatten (result)
+        #pretty_print (result)
+        #remove_moves (result)
         find_allocation (result, self.verbose)
         return result
 
@@ -573,9 +633,49 @@ def pretty_print (insns, depth=0):
             for alt in alts:
                 pretty_print (alt, depth+1)
 
+# when <let> expressions are in a leaf position, the bindings may be
+#  be stored in registers rather than an environment tuple.  due to 
+#  the way the CPS algorithm works, there are a lot of redundant move
+#  insns generated that we can ignore by remapping the relevant registers.                
+
+# Ok, this doesn't work correctly [yet].  The problem comes up when varset
+#   causes regs to get remapped - tests/t_bad_inline.scm fails.
+
+def remove_moves (insns):
+    map = {}
+    for insn in insns:
+        name = insn.name
+        if insn.name == 'move':
+            # a new entry in map
+            src = insn.regs[0]
+            # note: <src> may already be in the map!
+            while map.has_key (src):
+                # follow the chain of references
+                src = map[src]
+            # src == target sometimes happens, don't go all infinite loop.
+            if insn.target != 'dead' and insn.target != src:
+                print 'map %d == %d' % (insn.target, src)
+                map[insn.target] = src
+        # rename any that we can
+        insn.regs = [ map.get(x,x) for x in insn.regs ]
+        # special case
+        if insn.name == 'test':
+            name, then_code, else_code = insn.params
+            remove_moves (then_code)
+            remove_moves (else_code)
+        elif insn.name == 'close':
+            node, body, free = insn.params
+            remove_moves (body)
+        elif insn.name in ('pvcase', 'nvcase'):
+            types, alts = insn.params
+            for alt in alts:
+                remove_moves (alt)
+        if insn.name != 'move' and map.has_key (insn.target):
+            # remove any that are blown away
+            del map[insn.target]
+
 def walk (insns):
     "iterate the entire tree of insns"
-    # XXX what about <fix> and <let*>?
     for insn in insns:
         yield (insn)
         if insn.name == 'test':
@@ -588,6 +688,11 @@ def walk (insns):
             node, body, free = insn.params
             for x in walk (body):
                 yield x
+        elif insn.name in ('pvcase', 'nvcase'):
+            types, alts = insn.params
+            for alt in alts:
+                for y in walk (alt):
+                    yield y
 
 def walk_function (insns):
     "iterate only the insns in this function body"
@@ -612,10 +717,13 @@ def find_allocation (insns, verbose):
         node, body, free = fun.params
         fun.allocates = 0
         for insn in walk_function (body):
-            if insn.name == 'primop' and insn.params[0] == '%make-tuple' and len(insn.regs):
-                # we're looking for non-immediate constructors (i.e., list/cons but not list/nil)
-                fun.allocates += 1
-            elif insn.name in ('new_env', 'build_env', 'new_tuple'):
+            if insn.name == 'primop':
+                if insn.params[0] == '%make-tuple' and len(insn.regs):
+                    # we're looking for non-immediate constructors (i.e., list/cons but not list/nil)
+                    fun.allocates += 1
+                elif insn.params[0] in ('%make-vector', '%extend-tuple'):
+                    fun.allocates += 1
+            elif insn.name in ('new_env', 'build_env', 'new_tuple', 'invoke', 'close', 'make_string'):
                 fun.allocates += 1
         if verbose:
             print 'allocates %d %s' % (fun.allocates, fun.params[0].name)
