@@ -29,7 +29,7 @@
   (let p ((n n) (d 0))
     (vcase tree n
       ((:empty) #u)
-      ((:red l r k v)    (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))
+      ((:red    l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))
       ((:purple l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
     ))
 
