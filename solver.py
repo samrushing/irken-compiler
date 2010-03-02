@@ -104,33 +104,6 @@ class c_forall (constraint):
         self.vars = vars
         self.constraint = constraint
 
-def parse_cexp_type (t):
-    tvars = {}
-
-    def get_tvar (t):
-        if not tvars.has_key (t):
-            tvars[t] = t_var()
-        return tvars[t]
-
-    def p (t):
-        if is_a (t, tuple):
-            result_type, arg_types = t
-            return arrow (p (result_type), *[p (x) for x in arg_types])
-        elif is_a (t, str):
-            if '/' in t:
-                # type/raw...
-                t = t.split ('/')[0]
-            return base_types[t]
-        elif is_a (t, t_var):
-            return get_tvar (t)
-        else:
-            raise ValueError (t)
-    r = p (t)
-    if len(tvars):
-        return c_forall (set(tvars.values()), r)
-    else:
-        return r
-
 def flatten_conj (c):
     l = []
     def p (c):
@@ -172,15 +145,20 @@ def pprint_constraint (c):
     W ('\n')
 
 def check_constraint (c, top_tv):
-
-    import itypes
+    # verify that all tvars are bound correctly in the constraint <c>
 
     def lookup (v, env):
+        count = 0
         while env is not None:
             rib, env = env
             if v in rib:
-                return
-        raise UnboundVariable
+                count += 1
+        if count > 1:
+            raise ValueError ("variable bound more than once!")
+        elif count == 1:
+            return
+        else:
+            raise UnboundVariable
 
     def pp (c, env):
         if is_a (c, c_let):
@@ -206,7 +184,7 @@ def check_constraint (c, top_tv):
             pass
         elif is_a (c, t_var):
             lookup (c, env)
-        elif is_a (c, itypes.t_base):
+        elif is_a (c, t_base):
             pass
         elif is_a (c, str):
             # row labels
@@ -272,7 +250,7 @@ class constraint_generator:
     def go (self, exp):
         t = t_var()
         c, top_tv = self.gen (exp, t), t
-        #check_constraint (c, top_tv)
+        check_constraint (c, top_tv)
         return c, top_tv
 
     def gen (self, exp, t):
@@ -340,24 +318,27 @@ class constraint_generator:
         return c_exists (args, c)
 
     def gen_cexp (self, exp, t):
-        sig = parse_cexp_type (exp.type_sig)
-        if is_a (sig, c_forall):
-            sig0 = sig.constraint
-        else:
-            sig0 = sig
-        if is_pred (sig0, 'arrow'):
+        tvars, sig = exp.type_sig
+        scheme = instantiate_scheme (c_forall (tvars, sig))
+        sig = scheme.constraint
+        tvars = scheme.vars
+        if is_pred (sig, 'arrow'):
             # result type
-            c = c_equals (t, sig0.args[0])
+            c = c_equals (t, sig.args[0])
             for i in range (len (exp.args)):
                 # arg types
-                c = c_and (c, self.gen (exp.args[i], sig0.args[i+1]))
-            if is_a (sig, c_forall):
-                return c_exists (sig.vars, c)
+                sig_arg = sig.args[i+1]
+                if is_pred (sig_arg, 'raw'):
+                    # hack: magically hide the 'raw' predicate from the solver
+                    sig_arg = sig_arg.args[0]
+                c = c_and (c, self.gen (exp.args[i], sig_arg))
+            if len(tvars):
+                return c_exists (tvars, c)
             else:
                 return c
-        elif is_a (sig0, t_base):
+        elif is_a (sig, t_base):
             # plain type?
-            return c_equals (t, sig0)
+            return c_equals (t, sig)
         else:
             raise ValueError ("unhandled cexp type")
 
@@ -379,7 +360,7 @@ class constraint_generator:
         for part in partition:
             names = [exp.names[i] for i in part]
             funs  = [exp.inits[i] for i in part]
-            print names,
+            #print names,
             # one var for each function
             fvars = tuple ([t_var() for x in names])
             c1 = list_to_conj (
@@ -390,7 +371,7 @@ class constraint_generator:
             # outer/polymorphic binding
             c1 = c_let (names, fvars, c_forall (fvars, c1), c0)
             c0 = c1
-        print
+        #print
         return c0
 
     def gen_conditional (self, exp, t):
