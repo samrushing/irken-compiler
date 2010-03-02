@@ -53,6 +53,7 @@ class node:
 
     # generic flag
     flag = False
+    leaf = False
     constructor = False
 
     def __init__ (self, kind, params=(), subs=(), type=None):
@@ -69,7 +70,11 @@ class node:
         self.fix_attribute_names()
 
     def pprint (self, depth=0):
-        print '%3d' % (self.serial,),
+        if self.leaf:
+            leaf = 'L'
+        else:
+            leaf = ' '
+        print '%3d %s' % (self.serial, leaf),
         print '  ' * depth, self.kind,
         print '[%d]' % (self.size,),
         if self.type:
@@ -307,12 +312,9 @@ def nvcase (vtype, value, alts):
 class ConfusedError (Exception):
     pass
 
-# ok, this is a problem.  we have two different ways of doing type
-#  signatures here - solver.py uses an 'arrow' predicate to represent
-#  what we are doing here with a tuple.  also, the arrow predicate orders
-#  the result-type/args thing differently.  FIX ME.
-
 import itypes
+
+# should this be moved to transform.py?
 
 def parse_type (exp, tvars=None):
 
@@ -329,13 +331,22 @@ def parse_type (exp, tvars=None):
             if len(x) and x[0] == 'quote':
                 # a type variable
                 return get_tvar (x[1])
-            else:
+            elif len(x) >= 2 and x[-2] == '->':
                 # an arrow type
-                assert (len(x) >= 2)
-                assert (x[-2] == '->')
                 result_type = pfun (x[-1])
                 arg_types = tuple ([pfun(y) for y in x[:-2]])
-                return (result_type, arg_types)
+                return itypes.arrow (result_type, *arg_types)
+            elif len(x) > 1 and is_a (x[0], str):
+                # a predicate
+                arg_types = tuple ([pfun(y) for y in x[1:]])
+                return itypes.t_predicate (x[0], arg_types)
+            else:
+                raise ValueError ("malformed type: %r" % (x,))
+        elif is_a (x, str):
+            if itypes.base_types.has_key (x):
+                return itypes.base_types[x]
+            else:
+                raise ValueError ("unknown type: %r" % (x,))
         else:
             return x
 
@@ -363,11 +374,12 @@ class walker:
             simple = is_a (rator, str)
             if simple:
                 if rator == '%%cexp':
-                    type_sig = parse_type (exp[1])
                     assert (is_a (exp[2], atom))
                     assert (exp[2].kind == 'string')
+                    tvars = {}
+                    type_sig = parse_type (exp[1], tvars)
                     form = exp[2].value
-                    return cexp (form, type_sig, [ WALK (x) for x in exp[3:]])
+                    return cexp (form, (tvars.values(), type_sig), [ WALK (x) for x in exp[3:]])
                 elif rator == '%%make-tuple':
                     type = exp[1]
                     tag = exp[2]
