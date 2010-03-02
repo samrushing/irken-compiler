@@ -402,6 +402,7 @@ vm (int argc, char * argv[])
     fwrite (&size, sizeof(pxll_int), 1, dump_file);
     fwrite (start, sizeof(pxll_int), size, dump_file);
     fclose (dump_file);
+    return size;
   }
 
   object * load_image (char * filename) {
