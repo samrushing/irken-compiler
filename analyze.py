@@ -36,7 +36,7 @@ class analyzer:
         self.constants = {}
         self.inline = not noinline
         self.verbose = verbose
-        self.pending_inlines = []
+        self.inline_multiplier = {}
 
     def analyze (self, root):
         # perform simple transformations
@@ -61,6 +61,9 @@ class analyzer:
             root = self.prune_fixes (root)
             # repeat this with new nodes...
             self.find_recursion (root)
+
+        # mark leaf expressions
+        self.find_leaves (root)
 
         for node in root:
             node.fix_attribute_names()
@@ -262,7 +265,8 @@ class analyzer:
             self.calls[name] = 1
 
     def get_fun_calls (self, name):
-        return self.calls.get (name, 0)
+        mult = self.inline_multiplier.get (name, 1)
+        return mult * self.calls.get (name, 0)
 
     def find_recursion (self, exp):
 
@@ -301,7 +305,8 @@ class analyzer:
                 search (sub, fenv)
         search (exp, None)
 
-    # XXX shouldn't be needed, using <typing.the_dep_graph> instead.
+    # XXX shouldn't be needed, use <context.dep_graph> instead.
+    # YYY not necessarily - dep_graph records dependencies on things other than funcalls.
     def build_call_graph (self, root):
         call_graph = {}
         def search (exp, this_fun):
@@ -320,7 +325,7 @@ class analyzer:
         search (root, call_graph['top'])
         return call_graph
 
-    # XXX should use <typing.the_dep_graph> instead.
+    # XXX use context.dep_graph, or context.scc_graph, which have all the cycles for us already.
     def is_recursive (self, name):
         # this is used by the inliner to decide whether to inline a small
         #   function - rather than computing the full transitive closure,
@@ -451,7 +456,7 @@ class analyzer:
                 return node
         return self.replace (root, prune_fix)
 
-    inline_threshold = 18
+    inline_threshold = 13
 
     def find_inlines (self, root):
 
@@ -473,6 +478,9 @@ class analyzer:
                         and ((fun.size <= self.inline_threshold or calls == 1)
                              and not self.is_recursive (name))
                         ):
+                        if calls > 1:
+                            # set the inline multiplier for funs called by this one.
+                            self.set_multiplier (name, calls)
                         node.function = fun
                         result = self.inline_application (node)
                         if result.is_a ('application'):
@@ -486,8 +494,8 @@ class analyzer:
                     node.function = rator
                     result = self.inline_application (node)
                     if result.is_a ('application'):
-                        print 'inlining lambda...'
-                        node.pprint()
+                        #print 'inlining lambda...'
+                        #node.pprint()
                         return replacer (result)
                     else:
                         return result
@@ -498,6 +506,14 @@ class analyzer:
 
         # now call the replacer
         return self.replace (root, replacer)
+
+    def set_multiplier (self, name, calls):
+        # when we inline <name>, each function that it calls must have its call-count
+        #  raised by a factor of <calls>.
+        for callee in self.call_graph[name]:
+            # only record the multiplier the first time <name> is inlined.
+            if not self.inline_multiplier.has_key (callee):
+                self.inline_multiplier[callee] = calls
 
     def assigned (self, var):
         return len (self.context.var_dict[var.name].assigns)
@@ -552,7 +568,7 @@ class analyzer:
             else:
                 complex.append (i)
         if self.verbose:
-            print 'inline: size=%3d name=%r simple=%r complex=%r calls=%d' % (fun.size, name, simple, complex, self.get_fun_calls (fun))
+            print 'inline: size=%3d name=%r simple=%r complex=%r calls=%d' % (fun.size, name, simple, complex, self.get_fun_calls (name))
         # substitute each simple arg in the body
         if simple:
             substs = [ (formals[i], rands[i]) for i in simple ]
@@ -705,3 +721,18 @@ class analyzer:
             find_escaping_variables (fun, None)
             
             
+    def find_leaves (self, exp):
+
+        # descend the node tree, marking nodes as 'leaf' (or not) on the way up.
+
+        def search (exp):
+            if exp.is_a ('application'):
+                is_leaf = False
+            else:
+                is_leaf = True
+            for sub in exp.subs:
+                sub.leaf = search (sub)
+                is_leaf = is_leaf and sub.leaf
+            return is_leaf
+
+        exp.leaf = search (exp)
