@@ -142,29 +142,36 @@ class c_backend:
         result = []
         for i in range (len (types)):
             t = types[i]
-            if is_a (t, str):
-                if '/' in t:
-                    [t, option] = t.split('/')
-                else:
-                    option = ''
-                if t == 'int':
-                    result.append ('unbox(%s)' % (args[i],))
-                elif t == 'string':
-                    if option != 'raw':
-                        result.append ('((pxll_string*)(%s))->data' % (args[i],))
-                    else:
+            if is_a (t, itypes.t_int):
+                result.append ('unbox(%s)' % (args[i],))
+            elif is_a (t, itypes.t_string):
+                result.append ('((pxll_string*)(%s))->data' % (args[i],))
+            elif is_a (t, itypes.t_predicate):
+                if itypes.is_pred (t, 'raw'):
+                    # 'raw' types...
+                    if is_a (t.args[0], itypes.t_string):
                         result.append ('((pxll_string*)(%s))' % (args[i],))
-                else:
+                    else:
+                        raise ValueError ("unknown 'raw' type: %r" % (t,))
+                elif itypes.is_pred (t, 'arrow'):
+                    # function type
                     result.append (args[i])
-            else:
+                else:
+                    raise ValueError ("unexpected predicate in cexp type sig: %r" % (t,))
+            elif is_a (t, itypes.t_var):
                 # tvars in cexp types
                 result.append (args[i])
+            elif is_a (t, itypes.t_base):
+                # some other base type, untouched
+                result.append (args[i])
+            else:
+                raise ValueError ("unknown element in cexp type sig: %r" % (t,))
         return tuple (result)
 
     def wrap_out (self, type, exp):
-        if type == 'int':
+        if is_a (type, itypes.t_int):
             return 'box(%s)' % (exp,)
-        elif type == 'bool':
+        elif is_a (type, itypes.t_bool):
             # hmm... this is more like a cast, and should probably be
             # expressed as such.
             return 'PXLL_TEST(%s)' % (exp,)
@@ -195,9 +202,10 @@ class c_backend:
         regs = insn.regs
         primop = insn.params
         if primop[0] == '%cexp':
-            ignore, form, sig = primop
-            if is_a (sig, tuple):
-                result_type, arg_types = sig
+            ignore, form, (tvars, sig) = primop
+            if itypes.is_pred (sig, 'arrow'):
+                result_type = sig.args[0]
+                arg_types = sig.args[1:]
             else:
                 result_type, arg_types = sig, ()
             regs = tuple('r%d' % x for x in regs)
@@ -316,11 +324,10 @@ class c_backend:
         cexp, then_code, else_code = insn.params
         if cexp:
             # if we know we're testing a cexp, just inline it here
-            code, sig = cexp
-            result_type, arg_types = sig
+            code, (tvars, sig) = cexp
             regs = tuple ('r%d' % x for x in insn.regs)
-            regs = self.wrap_in (arg_types, regs)
-            exp = self.wrap_out (result_type, code % regs)
+            regs = self.wrap_in (sig.args[1:], regs)
+            exp = self.wrap_out (sig.args[0], code % regs)
             self.write ('if PXLL_IS_TRUE(%s) {' % exp)
         else:
             # this is a scheme-like definition of test/#t/#f
@@ -381,41 +388,57 @@ class c_backend:
             else:
                 tuples.append (i)
         closes = 0
-        if len(units):
-            self.write ('switch (GET_TYPECODE(r%d)) {' % test_reg)
-            closes += 1
-            for index in units:
-                self.indent += 1
-                self.write ('case (TC_USERIMM+%d): {' % (index * 4))
-                self.indent += 1
-                self.emit (alts[index])
-                self.indent -= 1
-                self.write ('} break;')
-                self.indent -= 1
-            if len(tuples):
-                self.write ('default: {')
-                closes += 1
-        if len(tuples):
-            if len(tuples) == 1:
-                # avoid the test when possible by just falling through...
-                self.emit (alts[tuples[0]])
+        if len(units) + len(tuples) == 2:
+            # if there are only two alts, emit as an 'if' stmt.
+            both = units + tuples
+            if len(units):
+                self.write ('if (GET_TYPECODE(r%d) == (TC_USERIMM+%d)) {' % (test_reg, units[0]*4))
             else:
-                self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
+                self.write ('if (GET_TYPECODE(r%d) == (TC_USEROBJ+%d)) {' % (test_reg, tuples[0]*4))
+            self.indent += 1
+            self.emit (alts[both[0]])
+            self.indent -= 1
+            self.write ('} else {')
+            self.indent += 1
+            self.emit (alts[both[1]])
+            self.indent -= 1
+            self.write ('}')
+        else:
+            if len(units):
+                self.write ('switch (GET_TYPECODE(r%d)) {' % test_reg)
                 closes += 1
-                for index in tuples:
-                    alt = alts[index]
+                for index in units:
                     self.indent += 1
-                    if index == tuples[-1]:
-                        # avoid the last test when possible
-                        self.write ('default: {')
-                    else:
-                        self.write ('case TC_USEROBJ+%d: {' % (index * 4,))
+                    self.write ('case (TC_USERIMM+%d): {' % (index * 4))
                     self.indent += 1
-                    self.emit (alt)
+                    self.emit (alts[index])
                     self.indent -= 1
                     self.write ('} break;')
                     self.indent -= 1
-        self.write ('}' * closes)
+                if len(tuples):
+                    self.write ('default: {')
+                    closes += 1
+            if len(tuples):
+                if len(tuples) == 1:
+                    # avoid the test when possible by just falling through...
+                    self.emit (alts[tuples[0]])
+                else:
+                    self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
+                    closes += 1
+                    for index in tuples:
+                        alt = alts[index]
+                        self.indent += 1
+                        if index == tuples[-1]:
+                            # avoid the last test when possible
+                            self.write ('default: {')
+                        else:
+                            self.write ('case TC_USEROBJ+%d: {' % (index * 4,))
+                        self.indent += 1
+                        self.emit (alt)
+                        self.indent -= 1
+                        self.write ('} break;')
+                        self.indent -= 1
+            self.write ('}' * closes)
 
     def check_free_regs (self, free_regs):
         "describe the free_regs to new_env() for gc"
@@ -631,3 +654,15 @@ class c_backend:
         val_reg = insn.regs[0]
         tc, safety = insn.params
         #self.verify (safety, 'verify (r%d, %s);' % (val_reg, tc))
+
+    def insn_move (self, insn):
+        reg_var, reg_src = insn.regs
+        if reg_src is not None:
+            # from varset
+            self.write ('r%d = r%d;' % (reg_var, reg_src))
+        elif insn.target != 'dead':
+            # XXX need remove_moves() if we're keeping this code...
+            self.write ('r%d = r%d;' % (insn.target, reg_var))
+            pass
+        else:
+            pass
