@@ -11,9 +11,9 @@
 ;;   lack of real pattern matching).
 
 (datatype tree
-  (red    tree tree 'a 'b)
-  (purple tree tree 'a 'b)
-  (empty)
+  (:red    (tree 'a 'b) (tree 'a 'b) 'a 'b)
+  (:purple (tree 'a 'b) (tree 'a 'b) 'a 'b)
+  (:empty)
   )
 
 (define (tree:insert root < k v)
