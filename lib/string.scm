@@ -30,7 +30,7 @@
   (%%cexp (char -> int) "GET_CHAR(%s)" c))
 
 (define (string-length s)
-  (%%cexp (string/raw -> int) "%s->len" s))
+  (%%cexp ((raw string) -> int) "%s->len" s))
 
 (define (string-ref s n)
   ;; XXX need range-check
@@ -71,7 +71,7 @@
 (define (list->string l)
   (let ((buffer (make-string (length l))))
     (let loop ((l l) (i 0))
-      (vcase l
+      (vcase list l
 	 ((:nil) buffer)
 	 ((:cons hd tl)
 	  (string-set! buffer i hd)
