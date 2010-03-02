@@ -87,7 +87,7 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
         print '--- typing 2 ---'
         exp4.pprint()
 
-    ic = cps.irken_compiler (c, safety=safety, verbose=verbose)
+    ic = cps.cps (c, safety=safety, verbose=verbose)
     exp5 = ic.go (exp4)
 
     if verbose:
