@@ -1,7 +1,7 @@
 
 (datatype list
-  (cons 'a list)
-  (nil)
+  (:cons 'a (list 'a))
+  (:nil)
   )
 
 (define (null? l)
