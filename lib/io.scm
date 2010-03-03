@@ -67,9 +67,10 @@
 	   (substring self.buf opos self.end)))
 	((= (file:fill-buffer self) 0) "")
 	(else
-	 (set! self.end 0)
-	 (set! self.pos 0)
-	 self.buf)))
+	 (let ((r (substring self.buf self.pos self.end)))
+	   (set! self.end 0)
+	   (set! self.pos 0)
+	   r))))
 
 (define (file:read-char self)
   (cond ((< self.pos self.end)
