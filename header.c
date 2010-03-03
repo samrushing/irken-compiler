@@ -148,7 +148,7 @@ dump_object (object * ob, int depth)
       fprintf (stdout, "<u%d>", (tc-TC_USERIMM)>>2);
     }
   }
-  return (object *) PXLL_TRUE;
+  return (object *) PXLL_UNDEFINED;
 }
 
 // for gdb...
