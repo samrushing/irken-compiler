@@ -74,7 +74,7 @@ class compiler:
         elif exp.is_a ('fix'):
             return self.compile_let_splat (tail_pos, exp, lenv, k)
         elif exp.is_a ('let_splat'):
-            if exp.leaf and len(exp.names) < 4:
+            if self.safe_for_let_reg (exp):
                 return self.compile_let_reg (tail_pos, exp, lenv, k)
             else:
                 return self.compile_let_splat (tail_pos, exp, lenv, k)
@@ -88,6 +88,22 @@ class compiler:
             return self.compile_nvcase (tail_pos, exp, lenv, k)            
         else:
             raise NotImplementedError
+
+    def safe_for_let_reg (self, exp):
+        # we only want to use registers for bindings when
+        #  1) we're in a leaf position (to avoid consuming registers
+        #     too high on the stack, and to avoid escaping variables),
+        #  2) there's not too many bindings (again, avoid consuming regs)
+        #  3) none of the variables escape (storing a binding in a reg
+        #     defeats the idea of a closure)
+        if exp.leaf and len(exp.names) < 4:
+            for name in exp.names:
+                if name.escapes:
+                    return False
+            else:
+                return True
+        else:
+            return False
 
     def safe_for_tr_call (self, app):
         if app.rator.is_a ('varref') and app.recursive and app.function:
