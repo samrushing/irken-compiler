@@ -1,3 +1,5 @@
+;; tests constants brought through from C
+
 (cinclude "fcntl.h")
 
 (define O_RDONLY (%%cexp int "O_RDONLY"))

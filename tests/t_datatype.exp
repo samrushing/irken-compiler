@@ -1,0 +1,14 @@
+{u0 1 {u0 2 {u0 3 {u0 4 {u0 5 <u1>}}}}}
+5
+<u1>
+0
+{u0 #\C <u1>}
+1
+{u0 #\B {u0 #\C <u1>}}
+2
+{u0 #\A {u0 #\B {u0 #\C <u1>}}}
+3
+{u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" <u1>}}}}}}}}}}
+#f
+#t
+99

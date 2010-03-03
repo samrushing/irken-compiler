@@ -39,6 +39,8 @@
   (print v)
   (print-string "\n"))
 
+(srandom 314159)
+
 (let ((t (n-random 20))
       (t2 (tree:empty))
       )

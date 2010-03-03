@@ -2,6 +2,8 @@
 (include "lib/core.scm")
 (include "lib/pair.scm")
 
+;; tests TC_EMPTY_VECTOR by triggering gc with some empty vectors in the heap
+
 (let ((z (n-of 100 (:testing 23 #f))))
   ;; z gives the gc something to do
 

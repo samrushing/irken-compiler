@@ -18,9 +18,7 @@
 
 ;; #t > #f
 (define (bool->? a b)
-  (if a
-      (if b #f #t)
-      #t))
+  (if a #t #f))
 
 (define (printn x)
   (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))

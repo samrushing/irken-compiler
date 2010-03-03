@@ -68,6 +68,7 @@
   (set! l2 (n-of 10 "hello"))
   (printn l2)
   (printn (member 15 = l0))
+  (printn (member 3  = l0))
   99
   )
 

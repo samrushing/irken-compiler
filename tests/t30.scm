@@ -1,4 +1,6 @@
 
+;; polymorphic variant lists
+
 (define (+ a b)
   (%%cexp (int int -> int) "%s+%s" a b))
 

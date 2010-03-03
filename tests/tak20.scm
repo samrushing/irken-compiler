@@ -16,7 +16,7 @@
 	   (tak (- z 1) x y))))
 
 (let loop ((n 20))
-  (tak 18 12 6)
-  (if (= n 0)
-      "done"
-      (loop (- n 1))))
+  (let ((r (tak 18 12 6)))
+    (if (= n 0)
+	r
+	(loop (- n 1)))))
