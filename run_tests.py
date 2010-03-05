@@ -48,7 +48,7 @@ def test_t22():
 
 def test_t_lex():
     out = run_test ('t_lex')
-    assert (out.split ('\n')[-3] == '{u0 newline "\\0x0a"}')
+    assert (out.split ('\n')[-3].lower() == '{u0 newline "\\0x0a"}')
 
 PJ = os.path.join
 
