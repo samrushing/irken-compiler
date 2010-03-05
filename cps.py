@@ -565,8 +565,8 @@ class cps (compiler):
     def gen_test (self, test_reg, then_code, else_code, k):
         return INSN ('test', [test_reg], (None, then_code, else_code), k)
 
-    def gen_simple_test (self, name, regs, then_code, else_code, k):
-        return INSN ('test', regs, (name, then_code, else_code), k)
+    def gen_simple_test (self, cexp, regs, then_code, else_code, k):
+        return INSN ('test', regs, (cexp, then_code, else_code), k)
 
     def gen_pvcase (self, test_reg, types, alts, k):
         return INSN ('pvcase', [test_reg], (types, alts), k)
