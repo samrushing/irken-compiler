@@ -245,7 +245,8 @@ class vardef:
         self.serial = serial.next()
         self.escapes = False
         self.inline = None
-
+        self.alias = None
+        
     def __repr__ (self):
         #return '{%s.%d}' % (self.name, self.serial)
         if self.type:
@@ -336,7 +337,7 @@ def parse_type (exp, tvars=None):
                 result_type = pfun (x[-1])
                 arg_types = tuple ([pfun(y) for y in x[:-2]])
                 return itypes.arrow (result_type, *arg_types)
-            elif len(x) > 1 and is_a (x[0], str):
+            elif len(x) > 0 and is_a (x[0], str):
                 # a predicate
                 arg_types = tuple ([pfun(y) for y in x[1:]])
                 return itypes.t_predicate (x[0], arg_types)
