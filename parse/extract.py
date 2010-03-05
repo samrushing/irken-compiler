@@ -52,25 +52,41 @@ def gen_irken (file, tables):
     for item, index in items:
         W ('    \'%s\n' % (item,))
     W ('  ))\n')
-    W ('(define actions #(\n')
+    W ('(define actions\n')
+    W ('  (let ()\n')
+    W ('    (define C action-list:cons)\n')
+    W ('    (define N action-list:nil)\n')
+    W ('    (define S action:shift)\n')
+    W ('    (define R action:reduce)\n')
+    W ('    #(\n')
     for action in actions:
-        W ('  #(\n')
+        l = '(N)'
         for k, v in action.items():
             shift_reduce, n = v
             if shift_reduce == -1:
-                W ('    (:action %d (:shift %d))\n' % (k, n,))
+                #W ('    (:action %d (:shift %d))\n' % (k, n,))
+                #W ('    (action:shift %d %d)\n' % (k, n))
+                l = '(C %d (S %d) %s)' % (k, n, l)
             else:
                 plen, nt = n
-                W ('    (:action %d (:reduce %d %d))\n' % (k, plen, ntm[nt]))
-        W ('  )\n')
-    W ('  ))\n')
-    W ('(define goto #(\n')
+                #W ('    (:action %d (:reduce %d %d))\n' % (k, plen, ntm[nt]))
+                #W ('    (action:reduce %d %d %d)\n' % (k, plen, ntm[nt]))
+                l = '(C %d (R %d %d) %s)' % (k, plen, ntm[nt], l)
+        W ('      %s\n' % l)
+    W ('   )))\n')
+    W ('(define goto\n')
+    W ('  (let ()\n')
+    W ('    (define C goto-list:cons)\n')
+    W ('    (define N goto-list:nil)\n')
+    W ('    #(\n')
     for entry in goto:
-        l = []
-        for k, v in entry.items():
-            l.append ('(:pair %d %d)' % (ntm[k], v))
-        W ('  #(%s)\n' % (' '.join (l)))
-    W ('  ))\n')
+        l = '(N)'
+        items = entry.items()[:]
+        items.reverse()
+        for k, v in items:
+            l = '(C %d %d %s)' % (ntm[k], v, l)
+        W ('      %s\n' % l)
+    W ('  )))\n')
 
 if __name__ == '__main__':
     import sys
