@@ -88,4 +88,5 @@ def make_parser (path):
     #pp (t.terminals)
     t.emit_python (base)
 
+make_lexer()
 make_parser ('t0.g')
