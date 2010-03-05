@@ -39,6 +39,8 @@ class analyzer:
         self.inline_multiplier = {}
 
     def analyze (self, root):
+        # find aliases
+        self.find_aliases (root)
         # perform simple transformations
         root = self.transform (root, 0)
         root = self.transform (root, 1)
@@ -89,7 +91,6 @@ class analyzer:
                 if inits[i].is_a ('function'):
                     names[i].function = inits[i]
         return node
-
 
     def transform_0_primapp (self, node):
         if node.name.startswith ('%vcase/'):
@@ -150,6 +151,32 @@ class analyzer:
                         )
             else:
                 return node
+
+    def find_aliases (self, root):
+        # find aliases - e.g., "(define THING 0)" or "(define PLUS +)"
+        # this is a bit of a hack - this should probably be folded into
+        #   a more general mechanism (like the inliner, duh).
+        for node in root:
+            if node.is_a ('fix'):
+                for i in range (len (node.names)):
+                    name = node.names[i]
+                    init = node.inits[i]
+                    if init.is_a ('literal'):
+                        # strings are a special case - they're not 'simple' literals.
+                        if not name.assigns and init.ltype != 'string':
+                            name.alias = init
+                    elif init.is_a ('varref'):
+                        # neither is assigned to, should be safe
+                        if not name.assigns and not init.var.assigns:
+                            name.alias = init
+
+    def transform_0_varref (self, node):
+        var = self.vars[node.name]
+        if var.alias is not None:
+            #print 'alias %r => %r' % (var, var.alias)
+            return var.alias
+        else:
+            return node
 
     def transform_1_fix (self, node):
         # coalesce cascading <fix>
@@ -545,6 +572,7 @@ class analyzer:
         # alpha convert a copy of the function
         body = self.instantiate (fun)
         name, formals, recursive, type = fun.params
+        assert (len(formals) == len (rands))
         for i in range (len (rands)):
             arg = rands[i]
             formal = formals[i]
