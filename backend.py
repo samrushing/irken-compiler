@@ -394,7 +394,7 @@ class c_backend:
             if len(units):
                 self.write ('if (GET_TYPECODE(r%d) == (TC_USERIMM+%d)) {' % (test_reg, units[0]*4))
             else:
-                self.write ('if (GET_TYPECODE(r%d) == (TC_USEROBJ+%d)) {' % (test_reg, tuples[0]*4))
+                self.write ('if (GET_TYPECODE(*r%d) == (TC_USEROBJ+%d)) {' % (test_reg, tuples[0]*4))
             self.indent += 1
             self.emit (alts[both[0]])
             self.indent -= 1
