@@ -12,6 +12,11 @@ is_a = isinstance
 class RegisterError:
     pass
 
+class function:
+    def __init__ (self, name):
+        self.name = name
+        self.known_allocs = 0
+
 class c_backend:
 
     def __init__ (self, out, src, num_regs, context, safety=1, annotate=True, trace=False):
@@ -24,7 +29,9 @@ class c_backend:
         self.annotate = annotate
         self.trace = trace
         self.toplevel_env = False
+        self.current_fun = function ('toplevel')
         self.write_header()
+        self.max_free = 0
 
     def write_header (self):
         for header in self.context.cincludes:
@@ -34,10 +41,24 @@ class c_backend:
         stop = header.find (tag)
         self.out.write (header[:stop])
         self.out.write (self.register_declarations())
+        self.emit_gc_copy_regs (self.num_regs)
         self.out.write (header[stop+len(tag):])
 
     def register_declarations (self):
         return '\n'.join (["  register object * r%d;" % i for i in range (self.num_regs + 1) ])
+
+    def emit_gc_copy_regs (self, nregs):
+        self.write ('')
+        self.write ('void gc_regs_in (int n) {')
+        self.write ('  switch (n) {')
+        for i in reversed (range (nregs)):
+            self.write ('  case %d: heap1[%d] = r%d;' % (i, i+3, i))
+        self.write ('}}')
+        self.write ('void gc_regs_out (int n) {')
+        self.write ('  switch (n) {')
+        for i in reversed (range (nregs)):
+            self.write ('  case %d: r%d = heap0[%d];' % (i, i, i+3))
+        self.write ('}}')
 
     def emit (self, insns):
         for insn in insns:
@@ -46,8 +67,10 @@ class c_backend:
                 self.write ('// %s' % (insn.print_info(),))
             fun = getattr (self, name, None)
             fun (insn)
+            self.max_free = max (len(insn.free_regs), self.max_free)
 
     def done (self):
+        print 'max_free =', self.max_free
         # close out the vm() function...
         self.out.write (
             " Lreturn:\n"
@@ -115,6 +138,21 @@ class c_backend:
     def verify (self, level, line):
         if self.safety >= level:
             self.write (line)
+
+    # set in pxll.h
+    head_room = 1024
+
+    def alloc (self, line, insn, size):
+        self.current_fun.known_allocs += size
+        if self.current_fun.known_allocs >= self.head_room:
+            # may have run out of head room, emit a heap check here.
+            # 'may' since we're unfairly counting all sides of each branch...
+            print 'mid-function heap check: free=%r' % (insn.free_regs)
+            # XXX relies on the in-order allocation of registers
+            self.check_free_regs (insn.free_regs)
+            self.write ('check_heap (%d);' % (len (insn.free_regs)))
+            self.current_fun.known_allocs = 0
+        self.write (line)
 
     def insn_lit (self, insn):
         # for now
@@ -242,7 +280,7 @@ class c_backend:
                             tag = '(TC_USEROBJ+%d)' % (tag * 4,)
                         else:
                             tag = 'TC_%s' % (tag.upper(),)
-                        self.write ('t = alloc_no_clear (%s, %d);' % (tag, nargs))
+                        self.alloc ('t = alloc_no_clear (%s, %d);' % (tag, nargs), insn, nargs)
                         for i in range (nargs):
                             self.write ('t[%d] = r%d;' % (i+1, regs[i]))
                         self.write ('r%d = t;' % (insn.target,))
@@ -293,7 +331,7 @@ class c_backend:
             old_fields = list (old_fields)
             new_len = len (new_fields) + len (old_fields)
             new_tag = '(TC_USEROBJ+%d)' % (new_tag * 4)
-            self.write ('t = alloc_no_clear (%s, %d);' % (new_tag, new_len))
+            self.alloc ('t = alloc_no_clear (%s, %d);' % (new_tag, new_len), insn, new_len)
             j = 0
             for i in range (new_len):
                 if not old_fields or new_fields and new_fields[0] < old_fields[0]:
@@ -309,8 +347,9 @@ class c_backend:
             self.write ('r%d = t;' % (insn.target,))
         elif primop[0] == '%make-vector':
             [vlen, vval] = insn.regs
-            #self.write ('t = alloc_no_clear (TC_VECTOR, unbox(r%d));' % (vlen,))
             self.write ('if (unbox(r%d) == 0) { r%d = (object *) TC_EMPTY_VECTOR; } else {' % (vlen, insn.target))
+            # XXX currently, this is the only alloc size not known at runtime.  need to check the heap
+            #     specifically for this amount of room at runtime.
             self.write ('  t = alloc_no_clear (TC_VECTOR, unbox(r%d));' % (vlen,))
             self.write ('  for (i=0; i < unbox(r%d); i++) { t[i+1] = r%d; }' % (vlen, vval))
             self.write ('  r%d = t;' % (insn.target,))
@@ -458,14 +497,14 @@ class c_backend:
         # XXX our heap check is now done in a way that does not require looking at free regs.
         #self.check_free_regs (insn.regs)
         #self.write ('check_heap (%d); r%d = allocate (TC_TUPLE, %d);' % (len(insn.regs), insn.target, size + 1))
-        self.write ('r%d = allocate (TC_TUPLE, %d);' % (insn.target, size + 1))
+        self.alloc ('r%d = allocate (TC_TUPLE, %d);' % (insn.target, size + 1), insn, size + 1)
         if not self.toplevel_env:
             self.toplevel_env = True
             self.write ('top = r%d;' % (insn.target,))
 
     def insn_new_tuple (self, insn):
         tag, size = insn.params
-        self.write ('r%d = allocate (%d, %d);' % (insn.target, tag, size))
+        self.alloc ('r%d = allocate (%d, %d);' % (insn.target, tag, size), insn, size)
 
     def insn_store_tuple (self, insn):
         [arg_reg, tuple_reg] = insn.regs
@@ -503,7 +542,11 @@ class c_backend:
     def insn_make_string (self, insn):
         s = insn.params
         ls = len(s)
-        self.write ('r%d = allocate (TC_STRING, string_tuple_length (%d));' % (insn.target, ls))
+        self.alloc (
+            'r%d = allocate (TC_STRING, string_tuple_length (%d));' % (insn.target, ls),
+            insn,
+            ls/4 + 2 # worst-case estimate for 32-bit platform
+            )
         self.write (
             '{ pxll_string * s = (pxll_string *) r%d;'
             ' memcpy (s->data, "%s", %d); s->len = %d; }' % (
@@ -513,7 +556,7 @@ class c_backend:
     def insn_build_env (self, insn):
         regs = insn.regs
         size = len (regs)
-        self.write ('t = allocate (TC_TUPLE, %d);' % (size + 1,))
+        self.alloc ('t = allocate (TC_TUPLE, %d);' % (size + 1,), insn, size + 1)
         for i in range (len (regs)):
             self.write ('t[%d] = r%d;' % (i+2, regs[i]))
         self.write ('r%d = t;' % (insn.target,))
@@ -573,15 +616,16 @@ class c_backend:
         if self.trace:
             self.write ('stack_depth_indent(k); fprintf (stderr, ">> [%%d] %s\\n", __LINE__);' % ((fun.name or 'lambda'),))
         if insn.allocates:
-            self.check_free_regs (free)
-            #print '*** function %r performs heap allocation ***' % (fun,)
-            #self.write ('check_heap (%d);' % (len(free),))
-            self.write ('check_heap();')
+            self.write ('check_heap (0);')
+        calling_fun = self.current_fun
+        self.current_fun = function (fun.name)
         self.emit (body)
         self.indent -= 1
         self.write ('%s:' % (jump_label,))
+        print 'function %s known_allocs=%d' % (fun.name, self.current_fun.known_allocs)
+        self.current_fun = calling_fun
         # create a closure object
-        self.write ('r%d = allocate (TC_CLOSURE, 2);' % (insn.target,))
+        self.alloc ('r%d = allocate (TC_CLOSURE, 2);' % (insn.target,), insn, 2)
         # unfortunately, this is a gcc extension - '&&' takes the
         #   address of a label.  is there some portable way to this?
         self.write ('r%d[1] = &&%s; r%d[2] = lenv;' % (insn.target, proc_label, insn.target))
@@ -604,7 +648,7 @@ class c_backend:
         return_label = self.new_label()
         nregs = len (free_regs)
         # save
-        self.write ('t = allocate (TC_SAVE, %d);' % (3 + nregs))
+        self.alloc ('t = allocate (TC_SAVE, %d);' % (3 + nregs), insn, 3 + nregs)
         saves = []
         for i in range (nregs):
             saves.append ('t[%d] = r%d;' % (i+4, free_regs[i]))
