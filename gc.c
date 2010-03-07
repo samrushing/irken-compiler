@@ -24,7 +24,7 @@ do_gc (int nroots)
 	//fprintf (stderr, "copy S %x\n", pp);
         return (object *) (*(pp+1));
       } else {
-        uint8_t tc = GET_TYPECODE (*pp);
+        //uint8_t tc = GET_TYPECODE (*pp);
 	// p points at an object in from_space, copy it
 	object * addr = freep;
 	pxll_int length = GET_TUPLE_LENGTH (*pp);
@@ -132,18 +132,21 @@ do_gc (int nroots)
 }
 
 object
-gc_flip (void)
+gc_flip (int nregs)
 {
   object nwords;
   // copy roots
   heap1[0] = (object) lenv;
   heap1[1] = (object) k;
   heap1[2] = (object) top;
-  nwords = do_gc (3);
+  //assert (freep < (heap0 + heap_size));
+  gc_regs_in (nregs);
+  nwords = do_gc (nregs + 3);
   // replace roots
   lenv = (object *) heap0[0];
   k    = (object *) heap0[1];
   top  = (object *) heap0[2];
+  gc_regs_out (nregs);
   // set new limit
   limit = heap0 + (heap_size - 1024);
   return nwords;
@@ -171,7 +174,7 @@ gc_dump (object * thunk)
 }
 
 
-object *
+void
 gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
 {
   void adjust (object * q) {
