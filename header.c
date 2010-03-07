@@ -316,7 +316,7 @@ vm (int argc, char * argv[])
   object * top = PXLL_NIL; // top-level (i.e. 'global') environment
   object * t = 0; // temp - for swaps & building tuples
   object * result;
-  object * limit = heap0 + (heap_size - 1024);
+  object * limit = heap0 + (heap_size - head_room);
   object * freep = heap0;
   int i; // loop counter
   
@@ -328,11 +328,11 @@ vm (int argc, char * argv[])
   // check heap is called at the top of each allocating function.
   //  [by locating the check at the top, we avoid considering any
   //   registers as roots of the gc...]
-  void check_heap () {
+  void check_heap (int nfree) {
     if (freep >= limit) {
       uint64_t t0, t1;
       t0 = rdtsc();
-      gc_flip();
+      gc_flip (nfree);
       t1 = rdtsc();
       gc_ticks += t1 - t0;
     }
