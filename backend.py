@@ -48,6 +48,7 @@ class c_backend:
         return '\n'.join (["  register object * r%d;" % i for i in range (self.num_regs + 1) ])
 
     def emit_gc_copy_regs (self, nregs):
+        # emit functions to copy registers in and out of the heap as gc roots
         self.write ('')
         self.write ('void gc_regs_in (int n) {')
         self.write ('  switch (n) {')
