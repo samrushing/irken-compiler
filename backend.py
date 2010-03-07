@@ -52,13 +52,13 @@ class c_backend:
         self.write ('')
         self.write ('void gc_regs_in (int n) {')
         self.write ('  switch (n) {')
-        for i in reversed (range (nregs)):
-            self.write ('  case %d: heap1[%d] = r%d;' % (i, i+3, i))
+        for i in reversed (range (nregs+1)):
+            self.write ('  case %d: heap1[%d] = r%d;' % (i+1, i+3, i))
         self.write ('}}')
         self.write ('void gc_regs_out (int n) {')
         self.write ('  switch (n) {')
-        for i in reversed (range (nregs)):
-            self.write ('  case %d: r%d = heap0[%d];' % (i, i, i+3))
+        for i in reversed (range (nregs+1)):
+            self.write ('  case %d: r%d = heap0[%d];' % (i+1, i, i+3))
         self.write ('}}')
 
     def emit (self, insns):
