@@ -12,6 +12,8 @@ typedef intptr_t pxll_int;
 typedef void * object;
 
 const size_t heap_size = 100000;
+// update backend.py if you change this
+const size_t head_room = 1024;
 
 object * heap0 = NULL;
 object * heap1 = NULL;
