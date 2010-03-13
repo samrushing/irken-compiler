@@ -33,6 +33,9 @@ class context:
             }
         # don't throw away precious tag space.
         self.nvariant_offset = len(self.variant_labels)
+        # constructed literals
+        self.constructed = []
+        self.symbols = {}
 
 def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=False, trace=False, step_solver=False, typetype=False):
     base, ext = os.path.splitext (name)
