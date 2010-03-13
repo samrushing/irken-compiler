@@ -172,6 +172,8 @@ class node:
             self.value = self.subs[0]
         elif self.kind == 'literal':
             self.ltype, self.value = self.params
+        elif self.kind == 'constructed':
+            self.value = self.params
         elif self.kind == 'primapp':
             self.name = self.params
             self.args = self.subs
@@ -262,6 +264,10 @@ def varset (name, value):
 
 def literal (kind, value):
     return node ('literal', (kind, value))
+
+# a literal built by constructors & immediates
+def constructed (value):
+    return node ('constructed', value)
 
 def primapp (name, args):
     return node ('primapp', name, args)
@@ -395,6 +401,8 @@ class walker:
                     return varset (name, WALK (val))
                 elif rator == 'quote':
                     return literal (exp[1].kind, exp[1].value)
+                elif rator == 'constructed':
+                    return constructed (WALK (exp[1]))
                 elif rator == 'if':
                     return conditional (WALK (exp[1]), WALK (exp[2]), WALK (exp[3]))
                 elif rator == 'function':
