@@ -145,6 +145,9 @@ class datatype:
         self.constructors = {}
         self.tags = {}
         for i in range (len (alts)):
+            # assign runtime tags in the order they're defined.
+            # [other choices would be to sort alphabetically, and/or
+            #  immediate vs tuple]
             tag, prod = alts[i]
             self.constructors[tag] = prod
             self.tags[tag] = i
