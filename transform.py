@@ -14,6 +14,9 @@ from pdb import set_trace as trace
 #   it converts 'high-level' expressions into lower-level expressions
 #   that are understood by the remaining stages of the compiler...
 
+class RuntimeLiteral (Exception):
+    pass
+
 # this needs to be replaced by an automated mechanism.
 # 1) it would solve the src/line-propagation problem, since
 #    that capability would be built in.
@@ -54,35 +57,6 @@ class transformer:
             r = 'minus'
         return r
 
-    def get_constant_binding (self, exp):
-        key = exp.kind, exp.value
-        probe = self.constants.get (key, None)
-        if probe:
-            return probe
-        else:
-            # XXX we can do better than this!  how about <sym_xx_null_question>,
-            #    or <string_xx_rubber_ducky>??
-            var = self.gensym (prefix=exp.kind)
-            self.constants[key] = var
-            return var
-
-    def add_constants (self, exp):
-        if exp[0] != 'fix':
-            # if it's a really simple top-level expr, wrap it in a fix
-            exp = ['fix', [], [], exp]
-        names = exp[1]
-        inits = exp[2]
-        # *prepend* these, since they'll likely be needed *before* the code runs.
-        for (kind, value), varname in self.constants.iteritems():
-            names.insert (0, varname)
-            if kind == 'string':
-                inits.insert (0, atom ('string', value))
-            elif kind == 'symbol':
-                inits.insert (0, ['string->symbol', atom ('string', value)])
-            else:
-                raise ValueError
-        return exp
-
     def add_constructors (self, exp):
         if exp[0] != 'fix':
             # if it's a really simple top-level expr, wrap it in a fix
@@ -95,13 +69,10 @@ class transformer:
         return exp
 
     def go (self, exp):
-        # XXX go back later and support single-expression programs if we care
         if len(exp) > 1:
             exp = self.expand_body (exp)
         else:
             exp = self.expand_exp (exp[0])
-        if len(self.constants):
-            exp = self.add_constants (exp)
         if len(self.constructors):
             exp = self.add_constructors (exp)
         return exp
@@ -114,9 +85,9 @@ class transformer:
                 return exp
         elif is_a (exp, atom):
             if exp.kind == 'string':
-                return self.get_constant_binding (exp)
-            if exp.kind == 'symbol':
-                return self.get_constant_binding (exp)
+                return exp
+            elif exp.kind == 'symbol':
+                return exp
             elif exp.kind == 'vector':
                 return self.build_vector (exp)
             elif exp.kind == 'record':
@@ -203,6 +174,9 @@ class transformer:
 
     def expand_quote (self, exp):
         # literal data
+        return self.build_literal (exp[1], as_list=True)
+
+    def expand_literal (self, exp):
         return self.build_literal (exp[1])
 
     def expand_colon (self, exp):
@@ -354,7 +328,7 @@ class transformer:
             elif len(keys) == 1:
                 cond_clauses.append ([['eq?', keysym, ['quote', keys[0]]]] + seq)
             else:
-                or_clauses = self.expand_exp (['bor'] + [['eq?', keysym, ['quote', k]] for k in keys])
+                or_clauses = ['bor'] + [['eq?', keysym, ['quote', k]] for k in keys]
                 cond_clauses.append ([or_clauses] + seq)
         return self.expand_exp (['let', [[keysym, exp[1]]], ['cond'] + cond_clauses])
 
@@ -589,25 +563,38 @@ class transformer:
             r = ['%%rextend/%s' % name, r, val]
         return self.expand_exp (r)
 
-    def build_literal (self, exp):
-        if is_a (exp, atom):
-            if exp.kind == 'string':
-                return self.get_constant_binding (exp)
-            elif exp.kind == 'vector':
-                # XXX notreached?
-                return self.build_vector (exp)
+    # walk a literal, making sure it can be represented as a constructed value.
+    def build_literal (self, exp, as_list=False):
+
+        def build (exp):
+            if is_a (exp, atom):
+                if exp.kind == 'vector':
+                    args = [build (x) for x in exp.value]
+                    return ['%%vector-literal/%d' % (len(exp.value))] + args
+                elif exp.kind in ('int', 'char', 'bool', 'undefined'):
+                    # XXX itypes should have a list of immediate base types
+                    return exp
+                elif exp.kind in ('symbol', 'string'):
+                    return exp
+                else:
+                    raise RuntimeLiteral (exp)
+            elif is_a (exp, list):
+                if as_list:
+                    if not len (exp):
+                        return ['%dtcon/list/nil']
+                    else:
+                        return ['%dtcon/list/cons', build (exp[0]), build (exp[1:])]
+                else:
+                    # constructor
+                    dt, alt = exp[0].split (':')
+                    args = [build (x) for x in exp[1:]]
+                    return ['%%dtcon/%s/%s' % (dt, alt)] + args
+            elif is_a (exp, str) and as_list:
+                # in a list literal, this is a symbol
+                return atom ('symbol', exp)
             else:
-                # char, int, bool
-                return exp
-        elif is_a (exp, list):
-            if not len(exp):
-                #return atom ('nil', 'nil')
-                return self.expand_exp ([['colon', 'nil']])
-            elif len(exp) == 3 and exp[1] == '.':
-                return self.expand_exp (['cons', self.build_literal (exp[0]), self.build_literal (exp[2])])
-            else:
-                return self.expand_exp (['cons', self.build_literal (exp[0]), self.build_literal (exp[1:])])
-        elif is_a (exp, str):
-            return self.get_constant_binding (atom ('symbol', exp))
-        else:
-            raise SyntaxError (exp)
+                raise RuntimeLiteral (exp)
+
+        return ['constructed', build (exp)]
+                
+    
