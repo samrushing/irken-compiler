@@ -392,6 +392,9 @@ class constraint_generator:
     def gen_literal (self, exp, t):
         return c_equals (t, base_types[exp.ltype])
 
+    def gen_constructed (self, exp, t):
+        return self.gen (exp.value, t)
+
     def gen_make_tuple (self, exp, t):
         # XXX don't care about the type of the arg?
         v = t_var()
@@ -1331,6 +1334,10 @@ class solver:
             return c_forall ((0,), arrow (0, vector (0), t_int()))
         elif name == '%%array-set':
             return c_forall ((0,), arrow (t_undefined(), vector (0), t_int(), 0))
+        elif name.count (':') == 1:
+            # a constructor used in a 'constructed literal'
+            dt, alt = name.split (':')
+            return self.lookup_special_names ('%%dtcon/%s/%s' % (dt, alt))
         else:
             raise UnboundVariable (name)
 
