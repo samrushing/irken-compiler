@@ -74,6 +74,8 @@ object * heap1 = NULL;
 #define TO_CHAR(ch)		((object)(pxll_int)(((ch)<<8)|TC_CHAR))
 
 #define HOW_MANY(x,n)		(((x)+(n)-1)/(n))
+#define STRING_TUPLE_LENGTH(n)  HOW_MANY (n + sizeof(int32_t), sizeof(object))
+#define STRING_HEADER(n)        STRING_TUPLE_LENGTH(n)<<8|TC_STRING
 
 // these make the C output more compact & readable
 #define PXLL_TEST(x)		((x) ? PXLL_TRUE : PXLL_FALSE)
@@ -81,6 +83,14 @@ object * heap1 = NULL;
 
 #define UOBJ_GET(o,i)           (((pxll_vector*)(o))->val[i])
 #define UOBJ_SET(o,i,v)         (((pxll_vector*)(o))->val[i] = v)
+
+// useful in code output for literals
+#define UOTAG(n)                (TC_USEROBJ+(n*4))
+#define UITAG(n)                (TC_USERIMM+(n*4))
+#define UCON(n,o)               ((pxll_int)(constructed_##n+o))
+#define UCON0(n)                ((pxll_int)(&constructed_##n))
+
+#define UOHEAD(l,n)             ((l<<8)|UOTAG(n))
 
 // here we want something that looks like a pointer, but is unlikely,
 // i.e. ...111111100
@@ -129,7 +139,8 @@ typedef struct _closure {
 typedef struct _string {
   header tc;
   uint32_t len;
-  char data[0];
+  // hopefully we get 32-bit alignment here
+  char data[];
 } pxll_string;
 
 typedef struct _pair {
