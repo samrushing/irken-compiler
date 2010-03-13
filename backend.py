@@ -23,7 +23,7 @@ class c_backend:
         self.out = out
         self.src = src
         self.num_regs = num_regs
-        self.indent = 1
+        self.indent = 0
         self.context = context
         self.safety = safety
         self.annotate = annotate
@@ -37,15 +37,106 @@ class c_backend:
         for header in self.context.cincludes:
             self.out.write ('#include <%s>\n' % (header,))
         header = open ('header.c').read()
-        tag = '%%%REGISTER_DECLARATIONS%%%'
-        stop = header.find (tag)
-        self.out.write (header[:stop])
+        # XXX ugh, this is getting lame.
+        tag0 = '// CONSTRUCTED LITERALS //\n'
+        stop0 = header.find (tag0) + len (tag0)
+        self.out.write (header[:stop0])
+        self.emit_constructed_literals()
+        tag1 = '// REGISTER_DECLARATIONS //\n'
+        stop1 = header.find (tag1) + len (tag1)
+        self.out.write (header[stop0:stop1])
         self.out.write (self.register_declarations())
         self.emit_gc_copy_regs (self.num_regs)
-        self.out.write (header[stop+len(tag):])
+        self.out.write (header[stop1:])
 
     def register_declarations (self):
         return '\n'.join (["  register object * r%d;" % i for i in range (self.num_regs + 1) ])
+
+    def emit_constructed_literals (self):
+
+        # we support three types of non-immediate literals:
+
+        # 1) strings.  identical strings are *not* merged, since
+        #      modifying strings is a reasonable choice.
+        # 2) symbols.  this emits a string followed by a symbol tuple.
+        #      these are collected so each is unique.  any runtime
+        #      symbol table should be populated with these first.
+        # 3) constructed.  trees of literals made of constructors
+        #      (e.g. lists formed with QUOTE), and vectors.  each tree
+        #      is rendered into a single C array where the first value
+        #      in the array points to the beginning of the top-level
+        #      object.
+
+        name = None
+        dtm = self.context.datatypes
+        l = []
+
+        # now we walk the bitch, appending to a list of pxll_ints.
+        def walk (exp):
+            if exp.is_a ('primapp'):
+                if exp.name.startswith ('%dtcon/'):
+                    # constructor
+                    ignore, dt, alt = exp.name.split ('/')
+                    tag = dtm[dt].tags[alt]
+                    if len(exp.args):
+                        # constructor with args, a tuple
+                        # first - emit all the args
+                        args = [ walk (x) for x in exp.args ]
+                        # emit the header
+                        addr = len (l)
+                        l.append ('UOHEAD(%d,%d)' % (len(exp.args), tag))
+                        l.extend (args)
+                        return 'UCON(%d,%d)' % (i, addr)
+                    else:
+                        # constructor with no args, an immediate
+                        return 'UITAG(%d)' % (tag,)
+                elif exp.name.startswith ('%vector-literal/'):
+                    args = [ walk (x) for x in exp.args ]
+                    addr = len (l)
+                    l.append ('(%d<<8)|TC_VECTOR' % (len(exp.args),))
+                    l.extend (args)
+                    return 'UCON(%d,%d)' % (i, addr)
+                else:
+                    raise ValueError ("unsupported primapp in constructed literal: %r" % (exp,))
+            elif exp.is_a ('literal'):
+                # XXX this duplicates smarts in cps.py that need to be moved into this file.
+                if exp.ltype == 'int':
+                    return (exp.value << 1) | 1
+                elif exp.ltype == 'char':
+                    if lit.value == 'eof':
+                        return 257<<8|0x02
+                    else:
+                        return ord(lit.value)<<8|0x02
+                elif exp.ltype == 'undefined':
+                    return 0x0e
+                elif exp.ltype == 'string':
+                    return 'UCON0(%d)' % (exp.index)
+                elif exp.ltype == 'symbol':
+                    return 'UCON0(%d)' % (exp.index)
+                else:
+                    raise ValueError ("unsupported type in constructed literal: %r" % (exp,))
+            elif exp.is_a ('constructed'):
+                return 'UCON(%d)' % (exp.index)
+            else:
+                raise ValueError ("unsupported type in constructed literal: %r" % (exp,))
+        
+        lengths = []
+        for i in range (len (self.context.constructed)):
+            lit = self.context.constructed[i]
+            if lit.is_a ('literal'):
+                if lit.ltype == 'string':
+                    s = lit.value
+                    slen = len(s)
+                    self.write ('pxll_string constructed_%d = { STRING_HEADER(%d), %d, "%s" };' % (i, slen, slen, self.c_string (s)))
+                elif lit.ltype == 'symbol':
+                    self.write ('pxll_int constructed_%d[] = {1<<8|TC_SYMBOL, (pxll_int)&constructed_%d};' % (i, i-1))
+            else:
+                l = [None]
+                name = 'constructed_%d' % (i,)
+                val = walk (lit)
+                l[0] = val
+                self.write ('pxll_int %s[] = {%s};' % (name, ', '.join ([str(x) for x in l])))
+                lengths.append (len (l))
 
     def emit_gc_copy_regs (self, nregs):
         # emit functions to copy registers in and out of the heap as gc roots
@@ -136,10 +227,6 @@ class c_backend:
         self.out.write (line)
         self.out.write ('\n')
 
-    def verify (self, level, line):
-        if self.safety >= level:
-            self.write (line)
-
     # set in pxll.h
     head_room = 1024
 
@@ -165,9 +252,17 @@ class c_backend:
             comment = ''
         self.write ('%sr%r = (object *) %d;' % (comment, insn.target, lit))
 
+    def insn_constructed (self, insn):
+        # a reference to a constructed literal - refer to its variable directly.
+        index = insn.params
+        val = self.context.constructed[index]
+        if val.is_a ('literal') and val.ltype in ('string', 'symbol'):
+            self.write ('r%d = (object*) &constructed_%d;' % (insn.target, index))
+        else:
+            self.write ('r%d = (object*) constructed_%d[0];' % (insn.target, index))
+
     def insn_return (self, insn):
         val_reg = insn.regs[0]
-        #self.verify (1, 'verify (k, TC_SAVE);')
         self.write ('PXLL_RETURN(%d);' % (val_reg,))
 
     def insn_jump (self, insn):
@@ -264,7 +359,7 @@ class c_backend:
                 nargs = len (regs)
                 if nargs == 0 and is_a (tag, int):
                     # unit type - use an immediate
-                    self.write ('r%d = (object*)(TC_USERIMM+%d);' % (insn.target, tag * 4))
+                    self.write ('r%d = (object*)UITAG(%d);' % (insn.target, tag))
                 else:
                     # tuple type
                     if nargs == 0:
@@ -540,20 +635,6 @@ class c_backend:
                 r.append ('\\%03o' % (ord (ch)))
         return ''.join (r)
 
-    def insn_make_string (self, insn):
-        s = insn.params
-        ls = len(s)
-        self.alloc (
-            'r%d = allocate (TC_STRING, string_tuple_length (%d));' % (insn.target, ls),
-            insn,
-            ls/4 + 2 # worst-case estimate for 32-bit platform
-            )
-        self.write (
-            '{ pxll_string * s = (pxll_string *) r%d;'
-            ' memcpy (s->data, "%s", %d); s->len = %d; }' % (
-                insn.target, self.c_string (s), ls, ls)
-            )
-        
     def insn_build_env (self, insn):
         regs = insn.regs
         size = len (regs)
@@ -635,7 +716,6 @@ class c_backend:
         closure_reg, args_reg = insn.regs
         fun = insn.params
         # call
-        #self.verify (1, 'verify (r%d, TC_CLOSURE);' % (closure_reg,))
         #   extend closure's environment with args, jump
         if fun:
             label = 'goto %s' % (self.function_label (fun),)
@@ -656,7 +736,6 @@ class c_backend:
         saves = ' '.join (saves)
         self.write ('t[1] = k; t[2] = lenv; t[3] = &&%s; %s k = t;' % (return_label, saves))
         # call
-        #self.verify (1, 'verify (r%d, TC_CLOSURE);' % (closure_reg,))
         #   extend closure's environment with args, jump
         if fun:
             label = 'goto %s' % (self.function_label (fun,),)
@@ -676,7 +755,6 @@ class c_backend:
         for i in range (nregs):
             restores.append ('r%d = k[%d];' % (free_regs[i], i+4))
         restores = ' '.join (restores)
-        #self.verify (1, 'verify (k, TC_SAVE);')
         self.write ('%s; lenv = k[2]; k = k[1];' % restores)
         if insn.target is not 'dead':
             self.write ('r%d = result;' % (insn.target,))
@@ -692,13 +770,6 @@ class c_backend:
         for i in range (nargs):
             self.write ('lenv[%d] = r%d;' % (2+i, regs[i]))
         self.write ('goto %s;' % (self.function_label (fun),))
-
-    def insn_verify (self, insn):
-        # XXX should really be a warning - how about 'UnDead'?
-        assert (insn.target == 'dead')
-        val_reg = insn.regs[0]
-        tc, safety = insn.params
-        #self.verify (safety, 'verify (r%d, %s);' % (val_reg, tc))
 
     def insn_move (self, insn):
         reg_var, reg_src = insn.regs
