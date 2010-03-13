@@ -307,12 +307,14 @@ main (int argc, char * argv[])
   }
 }
 
+// CONSTRUCTED LITERALS //
+
 pxll_int
 vm (int argc, char * argv[])
 {
   register object * lenv = PXLL_NIL;
   register object * k = PXLL_NIL;
-%%%REGISTER_DECLARATIONS%%%
+// REGISTER_DECLARATIONS //
   object * top = PXLL_NIL; // top-level (i.e. 'global') environment
   object * t = 0; // temp - for swaps & building tuples
   object * result;
@@ -435,4 +437,4 @@ vm (int argc, char * argv[])
   k[1] = (object *) PXLL_NIL; // top of stack
   k[2] = (object *) PXLL_NIL; // null environment
   k[3] = &&Lreturn; // continuation that will return from this function.
-  // ---
+  // --- BEGIN USER PROGRAM ---
