@@ -1,0 +1,60 @@
+10.03.07
+
+Revisiting this issue, now that we're a typed scheme.
+
+Our lexer and parser tables are generating a *lot* of code.
+It'd be nice if there was some way to put this in the data segment.
+We can probably even lay out a simple pxll_int[] of pre-populated data,
+built the same way it would be in memory.
+
+One issue, though. If we want to point directly at it, then internal
+addresses will have to be set/adjusted at runtime... so we'll need
+something similar to gc_relocate() to be run over it.  Is there some
+way to have the loader do this automatically?  Hmmm.... it might be as
+simple as walking over the array linearly, and applying an adjustment
+to everything that looks like an address.
+
+--- Design ---
+
+So, what are our criteria for things that can be stored this way?
+How about:
+
+ common := immediate_literals | vector (common) | constructors (common)
+
+This omits string literals, which may or may not be a big deal...
+
+So at compile-time we'll walk over the data structure, building a
+heap-like image of it.  We'll emit the thing as an array of pxll_int,
+and point to it at compile-time, typed.
+
+Upon entry to vm(), we run the address adjuster over the array,
+adjusting anything that's a pointer by the base address.
+
+--- Syntax ---
+
+We could try to detect appropriate use points automatically, but
+explicit beats implicit here, I think.
+
+(define-literal (list:cons 1 (list:cons 2 (list:cons 3 (list:nil)))))
+
+This would generate an array something like this:
+
+[0x0220, 0x03, 0x10, 0x0220, 0x05, 0x18, ... ]
+ ---- cons 1 ------  ----- cons 2 -----
+0x0220 == len=2, tag=TC_USEROBJ+0
+
+--- Mutability ---
+
+Yeah, that's an ugly question.  Let's ignore it for now.
+
+--- Implementation ---
+
+Well, Scheme already brings QUOTE to the table, and we have some
+code in there already for dealing with it.  It'd be nice if we
+could extend that cleanly.  It'd also be nice to keep the type solver
+out of it, since big data really slows it down.
+
+Ideally we could keep it attached to the 'literal' node, all the way
+through to the back end (separation of concerns)...
+
+Ok, so how hard is it going to be to manually type these things?
