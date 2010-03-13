@@ -2,6 +2,7 @@
 
 from pdb import set_trace as trace
 
+import nodes
 import solver
 
 is_a = isinstance
@@ -60,7 +61,13 @@ class compiler:
         elif exp.is_a ('varset'):
             return self.compile_varset (tail_pos, exp, lenv, k)
         elif exp.is_a ('literal'):
-            return self.gen_lit (exp, k)
+            if exp.ltype in ('string', 'symbol'):
+                return self.gen_constructed (self.scan_constructed (exp), k)
+            else:
+                # immediates
+                return self.gen_lit (exp, k)
+        elif exp.is_a ('constructed'):
+            return self.gen_constructed (self.scan_constructed (exp.value), k)
         elif exp.is_a ('sequence'):
             return self.compile_sequence (tail_pos, exp.subs, lenv, k)
         elif exp.is_a ('conditional'):
@@ -83,11 +90,51 @@ class compiler:
         elif exp.is_a ('primapp'):
             return self.compile_primapp (tail_pos, exp, lenv, k)
         elif exp.is_a ('pvcase'):
-            return self.compile_pvcase (tail_pos, exp, lenv, k)            
+            return self.compile_pvcase (tail_pos, exp, lenv, k)
         elif exp.is_a ('nvcase'):
-            return self.compile_nvcase (tail_pos, exp, lenv, k)            
+            return self.compile_nvcase (tail_pos, exp, lenv, k)
         else:
             raise NotImplementedError
+
+    def scan_constructed (self, exp):
+        # add this literal to the global list
+        cc = self.context.constructed
+
+        # search inside a constructed literal for other constructed literals,
+        #  so we can emit them (in the correct order).
+        def scan (exp):
+            if exp.is_a ('primapp'):
+                for x in exp.args:
+                    scan (x)
+                return None
+            elif exp.is_a ('literal'):
+                if exp.ltype == 'string':
+                    index = len(cc)
+                    cc.append (exp)
+                    exp.index = index
+                    return index
+                elif exp.ltype == 'symbol':
+                    probe = self.context.symbols.get (exp.value, None)
+                    if probe:
+                        exp.index = probe
+                        return probe
+                    else:
+                        string = nodes.literal ('string', exp.value)
+                        index = len(cc)
+                        cc.append (string)
+                        string.index = index
+                        index += 1
+                        cc.append (exp)
+                        exp.index = index
+                        self.context.symbols[exp.value] = index
+                        return index
+
+        index = scan (exp)
+        if index is None:
+            index = len(cc)
+            cc.append (exp)
+            exp.index = index
+        return index
 
     def safe_for_let_reg (self, exp):
         # we only want to use registers for bindings when
@@ -312,6 +359,9 @@ class compiler:
 
     def compile_let_reg (self, tail_pos, exp, lenv, k):
 
+        # since this is a let-*splat*, we're forced to compile this one variable at a time,
+        #   which makes the register 'rib' look a little silly.  XXX redo it as 'register_var'.
+
         def loop (names, inits, lenv, regs):
             if len(inits) == 0:
                 return self.compile_exp (tail_pos, exp.body, lenv, (k[0], k[1] + regs, k[2]))
@@ -501,6 +551,7 @@ class cps (compiler):
 
 
     def gen_lit (self, lit, k):
+        # these smarts probably belong in the back end.
         if lit.ltype == 'int':
             return INSN ('lit', [], box (lit.value), k)
         elif lit.ltype == 'bool':
@@ -516,14 +567,15 @@ class cps (compiler):
             else:
                 val = ord(lit.value)<<8|0x02
             return INSN ('lit', [], val, k)
-        elif lit.ltype == 'string':
-            return INSN ('make_string', [], lit.value, k)
         elif lit.ltype == 'undefined':
             return INSN ('lit', [], 0x0e, k)
         elif lit.ltype == 'nil':
             return INSN ('lit', [], 0x0a, k)
         else:
             raise SyntaxError
+
+    def gen_constructed (self, exp, k):
+        return INSN ('constructed', [], exp, k)
 
     def gen_primop (self, primop, regs, k):
         return INSN ('primop', regs, primop, k)
