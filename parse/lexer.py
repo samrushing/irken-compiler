@@ -209,13 +209,13 @@ class lexer:
         sink = self.find_sink()
         
         W ("(define finals\n")
-        W ("  #(\n")
+        W ("  '#(\n")
         for i in range (len (self.dfa)):
             f = self.actions.get (i, None)
             if f:
-                W ("  '%s\n" % f)
+                W ("  %s\n" % f)
             else:
-                W ("  'not-final\n")
+                W ("  not-final\n")
         W ("  ))\n")
         W ("(define (step ch state)\n")
         W ("  (char->ascii (string-ref dfa[state] (char->ascii ch))))\n")
