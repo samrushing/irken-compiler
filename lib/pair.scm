@@ -57,3 +57,9 @@
     (if (= n 0)
 	l
 	(loop (- n 1) (cons x l)))))
+
+(define (map p l)
+  (vcase list l
+    ((:nil) l)
+    ((:cons hd tl)
+     (list:cons (p hd) (map p tl)))))
