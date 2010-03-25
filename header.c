@@ -322,7 +322,7 @@ vm (int argc, char * argv[])
   object * freep = heap0;
   int i; // loop counter
   
-  // due to the way reg alloc works, <return> is actually always r0
+  // due to the way reg alloc works, <return> is nearly always r0
 #define PXLL_RETURN(d)	result = r##d; goto *k[3]
 
 #include "gc.c"
