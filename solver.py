@@ -447,7 +447,10 @@ class constraint_generator:
         else:
             conj = [self.gen (exp.value, dt.scheme)]
         for alt in exp.alts:
-            conj.append (self.gen (alt, t))
+            if alt is not None:
+                conj.append (self.gen (alt, t))
+        # this will work even when else_clause is a dummy %%match-error
+        conj.append (self.gen (exp.else_clause, t))
         if len(dt.tvars):
             return c_exists (scheme.vars, list_to_conj (conj))
         else:
@@ -634,9 +637,6 @@ class unifier:
             for i in range (len (ty0.args)):
                 self.add2 (ty0.args[i], ty1.args[i])
             self.add (tvs, ty0)
-        elif is_a (ty0, t_predicate):
-            # check for datatype
-            pass
         else:
             #self.dprint ('s-clash')
             raise TypeError ((ty0, ty1))
@@ -1334,6 +1334,8 @@ class solver:
             return c_forall ((0,), arrow (0, vector (0), t_int()))
         elif name == '%%array-set':
             return c_forall ((0,), arrow (t_undefined(), vector (0), t_int(), 0))
+        elif name == '%%match-error':
+            return c_forall ((0,), arrow (0))
         elif name.count (':') == 1:
             # a constructor used in a 'constructed literal'
             dt, alt = name.split (':')
