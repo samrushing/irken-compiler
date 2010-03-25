@@ -143,7 +143,7 @@ class compiler:
         #  2) there's not too many bindings (again, avoid consuming regs)
         #  3) none of the variables escape (storing a binding in a reg
         #     defeats the idea of a closure)
-        if exp.leaf and len(exp.names) < 4:
+        if exp.leaf and len(exp.names) <= 4:
             for name in exp.names:
                 if name.escapes:
                     return False
@@ -277,6 +277,8 @@ class compiler:
             ignore, dtname, label = exp.name.split ('/')
             tag = self.context.datatypes[dtname].tags[label]
             return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
+        elif exp.name == '%%match-error':
+            return self.gen_primop (('%%match-error',), [], k)
         else:
             raise ValueError ("Unknown primop: %r" % (exp.name,))
 
@@ -331,7 +333,8 @@ class compiler:
         def finish (test_reg):
             jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
-            return self.gen_nvcase (test_reg, exp.vtype, alts, k)
+            ealt = self.compile_exp (tail_pos, exp.else_clause, lenv, jump_k)
+            return self.gen_nvcase (test_reg, exp.vtype, exp.tags, alts, ealt, k)
         return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
 
     def compile_function (self, tail_pos, exp, lenv, k):
@@ -623,8 +626,8 @@ class cps (compiler):
     def gen_pvcase (self, test_reg, types, alts, k):
         return INSN ('pvcase', [test_reg], (types, alts), k)
 
-    def gen_nvcase (self, test_reg, dtype, alts, k):
-        return INSN ('nvcase', [test_reg], (dtype, alts), k)
+    def gen_nvcase (self, test_reg, dtype, tags, alts, ealt, k):
+        return INSN ('nvcase', [test_reg], (dtype, tags, alts, ealt), k)
 
     def gen_invoke_tail (self, fun, closure_reg, args_reg, k):
         return INSN ('invoke_tail', [closure_reg, args_reg], fun, None)
@@ -668,9 +671,12 @@ def flatten (exp):
         elif exp.name == 'close':
             node, body, free = exp.params
             exp.params = node, flatten (body), free
-        elif exp.name in ('pvcase', 'nvcase'):
+        elif exp.name == 'pvcase':
             types, alts = exp.params
             exp.params = types, [flatten (x) for x in alts]
+        elif exp.name == 'nvcase':
+            types, tags, alts, ealt = exp.params
+            exp.params = types, tags, [flatten (x) for x in alts], flatten (ealt)
         r.append (exp)
         exp = next
     return r
@@ -696,9 +702,13 @@ def pretty_print (insns, depth=0):
         elif insn.name == 'close':
             node, body, free = insn.params
             pretty_print (body, depth+1)
-        elif insn.name in ('pvcase', 'nvcase'):
+        elif insn.name == 'pvcase':
             types, alts = insn.params
             for alt in alts:
+                pretty_print (alt, depth+1)
+        elif insn.name == 'nvcase':
+            types, tags, alts, ealt = insn.params
+            for alt in alts + [ealt]:
                 pretty_print (alt, depth+1)
 
 # when <let> expressions are in a leaf position, the bindings may be
@@ -756,9 +766,14 @@ def walk (insns):
             node, body, free = insn.params
             for x in walk (body):
                 yield x
-        elif insn.name in ('pvcase', 'nvcase'):
+        elif insn.name == 'pvcase':
             types, alts = insn.params
             for alt in alts:
+                for y in walk (alt):
+                    yield y
+        elif insn.name == 'nvcase':
+            types, tags, alts, ealt = insn.params
+            for alt in alts + [ealt]:
                 for y in walk (alt):
                     yield y
 
@@ -772,7 +787,12 @@ def walk_function (insns):
                 yield x
             for x in walk_function (else_code):
                 yield x
-        elif insn.name in ('pvcase', 'nvcase'):
+        elif insn.name == 'nvcase':
+            types, tags, alts, ealt = insn.params
+            for alt in alts + [ealt]:
+                for x in walk_function (alt):
+                    yield x
+        elif insn.name == 'pvcase':
             types, alts = insn.params
             for alt in alts:
                 for x in walk_function (alt):
