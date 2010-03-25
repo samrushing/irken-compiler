@@ -14,17 +14,9 @@ is_a = isinstance
 #   some precedence annotations as well.
 # See Jason's 'example1.py' and 'meta.py' for examples.
 
-counter = 0
-
-def gensym (name):
-    global counter
-    r = '%s_%d' % (name, counter)
-    counter += 1
-    return r
-
-# XXXX an idea: when translating things like STAR and PLUS,
-#   give the generated rules names that can be detected on the
-#   other side, and thus automatically build lists.
+def gensym (name, where):
+    "generate a new non-terminal, based on <name> and <where>"
+    return ':'.join ([name] + where)
 
 class translator:
     def __init__ (self, grammar, start=None, lits=None):
@@ -37,43 +29,46 @@ class translator:
             lits = {}
         self.lits = lits
     
-    def emit (self, name, *items):
-        if None in items:
-            raise ValueError
-        self.rules.append ((name, items))
-
     def walk (self, nt, prod):
-        def walk_prod (name, prod, depth):
+
+        def emit (name, *items):
+            self.rules.append ((name, items))
+
+        def walk_prod (name, prod, where):
             # walk a production.  when we hit something complicated,
             #  emit a separate rule for it and refer to it by name instead.
             if is_a (prod, tuple):
                 # operator
                 if prod[0] == 'or':
-                    r0 = walk_prod (name, prod[1], depth+1)
-                    r1 = walk_prod (name, prod[2], depth+1)
-                    nt0 = gensym (name)
-                    self.emit (nt0, r0)
-                    self.emit (nt0, r1)
+                    # nary 'or'
+                    where = where + ['o']
+                    alts = []
+                    for i in range (len (prod[1])):
+                        alts.append (walk_prod (name, prod[1][i], where+[str(i)]))
+                    nt0 = gensym (name, where)
+                    for alt in alts:
+                        emit (nt0, alt)
                     return nt0
                 elif prod[0] in ('star', 'plus'):
                     # we need to emit two sub-rules
-                    r0 = walk_prod (name, prod[1], depth+1)
+                    r0 = walk_prod (name, prod[1], where+['s'])
                     # this will hold the prods for prod[1]
-                    nt0 = gensym (name)
+                    nt0 = gensym (name, where+['s0'])
                     # this will do the kleene-ing
-                    nt1 = gensym (name)
-                    self.emit (nt0, r0)
-                    self.emit (nt1, nt1, nt0)
+                    nt1 = gensym (name, where+['s1'])
+                    emit (nt0, r0)
+                    emit (nt1, nt1, nt0)
                     if prod[0] == 'star':
-                        self.emit (nt1)
+                        emit (nt1)
                     else:
-                        self.emit (nt1, nt0)
+                        emit (nt1, nt0)
                     return nt1
                 elif prod[0] == 'optional':
-                    r0 = walk_prod (name, prod[1], depth+1)
-                    nt0 = gensym (name)
-                    self.emit (nt0, r0)
-                    self.emit (nt0)
+                    where = where + ['q']
+                    r0 = walk_prod (name, prod[1], where)
+                    nt0 = gensym (name, where)
+                    emit (nt0, r0)
+                    emit (nt0)
                     return nt0
                 elif prod[0] == 'lit':
                     # XXX consider recording all terminals here rather than 'guessing'
@@ -83,17 +78,21 @@ class translator:
                     raise ValueError
             elif is_a (prod, list):
                 # straightforward concatentation of sets of alts
-                r = [walk_prod (name, x, depth+1) for x in prod]
-                nt0 = gensym (name)
-                self.emit (nt0, *r)
+                where = where + ['c']
+                r = []
+                for i in range (len (prod)):
+                    r.append (walk_prod (name, prod[i], where + [str(i)]))
+                nt0 = gensym (name, where)
+                emit (nt0, *r)
                 return nt0
             elif is_a (prod, str):
                 # straightforward terminal or nonterminal
                 return prod
             else:
                 raise ValueError
-        alts = walk_prod (nt, prod, 0)
-        self.emit (nt, alts)
+
+        nt0 = walk_prod (nt, prod, [])
+        emit (nt, nt0)
 
     def name_literal (self, lit):
         if self.lits.has_key (lit):
@@ -112,7 +111,7 @@ class translator:
             return name
 
     def simplify (self):
-        # eliminate trivial reductions, find terminals
+        # eliminate trivial reductions
         simp = {}
         def lookup (k):
             if is_a (k, str):
@@ -138,9 +137,9 @@ class translator:
             for item in prod:
                 if map.has_key (item):
                     use[item] += 1
-        # find trivial reductions
+        # find trivial reductions (generated only)
         for nt, prods in map.iteritems():
-            if len(prods) == 1 and nt != self.start:
+            if len(prods) == 1 and ':' in nt:
                 if len(prods[0]) == 1:
                     # trivial reduction
                     simp[nt] = prods[0][0]
@@ -148,25 +147,56 @@ class translator:
                     # this production is used only once, inline it
                     simp[nt] = prods[0]
         # replace them
-        rules = []
+        map = {}
         for nt, prod in self.rules:
             if not simp.has_key (nt):
                 prod2 = []
                 for p in prod:
                     prod2.extend (lookup (p))
-                rules.append ((nt, prod2))
-                # assume undefined => terminal
-                for p in prod2:
-                    if not map.has_key (p):
-                        terminals.add (p)
+                if not map.has_key (nt):
+                    map[nt] = []
+                map[nt].append (prod2)
+        # second pass for trivial user rules
+        rules = []
+        rename = {}
+        for nt, prods in map.iteritems():
+            if len(prods) == 1 and len(prods[0]) == 1:
+                rename[prods[0][0]] = nt
+        for nt, prods in map.iteritems():
+            if len(prods) == 1 and len(prods[0]) == 1:
+                pass
+            else:
+                nt = rename.get (nt, nt)
+                for prod in prods:
+                    prod = [ rename.get (x, x) for x in prod ]
+                    rules.append ((nt, prod))
         self.rules = rules
-        self.terminals = terminals
+
+    def find_terminals (self):
+        nts = set()
+        terminals = set()
+        for nt, prod in self.rules:
+            nts.add (nt)
+        for nt, prod in self.rules:
+            # assume undefined => terminal
+            for p in prod:
+                if p not in nts:
+                    terminals.add (p)
+        return terminals
 
     def gen (self):
+        seen = set()
         for rule in self.grammar:
             nt, prod = rule
+            if nt in seen:
+                raise ValueError ("duplicate production: %r" % (nt,))
+            else:
+                seen.add (nt)
             self.walk (nt, prod)
         self.simplify()
+        self.terminals = self.find_terminals()
+        pp (self.rules)
+        #self.renumber()
         
     def emit_python (self, name):
         # emit the grammar in the form required by Jason Evans' Parsing.py module.
@@ -189,7 +219,7 @@ class translator:
         i = 0
         for nt, prod in self.rules:
             if last_nt != nt:
-                W ('class %s (NT):\n' % (nt,))
+                W ('class %s (NT):\n' % (fix(nt),))
                 if nt == self.start:
                     W ('    "%start"\n')
                 else:
@@ -198,10 +228,14 @@ class translator:
                 i = 0
             # production
             W ('    def r_%d (self, *args):\n' % (i,))
-            W ('        "%%reduce %s [p1]"\n' % (' '.join (prod)))
+            W ('        "%%reduce %s [p1]"\n' % (' '.join ([fix(x) for x in prod])))
             i += 1
         W ('\n\n')
         W ('spec = Parsing.Spec (sys.modules[__name__], skinny=False, logFile="%s.log", verbose=True)\n' % (name,))
+
+def fix (s):
+    "make this non-terminal a legal python identifier"
+    return s.replace (':','_')
 
 def go (filename, start):
     import meta
