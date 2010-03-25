@@ -43,14 +43,22 @@
    "(%s[%s] = GET_CHAR (%s), PXLL_UNDEFINED)" s n c))
 
 (define (string-compare a b)
-  ;; it'd be nice if the compiler could get rid of this let*,
-  ;;   it sucks to have to allocate in order to compare two strings.
   (let* ((min (min (string-length a) (string-length b)))
 	 (cmp (%%cexp (string string int -> int) "memcmp (%s, %s, %s)" a b min)))
     (cond ((= cmp 0)
 	   (if (= (string-length a) (string-length b))
 	       0
 	       (if (< (string-length a) (string-length b)) -1 1)))
+	  (else cmp))))
+
+(define (string-compare a b)
+  (let* ((alen (string-length a))
+	 (blen (string-length b))
+	 (cmp (%%cexp (string string int -> int) "memcmp (%s, %s, %s)" a b (min alen blen))))
+    (cond ((= cmp 0)
+	   (if (= alen blen)
+	       0
+	       (if (< alen blen) -1 1)))
 	  (else cmp))))
 
 (define (string-=? s1 s2)
