@@ -8,6 +8,5 @@ still a work in progress, but here's the sequence so far:
 
 1) write/edit lexer.py, generate "lexstep.scm"
 2) write/edit grammar in "t0.g"
-3) run gen_python_parser.py
-4) run "extract.py t0"
-5) output will be t0.scm, to be included by tests/t20.scm
+3) run "python gen_python_parser.py t0"
+4) output will be t0.scm, to be included by tests/t20.scm
