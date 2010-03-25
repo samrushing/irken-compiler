@@ -1,6 +1,7 @@
 
 import lexer
 import gen_parser
+import gen_irken
 
 keywords  = [
     'and', 'as', 'assert', 'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except',
@@ -88,5 +89,17 @@ def make_parser (path):
     #pp (t.terminals)
     t.emit_python (base)
 
-make_lexer()
-make_parser ('t0.g')
+import sys
+if len(sys.argv) > 1:
+    base = sys.argv[1]
+else:
+    base = 't0'
+
+# XXX check the timestamp on lexer.py vs lexstep.scm
+#make_lexer()
+make_parser (base + '.g')
+exec ("import %s" % (base,))
+spec = eval ("%s.spec" % (base,))
+tables = gen_irken.build_tables (spec)
+file = open ('%s.scm' % (base,), 'wb')
+gen_irken.gen_irken (file, tables)
