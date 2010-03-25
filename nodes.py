@@ -198,6 +198,9 @@ class node:
             self.names = self.params
             self.inits = self.subs[:-1]
             self.body = self.subs[-1]
+        elif self.kind == 'let_subst':
+            self.vars = self.params
+            self.body = self.subs[0]
         elif self.kind == 'application':
             self.recursive = self.params
             self.rator = self.subs[0]
@@ -216,9 +219,10 @@ class node:
             self.value = self.subs[0]
             self.alts = self.subs[1:]
         elif self.kind == 'nvcase':
-            self.vtype = self.params
+            self.vtype, self.tags = self.params
             self.value = self.subs[0]
-            self.alts = self.subs[1:]
+            self.alts = self.subs[1:-1]
+            self.else_clause = self.subs[-1]
         else:
             raise ValueError (self.kind)
 
@@ -299,6 +303,9 @@ def fix (names, inits, body, type=None):
 def let_splat (names, inits, body, type=None):
     return node ('let_splat', names, inits + [body], type)
 
+def let_subst (vars, body):
+    return node ('let_subst', vars, [body])
+
 def application (rator, rands):
     return node ('application', False, [rator] + rands)
     
@@ -311,8 +318,8 @@ def set (ob, name, val):
 def pvcase (value, alt_formals, alts):
     return node ('pvcase', alt_formals, [value] + alts)
 
-def nvcase (vtype, value, alts):
-    return node ('nvcase', vtype, [value] + alts)
+def nvcase (vtype, value, tags, alts, else_clause):
+    return node ('nvcase', (vtype, tags), [value] + alts + [else_clause])
 
 # ================================================================================
 
@@ -415,6 +422,9 @@ class walker:
                     names = [vardef(x[0]) for x in vars]
                     inits = [WALK (x[1])  for x in vars]
                     return let_splat (names, inits, WALK (body))
+                elif rator == 'let_subst':
+                    ignore, vars, body = exp
+                    return let_subst (vars, WALK (body))
                 elif rator == 'fix':
                     ignore, names, inits, body = exp
                     names = [vardef (x) for x in names]
@@ -431,10 +441,11 @@ class walker:
                     alt_formals = [ (selector, type, [vardef (name) for name in formals]) for selector, type, formals in alt_formals ]
                     return pvcase (WALK(value), alt_formals, [WALK (x) for x in alts])
                 elif rator == 'nvcase':
-                    ignore, vtype, value, alts = exp
+                    ignore, vtype, value, alts, ealt = exp
                     dt = self.context.datatypes[vtype]
-                    alts = dt.order_alts (alts)
-                    return nvcase (vtype, WALK(value), [WALK (x) for x in alts])
+                    tags = [x[0] for x in alts]
+                    alts = [x[1] for x in alts]
+                    return nvcase (vtype, WALK(value), tags, [WALK (x) for x in alts], WALK(ealt))
                 else:
                     # a varref application
                     return application (WALK (rator), [WALK (x) for x in exp[1:]])
@@ -450,6 +461,40 @@ class walker:
             node.fix_attribute_names()
         return exp
 
+# walk the node tree, applying subst nodes.
+def apply_substs (exp):
+    
+    def shadow (names, lenv):
+        if lenv is None:
+            return lenv
+        else:
+            rib, tail = lenv
+            rib = [(x[0], x[1]) for x in rib if x[0] not in names]
+            return (rib, shadow (names, tail))
+
+    def lookup (name, lenv):
+        while lenv:
+            rib, lenv = lenv
+            for xf, xt in rib:
+                if xf == name:
+                    return xt
+        return name
+
+    def walk (exp, lenv):
+        if exp.binds():
+            names = [x.name for x in exp.get_names()]
+            lenv = shadow (names, lenv)
+        elif exp.is_a ('let_subst'):
+            names = exp.params
+            lenv = (names, lenv)
+            return walk (exp.subs[0], lenv)
+        elif exp.one_of ('varref', 'varset'):
+            exp.params = lookup (exp.params, lenv)
+        exp.subs = [walk (sub, lenv) for sub in exp.subs ]
+        return exp
+    
+    return walk (exp, None)
+
 # alpha conversion
 
 def rename_variables (exp, datatypes):
@@ -460,8 +505,7 @@ def rename_variables (exp, datatypes):
             rib, lenv = lenv
             # walk rib backwards for the sake of <let*>
             #   (e.g., (let ((x 1) (x 2)) ...))
-            for i in range (len(rib)-1, -1, -1):
-                x = rib[i]
+            for x in reversed (rib):
                 if x.name == name:
                     return x
         if datatypes.has_key (name):
@@ -477,7 +521,6 @@ def rename_variables (exp, datatypes):
         if exp.binds():
             defs = exp.get_names()
             for vd in defs:
-                # hack to avoid renaming methods
                 vd.alpha = len (vars)
                 vars.append (vd)
             if exp.is_a ('let_splat'):
@@ -506,6 +549,7 @@ def rename_variables (exp, datatypes):
                 rename (sub, lenv)
         elif exp.is_a ('pvcase'):
             # this is a strangely shaped binding construct
+            # note: nvcase uses let internally for binding, and does not need to be here.
             rename (exp.value, lenv)
             n = len (exp.alts)
             for i in range (n):
@@ -522,8 +566,6 @@ def rename_variables (exp, datatypes):
             if probe:
                 exp.var = probe
                 if exp.is_a ('varset'):
-                    if probe.nary:
-                        raise ValueError ("can't assign to a varargs argument")
                     probe.assigns.append (node)
                 else:
                     probe.refs.append (node)
@@ -534,6 +576,8 @@ def rename_variables (exp, datatypes):
             for sub in exp.subs:
                 rename (sub, lenv)
 
+    # first, apply any pending substs
+    exp = apply_substs (exp)
     #exp.pprint()
     rename (exp, None)
     # now go back and change the names of the vardefs
