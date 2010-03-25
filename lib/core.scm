@@ -93,12 +93,14 @@
 
 ;; world save/load
 ;; is this is a big restriction - requiring that the thunk return an int?
+;; Note: <thunk> isn't really a thunk because there's no way to cast away the
+;; argument from call/cc.
 
 (define (dump filename thunk)
-  (%%cexp (string (-> int) -> int) "dump_image (%s, %s)" filename thunk))
+  (%%cexp (string ('a -> int) -> int) "dump_image (%s, %s)" filename thunk))
 
 (define (load filename)
-  (%%cexp (string -> (-> int)) "load_image (%s)" filename))
+  (%%cexp (string -> ('a -> int)) "load_image (%s)" filename))
 
 ;; *********************************************************************
 ;; VERY IMPORTANT LESSON: do not *ever* make a generator that doesn't
