@@ -158,3 +158,6 @@ class datatype:
             tag, alt = alts[i]
             r[self.tags[tag]] = alt
         return r
+
+    def arity (self, alt):
+        return len (self.constructors[alt])
