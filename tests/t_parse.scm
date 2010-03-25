@@ -29,7 +29,7 @@
       (let loop ((ch (producer))
 		 (last 'not-final)
 		 (current (list:nil)))
-	(cond ((char=? ch #\eof) (consumer (token:t '<$> "<$>")#t))
+	(cond ((char=? ch #\eof) (consumer (token:t '<$> "<$>") #t))
 	      (else
 	       (set! state (step ch state))
 	       (set! action finals[state])
@@ -73,7 +73,7 @@
   (:nil)
   (:cons int int (goto-list)))
 
-(include "parse/t0.scm")
+(include "parse/t1.scm")
 
 ;; stack = (:elem item state stack) | (:empty)
 ;; item  = (:nt kind (list (item 'a))) | (:t symbol)
@@ -227,7 +227,39 @@
 	     (loop0 (+ d 1) item)
 	     (loop1 tail))))))))
       
+(define (compile t)
+  (let ((table (tree:empty)))
+    (define (table-insert sym p)
+      (tree:insert table symbol-<? sym p))
+    (define (table-lookup sym)
+      (tree:member table string-<? sym))
+
+    (table-insert
+     'list_c_1_s1
+     ;; (list_c_1_s1 <recur> <comma> <expr>)
+     ;; => <expr>
+     (lambda (sym0 items)
+       (vcase list items
+         ((:nil) (list:nil))
+	 ((:cons hd tl)
+	  (vcase list tl
+            ((:nil) (list:nil)) ;; notreached
+	    ((:cons _ tl1) expr)
+
+
+	    ;; how hard can this kind of pattern matching be?
+	    ;; (list:cons one (list:cons two (list:cons three (list:nil))))
+	    ;; => (vcase ...) where <one>, <two>, and <three> are bound.
+	    ;; ok, a single pattern is pretty easy.
+	    ;; how to handle multiple patterns?
+	    
+		  
+  
+
+
+
+
 (let ((t (if (> (sys:argc) 1) (parse sys:argv[1]) (parse "tests/parse_0.py"))))
+  (printn t)
   (print-parse-tree t)
   )
-
