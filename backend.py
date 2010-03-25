@@ -46,6 +46,7 @@ class c_backend:
         stop1 = header.find (tag1) + len (tag1)
         self.out.write (header[stop0:stop1])
         self.out.write (self.register_declarations())
+        self.indent = 1
         self.emit_gc_copy_regs (self.num_regs)
         self.out.write (header[stop1:])
 
@@ -509,71 +510,38 @@ class c_backend:
 
     def insn_nvcase (self, insn):
         [test_reg] = insn.regs
-        dtype, alts = insn.params
+        dtype, tags, alts, ealt = insn.params
         dt = self.context.datatypes[dtype]
-        assert (len(dt.alts) == len(alts))
-        units = []
-        tuples = []
-        # if there are any unit types, we need to test for immediate types first,
-        #   and only then dereference the pointer to get the tuple type code.
-        for i in range (len (dt.alts)):
-            sn, st = dt.alts[i]
-            if not st:
-                units.append (i)
+        use_else = len(dt.alts) != len(alts)
+        self.write ('switch (get_safe_typecode (r%d)) {' % (test_reg,))
+        for i in range (len (tags)):
+            tag = dt.tags[tags[i]]
+            arity = dt.arity (tags[i])
+            if arity == 0:
+                # immediate/unit-constructor
+                tag = 'TC_USERIMM+%d' % (tag * 4)
             else:
-                tuples.append (i)
-        closes = 0
-        if len(units) + len(tuples) == 2:
-            # if there are only two alts, emit as an 'if' stmt.
-            both = units + tuples
-            if len(units):
-                self.write ('if (GET_TYPECODE(r%d) == (TC_USERIMM+%d)) {' % (test_reg, units[0]*4))
-            else:
-                self.write ('if (GET_TYPECODE(*r%d) == (TC_USEROBJ+%d)) {' % (test_reg, tuples[0]*4))
+                # tuple constructor
+                tag = 'TC_USEROBJ+%d' % (tag * 4)
             self.indent += 1
-            self.emit (alts[both[0]])
+            if i == len(tags)-1 and not use_else:
+                self.write ('default: {')
+            else:
+                self.write ('case (%s): {' % (tag))
+            self.indent += 1
+            self.emit (alts[i])
             self.indent -= 1
-            self.write ('} else {')
+            self.write ('} break;')
+            self.indent -= 1
+        if use_else:
             self.indent += 1
-            self.emit (alts[both[1]])
+            self.write ('default: {')
+            self.indent += 1
+            self.emit (ealt)
             self.indent -= 1
             self.write ('}')
-        else:
-            if len(units):
-                self.write ('switch (GET_TYPECODE(r%d)) {' % test_reg)
-                closes += 1
-                for index in units:
-                    self.indent += 1
-                    self.write ('case (TC_USERIMM+%d): {' % (index * 4))
-                    self.indent += 1
-                    self.emit (alts[index])
-                    self.indent -= 1
-                    self.write ('} break;')
-                    self.indent -= 1
-                if len(tuples):
-                    self.write ('default: {')
-                    closes += 1
-            if len(tuples):
-                if len(tuples) == 1:
-                    # avoid the test when possible by just falling through...
-                    self.emit (alts[tuples[0]])
-                else:
-                    self.write ('switch (GET_TYPECODE(*r%d)) {' % (test_reg,))
-                    closes += 1
-                    for index in tuples:
-                        alt = alts[index]
-                        self.indent += 1
-                        if index == tuples[-1]:
-                            # avoid the last test when possible
-                            self.write ('default: {')
-                        else:
-                            self.write ('case TC_USEROBJ+%d: {' % (index * 4,))
-                        self.indent += 1
-                        self.emit (alt)
-                        self.indent -= 1
-                        self.write ('} break;')
-                        self.indent -= 1
-            self.write ('}' * closes)
+            self.indent -= 1
+        self.write ('}')
 
     def check_free_regs (self, free_regs):
         "describe the free_regs to new_env() for gc"
@@ -762,7 +730,6 @@ class c_backend:
     def insn_tr_call (self, insn):
         regs = insn.regs
         depth, fun = insn.params
-        # XXX do we not have access to the closure for this?
         if depth > 1:
             npop = depth - 1
             self.write ('lenv = ((object %s)lenv)%s;' % ('*' * npop, '[1]' * npop))
