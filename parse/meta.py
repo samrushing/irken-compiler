@@ -8,10 +8,15 @@
 # use the builtin python tokenizer on the grammar,
 #  just like python does when building itself.
 
+# XXX a problem with precedence, I think:
+#   "thing: A | B C | D" vs "thing: A | (B C) | D"
+
 # grammar grammar grammar grammar grammar....
 
 import Parsing
 import sys
+
+is_a = isinstance
 
 class token (Parsing.Token):
     def __init__ (self, parser, val):
@@ -77,7 +82,12 @@ class alts (NT):
     "%nonterm"
     def reduce_0 (self, *args):
         "%reduce alts VBAR items"
-        self.val = ('or', args[0].val, args[2].val)
+        one = args[0].val
+        two = args[2].val
+        if is_a (one, tuple) and len(one) and one[0] == 'or':
+            self.val = ('or', one[1] + two)
+        else:
+            self.val = ('or', [one[0], two[0]])
     def reduce_1 (self, *args):
         "%reduce items"
         self.val = args[0].val
