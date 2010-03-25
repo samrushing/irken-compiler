@@ -4,6 +4,7 @@ from lisp_reader import atom
 
 import itypes
 import lisp_reader
+import match
 import nodes
 
 is_a = isinstance
@@ -31,6 +32,7 @@ class transformer:
         self.safety = safety
         self.context = context
         self.constructors = []
+        self.match = match.compiler (context)
 
     gensym_counter = 0
 
@@ -70,12 +72,22 @@ class transformer:
 
     def go (self, exp):
         if len(exp) > 1:
+            exp = self.find_datatypes (exp)
             exp = self.expand_body (exp)
         else:
             exp = self.expand_exp (exp[0])
         if len(self.constructors):
             exp = self.add_constructors (exp)
         return exp
+
+    def find_datatypes (self, exp):
+        r = []
+        for x in exp:
+            if is_a (x, list) and len(x) and x[0] == 'datatype':
+                self.parse_datatype (x)
+            else:
+                r.append (x)
+        return r
 
     def expand_exp (self, exp):
         if is_a (exp, str):
@@ -214,11 +226,7 @@ class transformer:
     def process_formals (self, formals):
         # check for variable arity
         if '.' in formals:
-            # for now, we don't support fixed args
-            assert (formals[0] == '.')
-            assert (len(formals) == 2)
-            # flag this as a special arg...
-            formals = ['$$' + formals[1]]
+            raise ValueError ("variable arity not supported")
         result = []
         nary = False
         for i in range (len (formals)):
@@ -428,11 +436,32 @@ class transformer:
         formals = exp[1]
         body = exp[2:]
         if is_a (formals, str):
-            return [formals, body[0]]
+            if '->' in body:
+                return self.exp_match (exp)
+            else:
+                return [formals, body[0]]
         else:
             name = formals[0]
             return [name, ['function', name, formals[1:]] + body]
     
+    def exp_match (self, exp):
+        # (define <name> <p00> <p01> ... -> <r0> <p10> <p11> ...)
+        name = exp[1]
+        rules = []
+        patterns = []
+        i = 2
+        while i < len (exp):
+            if exp[i] == '->':
+                i += 1
+                rules.append ((patterns, self.expand_exp (exp[i])))
+                patterns = []
+                i += 1
+            else:
+                patterns.append (exp[i])
+                i += 1
+        assert (not exp[i:])
+        return self.match.compile (name, rules)
+
     # ----------- misc ---------------
     # this is to avoid treating the format string as a literal
     def expand__percent_percentcexp (self, exp):
@@ -459,27 +488,32 @@ class transformer:
         # (nvcase type x
         #    ((let ((f0 x.0) (f1 x.1) (f2 x.2)) <body0>) ...))
         #
-        dtype = exp[1]
+        datatype = exp[1]
+        dt = self.context.datatypes[datatype]
         val = exp[2]
         # for now, only allow a varref for <exp>... later we'll automatically
         #    wrap this thing in a let if it's not.
         assert (is_a (val, str))
         alts = exp[3:]
-        alt_formals = [ (x[0][0], x[0][1:]) for x in alts]
-        if len(alts) != len (alt_formals):
-            raise ValueError ("variant case does not have correct number of alternatives")
+        alt_formals = [ (x[0][0], x[0][1:]) for x in alts ]
         alts0 = []
+        else_clause = None
         for i in range (len (alts)):
             binds = []
             label, formals = alt_formals[i]
-            # let's stick with the colon syntax for now, it highlights nicely
-            assert (is_a (label, list) and len(label) == 2 and label[0] == 'colon')
-            label = label[1]
+            body = alts[i][1:]
+            if (label, formals) == ('e', 'lse'): # sue me.
+                label = 'else'
+                else_clause = ['begin'] + body
+                continue
+            else:
+                # let's stick with the colon syntax for now, it highlights nicely
+                assert (is_a (label, list) and len(label) == 2 and label[0] == 'colon')
+                label = label[1]
             for j in range (len (formals)):
                 formal = formals[j]
                 if formal != '_':
-                    binds.append ([formal, ['%%nvget/%s/%s/%d' % (dtype, label, j), val]])
-            body = alts[i][1:]
+                    binds.append ([formal, ['%%nvget/%s/%s/%d' % (datatype, label, j), val]])
             if len(binds):
                 names = [x[0] for x in binds]
                 inits = [x[1] for x in binds]
@@ -487,7 +521,11 @@ class transformer:
                 alts0.append ((label, self.expand_exp (['let', binds] + body)))
             else:
                 alts0.append ((label, self.expand_exp (['begin'] + body)))
-        return ['nvcase', dtype, self.expand_exp (val), alts0]
+        if len(alts) != len (dt.alts) and not else_clause:
+            raise ValueError ("variant case does not have correct number of alternatives")
+        if not else_clause:
+            else_clause = ['%%match-error']
+        return ['nvcase', datatype, self.expand_exp (val), alts0, self.expand_exp (else_clause)]
 
     def expand_pvcase (self, exp):
         # (vcase <exp>
@@ -526,7 +564,9 @@ class transformer:
 
     # ----------- datatype ------------
 
-    def expand_datatype (self, exp):
+    def parse_datatype (self, exp):
+        # XXX since these are global, should we mandate that they appear at the top level?
+        #      or might someone want to hide the constructors?
         # defines a variant datatype
         # we don't need union vs product here, since <product> datatypes should use records instead.
         # (datatype <name> (tag0 type0 type1 ...) (tag1 type0 type1 ...) ...)
@@ -548,7 +588,6 @@ class transformer:
                     self.expand_exp (['lambda', args, ['%%dtcon/%s/%s' % (name, tag)] + args])
                     ))
         self.context.datatypes[name] = itypes.datatype (self.context, name, alts, tvars)
-        return ['begin']
 
     # --------------------------------------------------------------------------------
     # literal expressions are almost like a sub-language
