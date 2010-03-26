@@ -11,6 +11,7 @@
 is_a = isinstance
 from pdb import set_trace as trace
 from pprint import pprint as pp
+from lisp_reader import atom
 
 class variable:
     # creates a binding
@@ -56,7 +57,7 @@ class compiler:
         self.gensym_counter += 1
         return 'm%d' % (c,)
 
-    def compile (self, name, rules):
+    def compile (self, rules):
         # how many pattern args?
         nrules = len (rules)
         pats, result = rules[0]
@@ -69,13 +70,17 @@ class compiler:
         for pats, code in rules:
             kinds = [ self.kind (x) for x in pats ]
             rules0.append ((kinds, code))
-        # return something ready for transform.exp_define()...
-        return [name, ['function', name, vars, self.match (vars, rules0, ['%%match-error'])]]
+        return vars, self.match (vars, rules0, ['%%match-error'])
             
     def kind (self, p):
         if is_a (p, list):
-            # a constructor
-            return constructor (p[0], [self.kind (x) for x in  p[1:]])
+            if p[0] == 'quote':
+                # a symbol
+                assert (is_a (p[1], str))
+                return literal (atom ('symbol', p[1]))
+            else:
+                # a constructor
+                return constructor (p[0], [self.kind (x) for x in  p[1:]])
         elif is_a (p, str):
             return variable (p)
         else:
