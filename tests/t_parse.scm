@@ -29,7 +29,7 @@
       (let loop ((ch (producer))
 		 (last 'not-final)
 		 (current (list:nil)))
-	(cond ((char=? ch #\eof) (consumer (token:t '<$> "<$>") #t))
+	(cond ((char=? ch #\eof) (consumer (token:t '<$> "<$>")) #t)
 	      (else
 	       (set! state (step ch state))
 	       (set! action finals[state])
@@ -225,41 +225,67 @@
 	    ((:nil) #u)
 	    ((:cons item tail)
 	     (loop0 (+ d 1) item)
-	     (loop1 tail))))))))
+	     (loop1 tail)))))))
+  )
       
-(define (compile t)
-  (let ((table (tree:empty)))
-    (define (table-insert sym p)
-      (tree:insert table symbol-<? sym p))
-    (define (table-lookup sym)
-      (tree:member table string-<? sym))
+(datatype atom
+  (:name string)
+  (:number int)
+  (:string string)
+  )
 
-    (table-insert
-     'list_c_1_s1
-     ;; (list_c_1_s1 <recur> <comma> <expr>)
-     ;; => <expr>
-     (lambda (sym0 items)
-       (vcase list items
-         ((:nil) (list:nil))
-	 ((:cons hd tl)
-	  (vcase list tl
-            ((:nil) (list:nil)) ;; notreached
-	    ((:cons _ tl1) expr)
+(datatype expr
+  (:pred string (list (expr)))
+  (:atom (atom))
+  )
 
+(define p-atom
+  (item:t 'NAME x)   -> (atom:name x)
+  (item:t 'NUMBER x) -> (atom:number (string->int x))
+  (item:t 'STRING x) -> (atom:string x)
+  _ -> (error "p-atom")
+  )
 
-	    ;; how hard can this kind of pattern matching be?
-	    ;; (list:cons one (list:cons two (list:cons three (list:nil))))
-	    ;; => (vcase ...) where <one>, <two>, and <three> are bound.
-	    ;; ok, a single pattern is pretty easy.
-	    ;; how to handle multiple patterns?
-	    
-		  
-  
+(define p-list3
+  (list:cons (item:t 'comma _) 
+  (list:cons x 
+  (list:nil))) -> (p-expr x)
+  _ -> (error "p-list3")
+  )
 
+(define p-list2
+  (item:nt 'list_c_1_s1 (list:cons x y)) -> (list:cons (p-list3 y) (p-list2 x))
+  (item:nt 'list_c_1_s1 (list:nil))      -> (list:nil)
+  _ -> (error "p-list2")
+  )
 
+(define p-list
+  (item:nt 'list (list:cons expr 
+                 (list:cons rest 
+                 (list:nil)))) -> (list:cons (p-expr expr) (p-list2 rest))
+  _ -> (error "p-list")
+  )
 
+(define p-expr2
+  (item:nt 'predicate
+	   (list:cons (item:t 'NAME name)
+           (list:cons _ ;; lparen
+           (list:cons args
+           (list:cons _ ;; rparen
+           (list:nil))))))
+  -> (expr:pred name (p-list args))
+
+  (item:nt 'atom (list:cons x (list:nil))) -> (expr:atom (p-atom x))
+  y -> (error y)
+  )
+
+(define p-expr
+  (item:nt 'expr (list:cons x (list:nil))) -> (p-expr2 x)
+  _ -> (error "p-expr")
+  )
 
 (let ((t (if (> (sys:argc) 1) (parse sys:argv[1]) (parse "tests/parse_0.py"))))
   (printn t)
   (print-parse-tree t)
+  (p-expr t)
   )
