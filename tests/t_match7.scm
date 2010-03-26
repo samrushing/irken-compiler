@@ -46,6 +46,22 @@
       ((:E) s) ;; impossible, should raise something here?
       )))
 
+(define (print-spaces n)
+  (let loop ((n n))
+    (cond ((> n 0)
+	   (print-string "  ")
+	   (loop (- n 1))))))
+
+(define (print-item x d)
+  (print-spaces d)
+  (printn x))
+
+(define T/print
+  d (T:E)       -> #u
+  d (T:R l x r) -> (begin (T/print (+ d 1) l) (print-item x d) (T/print (+ d 1) r))
+  d (T:B l x r) -> (begin (T/print (+ d 1) l) (print-item x d) (T/print (+ d 1) r))
+  )
+
 (define (n-random n)
   (let loop ((n n)
 	     (t (T:E)))
@@ -53,4 +69,5 @@
 	t
 	(loop (- n 1) (T/insert t < (random))))))
 
-(n-random 10)
+(T/print 0 (n-random 20))
+
