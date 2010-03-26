@@ -91,6 +91,16 @@
 	l
 	(loop (list:cons (string-ref s (- n 1)) l) (- n 1)))))
 
+;; really dumb temp version, only works with [0-9]+ !!
+(define (string->int s)
+  (let ((sl (string-length s)))
+    (let loop ((i 0) (n 0))
+      (if (= i sl)
+	  n
+	  (loop (+ i 1)
+		(+ (* 10 n)
+		   (- (char->ascii (string-ref s i)) 48)))))))
+
 (define (sys:argc)
   (%%cexp (-> int) "argc"))
 
