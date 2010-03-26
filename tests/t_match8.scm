@@ -1,16 +1,16 @@
-(datatype T
-  (:E)
-  (:R (T 'a) 'a (T 'a))
-  (:B (T 'a) 'a (T 'a))
+
+(datatype list
+  (:nil)
+  (:cons 'a (list 'a))
   )
 
-(define (thing s)
-  (vcase T s
-    ((:B _ _ _) 1)
-    ((:R l k r) 2)
-;    ((:E)       3)
-    (else 3)
-    ))
+(define (eq? a b)
+  (%%cexp ('a 'a -> bool) "%s==%s" a b))
 
-;(thing (T:B (T:E) 1 (T:E)))
-(thing (T:E))
+(define parse
+  (list:nil)          -> 0
+  (list:cons 'expr x) -> 1
+  (list:cons x y)     -> 2
+  )
+
+(parse '(expr a b c))
