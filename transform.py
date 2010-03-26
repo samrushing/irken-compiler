@@ -437,7 +437,10 @@ class transformer:
         body = exp[2:]
         if is_a (formals, str):
             if '->' in body:
-                return self.exp_match (exp)
+                # (define <name> <patterns...>)
+                name = exp[1]
+                vars, code = self.exp_match (exp[2:])
+                return [name, ['function', name, vars, code]]
             else:
                 return [formals, body[0]]
         else:
@@ -445,11 +448,10 @@ class transformer:
             return [name, ['function', name, formals[1:]] + body]
     
     def exp_match (self, exp):
-        # (define <name> <p00> <p01> ... -> <r0> <p10> <p11> ...)
-        name = exp[1]
+        # (<p00> <p01> ... -> <r0> <p10> <p11> ...)
         rules = []
         patterns = []
-        i = 2
+        i = 0
         while i < len (exp):
             if exp[i] == '->':
                 i += 1
@@ -460,7 +462,7 @@ class transformer:
                 patterns.append (exp[i])
                 i += 1
         assert (not exp[i:])
-        return self.match.compile (name, rules)
+        return self.match.compile (rules)
 
     # ----------- misc ---------------
     # this is to avoid treating the format string as a literal
@@ -557,6 +559,17 @@ class transformer:
         r = r[2]
         r[-1] = val
         return self.expand_exp (r)
+
+    def expand_match (self, exp):
+        # (match <exp0> <exp1> ... with <pat00> <pat01> ... -> <result0> <pat10> <pat11> ... -> <result1>)
+        args = []
+        i = 1
+        while exp[i] != 'with':
+            args.append (exp[i])
+            i += 1
+        vars, code = self.exp_match (exp[i+1:])
+        inits = [ [vars[i], args[i]] for i in range (len (args)) ]
+        return self.expand_exp (['let', inits, code])
 
     def expand_cinclude (self, exp):
         self.context.cincludes.add (exp[1].value)
