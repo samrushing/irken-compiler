@@ -66,6 +66,9 @@
   (%%cexp (-> 'a) "PXLL_UNDEFINED")
   )
 
+(define (impossible)
+  (error "impossible"))
+
 (define (id x) x)
 
 ;; the '^' prefix tells the compiler to never inline this
