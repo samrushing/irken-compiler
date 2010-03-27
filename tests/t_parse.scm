@@ -5,7 +5,6 @@
 (include "lib/symbol.scm")
 (include "lib/io.scm")
 
-
 (datatype token
   ;;  <kind> <value>
   (:t symbol string)
@@ -101,14 +100,11 @@
 	(tok eof-token)
 	)
     
-    (define (get-indent tok)
-      (vcase token tok
-	((:t sym str)
-	 (if (eq? sym 'whitespace)
-	     ;; XXX handle or disallow tabs
-	     (string-length str)
-	     ;; non-whitespace at the front of a line
-	     0))))
+    (define get-indent
+      ;; XXX handle or disallow tabs
+      (token:t 'whitespace str) -> (string-length str)
+      ;; non-whitespace at the front of a line
+      (token:t _ _)             -> 0)
 
     (define (next-token)
       ;; process (i.e., filter/synthesize) the token stream
@@ -132,26 +128,25 @@
 		    (else
 		     (loop))))
 	    ;; in the middle of a line somewhere
-	    (vcase token tok
-	      ((:t sym str)
-	       (case sym
-		 ((newline)
-		  (vcase list paren-stack
-		    ((:nil)
-		     (set! start-of-line #t)
-		     (token:t 'newline ""))
-		    ((:cons _ _) (loop))))
-		 ((whitespace comment) (loop))
-		 (else tok)))))
+	    (match tok with
+	      (token:t 'newline _)
+	      -> (match paren-stack with
+		   () -> (begin (set! start-of-line #t) (token:t 'newline ""))
+		   _  -> (loop))
+	      (token:t 'whitespace _) -> (loop)
+	      (token:t 'comment _ )   -> (loop)
+	      (token:t _ _) -> tok
+	      ))
 	))
 
     (let ((stack (stack:empty)))
 
       (define (get-state)
-	(vcase stack stack
-	  ((:empty) 0)
-	  ((:elem _ state _) state)))
-	   
+	(match stack with
+	  (stack:empty)          -> 0
+	  (stack:elem _ state _) -> state
+	  ))
+
       (define (lookup-action state kind)
 	(let loop ((l actions[state]))
 	  (vcase action-list l
@@ -180,11 +175,23 @@
 	(set! stack (stack:elem item state stack)))
 
       (define (pop)
-        (vcase stack stack
-          ((:empty) (error "stack underflow"))
-          ((:elem item _ rest)
-           (set! stack rest)
-           item)))
+	(match stack with
+	   (stack:elem item _ rest) -> (begin (set! stack rest) item)
+	   (stack:empty) -> (error "stack underflow")))
+	   
+;;       (let loop ((tok (next-token)))
+;; 	(match tok with
+;; 	  (token:t 'eof _)
+;; 	  -> (begin (pop) (pop))
+;; 	  (token:t kind val)
+;; 	  -> (match (lookup-action (get-state) kind) with
+;; 	       (action:shift state)
+;; 	       -> (begin (push (item:t kind val) state) (loop (next-token)))
+;; 	       (action:reduce plen nt)
+;; 	       -> (let ((args (pop-n plen))
+;; 			(next-state (lookup-goto (get-state) nt)))
+;; 		    (push (item:nt non-terminals[nt] args) next-state)
+;; 		    (loop tok)))))
 
       (let loop ((tok (next-token)))
 	(cond ((eq? tok eof-token) (pop) (pop))
@@ -247,40 +254,30 @@
   )
 
 (define p-list3
-  (list:cons (item:t 'comma _) 
-  (list:cons x 
-  (list:nil))) -> (p-expr x)
+  ((item:t 'comma _) x) -> (p-expr x)
   _ -> (error "p-list3")
   )
 
 (define p-list2
-  (item:nt 'list_c_1_s1 (list:cons x y)) -> (list:cons (p-list3 y) (p-list2 x))
-  (item:nt 'list_c_1_s1 (list:nil))      -> (list:nil)
+  ;; it's a left-recursive list - note how x and y are nonobviously reversed.
+  (item:nt _ (x . y)) -> (list:cons (p-list3 y) (p-list2 x))
+  (item:nt _ ())      -> (list:nil)
   _ -> (error "p-list2")
   )
 
 (define p-list
-  (item:nt 'list (list:cons expr 
-                 (list:cons rest 
-                 (list:nil)))) -> (list:cons (p-expr expr) (p-list2 rest))
+  (item:nt 'list (expr rest)) -> (list:cons (p-expr expr) (p-list2 rest))
   _ -> (error "p-list")
   )
 
 (define p-expr2
-  (item:nt 'predicate
-	   (list:cons (item:t 'NAME name)
-           (list:cons _ ;; lparen
-           (list:cons args
-           (list:cons _ ;; rparen
-           (list:nil))))))
-  -> (expr:pred name (p-list args))
-
-  (item:nt 'atom (list:cons x (list:nil))) -> (expr:atom (p-atom x))
-  y -> (error y)
+  (item:nt 'predicate ((item:t 'NAME name) _ args _)) -> (expr:pred name (p-list args))
+  (item:nt 'atom (x)) -> (expr:atom (p-atom x))
+  _ -> (error "p-expr2")
   )
 
 (define p-expr
-  (item:nt 'expr (list:cons x (list:nil))) -> (p-expr2 x)
+  (item:nt 'expr (x)) -> (p-expr2 x)
   _ -> (error "p-expr")
   )
 
