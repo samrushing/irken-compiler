@@ -1,1 +1,1 @@
-cons(1,cons(2,cons(3,nil("testing"))))
+thing (1, arg (2, barney), arg ("testing"), fred)
