@@ -74,13 +74,23 @@ class compiler:
             
     def kind (self, p):
         if is_a (p, list):
-            if p[0] == 'quote':
+            if len(p) == 0:
+                # () -> (list:nil)
+                return constructor ('list:nil', [])
+            elif p[0] == 'quote':
                 # a symbol
                 assert (is_a (p[1], str))
                 return literal (atom ('symbol', p[1]))
-            else:
+            elif is_a (p[0], str) and ':' in p[0]:
                 # a constructor
                 return constructor (p[0], [self.kind (x) for x in  p[1:]])
+            else:
+                # (a b . c) => (list:cons ...)
+                if p[0] == '.':
+                    # cdr
+                    return self.kind (p[1])
+                else:
+                    return constructor ('list:cons', [self.kind (p[0]), self.kind (p[1:])])
         elif is_a (p, str):
             return variable (p)
         else:
@@ -120,7 +130,10 @@ class compiler:
 
     def subst (self, var0, var1, code):
         # this will record a subst to be applied during node building (nodes.py)
-        if is_a (code, list) and len(code) and code[0] == 'let_subst':
+        if var1 == '_':
+            # unless it's a wildcard, no need.
+            return code
+        elif is_a (code, list) and len(code) and code[0] == 'let_subst':
             return ['let_subst', code[1] + [(var1, var0)], code[2]]
         else:
             return ['let_subst', [(var1, var0)], code]
@@ -152,11 +165,22 @@ class compiler:
         for alt, rules0 in alts.iteritems():
             # new variables to stand for the fields of the constructor
             vars0 = [ self.gensym() for x in range (dt.arity (alt)) ]
+            wild  = [ True for x in vars0 ]
             rules1 = []
             for pats, code in rules0:
                 rules1.append ((pats[0].subs + pats[1:], code))
+                for i in range (len (pats[0].subs)):
+                    sub = pats[0].subs[i]
+                    if not (is_a (sub, variable) and sub.name == '_'):
+                        wild[i] = False
+            # if every pattern has a wildcard for this arg of the constructor,
+            #   then use '_' rather than the symbol we generated.
+            vars1 = vars0[:]
+            for i in range (len (vars0)):
+                if wild[i]:
+                    vars1[i] = '_'
             cases.append (
-                [[['colon', alt]] + vars0, self.match (vars0 + vars[1:], rules1, default)]
+                [[['colon', alt]] + vars1, self.match (vars0 + vars[1:], rules1, default)]
                 )
         if len(alts) < len (dt.alts):
             # an incomplete vcase, stick in an else clause.
