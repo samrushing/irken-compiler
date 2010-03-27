@@ -6,7 +6,7 @@
   (%%cexp ('a -> undefined) "dump_object (%s, 0)" x))
 
 (define (print-string s)
-  (%%cexp (string -> int) "fputs (%s, stdout)" s))
+  (%%cexp (string int -> int) "fwrite (%s, 1, %s, stdout)" s (string-length s)))
 
 (define (print-char ch)
   (%%cexp (char -> int) "fputc (GET_CHAR(%s), stdout)" ch))
@@ -44,8 +44,13 @@
 (define (/ a b)
   (%%cexp (int int -> int) "%s/%s" a b))
 
+(define (remainder a b)
+  (%%cexp (int int -> int) "%s %% %s" a b))
+
 (define (min x y)
   (if (< x y) x y))
+
+(define (abs x) (if (< x 0) (- 0 x) x))
 
 (define (eq? a b)
   (%%cexp ('a 'a -> bool) "%s==%s" a b))
@@ -55,6 +60,9 @@
 
 (define (char=? a b)
   (%%cexp (char char -> bool) "%s==%s" a b))
+
+(define (string-length s)
+  (%%cexp ((raw string) -> int) "%s->len" s))
 
 ;; this is a little harsh. 8^)
 ;; think of it as a placeholder for something better to come.
