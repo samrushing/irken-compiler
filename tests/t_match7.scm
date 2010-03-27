@@ -23,27 +23,30 @@
     )
 
   (define (ins n)
-    (vcase T n
-      ((:E)
-       (T:R (T:E) k (T:E)))
-      ((:R l k2 r)
-       (cond ((< k k2)
-	      (T:R (ins l) k2 r))
-	     ((< k2 k)
-	      (T:R l k2 (ins r)))
-	     (else n)))
-      ((:B l k2 r)
-       (cond ((< k k2)
-	      (lbalance (ins l) k2 r))
-	     ((< k2 k)
-	      (rbalance l k2 (ins r)))
-	     (else n)))))
+    (match n with
+      (T:E)
+      -> (T:R (T:E) k (T:E))
+
+      (T:R l k2 r)
+      -> (cond ((< k k2)
+		(T:R (ins l) k2 r))
+	       ((< k2 k)
+		(T:R l k2 (ins r)))
+	       (else n))
+
+      (T:B l k2 r)
+      -> (cond ((< k k2)
+		(lbalance (ins l) k2 r))
+	       ((< k2 k)
+		(rbalance l k2 (ins r)))
+	       (else n))
+      ))
 
   (let ((s (ins root)))
-    (vcase T s
-      ((:B _ _ _) s)
-      ((:R l k r) (T:B l k r))
-      ((:E) s) ;; impossible, should raise something here?
+    (match s with
+      (T:R l k r) -> (T:B l k r)
+      (T:B _ _ _) -> s
+      (T:E s)     -> (impossible)
       )))
 
 (define (print-spaces n)
