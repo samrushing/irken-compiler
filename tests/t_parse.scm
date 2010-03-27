@@ -281,8 +281,27 @@
   _ -> (error "p-expr")
   )
 
+(define print-expr
+  (expr:pred name args) -> (begin (print-string name) (print-string "(") (print-args (reverse args)) (print-string ")") #u)
+  (expr:atom atom)      -> (print-atom atom))
+
+(define print-args
+  (arg0) -> (print-expr arg0)
+  (arg0 . rest) -> (begin (print-expr arg0) (print-string ", ") (print-args rest))
+  () -> (begin (print-string "") #u)
+  )
+
+(define print-atom
+  (atom:string s) -> (begin (print-string s) #u)
+  (atom:number n) -> (begin (print-string (int->string n)) #u)
+  (atom:name s)   -> (begin (print-string s) #u)
+  )
+
 (let ((t (if (> (sys:argc) 1) (parse sys:argv[1]) (parse "tests/parse_0.py"))))
   (printn t)
   (print-parse-tree t)
-  (p-expr t)
+  (let ((parsed (p-expr t)))
+    (printn parsed)
+    (print-expr parsed)
+    )
   )
