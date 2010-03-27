@@ -46,7 +46,7 @@
     (match s with
       (T:R l k r) -> (T:B l k r)
       (T:B _ _ _) -> s
-      (T:E s)     -> (impossible)
+      (T:E)       -> (impossible)
       )))
 
 (define (print-spaces n)
