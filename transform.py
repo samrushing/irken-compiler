@@ -477,11 +477,11 @@ class transformer:
     def expand_vcase (self, exp):
         if is_a (exp[2], str):
             # normal variant
-            return self.expand_nvcase (exp)
+            return self.exp_nvcase (exp)
         else:
-            return self.expand_pvcase (exp)
+            return self.exp_pvcase (exp)
 
-    def expand_nvcase (self, exp):
+    def exp_nvcase (self, exp):
         # (nvcase type x 
         #    ((<select0> <formal0> <formal1> ...) <body0>)
         #    ((<select1> <formal0> <formal1> ...) <body1>)
@@ -529,7 +529,7 @@ class transformer:
             else_clause = ['%%match-error']
         return ['nvcase', datatype, self.expand_exp (val), alts0, self.expand_exp (else_clause)]
 
-    def expand_pvcase (self, exp):
+    def exp_pvcase (self, exp):
         # (vcase <exp>
         #    ((:kind0 var0 var1) <body0>)
         #    ((:kind1 var0) <body1>)
