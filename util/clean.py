@@ -29,3 +29,13 @@ for root, dirs, files in os.walk ('./tests', topdown=False):
             if stat.st_mode & 1:
                 # an executable
                 os.remove (jp)
+
+def unlink (p):
+    try:
+        os.unlink (p)
+    except:
+        pass
+
+unlink ('test.image')
+unlink ('thing.txt')
+unlink ('parse/t0.log')
