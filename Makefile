@@ -3,5 +3,5 @@
 clean:
 	python util/clean.py
 
-dist: clean
+dist:
 	python util/dist.py
