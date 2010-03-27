@@ -29,9 +29,6 @@
 (define (char->ascii c)
   (%%cexp (char -> int) "GET_CHAR(%s)" c))
 
-(define (string-length s)
-  (%%cexp ((raw string) -> int) "%s->len" s))
-
 (define (string-ref s n)
   ;; XXX need range-check
   (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%s)[%s])" s n))
@@ -100,6 +97,15 @@
 	  (loop (+ i 1)
 		(+ (* 10 n)
 		   (- (char->ascii (string-ref s i)) 48)))))))
+
+(define (int->string n)
+  (let loop ((x (abs n)) (r '()))
+    (if (= 0 x)
+        (list->string
+         (if (< n 0) (list:cons #\- r) r))
+        (loop (/ x 10)
+              (list:cons (ascii->char (+ 48 (remainder x 10))) r)
+	      ))))
 
 (define (sys:argc)
   (%%cexp (-> int) "argc"))
