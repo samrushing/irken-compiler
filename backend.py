@@ -19,13 +19,12 @@ class function:
 
 class c_backend:
 
-    def __init__ (self, out, src, num_regs, context, safety=1, annotate=True, trace=False):
+    def __init__ (self, out, src, num_regs, context, annotate=True, trace=False):
         self.out = out
         self.src = src
         self.num_regs = num_regs
         self.indent = 0
         self.context = context
-        self.safety = safety
         self.annotate = annotate
         self.trace = trace
         self.toplevel_env = False
@@ -163,7 +162,7 @@ class c_backend:
             self.max_free = max (len(insn.free_regs), self.max_free)
 
     def done (self):
-        print 'max_free =', self.max_free
+        #print 'max_free =', self.max_free
         # close out the vm() function...
         self.out.write (
             " Lreturn:\n"
@@ -217,7 +216,8 @@ class c_backend:
             return fun.label
         else:
             if fun.name:
-                fun.label = 'FUN_%d%s' % (fun.serial, self.frob_name (fun.name))
+                #fun.label = 'FUN_%d%s' % (fun.serial, self.frob_name (fun.name))
+                fun.label = 'FUN_%s' % (self.frob_name (fun.name),)
             else:
                 fun.label = 'FUN_%d_lambda' % (fun.serial,)
             return fun.label
@@ -291,6 +291,9 @@ class c_backend:
                 elif itypes.is_pred (t, 'arrow'):
                     # function type
                     result.append (args[i])
+                elif itypes.is_pred (t, 'vector'):
+                    # vectors
+                    result.append (args[i])
                 else:
                     raise ValueError ("unexpected predicate in cexp type sig: %r" % (t,))
             elif is_a (t, itypes.t_var):
@@ -323,20 +326,21 @@ class c_backend:
         for sig, tag in self.context.records2.iteritems():
             if set(sig).issuperset (row):
                 candidates.append (sig)
-        print self.context.records2
+        #print self.context.records2
         if len(candidates) == 1:
-            print 'unambiguous', orow, candidates[0]
+            #print 'unambiguous', orow, candidates[0]
             # cast to list for python < 2.6 for 'index' method
             return list(candidates[0])
         else:
-            print 'ambiguous', orow, candidates
+            #print 'ambiguous', orow, candidates
             return None
 
     def insn_primop (self, insn):
         # XXX consider making some of these insns in their own right?
         regs = insn.regs
         primop = insn.params
-        if primop[0] == '%cexp':
+        name = primop[0]
+        if name == '%cexp':
             ignore, form, (tvars, sig) = primop
             if itypes.is_pred (sig, 'arrow'):
                 result_type = sig.args[0]
@@ -351,7 +355,7 @@ class c_backend:
                 self.write ('%s;' % (exp,))
             else:
                 self.write ('r%d = %s;' % (insn.target, exp))
-        elif primop[0] == '%make-tuple':
+        elif name == '%make-tuple':
             ignore, type, tag = primop
             if insn.target == 'dead':
                 print 'warning: dead %make-tuple', insn
@@ -381,15 +385,17 @@ class c_backend:
                         for i in range (nargs):
                             self.write ('t[%d] = r%d;' % (i+1, regs[i]))
                         self.write ('r%d = t;' % (insn.target,))
-        elif primop[0] == '%array-ref':
+        elif name.startswith ('%array-ref'):
             [base, index] = insn.regs
-            self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
+            if name[-1] != '%':
+                self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
             self.write ('r%d = ((pxll_vector*)r%d)->val[unbox(r%d)];' % (insn.target, base, index))
-        elif primop[0] == '%array-set':
+        elif name.startswith ('%array-set'):
             [base, index, val] = insn.regs
-            self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
+            if name[-1] != '%':
+                self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
             self.write ('((pxll_vector*)r%d)->val[unbox(r%d)] = r%d;' % (base, index, val))
-        elif primop[0] == '%record-get':
+        elif name == '%record-get':
             [record] = insn.regs
             ignore, label, sig = primop
             sig = self.guess_record_type (sig)
@@ -404,7 +410,7 @@ class c_backend:
             else:
                 # compile-time lookup
                 self.write ('r%d = ((pxll_vector*)r%d)->val[%d];' % (insn.target, record, sig.index (label)))
-        elif primop[0] == '%record-set':
+        elif name == '%record-set':
             [record, val] = insn.regs
             ignore, label, sig = primop
             sig = self.guess_record_type (sig)
@@ -419,7 +425,7 @@ class c_backend:
             else:
                 # compile-time lookup
                 self.write ('((pxll_vector*)r%d)->val[%d] = r%d;' % (record, sig.index (label), val))
-        elif primop[0] == '%extend-tuple':
+        elif name == '%extend-tuple':
             # extend a pre-existing tuple by merging it with one or more new field=value pairs.
             src = insn.regs[0]
             data = insn.regs[1:]
@@ -442,7 +448,7 @@ class c_backend:
                     j += 1
                     old_fields.pop (0)
             self.write ('r%d = t;' % (insn.target,))
-        elif primop[0] == '%make-vector':
+        elif name == '%make-vector':
             [vlen, vval] = insn.regs
             self.write ('if (unbox(r%d) == 0) { r%d = (object *) TC_EMPTY_VECTOR; } else {' % (vlen, insn.target))
             # XXX currently, this is the only alloc size not known at runtime.  need to check the heap
@@ -451,10 +457,10 @@ class c_backend:
             self.write ('  for (i=0; i < unbox(r%d); i++) { t[i+1] = r%d; }' % (vlen, vval))
             self.write ('  r%d = t;' % (insn.target,))
             self.write ('}')
-        elif primop[0] == '%vget':
+        elif name == '%vget':
             self.write ('r%d = UOBJ_GET(r%d,%s);' % (insn.target, insn.regs[0], primop[1]))
         else:
-            raise ValueError ("unknown primop: %s" % primop[0])
+            raise ValueError ("unknown primop: %s" % name)
 
     def insn_test (self, insn):
         cexp, then_code, else_code = insn.params
@@ -643,8 +649,8 @@ class c_backend:
     def insn_varset (self, insn):
         val_reg = insn.regs[0]
         addr, is_top, var = insn.params
-        if insn.target != 'dead':
-            print '[set! result used]',
+        #if insn.target != 'dead':
+        #    print '[set! result used]',
         depth, index = addr
         if is_top:
             self.write ('top[%d] = r%d;' % (index+2, val_reg))
@@ -672,7 +678,7 @@ class c_backend:
         self.emit (body)
         self.indent -= 1
         self.write ('%s:' % (jump_label,))
-        print 'function %s known_allocs=%d' % (fun.name, self.current_fun.known_allocs)
+        #print 'function %s known_allocs=%d' % (fun.name, self.current_fun.known_allocs)
         self.current_fun = calling_fun
         # create a closure object
         self.alloc ('r%d = allocate (TC_CLOSURE, 2);' % (insn.target,), insn, 2)
@@ -689,7 +695,10 @@ class c_backend:
             label = 'goto %s' % (self.function_label (fun),)
         else:
             label = 'goto *r%d[1]' % (closure_reg,)
-        self.write ('r%d[1] = r%d[2]; lenv = r%d; %s;' % (args_reg, closure_reg, args_reg, label))
+        if args_reg is not None:
+            self.write ('r%d[1] = r%d[2]; lenv = r%d; %s;' % (args_reg, closure_reg, args_reg, label))
+        else:
+            self.write ('lenv = r%d[2]; %s;' % (closure_reg, label))
 
     def insn_invoke (self, insn):
         closure_reg, args_reg = insn.regs
@@ -709,7 +718,10 @@ class c_backend:
             label = 'goto %s' % (self.function_label (fun,),)
         else:
             label = 'goto *r%d[1]' % (closure_reg,)
-        self.write ('r%d[1] = r%d[2]; lenv = r%d; %s;' % (args_reg, closure_reg, args_reg, label))
+        if args_reg is not None:
+            self.write ('r%d[1] = r%d[2]; lenv = r%d; %s;' % (args_reg, closure_reg, args_reg, label))
+        else:
+            self.write ('lenv = r%d[2]; %s;' % (closure_reg, label))
         # label
         self.write ('%s:' % (return_label,))
         if self.trace:
