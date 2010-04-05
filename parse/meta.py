@@ -8,9 +8,6 @@
 # use the builtin python tokenizer on the grammar,
 #  just like python does when building itself.
 
-# XXX a problem with precedence, I think:
-#   "thing: A | B C | D" vs "thing: A | (B C) | D"
-
 # grammar grammar grammar grammar grammar....
 
 import Parsing
@@ -78,19 +75,30 @@ class rule (NT):
         "%reduce NEWLINE"
         self.val = []
 
-class alts (NT):
+class alts2 (NT):
     "%nonterm"
-    def reduce_0 (self, *args):
-        "%reduce alts VBAR items"
+    def r_0 (self, *args):
+        "%reduce alts2 VBAR items"
         one = args[0].val
         two = args[2].val
-        if is_a (one, tuple) and len(one) and one[0] == 'or':
-            self.val = ('or', one[1] + two)
+        if len(one):
+            self.val = ('or', one[1] + [two])
         else:
-            self.val = ('or', [one[0], two[0]])
-    def reduce_1 (self, *args):
-        "%reduce items"
-        self.val = args[0].val
+            self.val = ('or', [two])
+    def r_1 (self, *args):
+        "%reduce"
+        self.val = []
+
+class alts (NT):
+    "%nonterm"
+    def r_0 (self, *args):
+        "%reduce items alts2"
+        one = args[0].val
+        two = args[1].val
+        if len(two):
+            self.val = ('or', [one] + two[1])
+        else:
+            self.val = one
 
 class items (NT):
     "%nonterm"
@@ -98,7 +106,7 @@ class items (NT):
         "%reduce item"
         self.val = args[0].val
     def reduce_1 (self, *args):
-        "%reduce item items"
+        "%reduce items item"
         self.val = args[0].val + args[1].val
 
 class item (NT):
