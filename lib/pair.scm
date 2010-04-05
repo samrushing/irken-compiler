@@ -13,6 +13,14 @@
 (define (cons a b)
   (list:cons a b))
 
+(define car
+  () -> (error "car")
+  (x . _) -> x)
+
+(define cdr
+  () -> (error "cdr")
+  (_ . y) -> y)
+
 ;; http://groups.google.com/group/comp.lang.scheme/msg/0055f311d1e1ce08
 
 (define (reverse-onto l1 l2)
@@ -63,3 +71,19 @@
     ((:nil) l)
     ((:cons hd tl)
      (list:cons (p hd) (map p tl)))))
+
+(define (vector->list v)
+  (let loop ((n (- (vector-length v) 1)) (acc (list:nil)))
+    (if (< n 0)
+	acc
+	(loop (- n 1) (list:cons v[n] acc)))))
+
+(define (list->vector l)
+  (define recur
+    v _ ()      -> v
+    v n (x . y) -> (begin (set! v[n] x) (recur v (+ n 1) y)))
+  (match l with
+    ()       -> #()  ;; special-case test for empty list
+    (x . _)  -> (let ((n (length l))
+		      (v (%make-vector n x)))
+		  (recur v 0 l))))
