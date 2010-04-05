@@ -27,9 +27,8 @@ class RuntimeLiteral (Exception):
 
 class transformer:
 
-    def __init__ (self, safety, context):
+    def __init__ (self, context):
         self.constants = {}
-        self.safety = safety
         self.context = context
         self.constructors = []
         self.match = match.compiler (context)
