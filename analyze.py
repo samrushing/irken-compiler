@@ -28,10 +28,9 @@ class analyzer:
 
     """identify the definition and use of variables (and functions)."""
 
-    def __init__ (self, context, safety=1, noinline=False, verbose=False):
+    def __init__ (self, context, noinline=False, verbose=False):
         self.node_counter = 0
         self.context = context
-        self.safety=safety
         self.vars = context.var_dict
         self.constants = {}
         self.inline = not noinline
@@ -723,20 +722,21 @@ class analyzer:
         #   for escaping variables.  we do this by building an environment
         #   only below that function, anything that fails lookup is free.
 
-        def lookup (node, lenv):
+        def lookup (name, lenv):
             while lenv:
                 rib, lenv = lenv
                 for v in rib:
-                    if v is node:
+                    if v == name:
                         return v
             return False
 
         def find_escaping_variables (node, lenv):
             if node.binds():
-                names = node.get_names()
+                names = [x.name for x in node.get_names()]
                 lenv = (names, lenv)
             elif node.one_of ('varref', 'varset'):
-                if not lookup (node, lenv):
+                name = node.params
+                if not lookup (name, lenv):
                     # reference to a free variable.  flag it as escaping.
                     var = self.lookup_var (node)
                     var.escapes = True
