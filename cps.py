@@ -21,9 +21,8 @@ class register_rib:
 
 class compiler:
 
-    def __init__ (self, context, safety=1, verbose=False):
+    def __init__ (self, context, verbose=False):
         self.context = context
-        self.safety = safety
         self.verbose = verbose
         self.constants = {}
 
@@ -180,12 +179,10 @@ class compiler:
                         lambda closure_reg: gen_invoke (exp.function, closure_reg, args_reg, k)
                         )
                     )
-            return self.compile_rands (exp.rands, lenv, cont (k[1], make_application))
-
-    def compile_varref (self, tail_pos, exp, lenv, k):
-        var, addr, is_top = self.lexical_address (lenv, exp.name)
-        assert (var.name == exp.name)
-        return self.gen_varref (addr, is_top, var, k)
+            if len(exp.rands):
+                return self.compile_rands (exp.rands, lenv, cont (k[1], make_application))
+            else:
+                return make_application (None)
 
     def compile_varref (self, tail_pos, exp, lenv, k):
         var, addr, is_top = self.lexical_address (lenv, exp.name)
@@ -338,7 +335,9 @@ class compiler:
         return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
 
     def compile_function (self, tail_pos, exp, lenv, k):
-        lenv = (exp.formals, lenv)
+        if len(exp.formals):
+            # don't extend the environment if there are no args
+            lenv = (exp.formals, lenv)
         return self.gen_closure (
             exp,
             self.compile_exp (True, exp.body, lenv, cont ([], self.gen_return)),
