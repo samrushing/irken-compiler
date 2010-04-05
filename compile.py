@@ -37,8 +37,9 @@ class context:
         self.constructed = []
         self.symbols = {}
 
-def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=False, trace=False, step_solver=False, typetype=False):
+def compile_file (f, name, annotate=True, noinline=False, verbose=False, trace=False, step_solver=False, typetype=False):
     base, ext = os.path.splitext (name)
+    print 'read...'
     r = lisp_reader.reader (f)
     exp = r.read_all()
 
@@ -51,7 +52,8 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
 
     c = context()
 
-    t = transform.transformer (safety, c)
+    print 'transform...'
+    t = transform.transformer (c)
     exp2 = t.go (exp)
     if verbose:
         print '--- transform ---'
@@ -60,11 +62,15 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
     w = nodes.walker (c)
     exp3 = w.go (exp2)
 
+    print 'rename...'
     # alpha conversion
-    c.var_dict = nodes.rename_variables (exp3, c.datatypes)
+    c.var_dict = nodes.rename_variables (exp3, c)
     # find strongly connected components
+    print 'call graph...'
     c.dep_graph = graph.build_dependency_graph (exp3)
     c.scc_graph, c.scc_map = graph.strongly (c.dep_graph)
+
+    print 'typing...'
     # run the constraint generator and solver to find types
     t = solver.typer (c, verbose, step=step_solver)
 
@@ -75,7 +81,7 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
         print '--- typing 1 ---'
         exp3.pprint()
 
-    a = analyze.analyzer (c, safety, noinline, verbose)
+    a = analyze.analyzer (c, noinline, verbose)
     exp4 = a.analyze (exp3)
 
     if verbose:
@@ -90,7 +96,7 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
         print '--- typing 2 ---'
         exp4.pprint()
 
-    ic = cps.cps (c, safety=safety, verbose=verbose)
+    ic = cps.cps (c, verbose=verbose)
     exp5 = ic.go (exp4)
 
     if verbose:
@@ -99,7 +105,7 @@ def compile_file (f, name, safety=1, annotate=True, noinline=False, verbose=Fals
 
     fo = open ('%s.c' % base, 'wb')
     num_regs = cps.the_register_allocator.max_reg
-    b = backend.c_backend (fo, name, num_regs, c, safety=safety, annotate=annotate, trace=trace)
+    b = backend.c_backend (fo, name, num_regs, c, annotate=annotate, trace=trace)
     b.emit (exp5)
     b.done()
     fo.close()
@@ -161,16 +167,8 @@ if __name__ == '__main__':
     # run the type solver *before* inlining as well as after.
     typetype = argtest ('-tt')
 
-    if '-s' in sys.argv:
-        i = sys.argv.index ('-s')
-        level = int (sys.argv[i+1])
-        del sys.argv[i:i+2]
-        safety = level
-    else:
-        safety = 1
-
     if '-f' in sys.argv:
         sys.argv.remove ('-f')
         name = sys.argv[1]
-        compile_file (open (name, 'rb'), name, safety, annotate, noinline, verbose, trace, step_solver, typetype)
+        compile_file (open (name, 'rb'), name, annotate, noinline, verbose, trace, step_solver, typetype)
         cc (name, optimize=optimize)
