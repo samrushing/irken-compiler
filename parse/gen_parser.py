@@ -57,7 +57,7 @@ class translator:
                     # this will do the kleene-ing
                     nt1 = gensym (name, where+['s1'])
                     emit (nt0, r0)
-                    emit (nt1, nt1, nt0)
+                    emit (nt1, nt0, nt1)
                     if prod[0] == 'star':
                         emit (nt1)
                     else:
@@ -160,10 +160,11 @@ class translator:
         rules = []
         rename = {}
         for nt, prods in map.iteritems():
-            if len(prods) == 1 and len(prods[0]) == 1:
+            # rule0: rule1 (unless rule1 is a terminal!)
+            if len(prods) == 1 and len(prods[0]) == 1 and map.has_key (prods[0][0]):
                 rename[prods[0][0]] = nt
         for nt, prods in map.iteritems():
-            if len(prods) == 1 and len(prods[0]) == 1:
+            if len(prods) == 1 and len(prods[0]) == 1 and map.has_key (prods[0][0]):
                 pass
             else:
                 nt = rename.get (nt, nt)
