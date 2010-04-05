@@ -250,7 +250,7 @@ class constraint_generator:
     def go (self, exp):
         t = t_var()
         c, top_tv = self.gen (exp, t), t
-        check_constraint (c, top_tv)
+        #check_constraint (c, top_tv)
         return c, top_tv
 
     def gen (self, exp, t):
