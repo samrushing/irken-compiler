@@ -5,7 +5,7 @@
 #	file_input is a module or sequence of commands read from an input file;
 #	eval_input is the input for the eval() and input() functions.
 # NB: compound_stmt in single_input is followed by extra NEWLINE!
-single_input: NEWLINE | simple_stmt | compound_stmt NEWLINE
+#single_input: NEWLINE | simple_stmt | compound_stmt NEWLINE
 file_input: (NEWLINE | stmt)* ENDMARKER
 #eval_input: testlist NEWLINE* ENDMARKER
 
@@ -82,7 +82,7 @@ test: or_test ['if' or_test 'else' test] | lambdef
 or_test: and_test ('or' and_test)*
 and_test: not_test ('and' not_test)*
 not_test: 'not' not_test | comparison
-comparison: expr (COMP_OP expr)*
+comparison: expr (comp_op expr)*
 
 # done partially by the lexer
 #comp_op: '<'|'>'|'=='|'>='|'<='|'<>'|'!='|'in'|'not' 'in'|'is'|'is' 'not'
@@ -130,6 +130,6 @@ gen_if: 'if' old_test [gen_iter]
 testlist1: test (',' test)*
 
 # not used in grammar, but may appear in "node" passed from Parser to Compiler
-encoding_decl: NAME
+#encoding_decl: NAME
 
 yield_expr: 'yield' [testlist]
