@@ -235,6 +235,23 @@
 	     (loop1 tail)))))))
   )
       
+;; print a parse tree out in a way that facilitates writing patterns for it.
+(define ppt
+  (item:nt sym items) -> (begin (print-string "(item:nt ") (print sym) (print-string " ") (ppt-list items) (print-string ")"))
+  (item:t  sym str)   -> (begin (print-string "(item:t ") (print sym) (print-string " \"") (print-string str) (print-string "\")"))
+  )
+
+(define (ppt-list l)
+  (print-string "(")
+  (ppt-list2 l))
+
+(define ppt-list2
+  () -> (print-string ")")
+  (hd . tl) -> (begin (ppt hd) (print-string " ") (ppt-list2 tl))
+  )
+
+;; AST
+
 (datatype atom
   (:name string)
   (:number int)
@@ -246,6 +263,8 @@
   (:atom (atom))
   )
 
+;; parse-tree->AST
+
 (define p-atom
   (item:t 'NAME x)   -> (atom:name x)
   (item:t 'NUMBER x) -> (atom:number (string->int x))
@@ -253,25 +272,20 @@
   _ -> (error "p-atom")
   )
 
-(define p-list3
-  ((item:t 'comma _) x) -> (p-expr x)
-  _ -> (error "p-list3")
-  )
-
-(define p-list2
-  ;; it's a left-recursive list - note how x and y are nonobviously reversed.
-  (item:nt _ (x . y)) -> (list:cons (p-list3 y) (p-list2 x))
+(define p-list
+  (item:nt _ ((item:t 'comma _) expr recur)) -> (list:cons (p-expr expr) (p-list recur))
   (item:nt _ ())      -> (list:nil)
   _ -> (error "p-list2")
   )
 
-(define p-list
-  (item:nt 'list (expr rest)) -> (list:cons (p-expr expr) (p-list2 rest))
-  _ -> (error "p-list")
+(define p-args
+  (item:nt _ ((item:nt 'list (expr rest)))) -> (list:cons (p-expr expr) (p-list rest))
+  (item:nt _ ()) -> (list:nil)
+  _ -> (error "p-args")
   )
 
 (define p-expr2
-  (item:nt 'predicate ((item:t 'NAME name) _ args _)) -> (expr:pred name (p-list args))
+  (item:nt 'predicate ((item:t 'NAME name) _ args _)) -> (expr:pred name (p-args args))
   (item:nt 'atom (x)) -> (expr:atom (p-atom x))
   _ -> (error "p-expr2")
   )
@@ -281,8 +295,10 @@
   _ -> (error "p-expr")
   )
 
+;; an unparser
+
 (define print-expr
-  (expr:pred name args) -> (begin (print-string name) (print-string "(") (print-args (reverse args)) (print-string ")") #u)
+  (expr:pred name args) -> (begin (print-string name) (print-string "(") (print-args args) (print-string ")") #u)
   (expr:atom atom)      -> (print-atom atom))
 
 (define print-args
@@ -300,6 +316,8 @@
 (let ((t (if (> (sys:argc) 1) (parse sys:argv[1]) (parse "tests/parse_0.py"))))
   (printn t)
   (print-parse-tree t)
+  (ppt t)
+  (terpri)
   (let ((parsed (p-expr t)))
     (printn parsed)
     (print-expr parsed)
