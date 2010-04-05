@@ -498,8 +498,9 @@ def apply_substs (exp):
 
 # alpha conversion
 
-def rename_variables (exp, datatypes):
+def rename_variables (exp, context):
     vars = []
+    datatypes = context.datatypes
 
     def lookup_var (name, lenv):
         while lenv:
