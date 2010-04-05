@@ -1,6 +1,6 @@
 ;; file i/o
 
-;; ok, looks like lookup_field() is borken, this won't work until it's fixed.
+;; XXX needs to catch errors
 
 (include "lib/core.scm")
 (include "lib/pair.scm")
