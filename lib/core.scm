@@ -47,6 +47,12 @@
 (define (remainder a b)
   (%%cexp (int int -> int) "%s %% %s" a b))
 
+(define (<< a b)
+  (%%cexp (int int -> int) "%s<<%s" a b))
+
+(define (>> a b)
+  (%%cexp (int int -> int) "%s>>%s" a b))
+
 (define (min x y)
   (if (< x y) x y))
 
@@ -63,6 +69,9 @@
 
 (define (string-length s)
   (%%cexp ((raw string) -> int) "%s->len" s))
+
+(define (vector-length v)
+  (%%cexp ((vector 'a) -> int) "GET_TUPLE_LENGTH(*%s)" v))
 
 ;; this is a little harsh. 8^)
 ;; think of it as a placeholder for something better to come.
