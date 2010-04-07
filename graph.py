@@ -20,7 +20,9 @@ def build_dependency_graph (root):
                 search (sub, current_fun)
     g['top'] = set()
     search (root, g['top'])
+    #from pprint import pprint as pp
     #pp (g)
+    #raw_input()
     return g
 
 def transpose (g):
@@ -122,6 +124,9 @@ def partition_fix (exp, scc_graph):
     if parts[-1] == []:
         # dangling empty partition
         del parts[-1]
+    # within each part, retain original source order
+    for part in parts:
+        part.sort()
     return parts
 
 def reorder_fix (exp, scc_graph):
