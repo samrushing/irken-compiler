@@ -60,11 +60,7 @@ class compiler:
         elif exp.is_a ('varset'):
             return self.compile_varset (tail_pos, exp, lenv, k)
         elif exp.is_a ('literal'):
-            if exp.ltype in ('string', 'symbol'):
-                return self.gen_constructed (self.scan_constructed (exp), k)
-            else:
-                # immediates
-                return self.gen_lit (exp, k)
+            return self.compile_literal (tail_pos, exp, lenv, k)            
         elif exp.is_a ('constructed'):
             return self.gen_constructed (self.scan_constructed (exp.value), k)
         elif exp.is_a ('sequence'):
@@ -184,6 +180,13 @@ class compiler:
             else:
                 return make_application (None)
 
+    def compile_literal (self, tail_pos, exp, lenv, k):
+        if exp.ltype in ('string', 'symbol'):
+            return self.gen_constructed (self.scan_constructed (exp), k)
+        else:
+            # immediates
+            return self.gen_lit (exp, k)
+
     def compile_varref (self, tail_pos, exp, lenv, k):
         var, addr, is_top = self.lexical_address (lenv, exp.name)
         if addr[0] is None:
@@ -269,11 +272,19 @@ class compiler:
             return self.compile_primargs (exp.args, ('%vget', index), lenv, k)
         elif exp.name.startswith ('%nvget/'):
             ignore, dtype, label, index = exp.name.split ('/')
-            return self.compile_primargs (exp.args, ('%vget', index), lenv, k)
+            dt = self.context.datatypes[dtype]
+            if dt.uimm.has_key (label):
+                return self.compile_exp (tail_pos, exp.args[0], lenv, k)
+            else:
+                return self.compile_primargs (exp.args, ('%vget', index), lenv, k)
         elif exp.name.startswith ('%dtcon/'):
             ignore, dtname, label = exp.name.split ('/')
-            tag = self.context.datatypes[dtname].tags[label]
-            return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
+            dt = self.context.datatypes[dtname]
+            tag = dt.tags[label]
+            if dt.uimm.has_key (label):
+                return self.compile_exp (tail_pos, exp.args[0], lenv, k)
+            else:
+                return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
         elif exp.name == '%%match-error':
             return self.gen_primop (('%%match-error',), [], k)
         else:
