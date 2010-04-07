@@ -519,13 +519,17 @@ class c_backend:
         dtype, tags, alts, ealt = insn.params
         dt = self.context.datatypes[dtype]
         use_else = len(dt.alts) != len(alts)
-        self.write ('switch (get_safe_typecode (r%d)) {' % (test_reg,))
+        self.write ('switch (get_typecode (r%d)) {' % (test_reg,))
         for i in range (len (tags)):
-            tag = dt.tags[tags[i]]
-            arity = dt.arity (tags[i])
+            label = tags[i]
+            tag = dt.tags[label]
+            arity = dt.arity (label)
             if arity == 0:
                 # immediate/unit-constructor
                 tag = 'TC_USERIMM+%d' % (tag * 4)
+            elif arity == 1 and dt.uimm.has_key (label):
+                typename = dt.uimm[label].name.upper()
+                tag = 'TC_%s' % (typename)
             else:
                 # tuple constructor
                 tag = 'TC_USEROBJ+%d' % (tag * 4)
