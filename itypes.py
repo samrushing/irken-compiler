@@ -133,7 +133,7 @@ def abs():
 def pre (x):
     return t_predicate ('pre', (x,))
 
-# place holder for information about datatypes
+# an algebraic datatype
 class datatype:
 
     def __init__ (self, context, name, alts, tvars):
@@ -151,6 +151,7 @@ class datatype:
             tag, prod = alts[i]
             self.constructors[tag] = prod
             self.tags[tag] = i
+        self.uimm = self.optimize()
             
     def order_alts (self, alts):
         r = [None] * len (alts)
@@ -161,3 +162,31 @@ class datatype:
 
     def arity (self, alt):
         return len (self.constructors[alt])
+
+    def optimize (self):
+        # scan for the single-immediate optimization.
+        # identify all single-item alternatives that hold
+        #   an immediate type that we can discern with a
+        #   run-time tag.
+        # for example:
+        #
+        # (datatype thing (:number int) (:letter char))
+        #
+        # can be represented with no runtime overhead, because
+        # both alternatives can be a simple immediate.
+        good = {}
+        bad = set()
+        for tag, prod in self.alts:
+            if len(prod) == 1 and is_a (prod[0], t_base):
+                ty = prod[0]
+                if good.has_key (ty):
+                    bad.add (ty)
+                else:
+                    good[ty] = tag
+        # take out the bad apples
+        for ty in bad:
+            del good[ty]
+        uimm = {}
+        for k, v in good.iteritems():
+            uimm[v] = k
+        return uimm
