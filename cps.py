@@ -19,6 +19,10 @@ class register_rib:
                 return self.formals[i], self.regs[i]
         return None
 
+class fatbar_rib:
+    def __init__ (self, name):
+        self.name = name
+
 class compiler:
 
     def __init__ (self, context, verbose=False):
@@ -30,11 +34,14 @@ class compiler:
         x = 0
         while lenv:
             rib, lenv = lenv
-            if isinstance (rib, register_rib):
+            if is_a (rib, register_rib):
                 probe = rib.lookup (name)
                 if probe is not None:
                     var, reg = probe
                     return var, (None, reg), False
+            elif is_a (rib, fatbar_rib):
+                # ignore these for normal variable lookup
+                pass
             else:
                 for y in range (len (rib)):
                     if rib[y].name == name:
@@ -287,6 +294,11 @@ class compiler:
                 return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
         elif exp.name == '%%match-error':
             return self.gen_primop (('%%match-error',), [], k)
+        elif exp.name == '%%fatbar':
+            # urgh, not really a primop, but rather a control feature.  I guess it should be a new node type?
+            return self.compile_fatbar (tail_pos, exp.args, lenv, k)
+        elif exp.name == '%%fail':
+            return self.compile_fail (tail_pos, lenv, k)
         else:
             raise ValueError ("Unknown primop: %r" % (exp.name,))
 
@@ -344,6 +356,35 @@ class compiler:
             ealt = self.compile_exp (tail_pos, exp.else_clause, lenv, jump_k)
             return self.gen_nvcase (test_reg, exp.vtype, exp.tags, alts, ealt, k)
         return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
+
+    fatbar_counter = 0
+    def compile_fatbar (self, tail_pos, (e1, e2), lenv, k):
+        label = 'fatbar_%d' % (self.fatbar_counter,)
+        lenv0 = (fatbar_rib (label), lenv)
+        self.fatbar_counter += 1
+        return self.gen_fatbar (
+            label,
+            self.compile_exp (tail_pos, e1, lenv0, cont (k[1], lambda reg: self.gen_jump (reg, k))),
+            self.compile_exp (tail_pos, e2, lenv,  cont (k[1], lambda reg: self.gen_jump (reg, k))),
+            k
+            )
+
+    def compile_fail (self, tail_pos, lenv, k):
+        # lookup the closest surrounding fatbar label
+        search = lenv
+        # lexical depth to pop off
+        d = 0
+        while search:
+            rib, search = search
+            if is_a (rib, fatbar_rib):
+                return self.gen_fail (d, rib.name, k)
+            elif is_a (rib, register_rib):
+                # ignore
+                pass
+            else:
+                d += 1
+        else:
+            raise ValueError ("%%fail without fatbar??")
 
     def compile_function (self, tail_pos, exp, lenv, k):
         if len(exp.formals):
@@ -552,6 +593,8 @@ class INSN:
             return '%s %r %r' % (self.name, self.regs, self.params[0].name)
         elif self.name in ('pvcase', 'nvcase'):
             return '%s %r %r' % (self.name, self.params[0], self.regs)
+        elif self.name == 'fatbar':
+            return '%s %r %r' % (self.name, self.params[0], self.regs)
         else:
             return '%s %r %r' % (self.name, self.regs, self.params)
 
@@ -599,6 +642,12 @@ class cps (compiler):
     def gen_jump (self, reg, k):
         # k[0] is the target for the whole conditional
         return INSN ('jump', [reg, k[0]], None, None)
+
+    def gen_fatbar (self, label, e1, e2, k):
+        return INSN ('fatbar', [], (label, e1, e2), k)
+
+    def gen_fail (self, depth, label, k):
+        return INSN ('fail', [], (label, depth), None)
 
     def gen_new_env (self, size, k):
         return INSN ('new_env', [], size, k)
@@ -687,6 +736,9 @@ def flatten (exp):
         elif exp.name == 'nvcase':
             types, tags, alts, ealt = exp.params
             exp.params = types, tags, [flatten (x) for x in alts], flatten (ealt)
+        elif exp.name == 'fatbar':
+            label, e1, e2 = exp.params
+            exp.params = label, flatten (e1), flatten (e2)
         r.append (exp)
         exp = next
     return r
@@ -720,6 +772,10 @@ def pretty_print (insns, depth=0):
             types, tags, alts, ealt = insn.params
             for alt in alts + [ealt]:
                 pretty_print (alt, depth+1)
+        elif insn.name == 'fatbar':
+            label, e1, e2 = insn.params
+            pretty_print (e1, depth+1)
+            pretty_print (e2, depth+1)
 
 # when <let> expressions are in a leaf position, the bindings may be
 #  be stored in registers rather than an environment tuple.  due to 
@@ -758,6 +814,11 @@ def remove_moves (insns):
             types, alts = insn.params
             for alt in alts:
                 remove_moves (alt)
+        elif insn.name == 'fatbar':
+            # XXX never tested, dead code
+            label, e1, e2 = insn.params
+            remove_moves (e1)
+            remove_moves (e2)
         if insn.name != 'move' and map.has_key (insn.target):
             # remove any that are blown away
             del map[insn.target]
@@ -786,6 +847,12 @@ def walk (insns):
             for alt in alts + [ealt]:
                 for y in walk (alt):
                     yield y
+        elif insn.name == 'fatbar':
+            label, e1, e2 = insn.params
+            for x in walk (e1):
+                yield x
+            for x in walk (e2):
+                yield x
 
 def walk_function (insns):
     "iterate only the insns in this function body"
@@ -807,6 +874,12 @@ def walk_function (insns):
             for alt in alts:
                 for x in walk_function (alt):
                     yield x
+        elif insn.name == 'fatbar':
+            label, e1, e2 = insn.params
+            for x in walk_function (e1):
+                yield x
+            for x in walk_function (e2):
+                yield x
 
 def find_allocation (insns, verbose):
     funs = [ x for x in walk (insns) if x.name == 'close' ]
