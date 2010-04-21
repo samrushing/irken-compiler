@@ -523,7 +523,9 @@ class transformer:
             else:
                 alts0.append ((label, self.expand_exp (['begin'] + body)))
         if len(alts) != len (dt.alts) and not else_clause:
-            raise ValueError ("variant case does not have correct number of alternatives")
+            #raise ValueError ("variant case does not have correct number of alternatives")
+            # XXX maybe distinguish between vcase from the match compiler vs user-provided ones?
+            print "variant case does not have correct number of alternatives"
         if not else_clause:
             else_clause = ['%%match-error']
         return ['nvcase', datatype, self.expand_exp (val), alts0, self.expand_exp (else_clause)]
