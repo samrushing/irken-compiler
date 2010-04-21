@@ -553,6 +553,20 @@ class c_backend:
             self.indent -= 1
         self.write ('}')
 
+    def insn_fatbar (self, insn):
+        label, e1, e2 = insn.params
+        self.emit (e1)
+        self.write ('goto %s_over;' % (label,))
+        self.write ('%s:' % (label,))
+        self.emit (e2)
+        self.write ('%s_over:' % (label,))
+
+    def insn_fail (self, insn):
+        label, npop = insn.params
+        if npop:
+            self.write ('lenv = ((object %s)lenv)%s;' % ('*' * npop, '[1]' * npop))
+        self.write ('goto %s;' % (label,))
+
     def check_free_regs (self, free_regs):
         "describe the free_regs to new_env() for gc"
         # XXX do we need a bitfield, or an integer?
