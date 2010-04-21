@@ -42,6 +42,9 @@ class constructor:
     def __repr__ (self):
         return '(%s/%s %s)' % (self.datatype, self.alt, ' '.join ([repr(x) for x in self.subs]))
 
+FAIL = ['%%fail']
+ERROR = ['%%match-error']
+
 # The next step in this code is to try to optimize the generated tree, which should be a matter of
 #   using heuristics to pick which pattern out of several to begin with.  This code always starts
 #   with the left-most pattern, and descends recursively; see first_pats_are() below.
@@ -70,7 +73,7 @@ class compiler:
         for pats, code in rules:
             kinds = [ self.kind (x) for x in pats ]
             rules0.append ((kinds, code))
-        return vars, self.match (vars, rules0, ['%%match-error'])
+        return vars, self.match (vars, rules0, ERROR)
             
     def kind (self, p):
         if is_a (p, list):
@@ -148,6 +151,14 @@ class compiler:
             rules0.append ((pats[1:], self.subst (var, pats[0].name, code)))
         return vars, rules0, default
 
+    def fatbar (self, e1, e2):
+        if e1 == FAIL:
+            return e2
+        elif e2 == FAIL:
+            return e1
+        else:
+            return ['%%fatbar', e1, e2]
+
     def constructor_rule (self, vars, rules, default):
         # ok, group them by constructor (retaining the order within each constructor alt).
         alts = {}
@@ -162,6 +173,10 @@ class compiler:
             else:
                 alts[alt].append ((pats, code))
         cases = []
+        if default != ERROR:
+            default0 = FAIL
+        else:
+            default0 = default
         for alt, rules0 in alts.iteritems():
             # new variables to stand for the fields of the constructor
             vars0 = [ self.gensym() for x in range (dt.arity (alt)) ]
@@ -180,12 +195,16 @@ class compiler:
                 if wild[i]:
                     vars1[i] = '_'
             cases.append (
-                [[['colon', alt]] + vars1, self.match (vars0 + vars[1:], rules1, default)]
+                [[['colon', alt]] + vars1, self.match (vars0 + vars[1:], rules1, default0)]
                 )
         if len(alts) < len (dt.alts):
             # an incomplete vcase, stick in an else clause.
-            cases.append (['else', default])
-        return ['vcase', datatype, vars[0]] +  cases
+            cases.append (['else', default0])
+        result = ['vcase', datatype, vars[0]] + cases
+        if default != ERROR:
+            return self.fatbar (result, default)
+        else:
+            return result
 
     def constant_rule (self, vars, rules, default):
         # This is a simplified version of the constructor rule.  Here I'm departing from the book,
