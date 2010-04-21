@@ -1334,8 +1334,16 @@ class solver:
             return c_forall ((0,), arrow (0, vector (0), t_int()))
         elif name == '%%array-set':
             return c_forall ((0,), arrow (t_undefined(), vector (0), t_int(), 0))
+        # ------
+        # pattern matching
+        # ------
         elif name == '%%match-error':
             return c_forall ((0,), arrow (0))
+        elif name == '%%fatbar':
+            return c_forall ((0,0), arrow (0, 0, 0))
+        elif name == '%%fail':
+            return c_forall ((0,), arrow (0))
+        # -------
         elif name.count (':') == 1:
             # a constructor used in a 'constructed literal'
             dt, alt = name.split (':')
