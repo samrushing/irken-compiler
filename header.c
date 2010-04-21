@@ -386,7 +386,7 @@ vm (int argc, char * argv[])
   }
 
   
-  // these could probably be written in scheme...
+  // these could probably be written in irken...
   pxll_int dump_image (char * filename, object * closure) {
     FILE * dump_file = fopen (filename, "wb");
     pxll_int offset;
