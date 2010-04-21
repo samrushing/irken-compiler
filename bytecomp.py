@@ -105,13 +105,22 @@ class byte_cps (cps.cps):
         return cps.INSN ('lit', [], index, k)
 
 class opcodes:
-    lit =  0
-    ret =  1
-    add =  2
-    sub =  3
-    eq  =  4
-    tst =  5
-    jmp =  6
+    lit    =  0
+    ret    =  1
+    add    =  2
+    sub    =  3
+    eq     =  4
+    tst    =  5
+    jmp    =  6
+    fun    =  7
+    tail   =  8
+    tail0   = 9
+    env    = 10
+    arg    = 11
+    ref    = 12
+    mov    = 13
+    push   = 14
+    trcall = 15
 
 class compiler:
     # byte-code compiler for vm/vm.scm (irken)
@@ -120,6 +129,7 @@ class compiler:
         self.name = name
         self.nregs = nregs
         self.context = c
+        self.fun_addrs = {}
 
     def write (self, s):
         self.fo.write (s)
@@ -170,8 +180,9 @@ class compiler:
         elif n < 255:
             return [n]
         else:
+            bytes = []
             while n:
-                bytes.insert (0, chr (n & 0xff))
+                bytes.insert (0, n & 0xff)
                 n >>= 8
             if len(bytes) > 255:
                 raise ValueError ("integer too large")
@@ -212,6 +223,52 @@ class compiler:
         else_code = self.emit (else_code)
         then_code.extend ([opcodes.jmp] + self.encode_int (len(else_code)))
         return [opcodes.tst, insn.regs[0]] + self.encode_int (len (then_code)) + then_code + else_code
+
+    def insn_close (self, insn):
+        fun, body, free = insn.params
+        body_code = self.emit (body)
+        return [opcodes.fun, insn.target] + self.encode_int (len (body_code)) + body_code
+
+    def insn_invoke_tail (self, insn):
+        closure_reg, args_reg = insn.regs
+        if args_reg is None:
+            return [opcodes.tail0, closure_reg]
+        else:
+            return [opcodes.tail, closure_reg, args_reg]
+
+    def insn_new_env (self, insn):
+        size = insn.params
+        return [opcodes.env, insn.target, size]
+
+    def insn_store_tuple (self, insn):
+        [arg_reg, tuple_reg] = insn.regs
+        i, offset, n = insn.params
+        return [opcodes.arg, tuple_reg, arg_reg, i]
+
+    def insn_varref (self, insn):
+        addr, is_top, var = insn.params
+        depth, index = addr
+        return [opcodes.ref, insn.target, depth, index]
+
+    def insn_move (self, insn):
+        reg_var, reg_src = insn.regs
+        if reg_src is not None:
+            # from varset
+            return [opcodes.mov, reg_var, reg_src]
+        elif insn.target != 'dead':
+            return [opcodes.mov, insn.target, reg_var]
+        else:
+            # dead move
+            pass
+
+    def insn_push_env (self, insn):
+        [args_reg] = insn.regs
+        return [opcodes.push, args_reg]
+
+    def insn_tr_call (self, insn):
+        regs = insn.regs
+        depth, fun = insn.params
+        return [opcodes.trcall, depth, len(regs)] + regs
 
 if __name__ == '__main__':
     import sys
