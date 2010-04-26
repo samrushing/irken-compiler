@@ -28,13 +28,13 @@ class analyzer:
 
     """identify the definition and use of variables (and functions)."""
 
-    def __init__ (self, context, noinline=False, verbose=False):
+    def __init__ (self, context):
         self.node_counter = 0
         self.context = context
         self.vars = context.var_dict
         self.constants = {}
-        self.inline = not noinline
-        self.verbose = verbose
+        self.inline = not context.noinline
+        self.verbose = context.verbose
         self.inline_multiplier = {}
 
     def analyze (self, root):
