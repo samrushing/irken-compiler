@@ -70,8 +70,13 @@
 (define (string-length s)
   (%%cexp ((raw string) -> int) "%s->len" s))
 
+(define (make-vector n val)
+  (%make-vector n val))
+
 (define (vector-length v)
-  (%%cexp ((vector 'a) -> int) "GET_TUPLE_LENGTH(*%s)" v))
+  (%%cexp
+   ((vector 'a) (vector 'a) -> int)
+   "(%s == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%s)" v v))
 
 ;; this is a little harsh. 8^)
 ;; think of it as a placeholder for something better to come.
