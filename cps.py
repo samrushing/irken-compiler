@@ -83,7 +83,7 @@ class compiler:
         elif exp.is_a ('fix'):
             return self.compile_let_splat (tail_pos, exp, lenv, k)
         elif exp.is_a ('let_splat'):
-            if self.safe_for_let_reg (exp):
+            if self.safe_for_let_reg (tail_pos, exp, k):
                 return self.compile_let_reg (tail_pos, exp, lenv, k)
             else:
                 return self.compile_let_splat (tail_pos, exp, lenv, k)
@@ -138,14 +138,15 @@ class compiler:
             exp.index = index
         return index
 
-    def safe_for_let_reg (self, exp):
+    def safe_for_let_reg (self, tail_pos, exp, k):
         # we only want to use registers for bindings when
         #  1) we're in a leaf position (to avoid consuming registers
         #     too high on the stack, and to avoid escaping variables),
         #  2) there's not too many bindings (again, avoid consuming regs)
         #  3) none of the variables escape (storing a binding in a reg
         #     defeats the idea of a closure)
-        if exp.leaf and len(exp.names) <= 4:
+        #if exp.leaf and len(exp.names) <= 4:
+        if (exp.leaf or tail_pos) and len(exp.names) <= 4:
             for name in exp.names:
                 if name.escapes:
                     return False
@@ -198,7 +199,7 @@ class compiler:
         var, addr, is_top = self.lexical_address (lenv, exp.name)
         if addr[0] is None:
             # register variable
-            return self.gen_move (addr[1], None, k)
+            return self.gen_move (addr[1], None, var.name, k)
         else:
             return self.gen_varref (addr, is_top, var, k)
 
@@ -207,7 +208,7 @@ class compiler:
         assert (var.name == exp.name)
         if addr[0] is None:
             # register variable
-            fun = lambda reg: self.gen_move (addr[1], reg, k)
+            fun = lambda reg: self.gen_move (addr[1], reg, var.name,k)
         else:
             fun = lambda reg: self.gen_assign (addr, is_top, var, reg, k)
         return self.compile_exp (False, exp.value, lenv, cont (k[1], fun))
@@ -636,8 +637,8 @@ class cps (compiler):
     def gen_primop (self, primop, regs, k):
         return INSN ('primop', regs, primop, k)
 
-    def gen_move (self, reg_var, reg_src, k):
-        return INSN ('move', [reg_var, reg_src], None, k)
+    def gen_move (self, reg_var, reg_src, name, k):
+        return INSN ('move', [reg_var, reg_src], name, k)
 
     def gen_jump (self, reg, k):
         # k[0] is the target for the whole conditional
