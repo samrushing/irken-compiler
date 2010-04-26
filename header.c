@@ -4,6 +4,7 @@
 static int lookup_field (int tag, int label);
 
 static
+inline
 pxll_int
 get_typecode (object * ob)
 {
@@ -16,6 +17,34 @@ get_typecode (object * ob)
   } else {
     return (pxll_int)*((pxll_int *)ob) & 0xff;
   }
+}
+
+static
+inline
+pxll_int
+get_noint_typecode (object * ob)
+{
+  if (IMMEDIATE (ob)) {
+    return (pxll_int) ob & 0xff;
+  } else {
+    return (pxll_int) * ((pxll_int*) ob) & 0xff;
+  }
+}
+
+static
+inline
+pxll_int
+get_imm_typecode (object * ob)
+{
+  return (pxll_int)ob & 0xff;
+}
+
+static
+inline
+pxll_int
+get_tup_typecode (object * ob)
+{
+  return (pxll_int)*((pxll_int *)ob) & 0xff;
 }
 
 static
@@ -43,7 +72,11 @@ static
 object *
 dump_object (object * ob, int depth)
 {
-  indent (depth);
+  // indent (depth);
+  if (depth > 100) {
+    fprintf (stdout , "...");
+    return (object *) PXLL_UNDEFINED;
+  }
   if (!ob) {
     fprintf (stdout, "<null>");
   } else if (is_int (ob)) {
@@ -110,7 +143,7 @@ dump_object (object * ob, int depth)
         int i;
 	fprintf (stdout, "#(");
         for (i=0; i < n; i++) {
-          dump_object ((object *) t->val[i], 0);
+          dump_object ((object *) t->val[i], depth+1);
 	  if (i < n-1) {
 	    fprintf (stdout, " ");
 	  }
@@ -133,7 +166,7 @@ dump_object (object * ob, int depth)
         int i;
 	fprintf (stdout, "{u%d ", (tc - TC_USEROBJ)>>2);
         for (i=0; i < n; i++) {
-          dump_object ((object *) t->val[i], 0);
+          dump_object ((object *) t->val[i], depth+1);
 	  if (i < n-1) {
 	    fprintf (stdout, " ");
 	  }
@@ -252,6 +285,7 @@ read_header (FILE * file)
   return 0;
 }
 
+#ifndef NO_RANGE_CHECK
 // used to check array references.  some day we might try to teach
 //   the compiler when/how to skip doing this...
 void
@@ -263,6 +297,13 @@ range_check (object * o, unsigned int index)
     abort();
   }
 }
+#else
+void
+inline
+range_check (object * o, unsigned int index)
+{
+}
+#endif
 
 pxll_int verbose_gc = 1;
 pxll_int clear_fromspace = 0;
@@ -322,7 +363,6 @@ vm (int argc, char * argv[])
   object * freep = heap0;
   int i; // loop counter
   
-  // due to the way reg alloc works, <return> is nearly always r0
 #define PXLL_RETURN(d)	result = r##d; goto *k[3]
 
 #include "gc.c"
