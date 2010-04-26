@@ -227,19 +227,14 @@ class transformer:
         if '.' in formals:
             raise ValueError ("variable arity not supported")
         result = []
-        nary = False
         for i in range (len (formals)):
             formal = formals[i]
-            if formal == '.':
-                assert (len (formals) == i)
-                nary = True
+            if ':' in formal:
+                name, type = formal.split (':')
             else:
-                if ':' in formal:
-                    name, type = formal.split (':')
-                else:
-                    name, type = formal, None
-                result.append ((name, type))
-        return nary, result
+                name, type = formal, None
+            result.append ((name, type))
+        return result
 
     # ----------- special forms ----------------
 
@@ -454,7 +449,7 @@ class transformer:
         while i < len (exp):
             if exp[i] == '->':
                 i += 1
-                rules.append ((patterns, self.expand_exp (exp[i])))
+                rules.append ((patterns, exp[i]))
                 patterns = []
                 i += 1
             else:
