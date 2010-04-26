@@ -7,6 +7,7 @@ import graph
 import analyze
 import cps
 import transform
+import context
 
 is_a = isinstance
 from pdb import set_trace as trace
@@ -29,28 +30,20 @@ from pprint import pprint as pp
 #
 # [we might also want to skip analyze/inlining?  can we?]
 
-class context:
-    # maintain some context between passes
-    def __init__ (self):
-        self.datatypes = {}
-        self.literals = {}
-
-def compile_file (f, name, verbose=True):
+def compile_file (f, name, c):
     base, ext = os.path.splitext (name)
     print 'read...'
     r = lisp_reader.reader (f)
     exp = r.read_all()
 
-    if verbose:
+    if c.verbose:
         print '--- read ---'
         pp (exp)
-
-    c = context()
 
     print 'transform...'
     t = transform.transformer (c)
     exp2 = t.go (exp)
-    if verbose:
+    if c.verbose:
         print '--- transform ---'
         pp (exp2)
 
@@ -65,17 +58,17 @@ def compile_file (f, name, verbose=True):
     c.dep_graph = graph.build_dependency_graph (exp3)
     c.scc_graph, c.scc_map = graph.strongly (c.dep_graph)
 
-    a = analyze.analyzer (c, True, verbose)
+    a = analyze.analyzer (c)
     exp4 = a.analyze (exp3)
 
-    if verbose:
+    if c.verbose:
         print '--- analyzer ---'
         exp4.pprint()
 
-    ic = byte_cps (c, verbose=verbose)
+    ic = byte_cps (c, verbose=c.verbose)
     exp5 = ic.go (exp4)
 
-    if verbose:
+    if c.verbose:
         print '--- cps ---'
         cps.pretty_print (exp5)
 
@@ -121,6 +114,24 @@ class opcodes:
     mov    = 13
     push   = 14
     trcall = 15
+    ref0   = 16
+    call   = 17
+    pop    = 18
+    ge     = 19
+
+class label:
+    counter = 0
+    def __init__ (self):
+        self.val = label.counter
+        label.counter += 1
+    def __repr__ (self):
+        return '<L%d>' % (self.val,)
+
+class label_ref:
+    def __init__ (self, label):
+        self.val = label.val
+    def __repr__ (self):
+        return '<R%d>' % (self.val)
 
 class compiler:
     # byte-code compiler for vm/vm.scm (irken)
@@ -129,7 +140,7 @@ class compiler:
         self.name = name
         self.nregs = nregs
         self.context = c
-        self.fun_addrs = {}
+        self.fun_labels = {}
 
     def write (self, s):
         self.fo.write (s)
@@ -139,8 +150,36 @@ class compiler:
 
     def go (self, insns):
         self.emit_literals (self.context.literals)
+        # find label offsets
+        pc = 0
+        labels = {}
+        refs = []
+        r = []
         for x in self.emit (insns):
-            self.fo.write (chr(x))
+            if is_a (x, label):
+                labels[x.val] = pc
+            elif is_a (x, label_ref):
+                refs.append ((x, pc))
+                # placeholder
+                r.append (None)
+                pc += 1
+            else:
+                r.append (x)
+                pc += 1
+        # fill in label refs
+        for lab, offset in refs:
+            assert (r[offset] is None)
+            r[offset] = self.encode_int (labels[lab.val])
+        # render
+        for x in r:
+            if is_a (x, int):
+                self.fo.write (chr (x))
+            else:
+                for y in x:
+                    self.fo.write (chr (y))
+        print r
+        for i in range (len (r)):
+            print '%3d %r' % (i,r[i])
         self.done()
 
     def emit (self, insns):
@@ -196,7 +235,7 @@ class compiler:
 
     def insn_lit (self, insn):
         lit_index = insn.params
-        return [opcodes.lit, insn.target] + self.encode_int (lit_index)
+        return [opcodes.lit, insn.target, self.encode_int (lit_index)]
 
     def insn_return (self, insn):
         val_reg = insn.regs[0]
@@ -206,6 +245,7 @@ class compiler:
         '%+' : 'add',
         '%-' : 'sub',
         '%=' : 'eq',
+        '%>=' : 'ge',
         }
 
     def insn_primop (self, insn):
@@ -215,19 +255,28 @@ class compiler:
 
     def insn_test (self, insn):
         ignore, then_code, else_code = insn.params
-        # tst <reg> <then_size>
+        # TST <reg> L0
         # <then_code>
-        # <jmp>
+        # JMP L1
+        # L0:
         # <else_code>
+        # L1:
+        l0 = label()
+        l1 = label()
         then_code = self.emit (then_code)
         else_code = self.emit (else_code)
-        then_code.extend ([opcodes.jmp] + self.encode_int (len(else_code)))
-        return [opcodes.tst, insn.regs[0]] + self.encode_int (len (then_code)) + then_code + else_code
+        then_code.extend ([opcodes.jmp, label_ref (l1), l0])
+        return [opcodes.tst, insn.regs[0], label_ref (l0)] + then_code + else_code + [l1]
 
     def insn_close (self, insn):
         fun, body, free = insn.params
+        l0 = label()
+        l1 = label()
+        if fun.name:
+            self.fun_labels[fun.name] = l1
         body_code = self.emit (body)
-        return [opcodes.fun, insn.target] + self.encode_int (len (body_code)) + body_code
+        # FUN <trg> L0 <code> L0:
+        return [opcodes.fun, insn.target, label_ref (l0), l1] + body_code + [l0]
 
     def insn_invoke_tail (self, insn):
         closure_reg, args_reg = insn.regs
@@ -243,12 +292,22 @@ class compiler:
     def insn_store_tuple (self, insn):
         [arg_reg, tuple_reg] = insn.regs
         i, offset, n = insn.params
-        return [opcodes.arg, tuple_reg, arg_reg, i]
+        r = [opcodes.arg, tuple_reg, arg_reg, i]
+        # XXX this is a bit of a hack. Because of the confusing implementation of compile_rands,
+        #     we have no way of passing the tuple to its continuation (when it's needed)
+        if insn.target != 'dead' and insn.target != tuple_reg:
+            print 'tuple move hack'
+            trace()
+            r.extend ([opcodes.mov, insn.target, tuple_reg])
+        return r
 
     def insn_varref (self, insn):
         addr, is_top, var = insn.params
         depth, index = addr
-        return [opcodes.ref, insn.target, depth, index]
+        if depth == 0:
+            return [opcodes.ref0, insn.target, index]
+        else:
+            return [opcodes.ref, insn.target, depth, index]
 
     def insn_move (self, insn):
         reg_var, reg_src = insn.regs
@@ -268,10 +327,48 @@ class compiler:
     def insn_tr_call (self, insn):
         regs = insn.regs
         depth, fun = insn.params
-        return [opcodes.trcall, depth, len(regs)] + regs
+        # XXX track this issue down...
+        depth = depth - 1
+        # TRCALL <&L0> <depth> <nregs> <reg0> <reg1> ...
+        l0 = self.fun_labels[fun.name]
+        return [opcodes.trcall, label_ref (l0), depth, len(regs)] + regs
+
+    def check_regs (self, regs):
+        # verify that a set of registers is 'complete', e.g., 4,3,2,1,0
+        # this should catch any change to register allocation and alert us.
+        n = len (regs)
+        while n:
+            n = n - 1
+            if n not in regs:
+                raise RegisterError ("register set not complete")
+
+    def insn_invoke (self, insn):
+        closure_reg, args_reg = insn.regs
+        free_regs, fun = insn.params
+        nregs = len (free_regs)
+        self.check_regs (free_regs)
+        # turn this into: SAVE, INVOKE, RESTORE
+        # SAVE/INVOKE can be combined into one insn, 'call'.
+        # RESTORE will have to be its own insn, since RETURN needs
+        #   to support tail calls.
+        return [opcodes.call, closure_reg, args_reg, nregs, opcodes.pop, insn.target]
 
 if __name__ == '__main__':
     import sys
+
+    def argtest (s):
+        if s in sys.argv:
+            sys.argv.remove (s)
+            return True
+        else:
+            return False
+
     name = sys.argv[1]
     f = open (name, 'rb')
-    compile_file (f, name)
+    c = context.context()
+
+    c.verbose  = argtest ('-v')
+    c.noinline = argtest ('-ni')
+    c.literals = {}
+
+    compile_file (f, name, c)
