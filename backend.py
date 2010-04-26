@@ -19,14 +19,14 @@ class function:
 
 class c_backend:
 
-    def __init__ (self, out, src, num_regs, context, annotate=True, trace=False):
+    def __init__ (self, out, src, num_regs, context):
         self.out = out
         self.src = src
         self.num_regs = num_regs
         self.indent = 0
         self.context = context
-        self.annotate = annotate
-        self.trace = trace
+        self.annotate = context.annotate
+        self.trace = context.trace
         self.toplevel_env = False
         self.current_fun = function ('toplevel')
         self.write_header()
@@ -514,12 +514,38 @@ class c_backend:
             self.indent -= 1
         self.write ('}')
 
+    def which_typecode_fun (self, dt):
+        # XXX cache this!
+        # getting the typecode of an unknown object involves three steps:
+        # 1) is it an integer? (check the lowest bit, return TC_INT == 0)
+        # 2) is it an immediate (check the next lowest bit, return ob & 0xff)
+        # 3) it's a pointer (indirect through it, return (*ob)&0xff
+        #
+        # if a datatype is all-immediate, or all-tuple, then using a
+        # specific form of get_typecode(), can often lead to
+        # single-instruction typecode fetching.
+        if dt.uimm.has_key ('int'):
+            # if we're using the uimm hack, we have to check for everything,
+            #  including TC_INT.
+            return 'get_typecode'
+        alts = dt.alts
+        arity = len (alts[0][1])
+        for i in range (1, len (alts)):
+            tag, prod = alts[i]
+            if len(prod) != arity:
+                return 'get_noint_typecode'
+        if arity == 0:
+            return 'get_imm_typecode'
+        else:
+            return 'get_tup_typecode'
+
     def insn_nvcase (self, insn):
         [test_reg] = insn.regs
         dtype, tags, alts, ealt = insn.params
         dt = self.context.datatypes[dtype]
         use_else = len(dt.alts) != len(alts)
-        self.write ('switch (get_typecode (r%d)) {' % (test_reg,))
+        get_typecode = self.which_typecode_fun (dt)
+        self.write ('switch (%s (r%d)) {' % (get_typecode, test_reg))
         for i in range (len (tags)):
             label = tags[i]
             tag = dt.tags[label]
@@ -656,9 +682,6 @@ class c_backend:
         if insn.target != 'dead':
             if is_top:
                 self.write ('r%d = top[%d];' % (insn.target, index+2))
-            elif var.nary:
-                # ref the environment rib, not one particular argument
-                self.write ('r%d = ((object *%s) lenv) %s;' % (insn.target, '*' * depth, '[1]' * depth))
             else:
                 # gcc generates identical code for these, and the latter is cleaner.
                 #self.write ('r%d = ((object *%s) lenv) %s[%d];' % (insn.target, '*' * depth, '[1]' * depth, index+2))
