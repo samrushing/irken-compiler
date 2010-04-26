@@ -40,6 +40,9 @@ object * heap1 = NULL;
 #define TC_SYMBOL               (7<<2) // 00011100  1c
 #define TC_USEROBJ              (8<<2) // 00100000  20
 
+// alias
+#define TC_CONTINUATION TC_SAVE
+
 // the range TC_USEROBJ to 252 is available for variant records,
 //   leaving a max of 59 variants in any one type.
 
