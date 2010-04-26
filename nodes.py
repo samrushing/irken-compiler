@@ -240,11 +240,10 @@ def walk_up (n):
 
 # this is *not* a node!
 class vardef:
-    def __init__ (self, name, type=None, nary=False):
+    def __init__ (self, name, type=None):
         assert (is_a (name, str))
         self.name = name
         self.type = type
-        self.nary = nary
         self.assigns = []
         self.refs = []
         self.function = None
@@ -414,7 +413,7 @@ class walker:
                     return conditional (WALK (exp[1]), WALK (exp[2]), WALK (exp[3]))
                 elif rator == 'function':
                     fun_name, fun_type = exp[1]
-                    nary, formals = exp[2]
+                    formals = exp[2]
                     formals = [vardef (name, type) for (name, type) in formals]
                     return function (fun_name, formals, WALK (exp[3]), fun_type)
                 elif rator == 'let_splat':
