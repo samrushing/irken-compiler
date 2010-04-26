@@ -8,6 +8,7 @@ import sys
 import compile
 import os
 import subprocess
+import context
 
 def run_test (cmd, *args):
     cmd = PJ ('tests', cmd)
@@ -66,6 +67,9 @@ files.sort()
 # tests that need special handling
 special = [x[5:] for x in dir() if x.startswith ('test_')]
 
+c = context.context()
+c.verbose = False
+
 for size, file in files:
     if file.endswith ('.scm'):
         base, ext = os.path.splitext (file)
@@ -73,14 +77,14 @@ for size, file in files:
         print 'compiling', path
         fail = file.startswith ('f')
         try:
-            compile.compile_file (open (path, 'rb'), path)
+            compile.compile_file (open (path, 'rb'), path, c)
         except:
             if not fail:
                 raise
         else:
             if fail:
                 raise ValueError ("oops - expected compilation to fail")
-            compile.cc (path, optimize=False)
+            #compile.cc (path, optimize=False)
             if base not in special:
                 out = run_test (base)
                 exp_path = PJ ('tests', base + '.exp')
