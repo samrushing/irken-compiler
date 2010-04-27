@@ -4,6 +4,7 @@ from pdb import set_trace as trace
 
 import nodes
 import solver
+import itypes
 
 is_a = isinstance
 
@@ -265,12 +266,22 @@ class compiler:
                 return self.compile_vector_literal (exp.args, lenv, k)
         elif exp.name.startswith ('%make-vector'):
             return self.compile_primargs (exp.args, ('%make-vector',), lenv, k)
+        elif exp.name.startswith ('%make-vec16'):
+            return self.compile_primargs (exp.args, ('%make-vec16',), lenv, k)
         elif exp.name in ('%%array-ref', '%%product-ref'):
             # XXX need two different insns, to handle constant index
             # XXX could support strings as character arrays by passing down a hint?
-            return self.compile_primargs (exp.args, ('%array-ref',), lenv, k)
+            if is_a (exp.type, itypes.t_int16):
+                return self.compile_primargs (exp.args, ('%vec16-ref',), lenv, k)
+            else:
+                return self.compile_primargs (exp.args, ('%array-ref',), lenv, k)
         elif exp.name == '%%array-set':
-            return self.compile_primargs (exp.args, ('%array-set',), lenv, k)
+            if is_a (exp.args[0].type.args[0], itypes.t_int16):
+                return self.compile_primargs (exp.args, ('%vec16-set',), lenv, k)
+            else:
+                return self.compile_primargs (exp.args, ('%array-set',), lenv, k)
+        elif exp.name == '%vec16-set':
+            return self.compile_primargs (exp.args, ('%vec16-set',), lenv, k)
         elif exp.name.startswith ('%vcon/'):
             ignore, label, arity = exp.name.split ('/')
             tag = self.context.variant_labels[label]
