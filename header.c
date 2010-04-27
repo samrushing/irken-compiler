@@ -151,6 +151,20 @@ dump_object (object * ob, int depth)
         fprintf (stdout, ")");
       }
 	break;
+      case TC_VEC16: {
+        pxll_vec16 * t = (pxll_vec16 *) ob;
+        pxll_int n = t->len;
+        int i;
+	fprintf (stdout, "#16(");
+        for (i=0; i < n; i++) {
+	  fprintf (stdout, "%d", t->data[i]);
+	  if (i < n-1) {
+	    fprintf (stdout, " ");
+	  }
+        }
+        fprintf (stdout, ")");
+      }
+	break;
       case TC_PAIR:
 	print_list ((pxll_pair *) ob);
         break;
@@ -290,9 +304,9 @@ read_header (FILE * file)
 //   the compiler when/how to skip doing this...
 void
 inline
-range_check (object * o, unsigned int index)
+range_check (unsigned int length, unsigned int index)
 {
-  if ((index < 0) || (index >= GET_TUPLE_LENGTH (*o))) {
+  if (index >= length) {
     fprintf (stderr, "array reference out of range\n");
     abort();
   }
@@ -300,7 +314,7 @@ range_check (object * o, unsigned int index)
 #else
 void
 inline
-range_check (object * o, unsigned int index)
+range_check (unsigned int length, unsigned int index)
 {
 }
 #endif
