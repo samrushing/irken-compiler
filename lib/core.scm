@@ -73,6 +73,9 @@
 (define (make-vector n val)
   (%make-vector n val))
 
+(define (make-vec16 n)
+  (%make-vec16 n))
+
 (define (vector-length v)
   (%%cexp
    ((vector 'a) (vector 'a) -> int)
