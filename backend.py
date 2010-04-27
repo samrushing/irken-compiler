@@ -388,12 +388,12 @@ class c_backend:
         elif name.startswith ('%array-ref'):
             [base, index] = insn.regs
             if name[-1] != '%':
-                self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
+                self.write ('range_check (GET_TUPLE_LENGTH((object*)r%d), unbox(r%d));' % (base, index))
             self.write ('r%d = ((pxll_vector*)r%d)->val[unbox(r%d)];' % (insn.target, base, index))
         elif name.startswith ('%array-set'):
             [base, index, val] = insn.regs
             if name[-1] != '%':
-                self.write ('range_check ((object*)r%d, unbox(r%d));' % (base, index))
+                self.write ('range_check (GET_TUPLE_LENGTH((object*)r%d), unbox(r%d));' % (base, index))
             self.write ('((pxll_vector*)r%d)->val[unbox(r%d)] = r%d;' % (base, index, val))
         elif name == '%record-get':
             [record] = insn.regs
@@ -457,8 +457,23 @@ class c_backend:
             self.write ('  for (i=0; i < unbox(r%d); i++) { t[i+1] = r%d; }' % (vlen, vval))
             self.write ('  r%d = t;' % (insn.target,))
             self.write ('}')
+        elif name == '%make-vec16':
+            [vlen] = insn.regs
+            self.write ('if (unbox(r%d) == 0) { r%d = (object *) TC_EMPTY_VECTOR; } else {' % (vlen, insn.target))
+            self.write ("  t=alloc_no_clear (TC_VEC16, VEC16_TUPLE_LENGTH(unbox(r%d)));" % vlen)
+            self.write ("  ((pxll_vec16*)t)->len = unbox(r%d);" % vlen)
+            self.write ('  r%d = t;' % (insn.target,))
+            self.write ('}')
         elif name == '%vget':
             self.write ('r%d = UOBJ_GET(r%d,%s);' % (insn.target, insn.regs[0], primop[1]))
+        elif name == '%vec16-ref':
+            [vreg, ireg] = insn.regs
+            self.write ('range_check (((pxll_vec16*)r%d)->len, unbox(r%d));' % (vreg, ireg))
+            self.write ('r%d = box (((pxll_vec16*)r%d)->data[unbox(r%d)]);' % (insn.target, vreg, ireg))
+        elif name == '%vec16-set':
+            [vreg, ireg, areg] = insn.regs
+            self.write ('range_check (((pxll_vec16*)r%d)->len, unbox(r%d));' % (vreg, ireg))
+            self.write ('((pxll_vec16*)r%d)->data[unbox(r%d)] = unbox(r%d);' % (vreg, ireg, areg))
         else:
             raise ValueError ("unknown primop: %s" % name)
 
