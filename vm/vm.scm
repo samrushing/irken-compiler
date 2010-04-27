@@ -135,19 +135,61 @@
 
 (define pc 0)
 
+(datatype opcode
+  (:t string int))
+
+(define (print-args n)
+  (print-string "\t")
+  (let loop ((i 0))
+    (if (< i n)
+	(begin
+	  (print CODE[(+1 (+ pc i))])
+	  (print-string " ")
+	  (loop (+1 i))
+	  )))
+  (print-string "\n")
+  )
+
+;; the tracing version
+(define (next-insn0)
+  (let ((opcode CODE[pc])
+	(info opcode-info[opcode]))
+    (match info with
+       (opcode:t name nargs)
+       -> (begin
+	    (print pc)
+	    (print-string "\t" )
+	    (print-string name)
+	    (print-args nargs)
+	    (OPS[opcode])))))
+
+(define (vm-error)
+  (let ((opcode CODE[pc])
+	(info opcode-info[opcode]))
+    (match info with
+      (opcode:t name nargs)
+      -> (begin
+	   (print-string "------------***\n")
+	   (print-string "Error in VM:\n")
+	   (print pc)
+	   (print-string "\t" )
+	   (print-string name)
+	   (print-args nargs)
+	   #u
+	   ))))
+
+;; the normal version
 (define (next-insn)
   (OPS[CODE[pc]])
   )
 
 (define (insn-lit)
-;  (printn "lit")
   (set! REGS[CODE[(+1 pc)]] LITS[CODE[(+2 pc)]])
   (set! pc (+3 pc))
   (next-insn)
   )
 
 (define (insn-ret)
-;  (printn "ret")
   (match STACK with
      (vmcont:nil)
      -> (set! RETVAL REGS[CODE[(+1 pc)]])
@@ -159,71 +201,61 @@
      ))
 
 (define (insn-add)
-;  (printn "add")
   (match REGS[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]] with
     (object:int x) (object:int y)
     -> (begin
 	 (set! REGS[CODE[(+1 pc)]] (object:int (+ x y)))
 	 (set! pc (+4 pc))
 	 (next-insn))
-    _ _ -> (error "insn-add")
+    _ _ -> (vm-error)
     ))
 
 (define (insn-sub)
-;  (printn "sub")
   (match REGS[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]] with
     (object:int x) (object:int y)
     -> (begin
 	 (set! REGS[CODE[(+1 pc)]] (object:int (- x y)))
 	 (set! pc (+4 pc))
 	 (next-insn))
-    _ _ -> (error "insn-sub")
+    _ _ -> (vm-error)
     ))
 
 (define (insn-eq)
-;  (printn "eq")
   (match REGS[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]] with
     (object:int x) (object:int y)
     -> (begin
 	 (set! REGS[CODE[(+1 pc)]] (object:bool (= x y)))
 	 (set! pc (+4 pc))
 	 (next-insn))
-    _ _ -> (error "insn-eq")
+    _ _ -> (vm-error)
     ))
 
 (define (insn-ge)
-;  (printn "ge")
   (match REGS[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]] with
     (object:int x) (object:int y)
     -> (begin
 	 (set! REGS[CODE[(+1 pc)]] (object:bool (>= x y)))
 	 (set! pc (+4 pc))
 	 (next-insn))
-    _ _ -> (error "insn-ge")
+    _ _ -> (vm-error)
     ))
 
 (define (insn-tst)
-;  (printn "tst")
   ;; tst <reg> <&L0> <then-code> <jmp &L1> L0: <else-code> L1:
   ;;  0    1     2
-;  (printn REGS)
-;  (printn REGS[CODE[(+1 pc)]])
-  ;; XXX find a way to use <if> here, matching against object:bool seems overkill
   (match REGS[CODE[(+1 pc)]] with
     (object:bool #t) -> (begin (set! pc (+3 pc)) (next-insn))
     (object:bool #f) -> (begin (set! pc CODE[(+2 pc)]) (next-insn))
-    _ -> (error "insn-tst") ;; impossible
+    _ -> (vm-error)
     ))
 
 (define (insn-jmp)
-;  (printn "jmp")
   ;; jmp &L0
   (set! pc CODE[(+1 pc)])
   (next-insn)
   )
 
 (define (insn-fun)
-;  (printn "fun")
   ;; FUN <target> <&L0> <body...> L0:
   (set! REGS[CODE[(+1 pc)]] (object:closure LITS CODE (+3 pc) LENV))
   (set! pc CODE[(+2 pc)])
@@ -231,7 +263,6 @@
   )
 
 (define (insn-tail)
-;  (printn "tail")
   ;; <tail> <closure-reg> <args-reg>
   ;; extend closure's environment with args, jump
   (match REGS[CODE[(+1 pc)]] with
@@ -243,11 +274,10 @@
 	 (set! pc pc0)
 	 (next-insn)
 	 )
-    _ -> (error "insn-tail")
+    _ -> (vm-error)
     ))
 
 (define (insn-tail0)
-;  (printn "tail0")
   ;; <tail0> <closure-reg>
   (match REGS[CODE[(+1 pc)]] with
     (object:closure lits0 code0 pc0 lenv0)
@@ -258,11 +288,10 @@
 	 (set! pc pc0)
 	 (next-insn)
 	 )
-    _ -> (error "insn-tail0")
+    _ -> (vm-error)
     ))
 
 (define (insn-env)
-;  (printn "env")
   ;; ENV <target> <size>
   (set! REGS[CODE[(+1 pc)]] (object:tuple (%make-vector CODE[(+2 pc)] (object:int 0))))
   (set! pc (+3 pc))
@@ -270,8 +299,6 @@
   )
 
 (define (insn-arg)
-;  (printn "arg")
-;  (printn REGS)
   ;; ARG <tuple-reg> <arg-reg> <index>
   ;;  0       1           2       3
   (match REGS[CODE[(+1 pc)]] with
@@ -281,11 +308,10 @@
 	 (set! pc (+4 pc))
 ;	 (printn args)
 	 (next-insn))
-    _ -> (error "insn-arg")
+    _ -> (vm-error)
     ))
 
 (define (insn-ref)
-;  (printn "ref")
   ;; REF <target> <depth> <index>
   (let loop ((env LENV)
 	     (depth CODE[(+2 pc)]))
@@ -296,31 +322,27 @@
 	   (set! pc (+4 pc))
 	   (next-insn))
       (lenv:rib _ next) n -> (loop next (sub1 depth))
-      _ _ -> (error "insn-ref")
+      _ _ -> (vm-error)
       )))
 
 (define (insn-ref0)
-;  (printn "ref0")
   ;; REF0 <target> <index>
   (match LENV with
     (lenv:rib (object:tuple vals) _)
     -> (begin
-;	 (printn vals[CODE[(+2 pc)]])
 	 (set! REGS[CODE[(+1 pc)]] vals[CODE[(+2 pc)]])
 	 (set! pc (+3 pc))
 	 (next-insn))
-    _ -> (error "insn-ref0")
+    _ -> (vm-error)
     ))
 
 (define (insn-mov)
-;  (printn "mov")
   ;; MOV <dst-ref> <src-reg>
   (set! REGS[CODE[(+1 pc)]] REGS[CODE[(+2 pc)]])
   (set! pc (+3 pc))
   (next-insn))
 
 (define (insn-push)
-;  (printn "push")
   ;; PUSH <args-reg>
   (set! LENV (lenv:rib REGS[CODE[(+ pc 1)]] LENV))
   (set! pc (+2 pc))
@@ -328,7 +350,6 @@
   )
 
 (define (insn-trcall)
-;  (printn "trcall")
   ;; TRCALL <&L0> <depth> <nregs> <reg0> <reg1> ... L0:
   ;;   0      1      2       3      4      5
   (let loop0 ((depth CODE[(+2 pc)])
@@ -345,9 +366,8 @@
 		     (else
 		      ;;                            3    + 1 == 4
 		      (set! args[(sub1 n)] REGS[CODE[(+3 (+ n pc))]])
-;		      (printn args)
 		      (loop1 (sub1 n))))))
-      _ -> (error "insn-trcall")
+      _ -> (vm-error)
       )))
 
 (define (get-regs n)
@@ -360,8 +380,6 @@
 	  (loop v (+1 i))))))
 
 (define (insn-call)
-;  (printn "call")
-;  (printn REGS[CODE[(+2 pc)]])
   ;; CALL closure_reg args_reg nregs POP target
   (match REGS[CODE[(+1 pc)]] with
     (object:closure lits0 code0 pc0 lenv0)
@@ -372,12 +390,10 @@
 	 (set! CODE code0)
 	 (set! pc pc0)
 	 (next-insn))
-    _ -> (error "call")
+    _ -> (vm-error)
     ))
 
 (define (set-regs v)
-;  (print-string "restoring: ")
-;  (printn v)
   (let loop ((n (sub1 (vector-length v))))
     (if (>= n 0)
 	(begin
@@ -386,7 +402,6 @@
   )
 
 (define (insn-pop)
-;  (printn "pop")
   (match STACK with
     (vmcont:k stack0 lenv0 pc0 regs0)
     -> (begin
@@ -397,12 +412,11 @@
 	 (set! REGS[CODE[(+1 pc)]] RETVAL)
 	 (set! pc (+2 pc))
 	 (next-insn))
-    _ -> (error "pop")
+    _ -> (vm-error)
     ))
 
-;; consider for CODE: a 16-bit or 32-bit untagged integer array?
 ;; insn data
-(define CODE #(0))
+(define CODE (list->vec16 '(0)))
 ;; literals
 (define LITS #((object:int 0)))
 ;; opcodes
@@ -429,6 +443,32 @@
     insn-ge
     ))
 
+(define (OI name nargs)
+  (opcode:t name nargs))
+
+(define opcode-info
+  #((OI "lit" 2)
+    (OI "ret" 1)
+    (OI "add" 3)
+    (OI "sub" 3)
+    (OI "eq" 3)
+    (OI "tst" 2)
+    (OI "jmp" 1)
+    (OI "fun" 2)
+    (OI "tail" 2)
+    (OI "tail0" 1)
+    (OI "env" 2)
+    (OI "arg" 3)
+    (OI "ref" 3)
+    (OI "mov" 2)
+    (OI "push" 1)
+    (OI "trcall" 3)
+    (OI "ref0" 2)
+    (OI "call" 3)
+    (OI "pop" 1)
+    (OI "ge" 3)
+    ))
+
 ;; lexical env
 (define LENV (lenv:nil))
 ;; stack
@@ -437,7 +477,7 @@
 (define RETVAL (object:int 0))
 
 (let ((code (load sys:argv[1])))
-  (set! CODE (list->vector code.code))
+  (set! CODE (list->vec16 code.code))
   (set! LITS (list->vector code.lits))
   (set! STACK (vmcont:nil))
   (printn OPS)
