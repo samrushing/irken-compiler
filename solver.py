@@ -459,9 +459,6 @@ class constraint_generator:
 class UnboundVariable (Exception):
     pass
 
-class TypeError (Exception):
-    pass
-
 class multi:
     # a 'standard' multi-equation of the form A=B=C=T where A,B,C are
     # type variables and T is an optional type.
@@ -637,6 +634,9 @@ class unifier:
             for i in range (len (ty0.args)):
                 self.add2 (ty0.args[i], ty1.args[i])
             self.add (tvs, ty0)
+        elif is_a (ty0, t_int) and is_a (ty1, t_int):
+            # covers int16 (need subtyping!)
+            self.add (tvs, t_int16())
         else:
             #self.dprint ('s-clash')
             raise TypeError ((ty0, ty1))
@@ -1330,10 +1330,14 @@ class solver:
             return c_forall ((0,), arrow (vector(0), *arg_types))
         elif name.startswith ('%make-vector'):
             return c_forall ((0,), arrow (vector(0), t_int(), 0))
+        elif name.startswith ('%make-vec16'):
+            return c_forall ((), arrow (vector(t_int16()), t_int()))
         elif name == '%%array-ref':
             return c_forall ((0,), arrow (0, vector (0), t_int()))
         elif name == '%%array-set':
             return c_forall ((0,), arrow (t_undefined(), vector (0), t_int(), 0))
+        elif name == '%vec16-set':
+            return c_forall ((), arrow (t_undefined(), vector(t_int16()), t_int(), t_int16()))
         # ------
         # pattern matching
         # ------
