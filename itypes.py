@@ -2,10 +2,14 @@
 
 is_a = isinstance
 
+class TypeError (Exception):
+    pass
+
 # 'itypes' since 'types' is a standard python module
 
 class _type:
-    pass
+    def unify (self, other):
+        raise TypeError
 
 class t_base (_type):
     name = 'base'
@@ -42,6 +46,10 @@ class t_continuation (t_base):
 class t_unit (t_base):
     name = 'unit'
 
+# meant only for (vector int16)
+class t_int16 (t_int):
+    name = 'int16'
+
 base_types = {
     'int' : t_int(),
     'bool' : t_bool(),
@@ -51,6 +59,7 @@ base_types = {
     'unit': t_unit(),
     'continuation' : t_continuation(),
     'symbol' : t_symbol(),
+    'int16' : t_int16(),
     }
 
 def base_n (n, base, digits):
