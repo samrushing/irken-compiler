@@ -142,7 +142,8 @@ class compiler:
     def safe_for_let_reg (self, tail_pos, exp, k):
         # we only want to use registers for bindings when
         #  1) we're in a leaf position (to avoid consuming registers
-        #     too high on the stack, and to avoid escaping variables),
+        #     too high on the stack - which means fewer registers to save
+        #     around each funcall).
         #  2) there's not too many bindings (again, avoid consuming regs)
         #  3) none of the variables escape (storing a binding in a reg
         #     defeats the idea of a closure)
