@@ -30,7 +30,7 @@ class context:
             #   know about the 'builtin' cons and nil constructors, we
             #   hard-code them in here.  You'll note that TC_PAIR is
             #   two entries before TC_USEROBJ...
-            'cons': -2,
+            'cons': -3,
             'nil': -3,
             }
         # don't throw away precious tag space.
