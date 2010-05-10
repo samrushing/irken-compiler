@@ -120,11 +120,31 @@ class transformer:
                         exp[0] = rator
                         return probe (exp)
                     else:
-                        return [rator] + [self.expand_exp (x) for x in exp[1:]]
+                        return self.cheat_check ([rator] + [self.expand_exp (x) for x in exp[1:]])
                 else:
                     return [self.expand_exp (x) for x in exp]
             else:
                 return [self.expand_exp (x) for x in exp]
+        else:
+            return exp
+
+    ZERO = lisp_reader.atom ('int', 0)
+    def cheat_check (self, exp):
+        if exp[0] == '>':
+            if exp[2] == self.ZERO:
+                return ['>0', exp[1]]
+            else:
+                return exp
+        elif exp[0] == '<':
+            if exp[2] == self.ZERO:
+                return ['<0', exp[1]]
+            else:
+                return exp
+        elif exp[0] == '=':
+            if exp[2] == self.ZERO:
+                return ['zero?', exp[1]]
+            else:
+                return exp
         else:
             return exp
 
@@ -441,7 +461,7 @@ class transformer:
             name = formals[0]
             return [name, ['function', name, formals[1:]] + body]
     
-    def exp_match (self, exp):
+    def exp_match (self, exp, vars=None):
         # (<p00> <p01> ... -> <r0> <p10> <p11> ...)
         rules = []
         patterns = []
@@ -456,7 +476,9 @@ class transformer:
                 patterns.append (exp[i])
                 i += 1
         assert (not exp[i:])
-        return self.match.compile (rules)
+        if vars is None:
+            vars = [self.match.gensym() for x in range (len (rules[0][0]))]
+        return self.match.compile (rules, vars)
 
     # ----------- misc ---------------
     # this is to avoid treating the format string as a literal
@@ -557,15 +579,27 @@ class transformer:
         return self.expand_exp (r)
 
     def expand_match (self, exp):
-        # (match <exp0> <exp1> ... with <pat00> <pat01> ... -> <result0> <pat10> <pat11> ... -> <result1>)
-        args = []
+        # (match <exp0> <exp1> ... with
+        #      <pat00> <pat01> ... -> <result0>
+        #      <pat10> <pat11> ... -> <result1>)
+        vars = []
+        inits = []
         i = 1
         while exp[i] != 'with':
-            args.append (exp[i])
+            if is_a (exp[i], str):
+                # i.e., a varref... don't bother generating a new variable to hold its value,
+                #   simply pass it on down into the match compiler as-is. XXX worry about capture.
+                vars.append (exp[i])
+            else:
+                v = self.match.gensym()
+                vars.append (v)
+                inits.append ([v, exp[i]])
             i += 1
-        vars, code = self.exp_match (exp[i+1:])
-        inits = [ [vars[i], args[i]] for i in range (len (args)) ]
-        return self.expand_exp (['let', inits, code])
+        vars, code = self.exp_match (exp[i+1:], vars)
+        if len (inits):
+            return self.expand_exp (['let', inits, code])
+        else:
+            return self.expand_exp (code)
 
     def expand_cinclude (self, exp):
         self.context.cincludes.add (exp[1].value)
