@@ -378,12 +378,11 @@ class c_backend:
                             raise ValueError ("attempt to create unsupported empty tuple type")
                     else:
                         if is_a (tag, int):
-                            tag = '(TC_USEROBJ+%d)' % (tag * 4,)
+                            tag = '(TC_USEROBJ+%d)' % (tag << 2,)
                         else:
                             tag = 'TC_%s' % (tag.upper(),)
                         self.alloc ('t = alloc_no_clear (%s, %d);' % (tag, nargs), insn, nargs)
-                        for i in range (nargs):
-                            self.write ('t[%d] = r%d;' % (i+1, regs[i]))
+                        self.write (' '.join (['t[%d] = r%d;' % (i+1, regs[i]) for i in range (nargs) ]))
                         self.write ('r%d = t;' % (insn.target,))
         elif name.startswith ('%array-ref'):
             [base, index] = insn.regs
@@ -633,7 +632,7 @@ class c_backend:
 
     def insn_new_tuple (self, insn):
         tag, size = insn.params
-        self.alloc ('r%d = allocate (%d, %d);' % (insn.target, tag, size), insn, size)
+        self.alloc ('r%d = allocate (%s, %d);' % (insn.target, tag, size), insn, size)
 
     def insn_store_tuple (self, insn):
         [arg_reg, tuple_reg] = insn.regs
@@ -761,6 +760,9 @@ class c_backend:
         free_regs, fun = insn.params
         return_label = self.new_label()
         nregs = len (free_regs)
+        # sort these, might improve things
+        free_regs = free_regs[:]
+        free_regs.sort()
         # save
         self.alloc ('t = allocate (TC_SAVE, %d);' % (3 + nregs), insn, 3 + nregs)
         saves = []
