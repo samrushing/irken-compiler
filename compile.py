@@ -76,7 +76,8 @@ def compile_file (f, name, c):
         cps.pretty_print (exp5)
 
     fo = open ('%s.c' % base, 'wb')
-    num_regs = cps.the_register_allocator.max_reg
+    #num_regs = cps.the_register_allocator.max_reg
+    num_regs = ic.regalloc.max_reg
     b = backend.c_backend (fo, name, num_regs, c)
     b.emit (exp5)
     b.done()
