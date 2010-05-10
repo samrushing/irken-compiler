@@ -60,12 +60,12 @@ class compiler:
         self.gensym_counter += 1
         return 'm%d' % (c,)
 
-    def compile (self, rules):
+    def compile (self, rules, vars):
         # how many pattern args?
         nrules = len (rules)
         pats, result = rules[0]
         npats = len (pats)
-        vars = [ self.gensym() for x in range (npats) ]
+        #vars = [ self.gensym() for x in range (npats) ]
         for pats, result in rules[1:]:
             # must have the same number of patterns in each
             assert (len(pats) == npats)
