@@ -13,6 +13,8 @@ class atom:
     def __init__ (self, kind, value):
         self.kind = kind
         self.value = value
+    def __eq__ (self, other):
+        return is_a (other, atom) and other.kind == self.kind and other.value == self.value
     def __repr__ (self):
         return '<A %s %r>' % (self.kind, self.value)
 
