@@ -67,15 +67,14 @@ files.sort()
 # tests that need special handling
 special = [x[5:] for x in dir() if x.startswith ('test_')]
 
-c = context.context()
-c.verbose = False
-
 for size, file in files:
     if file.endswith ('.scm'):
         base, ext = os.path.splitext (file)
         path = os.path.join ('tests', file)
         print 'compiling', path
         fail = file.startswith ('f')
+        c = context.context()
+        c.verbose = False
         try:
             compile.compile_file (open (path, 'rb'), path, c)
         except:
