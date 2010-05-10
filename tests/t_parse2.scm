@@ -117,9 +117,9 @@
 	       (set! held-token eof-token))
 	      (else
 	       (set! tok (token-gen))
-	       ;(print "token-gen: ") (printn tok)
+	       (print "token-gen: ") (printn tok)
 	       ))
-	;(print "next-token loop ") (printn start-of-line)
+	(print "next-token loop ") (printn start-of-line)
 	(if start-of-line
 	    ;; in this state we might emit INDENT/DEDENT
 	    (let ((this-indent (get-indent tok)))
@@ -273,8 +273,7 @@
   (printn t)
   (print-parse-tree t)
   (ppt t)
-  (terpri)
-  ;;(c-file-input t)
-  (compile (list:nil) t)
+  ;;  (terpri)
+  ;;(compile (list:nil) t)
   )
 
