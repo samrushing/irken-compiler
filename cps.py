@@ -19,6 +19,8 @@ class register_rib:
             if name == self.formals[i].name:
                 return self.formals[i], self.regs[i]
         return None
+    def __repr__ (self):
+        return '<reg: %r %r>' % (self.formals, self.regs)
 
 class fatbar_rib:
     def __init__ (self, name):
@@ -30,6 +32,7 @@ class compiler:
         self.context = context
         self.verbose = verbose
         self.constants = {}
+        self.regalloc = register_allocator()
 
     def lexical_address (self, lenv, name):
         x = 0
@@ -61,7 +64,7 @@ class compiler:
         #W ('compile_exp: [%3d] %r\n' % (exp.serial, exp,))
 
         if tail_pos:
-            k = cont (k[1], self.gen_return)
+            k = self.cont (k[1], self.gen_return)
         
         if exp.is_a ('varref'):
             return self.compile_varref (tail_pos, exp, lenv, k)
@@ -84,7 +87,7 @@ class compiler:
         elif exp.is_a ('fix'):
             return self.compile_let_splat (tail_pos, exp, lenv, k)
         elif exp.is_a ('let_splat'):
-            if self.safe_for_let_reg (tail_pos, exp, k):
+            if self.safe_for_let_reg (tail_pos, exp, lenv, k):
                 return self.compile_let_reg (tail_pos, exp, lenv, k)
             else:
                 return self.compile_let_splat (tail_pos, exp, lenv, k)
@@ -139,7 +142,7 @@ class compiler:
             exp.index = index
         return index
 
-    def safe_for_let_reg (self, tail_pos, exp, k):
+    def safe_for_let_reg (self, tail_pos, exp, lenv, k):
         # we only want to use registers for bindings when
         #  1) we're in a leaf position (to avoid consuming registers
         #     too high on the stack - which means fewer registers to save
@@ -147,8 +150,10 @@ class compiler:
         #  2) there's not too many bindings (again, avoid consuming regs)
         #  3) none of the variables escape (storing a binding in a reg
         #     defeats the idea of a closure)
-        #if exp.leaf and len(exp.names) <= 4:
-        if (exp.leaf or tail_pos) and len(exp.names) <= 4:
+        # XXX a possible improvement: if we know that the body of the let
+        #  makes only tail calls, then it should be safe as well.  Need to
+        #  find an easy way to detect that case...
+        if exp.leaf and len(exp.names) <= 4:
             for name in exp.names:
                 if name.escapes:
                     return False
@@ -180,13 +185,13 @@ class compiler:
         else:
             def make_application (args_reg):
                 return self.compile_exp (
-                    False, exp.rator, lenv, cont (
+                    False, exp.rator, lenv, self.cont (
                         [args_reg] + k[1],
                         lambda closure_reg: gen_invoke (exp.function, closure_reg, args_reg, k)
                         )
                     )
             if len(exp.rands):
-                return self.compile_rands (exp.rands, lenv, cont (k[1], make_application))
+                return self.compile_rands (exp.rands, lenv, self.cont (k[1], make_application))
             else:
                 return make_application (None)
 
@@ -213,7 +218,7 @@ class compiler:
             fun = lambda reg: self.gen_move (addr[1], reg, var.name,k)
         else:
             fun = lambda reg: self.gen_assign (addr, is_top, var, reg, k)
-        return self.compile_exp (False, exp.value, lenv, cont (k[1], fun))
+        return self.compile_exp (False, exp.value, lenv, self.cont (k[1], fun))
 
     # collect_primargs is used by primops, simple_conditional, and tr_call.
     #   in order to avoid the needless consumption of registers, we re-arrange
@@ -237,7 +242,7 @@ class compiler:
             return ck (perm_regs)
         else:
             return self.compile_exp (
-                False, args[0], lenv, cont (
+                False, args[0], lenv, self.cont (
                     regs + k[1],
                     lambda reg: self._collect_primargs (args[1:], regs + [reg], perm, lenv, k, ck)
                     )
@@ -325,7 +330,7 @@ class compiler:
             # more than one expression
             return self.compile_exp (
                 False, exps[0], lenv,
-                dead_cont (k[1], self.compile_sequence (tail_pos, exps[1:], lenv, k))
+                self.dead_cont (k[1], self.compile_sequence (tail_pos, exps[1:], lenv, k))
                 )
 
     def compile_conditional (self, tail_pos, exp, lenv, k):
@@ -333,12 +338,12 @@ class compiler:
             return self.compile_simple_conditional (tail_pos, exp, lenv, k)
         else:
             return self.compile_exp (
-                False, exp.test_exp, lenv, cont (
+                False, exp.test_exp, lenv, self.cont (
                     k[1],
                     lambda test_reg: self.gen_test (
                         test_reg, 
-                        self.compile_exp (tail_pos, exp.then_exp, lenv, cont (k[1], lambda reg: self.gen_jump (reg, k))),
-                        self.compile_exp (tail_pos, exp.else_exp, lenv, cont (k[1], lambda reg: self.gen_jump (reg, k))),
+                        self.compile_exp (tail_pos, exp.then_exp, lenv, self.cont (k[1], lambda reg: self.gen_jump (reg, k))),
+                        self.compile_exp (tail_pos, exp.else_exp, lenv, self.cont (k[1], lambda reg: self.gen_jump (reg, k))),
                         k
                         )
                     )
@@ -349,26 +354,26 @@ class compiler:
             return self.gen_simple_test (
                 exp.test_exp.params,
                 regs,
-                self.compile_exp (tail_pos, exp.then_exp, lenv, cont (k[1], lambda reg: self.gen_jump (reg, k))),
-                self.compile_exp (tail_pos, exp.else_exp, lenv, cont (k[1], lambda reg: self.gen_jump (reg, k))),
+                self.compile_exp (tail_pos, exp.then_exp, lenv, self.cont (k[1], lambda reg: self.gen_jump (reg, k))),
+                self.compile_exp (tail_pos, exp.else_exp, lenv, self.cont (k[1], lambda reg: self.gen_jump (reg, k))),
                 k
                 )
         return self.collect_primargs (exp.test_exp.args, [], lenv, k, finish)
 
     def compile_pvcase (self, tail_pos, exp, lenv, k):
         def finish (test_reg):
-            jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
+            jump_k = self.cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
             return self.gen_pvcase (test_reg, exp.alt_formals, alts, k)
-        return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
+        return self.compile_exp (False, exp.value, lenv, self.cont (k[1], finish))
 
     def compile_nvcase (self, tail_pos, exp, lenv, k):
         def finish (test_reg):
-            jump_k = cont (k[1], lambda reg: self.gen_jump (reg, k))
+            jump_k = self.cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
             ealt = self.compile_exp (tail_pos, exp.else_clause, lenv, jump_k)
             return self.gen_nvcase (test_reg, exp.vtype, exp.tags, alts, ealt, k)
-        return self.compile_exp (False, exp.value, lenv, cont (k[1], finish))
+        return self.compile_exp (False, exp.value, lenv, self.cont (k[1], finish))
 
     fatbar_counter = 0
     def compile_fatbar (self, tail_pos, (e1, e2), lenv, k):
@@ -377,8 +382,8 @@ class compiler:
         self.fatbar_counter += 1
         return self.gen_fatbar (
             label,
-            self.compile_exp (tail_pos, e1, lenv0, cont (k[1], lambda reg: self.gen_jump (reg, k))),
-            self.compile_exp (tail_pos, e2, lenv,  cont (k[1], lambda reg: self.gen_jump (reg, k))),
+            self.compile_exp (tail_pos, e1, lenv0, self.cont (k[1], lambda reg: self.gen_jump (reg, k))),
+            self.compile_exp (tail_pos, e2, lenv,  self.cont (k[1], lambda reg: self.gen_jump (reg, k))),
             k
             )
 
@@ -405,21 +410,21 @@ class compiler:
             lenv = (exp.formals, lenv)
         return self.gen_closure (
             exp,
-            self.compile_exp (True, exp.body, lenv, cont ([], self.gen_return)),
+            self.compile_exp (True, exp.body, lenv, self.cont ([], self.gen_return)),
             k
             )
 
     def compile_let_splat (self, tail_pos, exp, lenv, k):
         # becomes this sequence:
         #   (new_env, push_env, store_env0, ..., <body>, pop_env)
-        k_body = dead_cont (k[1], self.compile_exp (tail_pos, exp.body, (exp.names, lenv), cont (k[1], lambda reg: self.gen_pop_env (reg, k))))
+        k_body = self.dead_cont (k[1], self.compile_exp (tail_pos, exp.body, (exp.names, lenv), self.cont (k[1], lambda reg: self.gen_pop_env (reg, k))))
         return self.gen_new_env (
             len (exp.names),
-            cont (
+            self.cont (
                 k[1],
                 lambda tuple_reg: self.gen_push_env (
                     tuple_reg,
-                    dead_cont (k[1], self.compile_store_rands (0, 1, exp.inits, tuple_reg, [tuple_reg] + k[1], (exp.names, lenv), k_body))
+                    self.dead_cont (k[1], self.compile_store_rands (0, 1, exp.inits, tuple_reg, [tuple_reg] + k[1], (exp.names, lenv), k_body))
                     )
                 )
             )
@@ -435,7 +440,7 @@ class compiler:
             else:
                 lenv0 = (register_rib ([names[0]], [inits[0]]), lenv)
                 return self.compile_exp (
-                    False, inits[0], lenv, cont (
+                    False, inits[0], lenv, self.cont (
                         regs + k[1],
                         lambda reg: loop (
                             names[1:],
@@ -469,7 +474,7 @@ class compiler:
             else:
                 return self.gen_new_env (
                     len (rands),
-                    cont (k[1], lambda tuple_reg: self.compile_store_rands (0, 1, rands, tuple_reg, [tuple_reg] + k[1], lenv, k))
+                    self.cont (k[1], lambda tuple_reg: self.compile_store_rands (0, 1, rands, tuple_reg, [tuple_reg] + k[1], lenv, k))
                     )
 
     # if we use collect_primargs() to populate literal vectors and records, the code
@@ -483,21 +488,19 @@ class compiler:
         #  when storing into environment ribs (because of the <next> pointer immediately
         #  after the tag).
         return self.compile_exp (
-            False, rands[i], lenv, cont (
+            False, rands[i], lenv, self.cont (
                 free_regs,
                 lambda arg_reg: self.gen_store_tuple (
                     offset, arg_reg, tuple_reg, i, len(rands),
-                    (dead_cont (free_regs, self.compile_store_rands (i+1, offset, rands, tuple_reg, free_regs, lenv, k)) if i+1 < len(rands) else k)
+                    (self.dead_cont (free_regs, self.compile_store_rands (i+1, offset, rands, tuple_reg, free_regs, lenv, k)) if i+1 < len(rands) else k)
                     )
                 )
             )
 
     def compile_vector_literal (self, rands, lenv, k):
-        # XXX fixme, this constant doesn't belong here
-        PXLL_VECTOR = 0x14
         return self.gen_new_tuple (
-            PXLL_VECTOR, len (rands),
-            cont (k[1], lambda vec_reg: self.compile_store_rands (0, 0, rands, vec_reg, [vec_reg] + k[1], lenv, k))
+            'TC_VECTOR', len (rands),
+            self.cont (k[1], lambda vec_reg: self.compile_store_rands (0, 0, rands, vec_reg, [vec_reg] + k[1], lenv, k))
             )
 
     def get_record_tag (self, sig):
@@ -528,13 +531,12 @@ class compiler:
         fields.sort (lambda a,b: cmp (a[0],b[0]))
         # lookup the runtime tag for this record
         sig = tuple ([x[0] for x in fields])
-        TC_USEROBJ = 0x20
-        tag = TC_USEROBJ + (self.get_record_tag (sig) << 2)
+        tag = 'TC_USEROBJ+%d' % (self.get_record_tag (sig) << 2)
         # now compile the expression as a %make-tuple
         args = [x[1] for x in fields]
         return self.gen_new_tuple (
             tag, len (args),
-            cont (k[1], lambda rec_reg: self.compile_store_rands (0, 0, args, rec_reg, [rec_reg] + k[1], lenv, k))
+            self.cont (k[1], lambda rec_reg: self.compile_store_rands (0, 0, args, rec_reg, [rec_reg] + k[1], lenv, k))
             )
 
     def compile_record_extension (self, fields, exp, lenv, k):
@@ -560,7 +562,17 @@ class compiler:
             new_tag = self.get_record_tag (new_sig)
             return self.compile_primargs ([exp] + args, ('%extend-tuple', labels, sig, new_tag), lenv, k)
 
-# the allocator and cont stuff *should* be in the compiler instance...
+    # --- continuations ---
+
+    def cont (self, free_regs, generator):
+        # allocate a register for this continuation, then generate the
+        #   code that will create the value to go into it.
+        reg = self.regalloc.allocate (free_regs)
+        return (reg, free_regs, generator (reg))
+
+    def dead_cont (self, free_regs, k):
+        # a 'dead' continuation - only for a side-effect.  Doesn't need a register allocated.
+        return ('dead', free_regs, k)
 
 class register_allocator:
 
@@ -576,15 +588,6 @@ class register_allocator:
             else:
                 i += 1
         
-the_register_allocator = register_allocator()
-
-def cont (free_regs, generator):
-    reg = the_register_allocator.allocate (free_regs)
-    return (reg, free_regs, generator (reg))
-
-def dead_cont (free_regs, k):
-    return ('dead', free_regs, k)
-
 def box (n):
     return (n<<1)|1
 
@@ -717,7 +720,7 @@ class cps (compiler):
         lenv = None
         # only enable the 'top lenv' hack if the top level is a fix
         self.use_top = exp.is_a ('fix')
-        result = self.compile_exp (True, exp, lenv, cont ([], self.gen_return))
+        result = self.compile_exp (True, exp, lenv, self.cont ([], self.gen_return))
         result = flatten (result)
         #pretty_print (result)
         #remove_moves (result)
