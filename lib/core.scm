@@ -32,6 +32,12 @@
 (define (>= a b)
   (%%cexp (int int -> bool) "%s>=%s" a b))
 
+(define (>0 a)
+  (%%cexp (int -> bool) "%s>0" a))  
+
+(define (<0 a)
+  (%%cexp (int -> bool) "%s<0" a))  
+
 (define (+ a b)
   (%%cexp (int int -> int) "%s+%s" a b))
 
@@ -52,6 +58,18 @@
 
 (define (>> a b)
   (%%cexp (int int -> int) "%s>>%s" a b))
+
+(define (logior a b)
+  (%%cexp (int int -> int) "%s|%s" a b))
+
+(define (logxor a b)
+  (%%cexp (int int -> int) "%s^%s" a b))
+
+(define (logand a b)
+  (%%cexp (int int -> int) "%s&%s" a b))
+
+(define (lognot a b)
+  (%%cexp (int int -> int) "%s~%s" a b))
 
 (define (min x y)
   (if (< x y) x y))
