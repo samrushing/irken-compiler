@@ -76,9 +76,14 @@ class c_backend:
             if exp.is_a ('primapp'):
                 if exp.name.startswith ('%dtcon/'):
                     # constructor
-                    ignore, dt, alt = exp.name.split ('/')
-                    tag = dtm[dt].tags[alt]
-                    if len(exp.args):
+                    ignore, dtname, alt = exp.name.split ('/')
+                    dt = dtm[dtname]
+                    tag = dt.tags[alt]
+                    if dt.uimm.has_key (alt):
+                        # a single immediate argument, use it directly.
+                        assert (len(exp.args) == 1)
+                        return walk (exp.args[0])
+                    elif len(exp.args):
                         # constructor with args, a tuple
                         # first - emit all the args
                         args = [ walk (x) for x in exp.args ]
@@ -538,15 +543,16 @@ class c_backend:
         # if a datatype is all-immediate, or all-tuple, then using a
         # specific form of get_typecode(), can often lead to
         # single-instruction typecode fetching.
-        if dt.uimm.has_key ('int'):
-            # if we're using the uimm hack, we have to check for everything,
-            #  including TC_INT.
+        if len (dt.uimm):
+            # if we're using the uimm hack, we have to check for everything, including TC_INT.
             return 'get_typecode'
         alts = dt.alts
         arity = len (alts[0][1])
         for i in range (1, len (alts)):
             tag, prod = alts[i]
             if len(prod) != arity:
+                if dt.name == 'action':
+                    trace()
                 return 'get_noint_typecode'
         if arity == 0:
             return 'get_imm_typecode'
@@ -694,12 +700,14 @@ class c_backend:
         name = var.name
         depth, index = addr
         if insn.target != 'dead':
+            if self.trace:
+                self.write ('stack_depth_indent (k); fprintf (stderr, "(%d, %d)"); debug_lenv ((pxll_tuple *) lenv);' % (depth, index))
             if is_top:
                 self.write ('r%d = top[%d];' % (insn.target, index+2))
             else:
                 # gcc generates identical code for these, and the latter is cleaner.
-                #self.write ('r%d = ((object *%s) lenv) %s[%d];' % (insn.target, '*' * depth, '[1]' * depth, index+2))
-                self.write ('r%d = varref (%d,%d);' % (insn.target, depth, index))
+                #self.write ('r%d = ((object *%s) lenv) %s[%d];' % (insn.target, '*' * depth, '[1]' * depth, index+2)) 
+               self.write ('r%d = varref (%d,%d);' % (insn.target, depth, index))
 
     def insn_varset (self, insn):
         val_reg = insn.regs[0]
@@ -800,10 +808,17 @@ class c_backend:
     def insn_tr_call (self, insn):
         regs = insn.regs
         depth, fun = insn.params
-        if depth > 1:
-            npop = depth - 1
-            self.write ('lenv = ((object %s)lenv)%s;' % ('*' * npop, '[1]' * npop))
         nargs = len (regs)
+        # we want to jump up the stack back to the start of this function.
+        # to do that, we need to pop a certain number of levels off of <lenv>.
+        # <depth> pops would put us at the function itself.
+        # <depth-1> points us at the functions args, if any.
+        npop = depth - 1
+        if nargs == 0:
+            # a zero-arg trcall needs an extra level of pop
+            npop += 1
+        if npop:
+            self.write ('lenv = ((object %s)lenv)%s;' % ('*' * npop, '[1]' * npop))
         for i in range (nargs):
             self.write ('lenv[%d] = r%d;' % (2+i, regs[i]))
         self.write ('goto %s;' % (self.function_label (fun),))
