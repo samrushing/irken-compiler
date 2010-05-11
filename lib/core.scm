@@ -114,17 +114,17 @@
 
 (define (id x) x)
 
-;; the '^' prefix tells the compiler to never inline this
-;;  function - which would not work correctly otherwise
-;;  (i.e., it can capture the wrong continuation...)
-;;  [this will be Done Better Later]
-
 (define (getcc)
   (%%cexp (-> continuation) "k"))
 
 ;; using 'b here - is that hand-waving?
 (define (putcc k r)
   (%%cexp (continuation 'a -> 'b) "(k=%s, %s)" k r))
+
+;; the '^' prefix tells the compiler to never inline this
+;;  function - which would not work correctly otherwise
+;;  (i.e., it can capture the wrong continuation...)
+;;  [this will be Done Better Later]
 
 (define (^call/cc p)
   (let ((k (getcc)))
