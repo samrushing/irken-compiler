@@ -156,21 +156,23 @@
 
       (define (lookup-action state kind)
 	(let loop ((l actions[state]))
-	  (vcase action-list l
-	     ((:nil) (error "missing action?"))
-	     ((:cons tkind action tl)
-	      (if (eq? terminals[tkind] kind)
-		  action
-		  (loop tl))))))
+	  (match l with
+            (action-list:nil)
+	    -> (error "missing action?")
+	    (action-list:cons tkind action tl)
+	    -> (if (eq? terminals[tkind] kind)
+		   action
+		   (loop tl)))))
 
       (define (lookup-goto state nt)
 	(let loop ((l goto[state]))
-	  (vcase goto-list l
-	     ((:nil) (error "missing goto?"))
-	     ((:cons nt0 new-state tl)
-	      (if (eq? nt0 nt)
-		  new-state
-		  (loop tl))))))
+	  (match l with
+	     (goto-list:nil)
+	     -> (error "missing goto?")
+	     (goto-list:cons nt0 new-state tl)
+	     -> (if (eq? nt0 nt)
+		    new-state
+		    (loop tl)))))
 
       (define (pop-n n)
 	(let loop ((n n) (result (list:nil)))
@@ -189,13 +191,12 @@
       (let loop ((tok (next-token)))
 	(cond ((eq? tok eof-token) (pop) (pop))
 	      (else
-	       (print-string "token: ") (printn tok)
-	       (print-string "state: ") (printn (get-state))
+	       ;(print-string "token: ") (printn tok)
+	       ;(print-string "state: ") (printn (get-state))
 	       ;;(print "indentation: ") (printn indentation)
 	       (vcase token tok
 		 ((:t kind val)
 		  (let ((a (lookup-action (get-state) kind)))
-		    (print "action ") (printn a)
 		    (vcase action a
 		      ((:shift state)
 		       (push (item:t kind val) state)
