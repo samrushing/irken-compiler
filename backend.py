@@ -379,6 +379,8 @@ class c_backend:
                         #   type to represent the empty version of it.
                         if tag == 'vector':
                             self.write ('r%d = (object *) TC_EMPTY_VECTOR;' % insn.target)
+                        elif is_a (tag, str):
+                            self.write ('r%d = (object *) TC_%s;' % (insn.target, tag.upper()))
                         else:
                             raise ValueError ("attempt to create unsupported empty tuple type")
                     else:
@@ -570,7 +572,9 @@ class c_backend:
             label = tags[i]
             tag = dt.tags[label]
             arity = dt.arity (label)
-            if arity == 0:
+            if is_a (tag, str):
+                tag = 'TC_%s' % (tag.upper())
+            elif arity == 0:
                 # immediate/unit-constructor
                 tag = 'TC_USERIMM+%d' % (tag * 4)
             elif arity == 1 and dt.uimm.has_key (label):
@@ -605,7 +609,10 @@ class c_backend:
         self.write ('goto %s_over;' % (label,))
         self.write ('%s:' % (label,))
         self.emit (e2)
-        self.write ('%s_over:' % (label,))
+        # Note: the extra semicolon here is necessary because C99 requires a 'statement'
+        #  to follow a label.  Sometimes there's no code after the label, so this avoids
+        #  that problem.  [might be possible to look at the insn's continuation instead]
+        self.write ('%s_over: ;' % (label,))
 
     def insn_fail (self, insn):
         label, npop = insn.params
