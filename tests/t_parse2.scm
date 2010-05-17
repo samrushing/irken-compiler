@@ -1,65 +1,13 @@
 (include "lib/core.scm")
 (include "lib/pair.scm")
+(include "lib/alist.scm")
 (include "lib/string.scm")
 (include "lib/frb.scm")
 (include "lib/symbol.scm")
 (include "lib/io.scm")
 
-(datatype token
-  ;;  <kind> <value>
-  (:t symbol string)
-  )
-
-(define eof-token (token:t 'eof "eof"))
-
-(define (lex producer consumer)
-  ;; producer gives us characters
-  ;; consumer takes tokens
-
-  (let ((action 'not-final)
-	(state 0))
-
-      (define (final? action)
-	(not (eq? action 'not-final)))
-
-      ;; defines the <step> function (DFA) from the lexer generator
-      (include "parse/lexstep.scm")
-
-      (let loop ((ch (producer))
-		 (last 'not-final)
-		 (current (list:nil)))
-	(cond ((char=? ch #\eof)
-	       ;; parser seems to require an extra NEWLINE in here...
-	       (consumer (token:t 'NEWLINE "\n"))
-	       (consumer (token:t '<$> "<$>")) #t)
-	      (else
-	       (set! state (step ch state))
-	       (set! action finals[state])
-	       (cond ((and (not (final? last)) (final? action))
-		      ;; we've entered a new final state
-		      (loop (producer) action (list:cons ch current)))
-		     ((and (final? last) (not (final? action)))
-		      ;; we've left a final state - longest match - emit token
-		      (consumer (token:t last (list->string (reverse current))))
-		      (set! state 0)
-		      (loop ch 'not-final (list:nil)))
-		     (else
-		      ;; accumulate this character
-		      (loop (producer) action (list:cons ch current)))))))
-      ))
-
-(define (make-lex-generator file)
-
-  (define (producer)
-    (file:read-char file))
-
-  (make-generator
-   (lambda (consumer)
-     (lex producer consumer)
-     (let forever ()
-       (consumer eof-token)
-       (forever))
-     )))
+(include "parse/lexstep.scm")
+(include "lib/lexer.scm")
 
 ;; parser tables
 
@@ -77,12 +25,6 @@
 
 (include "parse/t2.scm")
 
-;; stack = (:elem item state stack) | (:empty)
-;; item  = (:nt kind (list (item 'a))) | (:t symbol)
-;; args  = (:cons item args) | (:nil)
-;; state = int
-;; kind  = symbol
-
 (datatype item
   (:nt symbol (list (item)))
   (:t symbol string)
@@ -97,7 +39,7 @@
   (let ((file (file:open-read path))
 	(token-gen (make-lex-generator file))
 	(paren-stack (list:nil))
-	(indentation 0)
+	(indents (list:cons 0 (list:nil)))
 	(start-of-line #t)
 	(held-token eof-token)
 	(tok eof-token)
@@ -109,7 +51,12 @@
       ;; non-whitespace at the front of a line
       (token:t _ _)             -> 0)
 
-    (define (next-token)
+    (define (get-top-indent)
+      (match indents with
+        () -> 0
+	(indent . _) -> indent))
+
+    (define (next-token0)
       ;; process (i.e., filter/synthesize) the token stream
       (let loop ()
 	(cond ((not (eq? held-token eof-token))
@@ -117,20 +64,22 @@
 	       (set! held-token eof-token))
 	      (else
 	       (set! tok (token-gen))
-	       (print "token-gen: ") (printn tok)
+	       ;;(print "token-gen: ") (printn tok)
 	       ))
-	(print "next-token loop ") (printn start-of-line)
+	;;(print "next-token loop ") (printn start-of-line)
 	(if start-of-line
 	    ;; in this state we might emit INDENT/DEDENT
-	    (let ((this-indent (get-indent tok)))
+	    (let ((this-indent (get-indent tok))
+		  (top-indent (get-top-indent)))
 	      (set! start-of-line #f)
 	      (set! held-token tok)
-	      (cond ((> this-indent indentation)
-		     (set! indentation this-indent)
+	      (cond ((> this-indent top-indent)
+		     (set! indents (list:cons this-indent indents))
 		     (token:t 'INDENT ""))
-		    ((< this-indent indentation)
-		     (set! indentation this-indent)
-		     ;; urgh, we have to emit DEDENT *and* NEWLINE
+		    ((< this-indent top-indent)
+		     (set! indents (cdr indents))
+		     ;; go around again, might be more DEDENT
+		     (set! start-of-line #t)
 		     (token:t 'DEDENT ""))
 		    (else
 		     (loop))))
@@ -145,6 +94,11 @@
 	      (token:t _ _) -> tok
 	      ))
 	))
+
+    (define (next-token)
+      (let ((t (next-token0)))
+	(print-string "next-token: ") (printn t)
+	t))
 
     (let ((stack (stack:empty)))
 
@@ -191,8 +145,8 @@
       (let loop ((tok (next-token)))
 	(cond ((eq? tok eof-token) (pop) (pop))
 	      (else
-	       ;(print-string "token: ") (printn tok)
-	       ;(print-string "state: ") (printn (get-state))
+	       ;;(print-string "token: ") (printn tok)
+	       ;;(print-string "state: ") (printn (get-state))
 	       ;;(print "indentation: ") (printn indentation)
 	       (vcase token tok
 		 ((:t kind val)
@@ -208,15 +162,15 @@
 		       (loop tok)))))))))
       )))
 
+(define (indent n)
+  (let loop ((n n))
+    (cond ((= n 0) #t)
+	  (else
+	   (print-string "  ")
+	   (loop (- n 1))))))
+
 (define (print-parse-tree t)
 
-  (define (indent n)
-    (let loop ((n n))
-      (cond ((= n 0) #t)
-	    (else
-	     (print-string "  ")
-	     (loop (- n 1))))))
-  
   (let loop0 ((d 0)
 	      (t t))
     (indent d)
@@ -248,33 +202,257 @@
   (hd . tl) -> (begin (ppt hd) (print-string " ") (ppt-list2 tl))
   )
 
-;; return a list of strings resembling a byte-code
-(define compile
-  acc (item:nt 'atom ((item:t _ val))) -> (list:cons val acc)
-
-  ;; how to tell if a node is populated or 'empty'?
-  ;; you look here:
-  ;;                                      VVVVV
-  acc (item:nt 'arith_expr (a (item:nt _ (b c _))))
-  ;; if there are three items it is populated. if there are two it is not.
-  ;; the last item is always (item:nt _ ()) representing empty production rule.
-  -> (list:cons "PLUS"  (compile (compile acc c) a))
-
-  acc (item:nt 'term (a b))            -> (list:cons "TIMES" (compile (compile acc a) b))
-  acc (item:nt _ x) -> (compile-list acc x)
-  acc _ -> acc
+(datatype formal
+  (:var string)
+  ;;(:var-with-default string (expr))
   )
 
-(define compile-list
-  acc ()      -> acc
-  acc (x . y) -> (compile (compile-list acc y) x)
+(datatype ifclause
+  (:case (expr) (expr))
   )
+
+(datatype expr
+  (:atom string)
+  (:binary string (expr) (expr))
+  (:unary string (expr))
+  (:funcall (expr) (list (expr)))
+  (:getitem (expr) (expr))
+  (:getattr (expr) string)
+  (:lambda (list (formal)) (expr))
+  (:sequence (list (expr)))
+  (:function string (list (formal)) (expr))
+  (:return (expr))
+  (:if (list (ifclause)))
+  (:unparsed symbol (list (expr)))
+  )
+
+(define (ppt-expr d e)
+  (print-string "\n")
+  (indent d)
+  (match e with
+    (expr:atom s) -> (begin (print s) (print-string " ") #u)
+    (expr:binary op a b) -> (begin (print-string "binary ") (print-string op) (ppt-expr (+ d 1) a) (ppt-expr (+ d 1) b) #u)
+    (expr:unary op a) -> (begin (print-string "unary ") (print-string op) (ppt-expr (+ d 1) a) #u)
+    (expr:funcall fun args) -> (begin (print-string "funcall ") (ppt-expr (+ d 1) fun) (ppt-expr-list (+ d 1) args) #u)
+    (expr:getitem item index) -> (begin (print-string "getitem ") (ppt-expr (+ d 1) item) (ppt-expr (+ d 1) index) #u)
+    (expr:getattr item attr) -> (begin (print-string "getattr ") (ppt-expr (+ d 1) item) (print-string " ") (print-string attr) #u)
+    (expr:lambda formals body) -> (begin (print-string "lambda ") (print formals) (ppt-expr (+ d 1) body))
+    (expr:sequence items) -> (begin (print-string "sequence ") (ppt-expr-list (+ d 1) items) #u)
+    (expr:function name formals body) -> (begin (print-string "function ") (print-string name) (print-string " ") (print formals) (ppt-expr (+ d 1) body))
+    (expr:return val) -> (begin (print-string "return") (ppt-expr (+ d 1) val))
+    (expr:if clauses) -> (begin (print-string "if") (ppt-ifclause (+ d 1) clauses))
+    (expr:unparsed symbol args) -> (begin (print-string "unparsed ") (print symbol) (ppt-expr-list (+ d 1) args) #u)
+    ))
+
+(define (ppt-expr-list d l)
+  (match l with
+    () -> #u
+    (hd . tl) -> (begin (ppt-expr d hd) (ppt-expr-list d tl))))
+
+(define (ppt-ifclause d l)
+  (match l with
+    () -> #u
+    ((ifclause:case test result) . tl) -> (begin (ppt-expr d test) (print-string "?") (ppt-expr (+ d 1) result) (ppt-ifclause d tl))))
+
+(define (perror where x)
+  (print-string "decode error in ")
+  (print-string where)
+  (print-string ": ")
+  (printn x)
+  (error "decode error"))
+
+(define p-operator
+  (item:nt _ ((item:t kind data))) -> data
+  (item:t kind data) -> data
+  x -> (perror "p-operator" x))
+
+(define p-binary-splat
+  e () -> e
+  e (op arg (item:nt _ splat)) -> (expr:binary (p-operator op) e (p-binary-splat (p-expr arg) splat))
+  e x -> (perror "p-binary-splat" x)
+  )
+
+(define p-binary
+  (a (item:nt _ splat)) -> (p-binary-splat (p-expr a) splat)
+  x -> (perror "p-binary" x))
+
+(define p-power
+  (arg0 trailer (item:nt _ bin-splat)) -> (p-binary-splat (p-trailer-splat (p-expr arg0) trailer) bin-splat)
+  x -> (perror "p-power" x))
+
+(define p-factor
+  (unary f) -> (expr:unary (p-operator unary) (p-expr f))
+  (power)   -> (p-expr power)
+  x -> (perror "p-factor" x))
+
+(define p-trailer-splat
+  exp0 (item:nt _ ())    -> exp0
+  exp0 (item:nt _ (trailer splat)) -> (p-trailer-splat (p-trailer exp0 trailer) splat)
+  exp0 x -> (perror "p-trailer-splat" x)
+  )
+
+(define p-trailer
+  exp0 (item:nt _ ((item:t 'lparen _) arglist _))        -> (expr:funcall exp0 (p-arglist arglist))
+  exp0 (item:nt _ ((item:t 'lbracket _) exp1 _))         -> (expr:getitem exp0 (p-expr exp1))
+  exp0 (item:nt _ ((item:t 'dot _) (item:t 'NAME name))) -> (expr:getattr exp0 name)
+  exp0 x -> (perror "p-trailer" x)
+  )
+
+(define p-arglist
+  (item:nt _ ()) -> (list:nil)
+  _ -> (error "arglist"))
+
+(define (p-formals formals)
+  (define p-formals0
+    () -> (list:nil)
+    (_ (item:t _ name) (item:nt _ splat)) -> (list:cons (formal:var name) (p-formals0 splat))
+    x -> (perror "p-formals0" x))
+  (match formals with
+    (item:nt _ ((item:t _ name0) (item:nt _ splat) _)) -> (list:cons (formal:var name0) (p-formals0 splat))
+    x -> (perror "p-formals" x)))
+
+(define p-funcdef
+  ;; 'def' NAME '(' <formals> ')' ':' <suite>
+  (_ (item:t _ name) _ (item:nt _ (formals)) _ _ (item:nt _ body))
+  -> (expr:function name (p-formals formals) (p-suite body))
+  x -> (perror "p-funcdef" x))
+
+(define p-lambda
+  (_ (item:nt _ (formals)) _ body) -> (expr:lambda (p-formals formals) (p-expr body))
+  x -> (perror "p-lambda" x))
+
+(define sequence
+    () -> (expr:sequence (list:nil))
+    (a) -> a
+    l -> (expr:sequence l))
+
+(define p-sequence
+  acc () -> (sequence (reverse acc))
+  acc (_ item (item:nt _ splat)) -> (p-sequence (list:cons (p-expr item) acc) splat)
+  acc x -> (perror "p-sequence" x))
+
+(define p-testlist
+  (test0 (item:nt _ splat) _) -> (p-sequence (list:cons (p-expr test0) (list:nil)) splat)
+  x -> (perror "p-testlist" x))
+
+(define p-simple-stmt
+  (small (item:nt _ splat) _ _) -> (p-sequence (list:cons (p-expr small) (list:nil)) splat)
+  x -> (perror "p-simple-stmt" x))
+
+(define (p-file-input l)
+  (let loop ((acc (list:nil))
+	     (l l))
+    (match l with
+      () -> (sequence acc)
+      ((item:nt _ ((item:t 'NEWLINE _))) (item:nt _ splat)) -> (loop acc splat) ;; ignore NEWLINE tokens
+      ((item:nt _ (item0)) (item:nt _ splat)) -> (loop (list:cons (p-expr item0) acc) splat)
+      x -> (perror "p-file-input" x))
+    ))
+
+(define p-stmt+
+  (exp0) -> (list:cons (p-expr exp0) (list:nil))
+  (exp0 (item:nt _ plus)) -> (list:cons (p-expr exp0) (p-stmt+ plus))
+  x -> (perror "p-stmt+" x))
+
+(define p-suite
+  ;; suite: simple_stmt | NEWLINE INDENT stmt+ DEDENT
+  (stmt) -> (p-expr stmt)
+  (_ _ (item:nt _ stmts) _) -> (sequence (p-stmt+ stmts))
+  x -> (perror "p-suite" x))
+
+(define p-return
+  ;; return_stmt: 'return' [testlist]
+  (_ (item:nt _ ())) -> (expr:return (expr:atom "None"))
+  (_ (item:nt _ ((item:nt _ val)))) -> (expr:return (p-testlist val))
+  x -> (perror "p-return" x))
+
+(define p-elif-splat
+  acc () -> acc
+  ;; ('elif' test ':' suite)*
+  acc (_ test _ (item:nt _ body) (item:nt _ splat))
+  -> (list:cons
+      (ifclause:case (p-expr test) (p-suite body))
+      (p-elif-splat acc splat))
+  acc x -> (perror "p-elif-splat" x))
+
+(define p-else
+  () -> (list:nil)
+  (_ _ (item:nt _ body)) -> (list:cons (ifclause:case (expr:atom "True") (p-suite body)) (list:nil))
+  x -> (perror "p-else" x))
+
+(define p-if-stmt
+  ;; if_stmt: 'if' test ':' suite ('elif' test ':' suite)* ['else' ':' suite]
+  (_ test _ (item:nt _ body) (item:nt _ splat) (item:nt _ else))
+  -> (expr:if
+      (list:cons
+       (ifclause:case (p-expr test) (p-suite body))
+       (p-elif-splat (p-else else) splat)))
+  x -> (perror "p-if-stmt" x))
+
+(define p-list
+  ()      -> (list:nil)
+  (x . y) -> (list:cons (p-expr x) (p-list y))
+  )
+
+(define p-not-test
+  (a) -> (p-expr a)
+  (not a) -> (expr:unary "not" (p-expr a))
+  x -> (perror "p-not-test" x))
+
+(define p-one
+  (a) -> (p-expr a)
+  x -> (perror "p-one" x))
+
+(define p-expr
+  (let ((l (alist/new)))
+    (define (A key val)
+      (set! l (alist/add l key val)))
+    (A 'expr           p-binary)
+    (A 'xor_expr       p-binary)
+    (A 'and_expr       p-binary)
+    (A 'shift_expr     p-binary)
+    (A 'arith_expr     p-binary)
+    (A 'term           p-binary)
+    (A 'comparison     p-binary)
+    (A 'or_test        p-binary)
+    (A 'and_test       p-binary)
+    (A 'factor         p-factor)
+    (A 'power          p-power)
+    (A 'test           p-one)
+    (A 'not_test       p-not-test)
+    (A 'lambdef        p-lambda)
+    (A 'testlist       p-testlist)
+    (A 'exprlist       p-testlist)
+    (A 'expr_stmt      p-binary)
+    (A 'small_stmt     p-one)
+    (A 'simple_stmt    p-simple-stmt)
+    (A 'stmt           p-one)
+    (A 'file_input     p-file-input)
+    (A 'compound_stmt  p-one)
+    (A 'funcdef        p-funcdef)
+    (A 'suite          p-suite)
+    (A 'flow_stmt      p-one)
+    (A 'if_stmt        p-if-stmt)
+    (A 'return_stmt    p-return)
+    (lambda (x)
+      (match x with
+        (item:t kind val)                -> (expr:atom val)
+	(item:nt 'atom ((item:t _ val))) -> (expr:atom val)
+	(item:nt kind val) -> (let ((probe (alist/lookup l kind)))
+				(match probe with
+				  (maybe:no) -> (expr:unparsed kind (p-list val))
+				  (maybe:yes fun) -> (fun val)))
+	))))
 
 (let ((t (if (> (sys:argc) 1) (parse sys:argv[1]) (parse "tests/parse_2.py"))))
   (printn t)
   (print-parse-tree t)
   (ppt t)
-  ;;  (terpri)
-  ;;(compile (list:nil) t)
+  (terpri)
+  (let ((exp (p-expr t)))
+    (ppt-expr 0 exp)
+    (print-string "\n")
+    exp
+    )
   )
 
