@@ -84,7 +84,6 @@ class t_var (_type):
         t_var.counter += 1
     def __repr__ (self):
         return base_n (self.id, len(self.letters), self.letters)
-        #return '%s.%d' % (r, self.rank)
 
 class t_predicate (_type):
     def __init__ (self, name, args):
@@ -145,6 +144,13 @@ def pre (x):
 # an algebraic datatype
 class datatype:
 
+    # this is a hack to get the predefined tags for certain datatypes.
+    # not sure what else would go in here...
+    # XXX need a way to stop a user from defining a 'whacky' list type.
+    builtin_tags = {
+        'list': {'cons':'pair', 'nil':'nil'}
+        }
+
     def __init__ (self, context, name, alts, tvars):
         self.context = context
         self.name = name
@@ -153,13 +159,17 @@ class datatype:
         self.scheme = t_predicate (name, self.tvars)
         self.constructors = {}
         self.tags = {}
+        tags = self.builtin_tags.get (name, None)
         for i in range (len (alts)):
             # assign runtime tags in the order they're defined.
             # [other choices would be to sort alphabetically, and/or
             #  immediate vs tuple]
-            tag, prod = alts[i]
-            self.constructors[tag] = prod
-            self.tags[tag] = i
+            altname, prod = alts[i]
+            self.constructors[altname] = prod
+            if tags:
+                self.tags[altname] = tags[altname]
+            else:
+                self.tags[altname] = i
         self.uimm = self.optimize()
             
     def order_alts (self, alts):
