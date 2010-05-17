@@ -615,7 +615,6 @@ class transformer:
         # (datatype <name> (tag0 type0 type1 ...) (tag1 type0 type1 ...) ...)
         name = exp[1]
         subs = exp[2:]
-        subs.reverse()
         tvars = {}
         alts = []
         for sub in subs:
