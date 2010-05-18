@@ -1,5 +1,5 @@
 # -*- Mode: Python -*-
-# based on 1.5.2, stripped down
+# based on 1.5.2, stripped down, slight mods
 file_input: (NEWLINE | stmt)*
 
 funcdef: 'def' NAME '(' [varargslist] ')' ':' suite
@@ -16,6 +16,7 @@ flow_stmt: break_stmt | continue_stmt | return_stmt | raise_stmt
 break_stmt: 'break'
 continue_stmt: 'continue'
 return_stmt: 'return' [testlist]
+raise_stmt: 'raise' [testlist]
 
 compound_stmt: if_stmt | while_stmt | for_stmt | funcdef
 
