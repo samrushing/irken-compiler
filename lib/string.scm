@@ -39,14 +39,20 @@
    (string int char -> undefined)
    "(%s[%s] = GET_CHAR (%s), PXLL_UNDEFINED)" s n c))
 
-(define (string-compare a b)
-  (let* ((min (min (string-length a) (string-length b)))
-	 (cmp (%%cexp (string string int -> int) "memcmp (%s, %s, %s)" a b min)))
-    (cond ((= cmp 0)
-	   (if (= (string-length a) (string-length b))
-	       0
-	       (if (< (string-length a) (string-length b)) -1 1)))
-	  (else cmp))))
+(define (string-append l)
+  ;; merge a list of strings into one string
+  (let ((tsize
+	 (let loop ((l0 l) (size 0))
+	   (match l0 with
+	     () -> size
+	     (hd . tl) -> (loop tl (+ size (string-length hd))))))
+	(buffer (make-string tsize)))
+    (let loop ((l0 l) (pos 0))
+      (match l0 with
+         () -> buffer
+	 (hd . tl) -> (begin
+			(buffer-copy hd 0 (string-length hd) buffer pos)
+			(loop tl (+ pos (string-length hd))))))))
 
 (define (string-compare a b)
   (let* ((alen (string-length a))
