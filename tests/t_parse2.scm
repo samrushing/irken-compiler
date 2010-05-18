@@ -222,7 +222,10 @@
   (:sequence (list (expr)))
   (:function string (list (formal)) (expr))
   (:return (expr))
-  (:if (list (ifclause)))
+  (:if (list (ifclause)) (expr))
+  (:while (expr) (expr) (expr))
+  (:for (expr) (expr) (expr) (expr))
+  (:pass)
   (:unparsed symbol (list (expr)))
   )
 
@@ -240,7 +243,10 @@
     (expr:sequence items) -> (begin (print-string "sequence ") (ppt-expr-list (+ d 1) items) #u)
     (expr:function name formals body) -> (begin (print-string "function ") (print-string name) (print-string " ") (print formals) (ppt-expr (+ d 1) body))
     (expr:return val) -> (begin (print-string "return") (ppt-expr (+ d 1) val))
-    (expr:if clauses) -> (begin (print-string "if") (ppt-ifclause (+ d 1) clauses))
+    (expr:if clauses else) -> (begin (print-string "if") (ppt-ifclause (+ d 1) clauses) (ppt-expr (+ d 1) else))
+    (expr:while test body else) -> (begin (print-string "while") (ppt-expr (+ d 1) test) (ppt-expr (+ d 1) body) (ppt-expr (+ d 1) else))
+    (expr:for vars src body else) -> (begin (print-string "for") (ppt-expr (+ d 1) vars) (ppt-expr (+ d 1) src) (ppt-expr (+ d 1) body) (ppt-expr (+ d 1) else))
+    (expr:pass) -> (begin (print-string "pass") #u)
     (expr:unparsed symbol args) -> (begin (print-string "unparsed ") (print symbol) (ppt-expr-list (+ d 1) args) #u)
     ))
 
@@ -367,17 +373,14 @@
   x -> (perror "p-return" x))
 
 (define p-elif-splat
-  acc () -> acc
+  () -> (list:nil)
   ;; ('elif' test ':' suite)*
-  acc (_ test _ (item:nt _ body) (item:nt _ splat))
-  -> (list:cons
-      (ifclause:case (p-expr test) (p-suite body))
-      (p-elif-splat acc splat))
-  acc x -> (perror "p-elif-splat" x))
+  (_ test _ (item:nt _ body) (item:nt _ splat)) -> (list:cons (ifclause:case (p-expr test) (p-suite body)) (p-elif-splat splat))
+  x -> (perror "p-elif-splat" x))
 
 (define p-else
-  () -> (list:nil)
-  (_ _ (item:nt _ body)) -> (list:cons (ifclause:case (expr:atom "True") (p-suite body)) (list:nil))
+  () -> (expr:pass)
+  (_ _ (item:nt _ body)) -> (p-suite body)
   x -> (perror "p-else" x))
 
 (define p-if-stmt
@@ -386,8 +389,21 @@
   -> (expr:if
       (list:cons
        (ifclause:case (p-expr test) (p-suite body))
-       (p-elif-splat (p-else else) splat)))
+       (p-elif-splat splat))
+      (p-else else))
   x -> (perror "p-if-stmt" x))
+
+(define p-while-stmt
+  ;; while_stmt: 'while' test ':' suite ['else' ':' suite]
+  (_ test _ (item:nt _ body) (item:nt _ else)) -> (expr:while (p-expr test) (p-suite body) (p-else else))
+  x -> (perror "p-while-stmt" x))
+
+(define p-for-stmt
+  ;; for_stmt: 'for' exprlist 'in' testlist ':' suite ['else' ':' suite]
+  (_ (item:nt _ vars) _ (item:nt _ src) _ (item:nt _ body) (item:nt _ else))
+  -> (expr:for (p-testlist vars) (p-testlist src) (p-suite body) (p-else else))
+  x -> (perror "p-for-stmt" x)
+  )
 
 (define p-list
   ()      -> (list:nil)
@@ -402,6 +418,19 @@
 (define p-one
   (a) -> (p-expr a)
   x -> (perror "p-one" x))
+
+(define (strip-quotes s)
+  (substring s 1 (- (string-length s) 1)))
+
+(define p-string+
+  (item:nt _ ((item:t _ s)))       -> (list:cons (strip-quotes s) (list:nil))
+  (item:nt _ ((item:t _ s) splat)) -> (list:cons (strip-quotes s) (p-string+ splat))
+  x -> (perror "p-string+" x))
+
+(define p-atom
+  ((item:t _ val)) -> (expr:atom val)
+  (string+) -> (expr:atom (string-append (p-string+ string+)))
+  x -> (perror "p-atom" x))
 
 (define p-expr
   (let ((l (alist/new)))
@@ -433,11 +462,14 @@
     (A 'suite          p-suite)
     (A 'flow_stmt      p-one)
     (A 'if_stmt        p-if-stmt)
+    (A 'while_stmt     p-while-stmt)
+    (A 'for_stmt       p-for-stmt)
     (A 'return_stmt    p-return)
+    (A 'atom           p-atom)
     (lambda (x)
       (match x with
         (item:t kind val)                -> (expr:atom val)
-	(item:nt 'atom ((item:t _ val))) -> (expr:atom val)
+	;(item:nt 'atom ((item:t _ val))) -> (expr:atom val)
 	(item:nt kind val) -> (let ((probe (alist/lookup l kind)))
 				(match probe with
 				  (maybe:no) -> (expr:unparsed kind (p-list val))
