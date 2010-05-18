@@ -1,6 +1,6 @@
 def thing (a, b):
-    #thingy
-    if a > b:
-        return 3
+    for x, y in z:
+        x = x + y
     else:
-        return 12
+        return "not " "today, " "zurg!"
+
