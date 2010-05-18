@@ -212,7 +212,9 @@
   )
 
 (datatype expr
-  (:atom string)
+  (:int int)
+  (:string string)
+  (:varref string)
   (:binary string (expr) (expr))
   (:unary string (expr))
   (:funcall (expr) (list (expr)))
@@ -221,11 +223,14 @@
   (:lambda (list (formal)) (expr))
   (:sequence (list (expr)))
   (:function string (list (formal)) (expr))
-  (:return (expr))
   (:if (list (ifclause)) (expr))
   (:while (expr) (expr) (expr))
   (:for (expr) (expr) (expr) (expr))
+  (:break)
+  (:continue)
   (:pass)
+  (:raise (expr))
+  (:return (expr))
   (:unparsed symbol (list (expr)))
   )
 
@@ -233,7 +238,9 @@
   (print-string "\n")
   (indent d)
   (match e with
-    (expr:atom s) -> (begin (print s) (print-string " ") #u)
+    (expr:int n) -> (begin (print n) #u)
+    (expr:string s) -> (begin (print s) #u)
+    (expr:varref s) -> (begin (print-string "varref ") (print-string s) #u)
     (expr:binary op a b) -> (begin (print-string "binary ") (print-string op) (ppt-expr (+ d 1) a) (ppt-expr (+ d 1) b) #u)
     (expr:unary op a) -> (begin (print-string "unary ") (print-string op) (ppt-expr (+ d 1) a) #u)
     (expr:funcall fun args) -> (begin (print-string "funcall ") (ppt-expr (+ d 1) fun) (ppt-expr-list (+ d 1) args) #u)
@@ -242,11 +249,14 @@
     (expr:lambda formals body) -> (begin (print-string "lambda ") (print formals) (ppt-expr (+ d 1) body))
     (expr:sequence items) -> (begin (print-string "sequence ") (ppt-expr-list (+ d 1) items) #u)
     (expr:function name formals body) -> (begin (print-string "function ") (print-string name) (print-string " ") (print formals) (ppt-expr (+ d 1) body))
-    (expr:return val) -> (begin (print-string "return") (ppt-expr (+ d 1) val))
     (expr:if clauses else) -> (begin (print-string "if") (ppt-ifclause (+ d 1) clauses) (ppt-expr (+ d 1) else))
     (expr:while test body else) -> (begin (print-string "while") (ppt-expr (+ d 1) test) (ppt-expr (+ d 1) body) (ppt-expr (+ d 1) else))
     (expr:for vars src body else) -> (begin (print-string "for") (ppt-expr (+ d 1) vars) (ppt-expr (+ d 1) src) (ppt-expr (+ d 1) body) (ppt-expr (+ d 1) else))
     (expr:pass) -> (begin (print-string "pass") #u)
+    (expr:break) -> (begin (print-string "break") #u)
+    (expr:continue) -> (begin (print-string "continue") #u)
+    (expr:raise exp) -> (begin (print-string "raise ") (ppt-expr (+ d 1) exp))
+    (expr:return val) -> (begin (print-string "return") (ppt-expr (+ d 1) val))
     (expr:unparsed symbol args) -> (begin (print-string "unparsed ") (print symbol) (ppt-expr-list (+ d 1) args) #u)
     ))
 
@@ -368,9 +378,15 @@
 
 (define p-return
   ;; return_stmt: 'return' [testlist]
-  (_ (item:nt _ ())) -> (expr:return (expr:atom "None"))
+  (_ (item:nt _ ())) -> (expr:return (expr:varref "None"))
   (_ (item:nt _ ((item:nt _ val)))) -> (expr:return (p-testlist val))
   x -> (perror "p-return" x))
+
+(define p-raise
+  ;; return_stmt: 'raise' [testlist]
+  (_ (item:nt _ ())) -> (expr:raise (expr:pass))
+  (_ (item:nt _ ((item:nt _ val)))) -> (expr:raise (p-testlist val))
+  x -> (perror "p-raise" x))
 
 (define p-elif-splat
   () -> (list:nil)
@@ -428,12 +444,20 @@
   x -> (perror "p-string+" x))
 
 (define p-atom
-  ((item:t _ val)) -> (expr:atom val)
-  (string+) -> (expr:atom (string-append (p-string+ string+)))
+  ((item:t 'NUMBER val)) -> (expr:int (string->int val))
+  ((item:t 'NAME val))   -> (expr:varref val)
+  (string+) -> (expr:string (string-append (p-string+ string+)))
   x -> (perror "p-atom" x))
+
+(define p-simple
+  ((item:t 'break _))    -> (expr:break)
+  ((item:t 'pass _))     -> (expr:pass)
+  ((item:t 'continue _)) -> (expr:continue)
+  x -> (perror "p-simple" x))
 
 (define p-expr
   (let ((l (alist/new)))
+    ;; store the parsing functions in an alist keyed by production rule.
     (define (A key val)
       (set! l (alist/add l key val)))
     (A 'expr           p-binary)
@@ -464,12 +488,15 @@
     (A 'if_stmt        p-if-stmt)
     (A 'while_stmt     p-while-stmt)
     (A 'for_stmt       p-for-stmt)
+    (A 'break_stmt     p-simple)
+    (A 'continue_stmt  p-simple)
+    (A 'pass_stmt      p-simple)
+    (A 'raise_stmt     p-raise)
     (A 'return_stmt    p-return)
     (A 'atom           p-atom)
     (lambda (x)
       (match x with
-        (item:t kind val)                -> (expr:atom val)
-	;(item:nt 'atom ((item:t _ val))) -> (expr:atom val)
+        (item:t _ _)  -> (perror "p-expr" x)
 	(item:nt kind val) -> (let ((probe (alist/lookup l kind)))
 				(match probe with
 				  (maybe:no) -> (expr:unparsed kind (p-list val))
