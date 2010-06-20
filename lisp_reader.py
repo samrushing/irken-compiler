@@ -64,6 +64,9 @@ class reader:
         elif ch == "'":
             self.next()
             result = ['quote', self.read()]
+        elif ch == "`":
+            self.next()
+            result = ['backquote', self.read()]
         elif ch == ",":
             self.next()
             result = ['comma', self.read()]
