@@ -1,3 +1,4 @@
+;; this needs to be renamed to 'list.scm'
 
 (datatype list
   (:nil)
