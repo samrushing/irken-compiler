@@ -89,6 +89,7 @@ def cc (name, context):
     base, ext = os.path.splitext (name)
     uname = os.uname()
     machine = uname[-1]
+    cc = 'gcc'
     if machine == 'amd64':
         if context.force_32:
             arch = '-m32'
@@ -112,6 +113,7 @@ def cc (name, context):
             arch += ' -m64'
     if context.no_range:
         arch += ' -DNO_RANGE_CHECK '
+    #cc = '/usr/local/bin/gcc -fplugin=/Users/rushing/src/dragonegg/dragonegg.so '
     cmd = '%s -I. -g %s %s %s.c -o %s' % (cc, arch, optimize, base, base)
     print cmd
     os.system (cmd)
