@@ -35,6 +35,9 @@
   ;; XXX range check
   (%%cexp (int string int int -> int) "write (%s, %s+%s, %s)" fd s start len))
 
+(define (read-stdin)
+  (read 0 1024))
+
 (define (close fd)
   (%%cexp (int -> int) "close (%s)" fd))
 
