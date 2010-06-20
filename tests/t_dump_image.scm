@@ -17,7 +17,7 @@
 
 ;; invoke without an argument to dump the image,
 ;; with an argument to load it and run it.
-(if (> (sys:argc) 1)
+(if (> sys.argc 1)
     ((load "test.image") 0)
     (go))
 
