@@ -1,1 +1,1 @@
-{u0 not-final {u0 not-final {u0 whitespace {u0 not-final {u0 not-final {u0 comment {u0 newline <u1>}}}}}}}
+(not-final not-final whitespace not-final not-final comment newline)
