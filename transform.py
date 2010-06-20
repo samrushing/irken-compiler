@@ -207,8 +207,9 @@ class transformer:
         # literal data
         return self.build_literal (exp[1], as_list=True)
 
-    def expand_literal (self, exp):
-        return self.build_literal (exp[1])
+    def expand_backquote (self, exp):
+        # literal data
+        return self.build_literal (exp[1], as_list=True, backquote=True)
 
     def expand_colon (self, exp):
         # constructor syntax
@@ -645,7 +646,8 @@ class transformer:
         return self.expand_exp (r)
 
     # walk a literal, making sure it can be represented as a constructed value.
-    def build_literal (self, exp, as_list=False):
+    def build_literal (self, exp, as_list=False, backquote=False):
+        runtime_only = [False]
 
         def build (exp):
             if is_a (exp, atom):
@@ -663,6 +665,9 @@ class transformer:
                 if as_list:
                     if not len (exp):
                         return ['%dtcon/list/nil']
+                    elif exp[0] == 'comma' and backquote:
+                        runtime_only[0] = True
+                        return self.expand_exp (exp[1])
                     else:
                         return ['%dtcon/list/cons', build (exp[0]), build (exp[1:])]
                 else:
@@ -676,6 +681,10 @@ class transformer:
             else:
                 raise RuntimeLiteral (exp)
 
-        return ['constructed', build (exp)]
+        result = build (exp)
+        if runtime_only[0]:
+            return result
+        else:
+            return ['constructed', result]
                 
     
