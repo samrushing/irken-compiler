@@ -4,4 +4,5 @@ def thing (a, b):
         break
     else:
         raise Glerk()
-
+    c = a / b
+    return c + 12
