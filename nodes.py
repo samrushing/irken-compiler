@@ -567,9 +567,9 @@ def rename_variables (exp, context):
             if probe:
                 exp.var = probe
                 if exp.is_a ('varset'):
-                    probe.assigns.append (node)
+                    probe.assigns.append (exp)
                 else:
-                    probe.refs.append (node)
+                    probe.refs.append (exp)
                 exp.params = exp.name = '%s_%d' % (name, exp.var.alpha)
             for sub in exp.subs:
                 rename (sub, lenv)
