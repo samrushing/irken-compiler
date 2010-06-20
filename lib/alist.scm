@@ -1,22 +1,24 @@
-;; -*- Mode: Scheme -*-
+;; -*- Mode: Irken -*-
 
-;; lisp 'association list'
+;; lisp 'association list' - keyed by symbol
 
 (datatype alist
   (:nil)
   (:entry symbol 'a (alist 'a))
   )
 
-(define (alist/add l key val)
-  (alist:entry key val l))
+(define (make-alist)
+  (let ((l (alist:nil)))
 
-(define (alist/new)
-  (alist:nil))
+    (define (add key val)
+      (set! l (alist:entry key val l)))
 
-(define alist/lookup
-  (alist:nil) key
-  -> (maybe:no)
-  (alist:entry key0 val0 rest) key
-  -> (if (eq? key0 key)
-	 (maybe:yes val0)
-	 (alist/lookup rest key)))
+    (define (lookup key val)
+      (let loop ((l l))
+	(match l with
+	  (alist:nil)                  -> (maybe:no)
+	  (alist:entry key0 val0 rest) -> (if (eq? key0 key)
+					      (maybe:yes val0)
+					      (loop rest)))))
+    {add=add lookup=lookup}
+    ))
