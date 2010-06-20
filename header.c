@@ -302,6 +302,7 @@ read_header (FILE * file)
 #ifndef NO_RANGE_CHECK
 // used to check array references.  some day we might try to teach
 //   the compiler when/how to skip doing this...
+static
 void
 inline
 range_check (unsigned int length, unsigned int index)
@@ -312,6 +313,7 @@ range_check (unsigned int length, unsigned int index)
   }
 }
 #else
+static
 void
 inline
 range_check (unsigned int length, unsigned int index)
