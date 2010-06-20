@@ -1229,7 +1229,7 @@ class solver:
                         #  to a monomorphic type.  later, let's do the whole
                         #  'expansive/non-expansive' version.
                         generalize = not f.names[i].assigns
-                        return self.instantiate_constraint (i, f, t, generalize)               
+                        return self.instantiate_constraint (i, f, t, generalize)
             elif f is empty:
                 break
             else:
@@ -1455,28 +1455,28 @@ class typer:
         m = s.solve (c)
         print 'decoding...'
         for node in exp:
-            node.type = self.decode (node.tv)
+            node.type = decode (node.tv)
             #if node.is_a ('function') and node.name:
             #    print node.name, '\t', node.type
 
-    def decode (self, t):
-        seen = set()
-        def p (t):
-            if t in seen:
-                return t
-            else:
-                seen.add (t)
-            if is_a (t, t_var):
-                if t.eq and t.eq.type:
-                    return p (t.eq.type)
-                elif t.next:
-                    return p (t.next)
-                return t
-            elif is_a (t, t_predicate):
-                return t_predicate (t.name, [p (x) for x in t.args])
-            else:
-                return t
-        return p (t)
+def decode (t):
+    seen = set()
+    def p (t):
+        if t in seen:
+            return t
+        else:
+            seen.add (t)
+        if is_a (t, t_var):
+            if t.eq and t.eq.type:
+                return p (t.eq.type)
+            elif t.next:
+                return p (t.next)
+            return t
+        elif is_a (t, t_predicate):
+            return t_predicate (t.name, [p (x) for x in t.args])
+        else:
+            return t
+    return p (t)
         
 def test (s, step=True):
     import transform
