@@ -2,7 +2,8 @@
 (datatype list
   (:nil)
   (:cons 'a (list 'a))
-  (:blurt 'a)
+;; because of the hard-coded TC_PAIR tags, users can't do this any more
+;;  (:blurt 'a)
   )
 
 (define (printn x)
