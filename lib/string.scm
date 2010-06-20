@@ -113,22 +113,19 @@
               (list:cons (ascii->char (+ 48 (remainder x 10))) r)
 	      ))))
 
-(define (sys:argc)
-  (%%cexp (-> int) "argc"))
-
-(define sys:argv
-
-  (let ((nargs (sys:argc))
-	(v (%make-vector nargs "")))
-
-    (define (argv n)
-      (let* ((len (%%cexp (int -> int) "strlen(argv[%s])" n))
-	     (r (make-string len)))
-	(%%cexp (string int int -> undefined) "(memcpy (%s, argv[%s], %s), PXLL_UNDEFINED)" r n len)
-	r))
-
-    (let loop ((n (sys:argc)))
-      (cond ((zero? n) v)
-	    (else
-	     (set! v[(- n 1)] (argv (- n 1)))
-	     (loop (- n 1)))))))
+(define sys
+  (let ((argc (%%cexp (-> int) "argc"))
+	(argv 
+	 (let ((v (%make-vector argc "")))
+	   (define (get-arg n)
+	     (let* ((len (%%cexp (int -> int) "strlen(argv[%s])" n))
+		    (r (make-string len)))
+	       (%%cexp (string int int -> undefined) "(memcpy (%s, argv[%s], %s), PXLL_UNDEFINED)" r n len)
+	       r))
+	   (let loop ((n argc))
+	     (cond ((zero? n) v)
+		   (else
+		    (set! v[(- n 1)] (get-arg (- n 1)))
+		    (loop (- n 1))))))))
+  { argc=argc argv=argv }
+  ))
