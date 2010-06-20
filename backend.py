@@ -71,6 +71,16 @@ class c_backend:
         dtm = self.context.datatypes
         l = []
 
+        def dotag (t):
+            # XXX this is horrible.  I really want to be able to specify cons/nil symbolically
+            #   when possible, in order to get lists handled somewhat automatically (especially
+            #   when printing).  But the hairy UOXXX/UIXXX macros can't handle symbolic tags, yet.  FIX ME.
+            if is_a (t, int):
+                return t
+            else:
+                # these values will break as soon as the TC_XXX numbers get changed.
+                return {'pair':-3, 'nil':-3}[t]
+        
         # now we walk the bitch, appending to a list of pxll_ints.
         def walk (exp):
             if exp.is_a ('primapp'):
@@ -89,12 +99,12 @@ class c_backend:
                         args = [ walk (x) for x in exp.args ]
                         # emit the header
                         addr = len (l)
-                        l.append ('UOHEAD(%d,%d)' % (len(exp.args), tag))
+                        l.append ('UOHEAD(%d,%d)' % (len(exp.args), dotag (tag)))
                         l.extend (args)
                         return 'UCON(%d,%d)' % (i, addr)
                     else:
                         # constructor with no args, an immediate
-                        return 'UITAG(%d)' % (tag,)
+                        return 'UITAG(%d)' % (dotag (tag,))
                 elif exp.name.startswith ('%vector-literal/'):
                     args = [ walk (x) for x in exp.args ]
                     addr = len (l)
@@ -708,7 +718,7 @@ class c_backend:
         depth, index = addr
         if insn.target != 'dead':
             if self.trace:
-                self.write ('stack_depth_indent (k); fprintf (stderr, "(%d, %d)"); debug_lenv ((pxll_tuple *) lenv);' % (depth, index))
+                self.write ('stack_depth_indent (k); fprintf (stderr, "(%d, %d)");' % (depth, index))
             if is_top:
                 self.write ('r%d = top[%d];' % (insn.target, index+2))
             else:
