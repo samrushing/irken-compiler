@@ -15,6 +15,10 @@ from pdb import set_trace as trace
 #   it converts 'high-level' expressions into lower-level expressions
 #   that are understood by the remaining stages of the compiler...
 
+# these transformations are performed 'textually' - think of them as macros.
+#   later transformations (in analyze.py) are performed on a node tree, after
+#   alpha renaming.
+
 class RuntimeLiteral (Exception):
     pass
 
@@ -24,6 +28,10 @@ class RuntimeLiteral (Exception):
 # 2) allow the end user to extend the list.
 # 3) should some core transforms be sacrosanct?  i.e., will
 #    we break the compiler in some sense without them?
+#
+# XXX Note: now that we have a pattern-matching 'defmacro',
+#  most of the derived-expression transforms in here can be
+#  moved to lib/derived.scm.
 
 class transformer:
 
@@ -32,6 +40,7 @@ class transformer:
         self.context = context
         self.constructors = []
         self.match = match.compiler (context)
+        self.macros = {}
 
     gensym_counter = 0
 
@@ -71,7 +80,7 @@ class transformer:
 
     def go (self, exp):
         if len(exp) > 1:
-            exp = self.find_datatypes (exp)
+            exp = self.find_declarations (exp)
             exp = self.expand_body (exp)
         else:
             exp = self.expand_exp (exp[0])
@@ -79,11 +88,16 @@ class transformer:
             exp = self.add_constructors (exp)
         return exp
 
-    def find_datatypes (self, exp):
+    def find_declarations (self, exp):
         r = []
         for x in exp:
-            if is_a (x, list) and len(x) and x[0] == 'datatype':
-                self.parse_datatype (x)
+            if is_a (x, list) and len(x):
+                if x[0] == 'datatype':
+                    self.parse_datatype (x)
+                elif x[0] == 'defmacro':
+                    self.parse_defmacro (x)
+                else:
+                    r.append (x)
             else:
                 r.append (x)
         return r
@@ -108,19 +122,34 @@ class transformer:
         elif is_a (exp, list):
             if len(exp):
                 rator = self.expand_exp (exp[0])
+                if is_a (rator, list) and len(rator) == 3 and rator[0] == 'colon':
+                    if rator[1] is None:
+                        # polymorphic variant constructor
+                        rator = '%%vcon/%s' % (rator[2],)
+                    else:
+                        # datatype constructor
+                        rator = '%%dtcon/%s/%s' % (rator[1], rator[2])
                 if is_a (rator, str):
                     if '/' in rator:
                         # handle names with encoded meta-parameters like %vcon
                         selector = rator.split('/')[0]
                     else:
                         selector = rator
-                    name = 'expand_%s' % (self.frob_name (selector))
-                    probe = getattr (self, name, None)
+                    probe = self.macros.get (selector, None)
+                    # user-defined macros first
                     if probe:
-                        exp[0] = rator
-                        return probe (exp)
+                        # macroexpansion is 'dumb' (i.e., pure textual substitution),
+                        #  so we must feed the result back through again.
+                        return self.expand_exp (probe.apply (exp))
                     else:
-                        return self.cheat_check ([rator] + [self.expand_exp (x) for x in exp[1:]])
+                        # python-defined macros
+                        name = 'expand_%s' % (self.frob_name (selector))
+                        probe = getattr (self, name, None)
+                        if probe:
+                            exp[0] = rator
+                            return probe (exp)
+                        else:
+                            return self.cheat_check ([rator] + [self.expand_exp (x) for x in exp[1:]])
                 else:
                     return [self.expand_exp (x) for x in exp]
             else:
@@ -207,14 +236,12 @@ class transformer:
         # literal data
         return self.build_literal (exp[1], as_list=True)
 
+    def expand_literal (self, exp):
+        return self.build_literal (exp[1])
+
     def expand_backquote (self, exp):
         # literal data
         return self.build_literal (exp[1], as_list=True, backquote=True)
-
-    def expand_colon (self, exp):
-        # constructor syntax
-        assert (len(exp) == 2 and is_a (exp[1], str))
-        return '%%vcon/%s' % exp[1]
 
     def expand__percentvcon (self, exp):
         # add some metadata about the arity of this constructor
@@ -247,15 +274,7 @@ class transformer:
         # check for variable arity
         if '.' in formals:
             raise ValueError ("variable arity not supported")
-        result = []
-        for i in range (len (formals)):
-            formal = formals[i]
-            if ':' in formal:
-                name, type = formal.split (':')
-            else:
-                name, type = formal, None
-            result.append ((name, type))
-        return result
+        return formals
 
     # ----------- special forms ----------------
 
@@ -275,25 +294,8 @@ class transformer:
         elif len(exp) == 2:
             return EE (exp[1])
         else:
-            sym = self.gensym()
-            return EE(
-                ['let',
-                 [[sym, exp[1]]],
-                 ['if', sym, sym, ['or'] + self.expand_all (exp[2:])]
-                 ]
-                )
-
-    # simplified 'boolean' or - doesn't bother to bind and return the first true value,
-    #   this generates shorter/faster code when you don't *need* that value ...
-    def expand_bor (self, exp):
-        EE = self.expand_exp
-        if len(exp) == 1:
-            return ('bool', 'false')
-        elif len(exp) == 2:
-            return EE (exp[1])
-        else:
             return EE (
-                ['if', exp[1], atom ('bool', 'true'), ['bor'] + self.expand_all (exp[2:])]
+                ['if', exp[1], atom ('bool', 'true'), ['or'] + self.expand_all (exp[2:])]
                 )
 
     def expand_cond (self, exp):
@@ -351,7 +353,7 @@ class transformer:
             elif len(keys) == 1:
                 cond_clauses.append ([['eq?', keysym, ['quote', keys[0]]]] + seq)
             else:
-                or_clauses = ['bor'] + [['eq?', keysym, ['quote', k]] for k in keys]
+                or_clauses = ['or'] + [['eq?', keysym, ['quote', k]] for k in keys]
                 cond_clauses.append ([or_clauses] + seq)
         return self.expand_exp (['let', [[keysym, exp[1]]], ['cond'] + cond_clauses])
 
@@ -527,8 +529,8 @@ class transformer:
                 continue
             else:
                 # let's stick with the colon syntax for now, it highlights nicely
-                assert (is_a (label, list) and len(label) == 2 and label[0] == 'colon')
-                label = label[1]
+                assert (is_a (label, list) and len(label) == 3 and label[0] == 'colon' and label[1] is None)
+                label = label[2]
             for j in range (len (formals)):
                 formal = formals[j]
                 if formal != '_':
@@ -567,7 +569,7 @@ class transformer:
                 # override %vfail
                 r = ['lambda', ['velse']] + body
             else:
-                [colon, label] = selector[0]
+                [colon, ignore, label] = selector[0]
                 formals = selector[1:]
                 s = ['lambda', formals] + body
                 if r is None:
@@ -620,8 +622,8 @@ class transformer:
         alts = []
         for sub in subs:
             tag = sub[0]
-            assert (is_a (tag, list) and len(tag) == 2 and tag[0] == 'colon')
-            tag = tag[1]
+            assert (is_a (tag, list) and len(tag) == 3 and tag[0] == 'colon' and tag[1] is None)
+            tag = tag[2]
             prod = [ nodes.parse_type (x, tvars) for x in sub[1:] ]
             alts.append ((tag, prod))
             args = ['arg%d' % x for x in range (len (prod))]
@@ -631,6 +633,25 @@ class transformer:
                     self.expand_exp (['lambda', args, ['%%dtcon/%s/%s' % (name, tag)] + args])
                     ))
         self.context.datatypes[name] = itypes.datatype (self.context, name, alts, tvars)
+
+    # ----------- user macros ---------------
+
+    def parse_defmacro (self, exp):
+        # (defmacro and
+        #   (and)                 -> #t
+        #   (and test)            -> test
+        #   (and test1 test2 ...) -> (if test1 (and test2 ...) #f)
+        #   )
+        import mbe
+        name = exp[1]
+        pats = []
+        i = 2
+        while i < len(exp):
+            in_pat, arrow, out_pat = exp[i:i+3]
+            assert (arrow == '->')
+            pats.append ((in_pat, out_pat))
+            i += 3
+        self.macros[name] = mbe.macro (name, pats)
 
     # --------------------------------------------------------------------------------
     # literal expressions are almost like a sub-language
@@ -672,7 +693,7 @@ class transformer:
                         return ['%dtcon/list/cons', build (exp[0]), build (exp[1:])]
                 else:
                     # constructor
-                    dt, alt = exp[0].split (':')
+                    ignore, dt, alt = exp[0]
                     args = [build (x) for x in exp[1:]]
                     return ['%%dtcon/%s/%s' % (dt, alt)] + args
             elif is_a (exp, str) and as_list:
