@@ -130,7 +130,7 @@ class transformer:
                         # datatype constructor
                         rator = '%%dtcon/%s/%s' % (rator[1], rator[2])
                 if is_a (rator, str):
-                    if '/' in rator:
+                    if rator.startswith ('%') and '/' in rator:
                         # handle names with encoded meta-parameters like %vcon
                         selector = rator.split('/')[0]
                     else:
@@ -237,6 +237,11 @@ class transformer:
         return self.build_literal (exp[1], as_list=True)
 
     def expand_literal (self, exp):
+        # here's the dilemma: QUOTE is normally used for this purpose, but if I want
+        #  to allow literals involving constructors (other than lists), I need a syntax
+        #  for it.  I *could* examine the operator position of a list for a constructor,
+        #  but that would make it impossible to build a list with that kind of symbol
+        #  at the front.  For now, punt and allow LITERAL to act as a new kind of QUOTE.
         return self.build_literal (exp[1])
 
     def expand_backquote (self, exp):
@@ -652,6 +657,8 @@ class transformer:
             pats.append ((in_pat, out_pat))
             i += 3
         self.macros[name] = mbe.macro (name, pats)
+        if self.context.verbose:
+            print "macro: %s" % (name,)
 
     # --------------------------------------------------------------------------------
     # literal expressions are almost like a sub-language
@@ -667,42 +674,52 @@ class transformer:
         return self.expand_exp (r)
 
     # walk a literal, making sure it can be represented as a constructed value.
+
+    # XXX I need to think clearly about literals, QUOTE, and LITERAL.  This code
+    #   is a mess and doesn't know exactly what it's doing.
+
     def build_literal (self, exp, as_list=False, backquote=False):
+        # urgh, can't assign to a lexical variable
         runtime_only = [False]
 
         def build (exp):
             if is_a (exp, atom):
-                if exp.kind == 'vector':
-                    args = [build (x) for x in exp.value]
-                    return ['%%vector-literal/%d' % (len(exp.value))] + args
-                elif exp.kind in ('int', 'char', 'bool', 'undefined'):
+                if exp.kind in ('int', 'char', 'bool', 'undefined'):
                     # XXX itypes should have a list of immediate base types
                     return exp
                 elif exp.kind in ('symbol', 'string'):
                     return exp
                 else:
-                    raise RuntimeLiteral (exp)
+                    runtime_only[0] = True
+                    return exp
             elif is_a (exp, list):
-                if as_list:
-                    if not len (exp):
-                        return ['%dtcon/list/nil']
-                    elif exp[0] == 'comma' and backquote:
-                        runtime_only[0] = True
-                        return self.expand_exp (exp[1])
-                    else:
+                if len(exp):
+                    if is_a (exp[0], str):
+                        name = exp[0].split ('/')
+                        if name[0] in ('%vector-literal', '%dtcon'):
+                            return [exp[0]] + [build (x) for x in exp[1:]]
+                        elif exp[0] == 'comma' and backquote:
+                            runtime_only[0] = True
+                            return exp[1]
+                        elif exp[0] == 'constructed':
+                            # redundant
+                            return exp[1]
+                        else:
+                            return ['%dtcon/list/cons', build (exp[0]), build (exp[1:])]
+                    elif as_list:
                         return ['%dtcon/list/cons', build (exp[0]), build (exp[1:])]
+                    else:
+                        return [build(x) for x in exp[1:]]
                 else:
-                    # constructor
-                    ignore, dt, alt = exp[0]
-                    args = [build (x) for x in exp[1:]]
-                    return ['%%dtcon/%s/%s' % (dt, alt)] + args
+                    return ['%dtcon/list/nil']
             elif is_a (exp, str) and as_list:
                 # in a list literal, this is a symbol
                 return atom ('symbol', exp)
             else:
-                raise RuntimeLiteral (exp)
+                runtime_only[0] = True
+                return exp
 
-        result = build (exp)
+        result = build (self.expand_exp (exp))
         if runtime_only[0]:
             return result
         else:
