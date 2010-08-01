@@ -82,11 +82,10 @@
 (define (list->string l)
   (let ((buffer (make-string (length l))))
     (let loop ((l l) (i 0))
-      (vcase list l
-	 ((:nil) buffer)
-	 ((:cons hd tl)
-	  (string-set! buffer i hd)
-	  (loop tl (+ i 1)))))))
+      (match l with
+	() -> buffer
+	(hd . tl) -> (begin (string-set! buffer i hd) (loop tl (+ i 1))))
+      )))
 
 (define (string->list s)
   (let loop ((l (list:nil)) (n (string-length s)))
