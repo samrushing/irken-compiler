@@ -55,3 +55,44 @@ Closures?  How far can we get by emulating OO with closures?
 In Scheme, we use a 'getattr'-like function to return a random
 object.  That can't work with static types... but is there some other
 way to do it?
+
+-------------------------------------------
+jul 2010.
+
+Revisiting this idea once more now that I have defmacro.
+
+A pythonic object:
+  {class=<class-record>, tag0=<attr0>, tag1=<attr1>, ...}
+
+Now, to call a method on such an object we need:
+
+ (x.class.method <ob> <arg0> <arg1> ...)
+
+But we'd really prefer this:
+
+ (x.method <arg0> <arg1> ...)
+
+We could fake this by using something other than a dot:
+
+ (x^method <arg0> <arg1> ...)
+
+Another possible approach - when in the operator position, we
+  assume that a dot implies x.class.method, otherwise it's just
+  a normal attribute reference.  Then we could force some other
+  syntax in the (relatively) rare case where we want a function
+  stored in a record.
+
+Now, can we correctly type and use such objects?
+
+--- however ---
+
+This assumes a dynamic style of OO, wherein the class object is
+passed in and is part of the object.  But it should be possible
+to do this statically.
+
+  (ob^method <arg0> ...) =>
+    (class.method <ob> <arg0> ...)
+
+  (x.push 34)
+  ({ push = int->unit, ... }.push int)
+
