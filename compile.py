@@ -24,8 +24,14 @@ def compile_file (f, name, c):
     # XXX might go easier on memory if we discarded the results of
     #  each pass after using it... 8^)
 
+    if c.standard_macros:
+        r2 = lisp_reader.reader (open (c.standard_macros, 'rb'))
+        macros = r2.read_all()
+        exp[:0] = macros
+
     print 'transform...'
     t = transform.transformer (c)
+
     exp2 = t.go (exp)
     if c.verbose:
         print '--- transform ---'
@@ -48,10 +54,9 @@ def compile_file (f, name, c):
 
     if c.typetype:
         t.go (exp3)
-
-    if c.verbose:
-        print '--- typing 1 ---'
-        exp3.pprint()
+        if c.verbose:
+            print '--- typing 1 ---'
+            exp3.pprint()
 
     a = analyze.analyzer (c)
     exp4 = a.analyze (exp3)
