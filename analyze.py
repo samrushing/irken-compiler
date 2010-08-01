@@ -673,8 +673,14 @@ class analyzer:
                 lenv = (defs, lenv)
             elif exp.one_of ('varref', 'varset'):
                 name = exp.params
-                if lookup_var (name, lenv):
+                probe = lookup_var (name, lenv)
+                if probe:
                     exp.params += suffix
+                    # XXX is this a hack?  The reason we have this code here
+                    #   is because the deep_copy() code doesn't copy the <assigns>
+                    #   attribute of a vardef.  However, I'm not sure it *should*.
+                    if exp.is_a ('varset'):
+                        probe.assigns.append (exp)
             for sub in exp.subs:
                 rename (sub, lenv)
 
