@@ -73,7 +73,7 @@ class reader:
         elif ch == ':':
             # (for constructor syntax)
             self.next()
-            result = ['colon', self.read()]
+            result = ['colon', None, self.read()]
         # unquote, etc.. can be found in old lumberjack code if needed.
         elif ch == '#':
             self.next()
@@ -109,6 +109,7 @@ class reader:
                 self.next()
                 result = atom ('undefined', 'undefined')
             elif ch == '(':
+                # hmm... a vector shouldn't be an atom, I think.
                 result = atom ('vector', self.read_list())
             # it's arguable: "{...}" or "#{...}" - the latter is more scheme-like
             #   but pointlessly noisier.
@@ -133,12 +134,17 @@ class reader:
                     result = a
         else:
             result = self.read_atom()
-        # hack to support postfix array-reference syntax
         self.skip_whitespace()
         ch = self.peek()
+        # support postfix array-reference syntax
         if ch != '' and ch == '[':
             index = self.read_array_index()
             return ['%%array-ref', result, index]
+        # support infix colon syntax
+        elif ch != '' and ch == ':':
+            self.next()
+            rhs = self.read()
+            return ['colon', result, rhs]
         else:
             return result
 
@@ -148,7 +154,7 @@ class reader:
         result = self.next()
         while 1:
             ch = self.peek()
-            if ch in string.whitespace or ch in '()[]{}':
+            if ch in string.whitespace or ch in '()[]{}:':
                 return result
             else:
                 result = result + self.next()
