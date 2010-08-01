@@ -11,7 +11,7 @@
       (concat
        "(" (regexp-opt
 	    '("begin" "call-with-current-continuation" "call/cc"
-	      "case" "cond" "vcase" "match" "datatype"
+	      "case" "cond" "vcase" "match" "datatype" "defmacro"
 	      "else" "if" "lambda"
 	      "let" "let*" "letrec"
 	      "define" "set!"
