@@ -5,11 +5,10 @@
   (:cons 'a (list 'a))
   )
 
-(define (null? l)
-  (vcase list l
-    ((:nil) #t)
-    ;; could/should use 'else' here.
-    ((:cons _ _ ) #f)))
+(define null?
+  () -> #t
+  _  -> #f
+  )
 
 (define (cons a b)
   (list:cons a b))
