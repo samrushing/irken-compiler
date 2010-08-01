@@ -9,8 +9,10 @@
   )
 
 (define thing
-  (list:cons x xs) -> x
   (list:nil) -> (error)
+  (list:cons x _) -> x
   )
 
 (thing '(1 2 3))
+
+
