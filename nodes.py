@@ -4,9 +4,7 @@
 
 from pdb import set_trace as trace
 
-# used to generate a unique identifier for each node.  it's important that these
-#   be *unique*, because the serial number of a node is later used as a type
-#   variable during type inference!
+# used to generate a unique identifier for each node.
 
 class serial_counter:
 
