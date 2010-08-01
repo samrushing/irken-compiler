@@ -1,9 +1,11 @@
 
 (include "lib/core.scm")
+(include "lib/pair.scm")
 (include "lib/alist.scm")
 
-(let ((l0 (make-alist))
-      (l1 (make-alist)))
-  (l0.add 'thing 34)
-  (l1.add 'blurb "testing")
+(let ((l0 (alist/make))
+      (l1 (alist/make)))
+  (alist/push l0 'thing 34)
+  (alist/push l1 'blurb #f)
   )
+
