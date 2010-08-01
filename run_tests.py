@@ -67,6 +67,8 @@ files.sort()
 # tests that need special handling
 special = [x[5:] for x in dir() if x.startswith ('test_')]
 
+failed = []
+
 for size, file in files:
     if file.endswith ('.scm'):
         base, ext = os.path.splitext (file)
@@ -79,10 +81,12 @@ for size, file in files:
             compile.compile_file (open (path, 'rb'), path, c)
         except:
             if not fail:
-                raise
+                #raise
+                failed.append ((base, "compile failed"))
         else:
             if fail:
-                raise ValueError ("oops - expected compilation to fail")
+                failed.append ((base, 'compile did not fail like expected'))
+                #raise ValueError ("oops - expected compilation to fail")
             #compile.cc (path, optimize=False)
             if base not in special:
                 out = run_test (base)
@@ -90,7 +94,13 @@ for size, file in files:
                 if os.path.isfile (exp_path):
                     exp = open (exp_path).read()
                     if out != exp:
-                        raise ValueError ("oops - output didn't match on test '%s'" % (base,))
+                        failed.append ((base, 'did not match expected output'))
+                        #raise ValueError ("oops - output didn't match on test '%s'" % (base,))
             else:
                 # tests that require special handling for whatever reason.
                 eval ('test_%s()' % (base,))
+
+if len(failed):
+    print '%d tests failed!!' % (len(failed))
+    for base, reason in failed:
+        print base, reason
