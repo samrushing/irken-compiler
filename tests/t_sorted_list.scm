@@ -23,7 +23,7 @@
 (define (printn x)
   (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
 
-;; (define (list:insert x l >)
+;; (define (list/insert x l >)
 ;;   (define (ins l)
 ;;     (vcase list l
 ;;        ((:nil) (list:cons x l))
@@ -33,7 +33,7 @@
 ;; 	    (list:cons hd (ins tl))))))
 ;;   (ins l))
 
-(define (list:insert x l >)
+(define (list/insert x l >)
   (let loop ((l l))
     (vcase list l
        ((:nil) (list:cons x l))
@@ -42,16 +42,16 @@
 	    (list:cons x l)
 	    (list:cons hd (loop tl)))))))
 
-(let ((l0 (list:insert -20 (list:nil) bool->?))
+(let ((l0 (list/insert -20 (list:nil) bool->?))
       (l1 (list:nil))
       )
-   (set! l0 (list:insert 1 l0 >))
+   (set! l0 (list/insert 1 l0 >))
    (printn l0)
-   (set! l0 (list:insert 5 l0 >))
+   (set! l0 (list/insert 5 l0 >))
    (printn l0)
-   (set! l1 (list:insert #f l1 bool->?))
+   (set! l1 (list/insert #f l1 bool->?))
    (printn l1)
-   (set! l1 (list:insert #t l1 bool->?))
+   (set! l1 (list/insert #t l1 bool->?))
    (printn l1)
   )
 
