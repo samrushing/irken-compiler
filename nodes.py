@@ -240,10 +240,21 @@ def walk_up (n):
 
 # this is *not* a node!
 class vardef:
+    tvar = False
     def __init__ (self, name, type=None):
-        assert (is_a (name, str))
-        self.name = name
-        self.type = type
+        if is_a (name, str):
+            self.name = name
+            self.type = type
+        elif is_a (name, list) and len(name) == 3 and name[0] == 'colon':
+            # infix colon syntax for type declaration
+            assert (type is None)
+            self.name = name[1]
+            self.type = parse_type (name[2])
+        elif is_a (name, list) and len(name) == 2 and name[0] == 'quote':
+            # type variable argument
+            self.tvar = True
+            self.name = name[1]
+            self.type = None
         self.assigns = []
         self.refs = []
         self.function = None
@@ -258,6 +269,7 @@ class vardef:
             return '{%s:%s}' % (self.name, self.type)
         else:
             return '{%s}' % (self.name,)
+            #return '{%s.%d}' % (self.name, len(self.assigns))
 
 def varref (name):
     return node ('varref', name)
@@ -414,7 +426,7 @@ class walker:
                 elif rator == 'function':
                     fun_name, fun_type = exp[1]
                     formals = exp[2]
-                    formals = [vardef (name, type) for (name, type) in formals]
+                    formals = [vardef (x) for x in formals]
                     return function (fun_name, formals, WALK (exp[3]), fun_type)
                 elif rator == 'let_splat':
                     ignore, vars, body = exp
