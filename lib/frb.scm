@@ -15,7 +15,7 @@
   (:empty)
   )
 
-(define (tree:insert root < k v)
+(define (tree/insert root < k v)
 
   ;; you can't have a red node directly underneath another red node.
   ;; these two functions detect that condition and adjust the tree to
@@ -58,7 +58,7 @@
 
   )
 
-(define (tree:member root < key)
+(define (tree/member root < key)
   (let member0 ((n root))
     (match n with
       (tree:empty)
@@ -75,26 +75,31 @@
 	       (else (maybe:yes v)))
       )))
 
-(define tree:inorder
+(define tree/inorder
   _ (tree:empty) -> #f
-  p (tree:red l r k v)    -> (begin (tree:inorder p l) (p k v) (tree:inorder p r) #f)
-  p (tree:purple l r k v) -> (begin (tree:inorder p l) (p k v) (tree:inorder p r) #f)
+  p (tree:red l r k v)    -> (begin (tree/inorder p l) (p k v) (tree/inorder p r) #f)
+  p (tree:purple l r k v) -> (begin (tree/inorder p l) (p k v) (tree/inorder p r) #f)
   )
 
-(define tree:reverse
+(define tree/reverse
   _ (tree:empty) -> #f
-  p (tree:red l r k v)    -> (begin (tree:reverse p r) (p k v) (tree:reverse p l) #f)
-  p (tree:purple l r k v) -> (begin (tree:reverse p r) (p k v) (tree:reverse p l) #f)
+  p (tree:red l r k v)    -> (begin (tree/reverse p r) (p k v) (tree/reverse p l) #f)
+  p (tree:purple l r k v) -> (begin (tree/reverse p r) (p k v) (tree/reverse p l) #f)
+  )
+
+(defmacro tree/make
+  (tree/make <)    -> (tree:empty)
+  (tree/make < (k0 v0) (k1 v1) ...) -> (tree/insert (tree/make < (k1 v1) ...) < k0 v0)
   )
 
 ;; the defn of make-generator, call/cc, etc... makes it pretty hard
 ;;  to pass more than one arg through a continuation.  so instead we'll
 ;;  use a 'pair' constructor to iterate through the tree...
 
-(define (tree:make-generator tree end-key end-val)
+(define (tree/make-generator tree end-key end-val)
   (make-generator
    (lambda (consumer)
-     (tree:inorder tree (lambda (k v) (consumer (:pair k v))))
+     (tree/inorder tree (lambda (k v) (consumer (:pair k v))))
      (let loop ()
        (consumer (:pair end-key end-val))
        (loop))
