@@ -38,4 +38,4 @@ class context:
         # constructed literals
         self.constructed = []
         self.symbols = {}
-
+        self.standard_macros = "lib/derived.scm"
