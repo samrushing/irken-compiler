@@ -349,7 +349,13 @@ class constraint_generator:
             name = exp.names[i]
             init = exp.inits[i]
             var = t_var()
-            r = c_let ([name], [var], c_forall ((var,), self.gen (init, var)), r)
+            if name.type is not None:
+                r = c_and (
+                    c_equals (var, name.type),
+                    c_let ([name], [var], c_forall ((var,), self.gen (init, var)), r)
+                    )
+            else:
+                r = c_let ([name], [var], c_forall ((var,), self.gen (init, var)), r)
         return r
 
     def gen_fix (self, exp, t):
@@ -720,11 +726,9 @@ class unifier:
             #self.dprint ('s-clash')
             raise TypeError ((ty0, ty1))
 
-    split_count = 0
     def split (self, sz):
         # leave in only equations made entirely of 'old' variables
         # this is the U1,U2 split from the rule S-POP-LET
-        self.split_count += 1
         young = sz.vars
         u2 = unifier()
         to_add = []
@@ -1199,6 +1203,8 @@ class solver:
                 #   so a type-less equation is not useful.
                 #raise ValueError
                 new_type = None
+                # XXX uncomment this and we break f_letpoly.scm
+                #continue
             # v=v=v=t => v=v & v=v & v=v & v=t
             if new_type:
                 obs = new_vars + [new_type]
@@ -1229,6 +1235,7 @@ class solver:
                         #  to a monomorphic type.  later, let's do the whole
                         #  'expansive/non-expansive' version.
                         generalize = not f.names[i].assigns
+                        #print '%s %r' % (f.names[i], generalize)
                         return self.instantiate_constraint (i, f, t, generalize)
             elif f is empty:
                 break
@@ -1392,10 +1399,8 @@ class solver:
         self.pprint_stack (s)
         ty0, ty1 = terr.args[0]
         print 'Type Error', args
-        # XXX decode() is gone...
-        #raise TypeError (u.decode (ty0), u.decode (ty1))
-        raise TypeError (ty0, ty1)
-
+        raise TypeError (decode (ty0), decode (ty1))
+    
 def list_to_conj (l):
     # convert list <l> into a conjunction built with <c_and>
     if len(l) == 0:
