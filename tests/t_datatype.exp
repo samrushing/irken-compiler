@@ -1,14 +1,14 @@
-{u0 1 {u0 2 {u0 3 {u0 4 {u0 5 <u1>}}}}}
+(1 2 3 4 5)
 5
-<u1>
+()
 0
-{u0 #\C <u1>}
+(#\C)
 1
-{u0 #\B {u0 #\C <u1>}}
+(#\B #\C)
 2
-{u0 #\A {u0 #\B {u0 #\C <u1>}}}
+(#\A #\B #\C)
 3
-{u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" {u0 "hello" <u1>}}}}}}}}}}
+("hello" "hello" "hello" "hello" "hello" "hello" "hello" "hello" "hello" "hello")
 #f
 #t
 99
