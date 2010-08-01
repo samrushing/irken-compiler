@@ -415,6 +415,9 @@ class compiler:
             )
 
     def compile_let_splat (self, tail_pos, exp, lenv, k):
+        if len (exp.inits) == 0:
+            # no bindings, just compile the body
+            return self.compile_exp (tail_pos, exp.body, lenv, k)
         # becomes this sequence:
         #   (new_env, push_env, store_env0, ..., <body>, pop_env)
         k_body = self.dead_cont (k[1], self.compile_exp (tail_pos, exp.body, (exp.names, lenv), self.cont (k[1], lambda reg: self.gen_pop_env (reg, k))))
