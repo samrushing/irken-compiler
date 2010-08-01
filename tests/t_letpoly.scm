@@ -4,18 +4,10 @@
   (:cons 'a (list 'a))
   )
 
-;; (let ((is (list:nil))
-;;       (bs (list:nil)))
-;;   (set! is (list:cons 10 is))
-;;   (set! bs (list:cons #f bs))
-;;   bs
-;;   )
-
 (define (make-stack)
   (let ((l (list:nil)))
-    (define (push e)
+    (lambda (e)
       (set! l (list:cons e l)))
-    push
     ))
 
 (let ((is (make-stack))
