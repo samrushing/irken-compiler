@@ -84,9 +84,9 @@ class compiler:
                 # a symbol
                 assert (is_a (p[1], str))
                 return literal (atom ('symbol', p[1]))
-            elif is_a (p[0], str) and ':' in p[0]:
+            elif is_a (p[0], list) and p[0][0] == 'colon' and len(p[0]) == 3:
                 # a constructor
-                return constructor (p[0], [self.kind (x) for x in  p[1:]])
+                return constructor ('%s:%s' % (p[0][1], p[0][2]), [self.kind (x) for x in  p[1:]])
             else:
                 # (a b . c) => (list:cons ...)
                 if p[0] == '.':
@@ -195,7 +195,7 @@ class compiler:
                 if wild[i]:
                     vars1[i] = '_'
             cases.append (
-                [[['colon', alt]] + vars1, self.match (vars0 + vars[1:], rules1, default0)]
+                [[['colon', None, alt]] + vars1, self.match (vars0 + vars[1:], rules1, default0)]
                 )
         if len(alts) < len (dt.alts):
             # an incomplete vcase, stick in an else clause.
