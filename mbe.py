@@ -4,14 +4,12 @@
 # Note: there is no hygiene here.
 
 is_a = isinstance
-from pdb import set_trace as trace
-from pprint import pprint as pp
 
 def is_symbol (x):
     return is_a (x, str)
 
 def is_list (x):
-    # DS' code checks that the list has a proper end.
+    # Dorai's code checks that the list has a proper end.
     return is_a (x, list)
 
 def is_ellipsis (x):
@@ -122,10 +120,7 @@ class macro:
         for in_pat, out_pat in self.patterns:
             if matches_pattern (in_pat, exp):
                 r = get_bindings (in_pat, exp)
-                r = expand_pattern (out_pat, r)
-                #pp (r)
-                #trace()
-                return r
+                return expand_pattern (out_pat, r)
         else:
             raise MatchError ("no matching clause", exp)
 
