@@ -1,57 +1,29 @@
 
-(datatype list
-  (:nil)
-  (:cons 'a (list 'a))
-  )
-
-(define (+ a b)
-  (%%cexp (int int -> int) "%s+%s" a b))
-
-(define (= a b)
-  (%%cexp (int int -> bool) "%s==%s" a b))
-
-(define (> a b)
-  (%%cexp (int int -> bool) "%s>%s" a b))
-
-(define (< a b)
-  (%%cexp (int int -> bool) "%s<%s" a b))
+(include "lib/core.scm")
+(include "lib/pair.scm")
 
 ;; #t > #f
 (define (bool->? a b)
   (if a #t #f))
 
-(define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+(define (list/insert x > l)
+  (match l with
+    ()        -> (list:cons x l)
+    (hd . tl) -> (if (> hd x)
+		     (list:cons x l)
+		     (list:cons hd (list/insert x > tl)))
+    ))
 
-;; (define (list/insert x l >)
-;;   (define (ins l)
-;;     (vcase list l
-;;        ((:nil) (list:cons x l))
-;;        ((:cons hd tl)
-;; 	(if (> hd x)
-;; 	    (list:cons x l)
-;; 	    (list:cons hd (ins tl))))))
-;;   (ins l))
-
-(define (list/insert x l >)
-  (let loop ((l l))
-    (vcase list l
-       ((:nil) (list:cons x l))
-       ((:cons hd tl)
-	(if (> hd x)
-	    (list:cons x l)
-	    (list:cons hd (loop tl)))))))
-
-(let ((l0 (list/insert -20 (list:nil) bool->?))
-      (l1 (list:nil))
+(let ((l0 (LIST 20))
+      (l1 (LIST #f))
       )
-   (set! l0 (list/insert 1 l0 >))
+   (set! l0 (list/insert 1 > l0))
    (printn l0)
-   (set! l0 (list/insert 5 l0 >))
+   (set! l0 (list/insert 5 > l0))
    (printn l0)
-   (set! l1 (list/insert #f l1 bool->?))
+   (set! l1 (list/insert #f bool->? l1))
    (printn l1)
-   (set! l1 (list/insert #t l1 bool->?))
+   (set! l1 (list/insert #t bool->? l1))
    (printn l1)
   )
 
