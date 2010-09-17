@@ -1,3 +1,5 @@
+;; -*- Mode: Irken -*-
+
 ;; this needs to be renamed to 'list.scm'
 
 (datatype list
@@ -20,6 +22,17 @@
 (define cdr
   () -> (error "cdr")
   (_ . y) -> y)
+
+;; I'm planning on downcasing these two eventually.  I was thinking of
+;;  such macros in C-like terms - i.e., warn the user that they're macros,
+;;  but it just annoyingly sticks out.
+(defmacro LIST
+  (LIST)         -> (list:nil)
+  (LIST x y ...) -> (list:cons x (LIST y ...)))
+
+(defmacro PUSH
+  (PUSH l v)     -> (set! l (list:cons v l))
+  )
 
 ;; http://groups.google.com/group/comp.lang.scheme/msg/0055f311d1e1ce08
 
@@ -71,6 +84,10 @@
     ((:nil) l)
     ((:cons hd tl)
      (list:cons (p hd) (map p tl)))))
+
+(define for-each
+  p ()        -> #f
+  p (hd . tl) -> (begin (p hd) (for-each p tl)))
 
 (define (vector->list v)
   (let loop ((n (- (vector-length v) 1)) (acc (list:nil)))
