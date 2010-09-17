@@ -521,10 +521,10 @@ class compiler:
         # (%rextend/field0 (%rextend/field1 (%rmake) ...)) => {field0=x field1=y}
         fields = []
         while 1:
-            if exp.name == '%rmake':
+            if exp.is_a ('primapp') and exp.name == '%rmake':
                 # we're done...
                 break
-            elif exp.name.startswith ('%rextend/'):
+            elif exp.is_a ('primapp') and exp.name.startswith ('%rextend/'):
                 ignore, field = exp.name.split ('/')
                 fields.append ((field, exp.args[1]))
                 exp = exp.args[0]
@@ -548,6 +548,8 @@ class compiler:
         #   'make-tuple' with args fetched from the source record
         #   mixed in with new args, all in the correct order.
         sig = solver.get_record_sig (exp.type)
+        if '...' in sig:
+            raise ValueError ("can't extend record - only a partial type available")
         labels = [x[0] for x in fields]
         labels.sort()
         args = [x[1] for x in fields]
