@@ -1,3 +1,4 @@
+;; -*- Mode: Irken -*-
 
 ;; For the almighty tallest, a quick translation of okasaki's pure
 ;;   functional "red-purple" trees.
