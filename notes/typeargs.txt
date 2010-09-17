@@ -1,0 +1,34 @@
+Supposedly each equation in a book will halve its sales.  I believe that each incomprehensible type declaration will halve my users.  It certainly applies to me - my eyes immediately glaze over when I look at even the simplest functor/module/etc declaration in *ML. I'd like to avoid type annotation as much as possible.
+
+But I've run into a situation where I *have* to have some kind of type annotation.  It's come up repeatedly and I see no way to avoid it.
+
+Let's say you have an association list data type, called 'alist':
+
+(let ((l0 (make-alist))
+      (l1 (make-alist)))
+  (l0.add 'thing 34)
+  (l1.add 'blurb "testing")
+ )
+
+In this case I want two of them, one that maps from symbol->int and another that maps symbol->string.
+As written, this code throws a type error, int vs string.  I'm sure it has something to do with the mixture of assignment and let-polymorphism.  (in this case the assignment is hidden in the call to 'l0.add').
+
+I can route around the problem by initializing each alist with an element of the correct type:
+
+(let ((l0 (alist:entry 'thing 34 (alist:empty)))
+      (l1 (alist:entry 'blurb "testing" (alist:empty))))
+  ...
+  )
+
+An approach I'm considering right now is the idea of a 'type argument'.  To me it seems very general.
+
+(define (make-alist 'type)
+  ...)
+
+So an argument name starting with quote is considered a type variable.
+Then I just need some way to instantiate the type.  I'll also need to
+rip out or distinguish all this stuff before the typing phase.  [So
+for example the real 'make-alist' function will take zero args].
+
+
+[XXX see 'intentional type analysis', POPL95 Harper/Morrisett]

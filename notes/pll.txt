@@ -1,0 +1,50 @@
+10.04.26
+
+Finally getting to the point where I can think about implementing a
+python-like language in the VM.
+
+If we really want to stick to the spirit of python, we'll need the
+central dictionary feature, and base pretty much everything on that.
+It might be nice to go over the history of the development of CPython
+to see where the in-retrospect-big-mistakes were made, and avoid them.
+
+--- getattr ---
+With instances, this does a dictionary lookup on a symbol. With 'C'
+level objects, it may or may not use the 'structmember' interface.
+
+We could start with a simple alist, and maybe add 'large' dictionary
+support later?
+
+--- execution model ---
+It'd be nice to keep the closures and lexical environment as close to
+normal as possible.  How does this impact the python model?
+
+--- pattern matching ---
+This is such a nice feature to have, that its absence is making me
+consider rewriting the irken compiler in irken rather than PLL.  Is
+there some way to get pattern matching in PLL, or is it just too early
+to do that kind of experimentation? [yes, too early]
+
+--- byte-code compatible? ---
+This would be interesting... why not make a VM that's binary
+compatible with Python?  A big difference is that it's a stack-based
+VM, but I don't think this actually affects things much...
+
+Ok, I've investigated this idea a bit.  I think it might make a good
+project, but it's not *my* project.  It looks like the byte code
+may force enough of the design that we'd be pretty much duplicating
+CPython - decisions about closures, exceptions, loops, etc... might
+move us too far from the lambda calculus, which I'd rather avoid.
+It'd be nice at the very least to get (optionally) inlining.
+
+--- steps ---
+
+X * parser for a tiny python
+  * duplicate phases of irken compiler:
+    * transform phase
+    * lambda node phase (i.e., AST)
+    * [analysis]
+    * cps
+    * bytecode
+
+

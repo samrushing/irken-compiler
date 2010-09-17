@@ -1,0 +1,6 @@
+{u0 six}
+{u0 seven}
+<u1>
+{u1 100 one-hundred {u1 0 zero {u1 1 one {u1 2 two {u1 3 three {u1 4 four {u1 5 five {u1 6 six {u1 7 seven {u1 8 eight {u1 9 nine <u0>}}}}}}}}}}}
+{u1 a "a" {u1 b "b" {u1 c "c" <u0>}}}
+#u

@@ -1,0 +1,109 @@
+{u0 file {u0 1 1 4 2} ({u0 file_c_0_s_o {u0 1 1 1 57} ({u0 expr {u0 1 1 1 57} ({u0 predicate {u0 1 1 1 57} ({u1 NAME {u0 1 1 1 6} "thing"} {u1 lparen {u0 1 7 1 8} "("} {u0 predicate_c_2_q {u0 1 8 1 56} ({u0 list {u0 1 8 1 56} ({u0 expr {u0 1 8 1 9} ({u0 atom {u0 1 8 1 9} ({u1 NUMBER {u0 1 8 1 9} "1"})})} {u0 list_c_1_s1 {u0 1 9 1 56} ({u1 comma {u0 1 9 1 10} ","} {u0 expr {u0 1 11 1 26} ({u0 predicate {u0 1 11 1 26} ({u1 NAME {u0 1 11 1 14} "arg"} {u1 lparen {u0 1 15 1 16} "("} {u0 predicate_c_2_q {u0 1 16 1 25} ({u0 list {u0 1 16 1 25} ({u0 expr {u0 1 16 1 17} ({u0 atom {u0 1 16 1 17} ({u1 NUMBER {u0 1 16 1 17} "2"})})} {u0 list_c_1_s1 {u0 1 17 1 25} ({u1 comma {u0 1 17 1 18} ","} {u0 expr {u0 1 19 1 25} ({u0 atom {u0 1 19 1 25} ({u1 NAME {u0 1 19 1 25} "barney"})})} {u0 list_c_1_s1 <u1> ()})})})} {u1 rparen {u0 1 25 1 26} ")"})})} {u0 list_c_1_s1 {u0 1 26 1 56} ({u1 comma {u0 1 26 1 27} ","} {u0 expr {u0 1 28 1 43} ({u0 predicate {u0 1 28 1 43} ({u1 NAME {u0 1 28 1 31} "arg"} {u1 lparen {u0 1 32 1 33} "("} {u0 predicate_c_2_q {u0 1 33 1 42} ({u0 list {u0 1 33 1 42} ({u0 expr {u0 1 33 1 42} ({u0 atom {u0 1 33 1 42} ({u1 STRING {u0 1 33 1 42} "\"testing\""})})} {u0 list_c_1_s1 <u1> ()})})} {u1 rparen {u0 1 42 1 43} ")"})})} {u0 list_c_1_s1 {u0 1 43 1 56} ({u1 comma {u0 1 43 1 44} ","} {u0 expr {u0 1 45 1 49} ({u0 atom {u0 1 45 1 49} ({u1 NAME {u0 1 45 1 49} "fred"})})} {u0 list_c_1_s1 {u0 1 49 1 56} ({u1 comma {u0 1 49 1 50} ","} {u0 expr {u0 1 51 1 56} ({u0 predicate {u0 1 51 1 56} ({u1 NAME {u0 1 51 1 54} "jim"} {u1 lparen {u0 1 54 1 55} "("} {u0 predicate_c_2_q <u1> ()} {u1 rparen {u0 1 55 1 56} ")"})})} {u0 list_c_1_s1 <u1> ()})})})})})})} {u1 rparen {u0 1 56 1 57} ")"})})})} {u0 file {u0 1 57 4 2} ({u0 file_c_0_s_o {u0 1 57 2 1} ({u1 NEWLINE {u0 1 57 2 1} "\0x0a"})} {u0 file {u0 2 1 4 2} ({u0 file_c_0_s_o {u0 2 1 2 35} ({u0 expr {u0 2 1 2 35} ({u0 predicate {u0 2 1 2 35} ({u1 NAME {u0 2 1 2 6} "blord"} {u1 lparen {u0 2 7 2 8} "("} {u0 predicate_c_2_q {u0 2 8 2 34} ({u0 list {u0 2 8 2 34} ({u0 expr {u0 2 8 2 34} ({u0 predicate {u0 2 8 2 34} ({u1 NAME {u0 2 8 2 13} "gronk"} {u1 lparen {u0 2 14 2 15} "("} {u0 predicate_c_2_q {u0 2 15 2 33} ({u0 list {u0 2 15 2 33} ({u0 expr {u0 2 15 2 33} ({u0 predicate {u0 2 15 2 33} ({u1 NAME {u0 2 15 2 19} "blah"} {u1 lparen {u0 2 20 2 21} "("} {u0 predicate_c_2_q {u0 2 21 2 32} ({u0 list {u0 2 21 2 32} ({u0 expr {u0 2 21 2 32} ({u0 predicate {u0 2 21 2 32} ({u1 NAME {u0 2 21 2 25} "jack"} {u1 lparen {u0 2 26 2 27} "("} {u0 predicate_c_2_q {u0 2 27 2 31} ({u0 list {u0 2 27 2 31} ({u0 expr {u0 2 27 2 31} ({u0 atom {u0 2 27 2 31} ({u1 NAME {u0 2 27 2 31} "jill"})})} {u0 list_c_1_s1 <u1> ()})})} {u1 rparen {u0 2 31 2 32} ")"})})} {u0 list_c_1_s1 <u1> ()})})} {u1 rparen {u0 2 32 2 33} ")"})})} {u0 list_c_1_s1 <u1> ()})})} {u1 rparen {u0 2 33 2 34} ")"})})} {u0 list_c_1_s1 <u1> ()})})} {u1 rparen {u0 2 34 2 35} ")"})})})} {u0 file {u0 2 35 4 2} ({u0 file_c_0_s_o {u0 2 35 3 1} ({u1 NEWLINE {u0 2 35 3 1} "\0x0a"})} {u0 file {u0 3 1 4 2} ({u0 file_c_0_s_o {u0 3 1 4 2} ({u1 NEWLINE {u0 3 1 4 2} "\0x0a"})} {u0 file <u1> ()})})})})})}
+file
+  file_c_0_s_o
+    expr
+      predicate
+        NAME "thing"
+        lparen "("
+        predicate_c_2_q
+          list
+            expr
+              atom
+                NUMBER "1"
+            list_c_1_s1
+              comma ","
+              expr
+                predicate
+                  NAME "arg"
+                  lparen "("
+                  predicate_c_2_q
+                    list
+                      expr
+                        atom
+                          NUMBER "2"
+                      list_c_1_s1
+                        comma ","
+                        expr
+                          atom
+                            NAME "barney"
+                        list_c_1_s1
+                  rparen ")"
+              list_c_1_s1
+                comma ","
+                expr
+                  predicate
+                    NAME "arg"
+                    lparen "("
+                    predicate_c_2_q
+                      list
+                        expr
+                          atom
+                            STRING "\"testing\""
+                        list_c_1_s1
+                    rparen ")"
+                list_c_1_s1
+                  comma ","
+                  expr
+                    atom
+                      NAME "fred"
+                  list_c_1_s1
+                    comma ","
+                    expr
+                      predicate
+                        NAME "jim"
+                        lparen "("
+                        predicate_c_2_q
+                        rparen ")"
+                    list_c_1_s1
+        rparen ")"
+  file
+    file_c_0_s_o
+      NEWLINE "\0x0a"
+    file
+      file_c_0_s_o
+        expr
+          predicate
+            NAME "blord"
+            lparen "("
+            predicate_c_2_q
+              list
+                expr
+                  predicate
+                    NAME "gronk"
+                    lparen "("
+                    predicate_c_2_q
+                      list
+                        expr
+                          predicate
+                            NAME "blah"
+                            lparen "("
+                            predicate_c_2_q
+                              list
+                                expr
+                                  predicate
+                                    NAME "jack"
+                                    lparen "("
+                                    predicate_c_2_q
+                                      list
+                                        expr
+                                          atom
+                                            NAME "jill"
+                                        list_c_1_s1
+                                    rparen ")"
+                                list_c_1_s1
+                            rparen ")"
+                        list_c_1_s1
+                    rparen ")"
+                list_c_1_s1
+            rparen ")"
+      file
+        file_c_0_s_o
+          NEWLINE "\0x0a"
+        file
+          file_c_0_s_o
+            NEWLINE "\0x0a"
+          file
+
+blord (gronk (blah (jack (jill))))
+thing (1, arg (2, barney), arg ("testing"), fred, jim ())
+#f
