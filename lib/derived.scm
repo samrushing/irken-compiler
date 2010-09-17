@@ -10,8 +10,8 @@
 
 ;; *not* the same as a Scheme <or>, this returns a boolean.
 (defmacro or
-  (or) -> #f
-  (or test) -> test
+  (or)                 -> #f
+  (or test)            -> test
   (or test1 test2 ...) -> (if test1 #t (or test2 ...))
   )
 
