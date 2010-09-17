@@ -96,6 +96,9 @@ class c_let (constraint):
         self.vars = vars
         self.constraint = constraint
         self.body = body
+        for i in range (len (names)):
+            # associate each vardef with its tvar
+            names[i].tv = vars[i]
 
 class c_forall (constraint):
     kind = 'forall'
@@ -255,6 +258,7 @@ class constraint_generator:
 
     def gen (self, exp, t):
         exp.tv = t
+        t.node = exp
         name = 'gen_%s' % exp.kind
         probe = getattr (self, name)
         if probe:
@@ -362,11 +366,10 @@ class constraint_generator:
         partition = graph.reorder_fix (exp, self.context.scc_graph)
         partition.reverse()
         c0 = self.gen (exp.body, t)
-        # XXX deep partitioning magic here
+        # Note: deep partitioning magic here
         for part in partition:
             names = [exp.names[i] for i in part]
             funs  = [exp.inits[i] for i in part]
-            #print names,
             # one var for each function
             fvars = tuple ([t_var() for x in names])
             c1 = list_to_conj (
@@ -377,7 +380,6 @@ class constraint_generator:
             # outer/polymorphic binding
             c1 = c_let (names, fvars, c_forall (fvars, c1), c0)
             c0 = c1
-        #print
         return c0
 
     def gen_conditional (self, exp, t):
@@ -509,18 +511,6 @@ class multi:
             return r + '=%r' % (self.type,)
         else:
             return r
-
-def get_compress_key (t):
-    if is_a (t, t_base):
-        return t.name
-    elif is_a (t, str):
-        return ('str', t)
-    elif is_a (t, t_var):
-        return t.id
-    elif is_a (t, t_predicate):
-        return (t.name,) + tuple([get_compress_key (arg) for arg in t.args])
-    else:
-        raise ValueError
 
 class unifier:
 
@@ -773,12 +763,10 @@ class unifier:
         #print 'before simplify'
         #self.pprint()
         #self.sanity()
-        #def p (t):
-        #    r = _p (t)
-        #    print '%r => %r' % (t, r)
-        #    return r
         def p (t):
-            if is_a (t, t_var):
+            # XXX speed hack, this function is called a *lot*
+            #if is_a (t, t_var):
+            if t.__class__ is t_var:
                 if t.in_u is self:
                     # if it's in our set, return its rep
                     return t.eq.rep
@@ -803,9 +791,9 @@ class unifier:
             eq.vars = new_vars
             if eq.type:
                 eq.type = p (eq.type)
-            #else:
-            #    # 'j=j' helps no one.
-            #    forget.add (eq)
+            else:
+                # 'j=j' helps no one.
+                forget.add (eq)
         for v in unname:
             v.in_u = False
         for eq in forget:
@@ -816,41 +804,45 @@ class unifier:
         return unname, types
 
     def prune (self, types, vars):
-        # cut this conjunction down to equations referenced by <types>
-        if len (self.eqs) == 0:
-            # XXX could we still trim vars via types?
-            return vars
-        keep = set()
-        seen = set()
-        def p (v):
-            seen.add (v)
-            if v.in_u is self:
-                eq = v.eq
-                if not eq in keep:
-                    keep.add (eq)
-                    t = eq.type
-                    if is_a (t, t_predicate):
-                        for arg in t.args:
-                            if is_a (arg, t_var):
-                                p (arg)
+        # Without pruning, the graph (i.e., 'U') can get HUGE (>10000 equations).
+        # prune any unconnected parts of the graph.
+        # first, make an adjacency graph (i.e., digraph -> graph)
+
+        adj = {}
+        for eq in self.eqs:
+            t = eq.type
+            v0 = eq.rep
+            if is_a (t, t_predicate):
+                for v1 in t.args:
+                    adj.setdefault (v0, set()).add (v1)
+                    adj.setdefault (v1, set()).add (v0)
+
+        # now search starting from <types>
+        visited = set()
+
+        def visit (v):
+            if v not in visited:
+                visited.add (v)
+                if v in adj:
+                    for v0 in adj[v]:
+                        visit (v0)
+        
         for v in types:
-            p (v)
+            visit (v)
+                    
         pruned = 0
-        total = len (self.eqs)
+        # finally, remove any unvisited equations
         for eq in list (self.eqs):
-            if eq not in keep:
+            if eq.rep not in visited:
                 self.forget (eq)
                 pruned += 1
-
-        #print 'pruned %d equations out of %d' % (pruned, total)
-        total = len(vars)
+        # and any unvisited vars
         new_vars = []
         for v in vars:
-            if v.in_u is self or v in seen:
+            if v in visited:
                 new_vars.append (v)
-        #print 'pruned %d vars out of %d' % (total-len(new_vars), total)
         return new_vars
-        
+
     def find_free (self, bound):
         # find the free variables of this unifier
         for eq in self.eqs:
@@ -947,8 +939,9 @@ def instantiate_scheme (scheme):
 
 class solver:
 
-    def __init__ (self, context, verbose=False, step=False):
+    def __init__ (self, context, exp, verbose=False, step=False):
         self.context = context
+        self.exp = exp
         self.step = step
         # xxx need to split the notion of verbose and step
         self.step = step
@@ -1018,10 +1011,10 @@ class solver:
                 pop()
             elif is_a (c, c_equals):
                 #self.dprint ('s-solve-eq')
-                #try:
-                u.add2 (*c.args)
-                #except TypeError, terr:
-                #    self.print_type_error (terr, c.args, u, s)
+                try:
+                    u.add2 (*c.args)
+                except TypeError, terr:
+                    self.find_type_error (terr, c.args, u, s)
                 c = c_true()
             elif is_a (c, c_is) and is_a (c.x, str):
                 #self.dprint ('s-solve-id')
@@ -1064,12 +1057,12 @@ class solver:
                 elif is_a (sz, s_let):
                     unname, types = u.simplify (sz.vars, sz.types)
                     if unname and sz.vars:
-                        self.dprint ('s-unname %r' % (unname,))
+                        #self.dprint ('s-unname %s' % (ps(unname),))
                         vars = [x for x in sz.vars if x not in unname]
-                        self.dprint ('  old vars=%r' % (sz.vars,))
-                        self.dprint ('  new vars=%r' % (vars,))
-                        self.dprint ('  old types=%r' % (sz.types,))
-                        self.dprint ('  new types=%r' % (types,))
+                        #self.dprint ('  old vars=%s' % (ps(sz.vars),))
+                        #self.dprint ('  new vars=%s' % (vars,))
+                        #self.dprint ('  old types=%s' % (sz.types,))
+                        #self.dprint ('  new types=%s' % (types,))
                         #print 'unnamed %s %d' % (sz.names, len(unname))
                         sz.vars.difference_update (unname)
                         sz.types = types
@@ -1101,12 +1094,9 @@ class solver:
 
                         # the conditions have been met; turn the <let> into an <env>.
                         #self.dprint ('s-pop-let')
-
                         u2 = u.split (sz)
                         #print 'split'
                         #u2.pprint()
-                        # if we do this, we lose detail with row types.  not sure what
-                        #   other effects it may cause.
                         sz.vars = u2.prune (sz.types, sz.vars)
                         pop()
                         #sys.stderr.write ('[%d %d]%r\n' % (len (sz.vars), len(u.eqs), sz.names))
@@ -1387,20 +1377,80 @@ class solver:
                 W ('exists%r.[]' % si.vars)
             elif is_a (si, s_let):
                 names = ';'.join (['%s:%r' % (si.names[i].name, si.types[i]) for i in range (len (si.names))])
-                W ('let %s: forall %r[[]] in %r' % (names, si.vars, si.body))
+                W ('let %s: forall %s[[]] in %r' % (names, ps (si.vars), si.body))
             elif is_a (si, s_env):
                 names = ';'.join (['%s:%r' % (si.names[i].name, si.types[i]) for i in range (len (si.names))])
-                W ('env %s: %r %r in []' % (names, si.vars, si.u.eqs))
+                W ('env %s: %s %r in []' % (names, ps (si.vars), si.u.eqs))
             else:
                 raise NotImplementedError
             W ('\n')
 
-    def print_type_error (self, terr, args, u, s):
-        self.pprint_stack (s)
-        ty0, ty1 = terr.args[0]
-        print 'Type Error', args
-        raise TypeError (decode (ty0), decode (ty1))
-    
+    def find_type_error (self, args, terr, u, s):
+        ty0, ty1 = terr
+        W = sys.stdout.write
+
+        def find_node (v):
+            # try to find a related node for each tvar
+            if is_a (v, t_var):
+                if v.node:
+                    return ty0.node
+                else:
+                    for vi in v.eq.vars:
+                        if vi.node:
+                            return vi.node
+            return None
+
+        n0 = find_node (ty0)
+        n1 = find_node (ty1)
+        if n0 is n1:
+            W ('node %r\n' % (n0,))
+        else:
+            if n0:
+                W ('node0 %r\n' % (n0,))
+            if n1:
+                W ('node1 %r\n' % (n1,))
+
+        # find the portion of the program
+        all = []
+        def walk_depth (n, d):
+            all.append ((n, d))
+            for sub in n.subs:
+                walk_depth (sub, d+1)
+
+        walk_depth (self.exp, 0)
+
+        def near (n):
+            lines = self.context.type_error_lines
+            # we want <lines> before and after
+            total = len (all)
+            start = 0
+            end   = total
+            for i in range (total):
+                if all[i][0] is n:
+                    start = max (i-lines, start)
+                    end   = min (i+lines, end)
+                    break
+            for ni, depth in all[start:end]:
+                if ni is n:
+                    indent = '--'
+                else:
+                    indent = '  '
+                W ('%s%r\n' % (indent * depth, ni))
+
+        if n0:
+            W ('\n  n0:\n')
+            near (n0)
+        if n1 and (n0 != n1):
+            W ('\n  n1:\n')
+            near (n1)
+        raise
+
+def ps (s):
+    l = list(s)
+    l.sort (lambda a,b: cmp (a.id, b.id))
+    return '{%s}' % repr(l)[1:-1]
+
+
 def list_to_conj (l):
     # convert list <l> into a conjunction built with <c_and>
     if len(l) == 0:
@@ -1456,13 +1506,18 @@ class typer:
         print 'solving...'
         if self.verbose:
             pprint_constraint (c)
-        s = solver (self.context, self.verbose, self.step)
+        s = solver (self.context, exp, self.verbose, self.step)
         m = s.solve (c)
         print 'decoding...'
         for node in exp:
             node.type = decode (node.tv)
-            #if node.is_a ('function') and node.name:
-            #    print node.name, '\t', node.type
+            if node.one_of ('let_splat', 'fix'):
+                for name in node.names:
+                    if not name.type:
+                        name.type = decode (name.tv)
+                    print name
+            if self.context.print_types and node.is_a ('function') and node.name:
+                print node.name, '\t', node.type
 
 def decode (t):
     seen = set()
