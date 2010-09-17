@@ -29,7 +29,7 @@
 	     9 'nine
 	     (alist:nil)))))))))))))
 
-(printn (lookup numbers 6))
+(printn (alist/lookup numbers 6))
 
 ;; using the macro
 
@@ -48,8 +48,8 @@
     (9 'nine)
     )))
 
-(printn (lookup numbers2 7))
-(printn (lookup numbers2 100))
+(printn (alist/lookup numbers2 7))
+(printn (alist/lookup numbers2 100))
 
 (alist/push numbers2 100 'one-hundred)
 
