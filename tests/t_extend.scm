@@ -11,5 +11,11 @@
 	 (%rextend/a r 34))
   )
 
-(thing 2 other-fun)
+(define (thing2)
+  (let ((r {a=0 b=1 c=2}))
+    (%rextend/b r 12)))
+
+(printn (thing 2 other-fun))
+(printn (thing2))
+
 
