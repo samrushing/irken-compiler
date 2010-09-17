@@ -441,6 +441,9 @@ class c_backend:
             else:
                 # compile-time lookup
                 self.write ('((pxll_vector*)r%d)->val[%d] = r%d;' % (record, sig.index (label), val))
+            # XXX set! vs extend... an 'extension' of a pre-existing field becomes a set!, return the record.
+            if (insn.target != 'dead') and record != insn.target:
+                self.write ('r%d = r%d;' % (insn.target, record))
         elif name == '%extend-tuple':
             # extend a pre-existing tuple by merging it with one or more new field=value pairs.
             src = insn.regs[0]
