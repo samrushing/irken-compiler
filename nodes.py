@@ -53,6 +53,7 @@ class node:
     flag = False
     leaf = False
     constructor = False
+    escapes = False
 
     def __init__ (self, kind, params=(), subs=(), type=None):
         self.kind = kind
