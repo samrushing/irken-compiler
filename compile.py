@@ -49,10 +49,8 @@ def compile_file (f, name, c):
     c.scc_graph, c.scc_map = graph.strongly (c.dep_graph)
 
     print 'typing...'
-    # run the constraint generator and solver to find types
-    t = solver.typer (c, c.verbose, step=c.step_solver)
-
     if c.typetype:
+        t = solver.typer (c, c.verbose, step=c.step_solver)
         t.go (exp3)
         if c.verbose:
             print '--- typing 1 ---'
@@ -65,8 +63,10 @@ def compile_file (f, name, c):
         print '--- analyzer ---'
         exp4.pprint()
 
-    t2 = solver.typer (c, c.verbose, step=c.step_solver)
+    t = solver.typer (c, c.verbose, step=c.step_solver)
     t.go (exp4)
+    #from pdb import set_trace as trace
+    #trace()
     #import cProfile
     #cProfile.runctx ("t.go (exp4)", globals(), locals())
     if c.verbose:
@@ -153,8 +153,11 @@ if __name__ == '__main__':
     # run the type solver *before* inlining as well as after.
     c.typetype = argtest ('-tt')
     c.no_range = argtest ('-nrc')
+    c.print_types = argtest ('-pt')
 
     if '-f' in sys.argv:
         sys.argv.remove ('-f')
         name = sys.argv[1]
+        #import cProfile
+        #cProfile.runctx ("compile_file (open (name, 'rb'), name, c)", globals(), locals())
         compile_file (open (name, 'rb'), name, c)
