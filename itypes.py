@@ -77,8 +77,9 @@ class t_var (_type):
     rank = -1
     letters = 'abcdefghijklmnopqrstuvwxyz'
     eq = None
-    counter = 0
+    counter = 1
     in_u = False
+    node = None
     def __init__ (self):
         self.id = t_var.counter
         t_var.counter += 1
@@ -90,14 +91,42 @@ class t_predicate (_type):
         self.name = name
         self.args = tuple (args)
     def __repr__ (self):
-        # special case
+        # special cases
         if self.name == 'arrow':
             if len(self.args) == 2:
                 return '(%r->%r)' % (self.args[1], self.args[0])
             else:
                 return '(%r->%r)' % (self.args[1:], self.args[0])
+        #elif self.name == 'rproduct' and len(self.args) == 1:
+        #    return '{%s}' % (rlabels_repr (self.args[0]),)
         else:
             return '%s(%s)' % (self.name, ', '.join ([repr(x) for x in self.args]))
+
+def rlabels_repr (t):
+    r = []
+    while 1:
+        if is_pred (t, 'rlabel'):
+            lname, ltype, t = t.args
+            if is_pred (ltype, 'pre'):
+                # normal case
+                r.append ('%s=%r' % (lname, ltype.args[0]))
+            elif is_pred (ltype, 'abs'):
+                r.append ('%s=#f' % (lname,))
+            else:
+                r.append ('...')
+                break
+        elif is_pred (t, 'rdefault'):
+            if is_pred (t.args[0], 'abs'):
+                # normal case
+                break
+            else:
+                r.append (repr (t))
+                break
+        else:
+            r.append ('...')
+            break
+    r.sort()
+    return ' '.join (r)
 
 def is_pred (t, *p):
     # is this a predicate from the set <p>?
