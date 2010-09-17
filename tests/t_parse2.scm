@@ -28,8 +28,8 @@
 (include "parse/t2.scm")
 
 (datatype item
-  (:t symbol string (range))
-  (:nt symbol (list (item)) (range))
+  (:t  symbol (range) string)
+  (:nt symbol (range) (list (item)))
   )
 
 (datatype stack
@@ -41,7 +41,7 @@
 ;;   might even obviate the need for tracking position in the AST. [since lexer position
 ;;   can propagate to the current parse error].
 (define (parse path)
-  (let ((file (file:open-read path))
+  (let ((file (file/open-read path))
 	(token-gen (make-lex-generator file))
 	(paren-stack (list:nil))
 	(indents (list:cons 0 (list:nil)))
@@ -159,8 +159,8 @@
 	  (match l0 args with
 	     -1 ()                     -> (range:f)
 	      _ ()                     -> (range:t l0 p0 l1 p1)
-	      _ ((item:t _ _ r) . tl)  -> (test-range l0 tl r)
-	      _ ((item:nt _ _ r) . tl) -> (test-range l0 tl r)
+	      _ ((item:t  _ r _) . tl) -> (test-range l0 tl r)
+	      _ ((item:nt _ r _) . tl) -> (test-range l0 tl r)
 	      )))
 
       (let loop ((tok (next-token)))
@@ -174,32 +174,29 @@
 		  (let ((a (lookup-action (get-state) kind)))
 		    (vcase action a
 		      ((:shift state)
-		       (push (item:t kind val range) state)
+		       (push (item:t kind range val) state)
 		       (loop (next-token)))
 		      ((:reduce plen nt)
 		       (let ((args (pop-n plen))
 			     (next-state (lookup-goto (get-state) nt)))
-			 (push (item:nt non-terminals[nt] args (get-range args)) next-state))
+			 (push (item:nt non-terminals[nt] (get-range args) args) next-state))
 		       (loop tok)))
 		    )))
 	       )))
       )))
 
-(define (indent n)
-  (let loop ((n n))
-    (cond ((= n 0) #t)
-	  (else
-	   (print-string "  ")
-	   (loop (- n 1))))))
+(define indent
+  0 -> #t
+  n -> (begin (print-string "  ") (indent (- n 1))))
 
 (define (print-parse-tree t)
   (let loop0 ((d 0)
 	      (t t))
     (indent d)
     (match t with
-      (item:t sym str range)
+      (item:t sym range str)
       -> (begin (print range) (print-string " ") (print sym) (print-string " ") (printn str))
-      (item:nt sym items range)
+      (item:nt sym range items)
       -> (begin
 	   (print range)
 	   (print-string " ")
@@ -212,8 +209,8 @@
 
 ;; print a parse tree out in a way that facilitates writing patterns for it.
 (define ppt
-  (item:nt sym items range) -> (begin (print-string "(item:nt ") (print sym) (print-string " ") (ppt-list items) (print-string ")"))
-  (item:t  sym str range)   -> (begin (print-string "(item:t ") (print sym) (print-string " \"") (print-string str) (print-string "\")"))
+  (item:nt sym range items) -> (begin (print-string "(item:nt ") (print sym) (print-string " ") (ppt-list items) (print-string ")"))
+  (item:t  sym range str)   -> (begin (print-string "(item:t ") (print sym) (print-string " \"") (print-string str) (print-string "\")"))
   )
 
 (define (ppt-list l)
@@ -235,81 +232,14 @@
   (:string string)
   )
 
-(datatype expr
+(datatype params
   (:literal (literal))
   (:varref string)
   (:function string (list (formal)))	;; <body>
   (:unparsed symbol)
-  (:call)     ;; <fun> <arg0> <arg1> ...
-  (:sequence) ;; <seq0> ... <seqn>
-  (:if)	      ;; <test0> <case0> <test1> <case1> ...
-  (:while)    ;; <test> <exp> <else>
-  (:for)      ;; <vars> <src> <body> <else>
-  (:raise)    ;; <value>
-  (:return)   ;; <result>
-  (:break)
-  (:continue)
-  (:pass)
+  (:for (list (formal)))
+  (:none)
   )
-
-(datatype expr
-  (:int int)
-  (:string string)
-  (:varref string)
-  (:binary string (expr) (expr))
-  (:unary string (expr))
-  (:funcall (expr) (list (expr)))
-  (:getitem (expr) (expr))
-  (:getattr (expr) string)
-  (:lambda (list (formal)) (expr))
-  (:sequence (list (expr)))
-  (:function string (list (formal)) (expr))
-  (:if (list (ifclause)) (expr))
-  (:while (expr) (expr) (expr))
-  (:for (expr) (expr) (expr) (expr))
-  (:break)
-  (:continue)
-  (:pass)
-  (:raise (expr))
-  (:return (expr))
-  (:unparsed symbol (list (expr)))
-  )
-
-(define (ppt-expr d e)
-  (print-string "\n")
-  (indent d)
-  (match e with
-    (expr:int n) -> (begin (print n) #u)
-    (expr:string s) -> (begin (print s) #u)
-    (expr:varref s) -> (begin (print-string "varref ") (print-string s) #u)
-    (expr:binary op a b) -> (begin (print-string "binary ") (print-string op) (ppt-expr (+ d 1) a) (ppt-expr (+ d 1) b) #u)
-    (expr:unary op a) -> (begin (print-string "unary ") (print-string op) (ppt-expr (+ d 1) a) #u)
-    (expr:funcall fun args) -> (begin (print-string "funcall ") (ppt-expr (+ d 1) fun) (ppt-expr-list (+ d 1) args) #u)
-    (expr:getitem item index) -> (begin (print-string "getitem ") (ppt-expr (+ d 1) item) (ppt-expr (+ d 1) index) #u)
-    (expr:getattr item attr) -> (begin (print-string "getattr ") (ppt-expr (+ d 1) item) (print-string " ") (print-string attr) #u)
-    (expr:lambda formals body) -> (begin (print-string "lambda ") (print formals) (ppt-expr (+ d 1) body))
-    (expr:sequence items) -> (begin (print-string "sequence ") (ppt-expr-list (+ d 1) items) #u)
-    (expr:function name formals body) -> (begin (print-string "function ") (print-string name) (print-string " ") (print formals) (ppt-expr (+ d 1) body))
-    (expr:if clauses else) -> (begin (print-string "if") (ppt-ifclause (+ d 1) clauses) (ppt-expr (+ d 1) else))
-    (expr:while test body else) -> (begin (print-string "while") (ppt-expr (+ d 1) test) (ppt-expr (+ d 1) body) (ppt-expr (+ d 1) else))
-    (expr:for vars src body else) -> (begin (print-string "for") (ppt-expr (+ d 1) vars) (ppt-expr (+ d 1) src) (ppt-expr (+ d 1) body) (ppt-expr (+ d 1) else))
-    (expr:pass) -> (begin (print-string "pass") #u)
-    (expr:break) -> (begin (print-string "break") #u)
-    (expr:continue) -> (begin (print-string "continue") #u)
-    (expr:raise exp) -> (begin (print-string "raise ") (ppt-expr (+ d 1) exp))
-    (expr:return val) -> (begin (print-string "return") (ppt-expr (+ d 1) val))
-    (expr:unparsed symbol args) -> (begin (print-string "unparsed ") (print symbol) (ppt-expr-list (+ d 1) args) #u)
-    ))
-
-(define (ppt-expr-list d l)
-  (match l with
-    () -> #u
-    (hd . tl) -> (begin (ppt-expr d hd) (ppt-expr-list d tl))))
-
-(define (ppt-ifclause d l)
-  (match l with
-    () -> #u
-    ((ifclause:case test result) . tl) -> (begin (ppt-expr d test) (print-string "?") (ppt-expr (+ d 1) result) (ppt-ifclause d tl))))
 
 (define (perror where x)
   (print-string "decode error in ")
@@ -319,146 +249,157 @@
   (error "decode error"))
 
 (define p-operator
-  (item:nt _ ((item:t kind data _)) _) -> data
-  (item:t _ data _) -> data
+  (item:nt _ _ ((item:t kind _ data))) -> data
+  (item:t _ _ data) -> data
   x -> (perror "p-operator" x))
+
+(define NR (range:f))
+
+(define (make-varref name) {t='varref p=(params:varref name) subs='() range=NR})
 
 (define p-binary-splat
   e () -> e
-  e (op arg (item:nt _ splat _)) -> (expr:binary (p-operator op) e (p-binary-splat (p-expr arg) splat))
+  e (op arg (item:nt _ _ splat))
+  -> {t='call p=(params:none) subs=(LIST (make-varref (p-operator op)) e (p-binary-splat (p-expr arg) splat)) range=NR}
   e x -> (perror "p-binary-splat" x)
   )
 
 (define p-binary
-  (a (item:nt _ splat _)) -> (p-binary-splat (p-expr a) splat)
+  (e (item:nt _ _ splat)) -> (p-binary-splat (p-expr e) splat)
   x -> (perror "p-binary" x))
 
 (define p-power
-  (arg0 trailer (item:nt _ splat _)) -> (p-binary-splat (p-trailer-splat (p-expr arg0) trailer) splat)
+  (arg0 trailer (item:nt _ _ splat)) -> (p-binary-splat (p-trailer-splat (p-expr arg0) trailer) splat)
   x -> (perror "p-power" x))
 
 (define p-factor
-  (unary f) -> (expr:unary (p-operator unary) (p-expr f))
-  (power)   -> (p-expr power)
-  x -> (perror "p-factor" x))
+   (unary f) -> {t='call p=(params:none) subs=(LIST (make-varref (p-operator unary)) (p-expr f)) range=NR}
+   (power)   -> (p-expr power)
+   x -> (perror "p-factor" x))
 
 (define p-trailer-splat
-  exp0 (item:nt _ () _)    -> exp0
-  exp0 (item:nt _ (trailer splat) _) -> (p-trailer-splat (p-trailer exp0 trailer) splat)
+  exp0 (item:nt _ _ ())    -> exp0
+  exp0 (item:nt _ _ (trailer splat)) -> (p-trailer-splat (p-trailer exp0 trailer) splat)
   exp0 x -> (perror "p-trailer-splat" x)
   )
 
+(define __getitem__ {t='varref p=(params:varref "__getitem__") subs='() range=NR})
+(define __getattr__ {t='varref p=(params:varref "__getattr__") subs='() range=NR})
+
+(define pass-node   {t='pass p=(params:none) subs='() range=NR})
+
+(define (literal-string s r) {t='literal p=(params:literal (literal:string s)) subs='() range=r})
+
 (define p-trailer
-  exp0 (item:nt _ ((item:t 'lparen _ _) arglist _) _)          -> (expr:funcall exp0 (p-arglist arglist))
-  exp0 (item:nt _ ((item:t 'lbracket _ _) exp1 _) _)           -> (expr:getitem exp0 (p-expr exp1))
-  exp0 (item:nt _ ((item:t 'dot _ _) (item:t 'NAME name _)) _) -> (expr:getattr exp0 name)
+  exp0 (item:nt _ _ ((item:t 'lparen _ _) arglist _))           -> {t='call p=(params:none) subs=(list:cons exp0 (p-arglist arglist)) range=NR}
+  exp0 (item:nt _ _ ((item:t 'lbracket _ _) exp1 _))            -> {t='call p=(params:none) subs=(LIST __getitem__ exp0 (p-expr exp1)) range=NR}
+  exp0 (item:nt _ _ ((item:t 'dot _ _) (item:t 'NAME nr name))) -> {t='call p=(params:none) subs=(LIST __getattr__ exp0 (literal-string name nr)) range=NR}
   exp0 x -> (perror "p-trailer" x)
   )
 
 (define p-arglist
-  (item:nt _ () _) -> (list:nil)
+  (item:nt _ _ ()) -> (list:nil)
   _ -> (error "arglist"))
 
 (define (p-formals formals)
   (define p-formals0
     () -> (list:nil)
-    (_ (item:t _ name _) (item:nt _ splat _)) -> (list:cons (formal:var name) (p-formals0 splat))
+    (_ (item:t _ _ name) (item:nt _ _ splat)) -> (list:cons (formal:var name) (p-formals0 splat))
     x -> (perror "p-formals0" x))
   (match formals with
-    (item:nt _ ((item:t _ name0 _) (item:nt _ splat _) _) _) -> (list:cons (formal:var name0) (p-formals0 splat))
+    (item:nt _ _ ((item:t _ _ name0) (item:nt _ _ splat) _)) -> (list:cons (formal:var name0) (p-formals0 splat))
     x -> (perror "p-formals" x)))
 
 (define p-funcdef
   ;; 'def' NAME '(' <formals> ')' ':' <suite>
-  (_ (item:t _ name _) _ (item:nt _ (formals) _) _ _ (item:nt _ body _))
-  -> (expr:function name (p-formals formals) (p-suite body))
+  (_ (item:t _ _ name) _ (item:nt _ _ (formals)) _ _ (item:nt _ _ body))
+  -> {t='function p=(params:function name (p-formals formals)) subs=(LIST (p-suite body)) range=NR}
   x -> (perror "p-funcdef" x))
 
 (define p-lambda
-  (_ (item:nt _ (formals) _) _ body) -> (expr:lambda (p-formals formals) (p-expr body))
+  (_ (item:nt _ _ (formals)) _ body) -> {t='function p=(params:function "lambda" (p-formals formals)) subs=(LIST (p-expr body)) range=NR}
   x -> (perror "p-lambda" x))
 
 (define sequence
-    () -> (expr:sequence (list:nil))
-    (a) -> a
-    l -> (expr:sequence l))
+  ()  -> {t='sequence p=(params:none) subs='() range=NR}
+  (a) -> a
+  l   -> {t='sequence p=(params:none) subs=l range=NR}
+  )
 
 (define p-sequence
   acc () -> (sequence (reverse acc))
-  acc (_ item (item:nt _ splat _)) -> (p-sequence (list:cons (p-expr item) acc) splat)
+  acc (_ item (item:nt _ _ splat)) -> (p-sequence (list:cons (p-expr item) acc) splat)
   acc x -> (perror "p-sequence" x))
 
 (define p-testlist
-  (test0 (item:nt _ splat _) _) -> (p-sequence (list:cons (p-expr test0) (list:nil)) splat)
+  (test0 (item:nt _ _ splat) _) -> (p-sequence (LIST (p-expr test0)) splat)
   x -> (perror "p-testlist" x))
 
 (define p-simple-stmt
-  (small (item:nt _ splat _) _ _) -> (p-sequence (list:cons (p-expr small) (list:nil)) splat)
+  (small (item:nt _ _ splat) _ _) -> (p-sequence (LIST (p-expr small)) splat)
   x -> (perror "p-simple-stmt" x))
 
 (define (p-file-input l)
   (let loop ((acc (list:nil))
 	     (l l))
     (match l with
-      () -> (sequence acc)
-      ((item:nt _ ((item:t 'NEWLINE _ _)) _) (item:nt _ splat _)) -> (loop acc splat) ;; ignore NEWLINE tokens
-      ((item:nt _ (item0) _) (item:nt _ splat _)) -> (loop (list:cons (p-expr item0) acc) splat)
+      ()                                                          -> (sequence acc)
+      ((item:nt _ _ ((item:t 'NEWLINE _ _))) (item:nt _ _ splat)) -> (loop acc splat) ;; ignore NEWLINE tokens
+      ((item:nt _ _ (item0)) (item:nt _ _ splat))                 -> (loop (list:cons (p-expr item0) acc) splat)
       x -> (perror "p-file-input" x))
     ))
 
 (define p-stmt+
-  (exp0) -> (list:cons (p-expr exp0) (list:nil))
-  (exp0 (item:nt _ plus _)) -> (list:cons (p-expr exp0) (p-stmt+ plus))
+  (exp0) -> (LIST (p-expr exp0))
+  (exp0 (item:nt _ _ plus)) -> (list:cons (p-expr exp0) (p-stmt+ plus))
   x -> (perror "p-stmt+" x))
 
 (define p-suite
   ;; suite: simple_stmt | NEWLINE INDENT stmt+ DEDENT
   (stmt) -> (p-expr stmt)
-  (_ _ (item:nt _ stmts _) _) -> (sequence (p-stmt+ stmts))
+  (_ _ (item:nt _ _ stmts) _) -> (sequence (p-stmt+ stmts))
   x -> (perror "p-suite" x))
 
 (define p-return
   ;; return_stmt: 'return' [testlist]
-  (_ (item:nt _ () _)) -> (expr:return (expr:varref "None"))
-  (_ (item:nt _ ((item:nt _ val _)) _)) -> (expr:return (p-testlist val))
+  (_ (item:nt _ _ ()))                  -> {t='return p=(params:none) subs='() range=NR}
+  (_ (item:nt _ _ ((item:nt _ _ val)))) -> {t='return p=(params:none) subs=(LIST (p-testlist val)) range=NR}
   x -> (perror "p-return" x))
 
 (define p-raise
   ;; return_stmt: 'raise' [testlist]
-  (_ (item:nt _ () _)) -> (expr:raise (expr:pass))
-  (_ (item:nt _ ((item:nt _ val _)) _)) -> (expr:raise (p-testlist val))
+  (_ (item:nt _ _ ())) -> {t='raise p=(params:none) subs=(LIST pass-node) range=NR}
+  (_ (item:nt _ _ ((item:nt _ _ val)))) -> {t='raise p=(params:none) subs=(LIST (p-testlist val)) range=NR}
   x -> (perror "p-raise" x))
 
 (define p-elif-splat
-  () -> (list:nil)
+  () -> '()
   ;; ('elif' test ':' suite)*
-  (_ test _ (item:nt _ body _) (item:nt _ splat _)) -> (list:cons (ifclause:case (p-expr test) (p-suite body)) (p-elif-splat splat))
+  (_ test _ (item:nt _ _ body) (item:nt _ _ splat)) -> (append (LIST (p-expr test) (p-suite body)) (p-elif-splat splat))
   x -> (perror "p-elif-splat" x))
 
 (define p-else
-  () -> (expr:pass)
-  (_ _ (item:nt _ body _)) -> (p-suite body)
+  () -> pass-node
+  (_ _ (item:nt _ _ body)) -> (p-suite body)
   x -> (perror "p-else" x))
 
 (define p-if-stmt
   ;; if_stmt: 'if' test ':' suite ('elif' test ':' suite)* ['else' ':' suite]
-  (_ test _ (item:nt _ body _) (item:nt _ splat _) (item:nt _ else _))
-  -> (expr:if
-      (list:cons
-       (ifclause:case (p-expr test) (p-suite body))
-       (p-elif-splat splat))
-      (p-else else))
+  (_ test _ (item:nt _ _ body) (item:nt _ _ splat) (item:nt _ _ else))
+  ;; urgh, this is a mess.  should try to turn it into a ternary-if, or a cond, or something.
+  ;; probably the cleanest way is to pass <else> down to p-elif-splat
+  -> {t='if p=(params:none) subs=(append (LIST (p-expr test) (p-suite body)) (append (p-elif-splat splat) (LIST (p-else else)))) range=NR}
   x -> (perror "p-if-stmt" x))
 
 (define p-while-stmt
   ;; while_stmt: 'while' test ':' suite ['else' ':' suite]
-  (_ test _ (item:nt _ body _) (item:nt _ else _)) -> (expr:while (p-expr test) (p-suite body) (p-else else))
+  (_ test _ (item:nt _ _ body) (item:nt _ _ else)) -> {t='while p=(params:none) subs=(LIST (p-expr test) (p-suite body) (p-else else)) range=NR}
   x -> (perror "p-while-stmt" x))
 
 (define p-for-stmt
   ;; for_stmt: 'for' exprlist 'in' testlist ':' suite ['else' ':' suite]
-  (_ (item:nt _ vars _) _ (item:nt _ src _) _ (item:nt _ body _) (item:nt _ else _))
-  -> (expr:for (p-testlist vars) (p-testlist src) (p-suite body) (p-else else))
+  (_ (item:nt _ _ vars) _ (item:nt _ _ src) _ (item:nt _ _ body) (item:nt _ _ else))
+    -> {t='for p=(params:none) subs=(LIST (p-testlist vars) (p-testlist src) (p-suite body) (p-else else)) range=NR}
   x -> (perror "p-for-stmt" x)
   )
 
@@ -469,90 +410,100 @@
 
 (define p-not-test
   (a) -> (p-expr a)
-  (not a) -> (expr:unary "not" (p-expr a))
-  x -> (perror "p-not-test" x))
+  (not a) -> {t='call p=(params:none) subs=(LIST (make-varref "not") (p-expr a)) range=NR}
+  x -> (perror "p-not-test" x)
+  )
 
 (define p-one
   (a) -> (p-expr a)
   x -> (perror "p-one" x))
 
+(define p-simple
+  ((item:t 'break _ _))    -> {t='break    p=(params:none) subs='() range=NR}
+  ((item:t 'pass _ _))     -> {t='pass     p=(params:none) subs='() range=NR}
+  ((item:t 'continue _ _)) -> {t='continue p=(params:none) subs='() range=NR}
+  x -> (perror "p-simple" x))
+
 (define (strip-quotes s)
   (substring s 1 (- (string-length s) 1)))
 
 (define p-string+
-  (item:nt _ ((item:t _ s _)) _)       -> (list:cons (strip-quotes s) (list:nil))
-  (item:nt _ ((item:t _ s _) splat) _) -> (list:cons (strip-quotes s) (p-string+ splat))
+  (item:nt _ _ ((item:t _ _ s)))       -> (LIST (strip-quotes s))
+  (item:nt _ _ ((item:t _ _ s) splat)) -> (list:cons (strip-quotes s) (p-string+ splat))
   x -> (perror "p-string+" x))
 
 (define p-atom
-  ((item:t 'NUMBER val _)) -> (expr:int (string->int val))
-  ((item:t 'NAME val _))   -> (expr:varref val)
-  (string+) -> (expr:string (string-append (p-string+ string+)))
+  ((item:t 'NUMBER r val)) -> {t='literal subs='() p=(params:literal (literal:int (string->int val))) range=r }
+  ((item:t 'NAME r val))   -> {t='varref  subs='() p=(params:varref val) range=r }
+  (string+)                -> {t='literal subs='() p=(params:literal (literal:string (string-append (p-string+ string+)))) range=NR }
   x -> (perror "p-atom" x))
 
-(define p-simple
-  ((item:t 'break _ _))    -> (expr:break)
-  ((item:t 'pass _ _))     -> (expr:pass)
-  ((item:t 'continue _ _)) -> (expr:continue)
-  x -> (perror "p-simple" x))
+(define parse-table
+  (alist/make
+   ('expr	  p-binary)
+   ('xor_expr	  p-binary)
+   ('and_expr	  p-binary)
+   ('shift_expr	  p-binary)
+   ('arith_expr	  p-binary)
+   ('term	  p-binary)
+   ('comparison	  p-binary)
+   ('or_test	  p-binary)
+   ('and_test	  p-binary)
+   ('factor	  p-factor)
+   ('power	  p-power)
+   ('test	  p-one)
+   ('not_test	  p-not-test)
+   ('lambdef	  p-lambda)
+   ('testlist	  p-testlist)
+   ('exprlist	  p-testlist)
+   ('expr_stmt	  p-binary)
+   ('small_stmt	  p-one)
+   ('simple_stmt  p-simple-stmt)
+   ('stmt	  p-one)
+   ('file_input	  p-file-input)
+   ('compound_stmt p-one)
+   ('funcdef	  p-funcdef)
+   ('suite	  p-suite)
+   ('flow_stmt	  p-one)
+   ('if_stmt	  p-if-stmt)
+   ('while_stmt	  p-while-stmt)
+   ('for_stmt	  p-for-stmt)
+   ('break_stmt	  p-simple)
+   ('continue_stmt p-simple)
+   ('pass_stmt	  p-simple)
+   ('raise_stmt	  p-raise)
+   ('return_stmt  p-return)
+   ('atom	  p-atom)
+   ))
 
 (define p-expr
-  (let ((l (alist/new)))
-    ;; store the parsing functions in an alist keyed by production rule.
-    (define (A key val)
-      (set! l (alist/add l key val)))
-    (A 'expr           p-binary)
-    (A 'xor_expr       p-binary)
-    (A 'and_expr       p-binary)
-    (A 'shift_expr     p-binary)
-    (A 'arith_expr     p-binary)
-    (A 'term           p-binary)
-    (A 'comparison     p-binary)
-    (A 'or_test        p-binary)
-    (A 'and_test       p-binary)
-    (A 'factor         p-factor)
-    (A 'power          p-power)
-    (A 'test           p-one)
-    (A 'not_test       p-not-test)
-    (A 'lambdef        p-lambda)
-    (A 'testlist       p-testlist)
-    (A 'exprlist       p-testlist)
-    (A 'expr_stmt      p-binary)
-    (A 'small_stmt     p-one)
-    (A 'simple_stmt    p-simple-stmt)
-    (A 'stmt           p-one)
-    (A 'file_input     p-file-input)
-    (A 'compound_stmt  p-one)
-    (A 'funcdef        p-funcdef)
-    (A 'suite          p-suite)
-    (A 'flow_stmt      p-one)
-    (A 'if_stmt        p-if-stmt)
-    (A 'while_stmt     p-while-stmt)
-    (A 'for_stmt       p-for-stmt)
-    (A 'break_stmt     p-simple)
-    (A 'continue_stmt  p-simple)
-    (A 'pass_stmt      p-simple)
-    (A 'raise_stmt     p-raise)
-    (A 'return_stmt    p-return)
-    (A 'atom           p-atom)
-    (lambda (x)
-      (match x with
-	(item:t _ _ _)       -> (perror "p-expr" x)
-	(item:nt kind val _) -> (let ((probe (alist/lookup l kind)))
-				  (match probe with
-				    (maybe:no) -> (expr:unparsed kind (p-list val))
-				    (maybe:yes fun) -> (fun val)
-				    ))))))
+  (item:t  kind r val) -> {t='unparsed p=(params:unparsed kind) subs=(LIST (literal-string val r)) range=r}
+  (item:nt kind r val) -> (match (alist/lookup parse-table kind) with
+			     ;; not in the table, mark it as unparsed
+			     (maybe:no) -> {t='unparsed p=(params:unparsed kind) subs=(p-list val) range=r}
+			     ;; in the table - parse it and attach a range
+			     (maybe:yes fun) -> (let ((n0 (fun val))) (%rset/range n0 r) n0)
+			     ))
+
+
+(define (pprint-node n d)
+  ;;(print n.range)
+  ;;(print-string "\t")
+  (indent d)
+  (print n.t)
+  (print-string " ")
+  (printn n.p)
+  (for-each (lambda (n) (pprint-node n (+ d 1))) n.subs)
+  )
 
 (let ((t (if (> sys.argc 1) (parse sys.argv[1]) (parse "tests/parse_2.py"))))
   (printn t)
   (print-parse-tree t)
   (ppt t)
   (terpri)
-  (let ((exp (p-expr t)))
-    (ppt-expr 0 exp)
-    (print-string "\n")
-    exp
+  (let ((node (p-expr t)))
+    (pprint-node node 0)
+    node
     )
   )
 
