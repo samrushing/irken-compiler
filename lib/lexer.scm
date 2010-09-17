@@ -79,7 +79,7 @@
 (define (make-lex-generator file)
 
   (define (producer)
-    (file:read-char file))
+    (file/read-char file))
 
   (make-generator
    (lambda (consumer)
