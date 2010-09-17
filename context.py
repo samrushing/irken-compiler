@@ -12,6 +12,7 @@ class context:
     no_range = False
     optimize = False
     force_32 = False
+    print_types = False
 
     def __init__ (self):
         self.datatypes = {}
@@ -39,3 +40,5 @@ class context:
         self.constructed = []
         self.symbols = {}
         self.standard_macros = "lib/derived.scm"
+        # number of lines before and after a type error node
+        self.type_error_lines = 8
