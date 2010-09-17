@@ -42,6 +42,20 @@ class constructor:
     def __repr__ (self):
         return '(%s/%s %s)' % (self.datatype, self.alt, ' '.join ([repr(x) for x in self.subs]))
 
+class record:
+    def __init__ (self, pairs):
+        self.pairs = pairs
+    def __repr__ (self):
+        l = []
+        for i in range (len (self.pairs)):
+            name, sub = self.pairs[i]
+            l.append ('%s=%r' % (name, sub))
+        return '{%s}' % (' '.join (l))
+
+# bad match
+class MatchError:
+    pass
+
 FAIL = ['%%fail']
 ERROR = ['%%match-error']
 
@@ -96,6 +110,8 @@ class compiler:
                     return constructor ('list:cons', [self.kind (p[0]), self.kind (p[1:])])
         elif is_a (p, str):
             return variable (p)
+        elif is_a (p, atom) and p.kind == 'record':
+            return record ([(name, self.kind (sub)) for (name, sub) in p.value])
         else:
             return literal (p)
 
@@ -125,6 +141,8 @@ class compiler:
         # if every rule is a constructor (i.e., no variables)
         if self.first_pats_are (rules, constructor):
             return self.constructor_rule (vars, rules, default)
+        if self.first_pats_are (rules, record):
+            return self.record_rule (vars, rules, default)
         # if every rule is a constant
         if self.first_pats_are (rules, literal):
             return self.constant_rule (vars, rules, default)
@@ -205,6 +223,40 @@ class compiler:
             return self.fatbar (result, default)
         else:
             return result
+
+    def record_rule (self, vars, rules, default):
+        # (define thing
+        #   {a=x b=2} -> x
+        #   {a=3 b=y} -> y
+        #   )
+        # => 
+        # (define (thing r)
+        #   (match r.a r.b with
+        #     x 2 -> x
+        #     3 y -> y
+        #     ))
+        
+        # XXX do sanity checks on record rules, sort, etc...
+        def get_sig (pat):
+            sig = [x[0] for x in pat.pairs]
+            sig.sort()
+            return sig
+
+        # sanity check
+        sig = get_sig (rules[0][0][0])
+        for pats, code in rules[1:]:
+            if get_sig (pats[0]) != sig:
+                raise MatchError (pats, sig)
+            
+        # translate
+        vars0 = ['%s_%s' % (vars[0], field) for field in sig]
+        rules0 = []
+        for pats, code in rules:
+            assert (len (pats) == 1)
+            pats0 = [ x[1] for x in pats[0].pairs ]
+            rules0.append ((pats0, code))
+        bindings = [ [vars0[i], '%s.%s' % (vars[0], sig[i])] for i in range (len (sig)) ]
+        return ['let', bindings, self.match (vars0, rules0, default)]
 
     def constant_rule (self, vars, rules, default):
         # This is a simplified version of the constructor rule.  Here I'm departing from the book,
