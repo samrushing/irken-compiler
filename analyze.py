@@ -49,6 +49,8 @@ class analyzer:
             self.print_calls (root)
         self.find_applications (root)
         
+        self.escape_analysis (root)
+
         if self.inline:
             # XXX this is already being done in typing, let's combine them.
             self.call_graph = self.build_call_graph (root)
@@ -62,16 +64,18 @@ class analyzer:
             root = self.prune_fixes (root)
             # repeat this with new nodes...
             self.find_recursion (root)
+            # re-do escape analysis
+            self.escape_analysis (root)
+
 
         # mark leaf expressions
         self.find_leaves (root)
+
 
         for node in root:
             node.fix_attribute_names()
             if node.is_a ('function'):
                 node.calls = self.get_fun_calls (node)
-
-        self.escape_analysis (root)
 
         return root
 
@@ -501,7 +505,7 @@ class analyzer:
                     #     kind of compile-time-environment mechanism
                     if (not name.startswith ('^')
                         and calls > 0
-                        and ((fun.size <= self.inline_threshold or calls == 1)
+                        and ((fun.size <= self.inline_threshold or ((calls == 1) and not fun.escapes))
                              and not self.is_recursive (name))
                         ):
                         if calls > 1:
