@@ -1,64 +1,19 @@
 ;; -*- Mode: Irken -*-
 
+;; test parser for a simple predicate language.
+;; the grammar is defined in parse/t1.g, which generates parse/t1.scm
+;; the python lexer is defined in parse/lexer.py, which generates parse/lexstep.scm
+;; the sample file is in tests/parse_0.py
+;;
+;; the lexer produces tokens with attached line/column ranges, which are ignored here.
+
 (include "lib/core.scm")
 (include "lib/pair.scm")
 (include "lib/string.scm")
-(include "lib/frb.scm")
-(include "lib/symbol.scm")
 (include "lib/io.scm")
 
-(datatype token
-  ;;  <kind> <value>
-  (:t symbol string)
-  )
-
-(define eof-token (token:t 'eof "eof"))
-
-(define (lex producer consumer)
-  ;; producer gives us characters
-  ;; consumer takes tokens
-
-  (let ((action 'not-final)
-	(state 0))
-
-      (define (final? action)
-	(not (eq? action 'not-final)))
-
-      ;; defines the <step> function (DFA) from the lexer generator
-      (include "parse/lexstep.scm")
-
-      (let loop ((ch (producer))
-		 (last 'not-final)
-		 (current (list:nil)))
-	(cond ((char=? ch #\eof) (consumer (token:t '<$> "<$>")) #t)
-	      (else
-	       (set! state (step ch state))
-	       (set! action finals[state])
-	       (cond ((and (not (final? last)) (final? action))
-		      ;; we've entered a new final state
-		      (loop (producer) action (list:cons ch current)))
-		     ((and (final? last) (not (final? action)))
-		      ;; we've left a final state - longest match - emit token
-		      (consumer (token:t last (list->string (reverse current))))
-		      (set! state 0)
-		      (loop ch 'not-final (list:nil)))
-		     (else
-		      ;; accumulate this character
-		      (loop (producer) action (list:cons ch current)))))))
-      ))
-
-(define (make-lex-generator file)
-
-  (define (producer)
-    (file:read-char file))
-
-  (make-generator
-   (lambda (consumer)
-     (lex producer consumer)
-     (let forever ()
-       (consumer eof-token)
-       (forever))
-     )))
+(include "parse/lexstep.scm")
+(include "lib/lexer.scm")
 
 ;; parser tables
 
@@ -83,8 +38,8 @@
 ;; kind  = symbol
 
 (datatype item
-  (:nt symbol (list (item)))
-  (:t symbol string)
+  (:nt symbol (range) (list (item)))
+  (:t symbol (range) string)
   )
 
 (datatype stack
@@ -93,10 +48,10 @@
   )
 
 (define (parse path)
-  (let ((file (file:open-read path))
+  (let ((file (file/open-read path))
 	(token-gen (make-lex-generator file))
-	(paren-stack (list:nil))
-	(indentation 0)
+	(paren-stack '())
+	(indents (LIST 0))
 	(start-of-line #t)
 	(held-token eof-token)
 	(tok eof-token)
@@ -104,9 +59,14 @@
     
     (define get-indent
       ;; XXX handle or disallow tabs
-      (token:t 'whitespace str) -> (string-length str)
+      (token:t 'whitespace str _) -> (string-length str)
       ;; non-whitespace at the front of a line
-      (token:t _ _)             -> 0)
+      (token:t _ _ _ _)           -> 0)
+
+    (define (get-top-indent)
+      (match indents with
+        () -> 0
+	(indent . _) -> indent))
 
     (define (next-token)
       ;; process (i.e., filter/synthesize) the token stream
@@ -115,31 +75,44 @@
 	       (set! tok held-token)
 	       (set! held-token eof-token))
 	      (else
-	       (set! tok (token-gen))))
+	       (set! tok (token-gen))
+	       ;;(print "token-gen: ") (printn tok)
+	       ))
+	;;(print "next-token loop ") (printn start-of-line)
 	(if start-of-line
 	    ;; in this state we might emit INDENT/DEDENT
-	    (let ((this-indent (get-indent tok)))
-	      (set! start-of-line #f)
-	      (set! held-token tok)
-	      (cond ((> this-indent indentation)
-		     (set! indentation this-indent)
-		     (token:t 'indent ""))
-		    ((< this-indent indentation)
-		     (set! indentation this-indent)
-		     (token:t 'dedent ""))
-		    (else
-		     (loop))))
+	    (match tok with
+	      (token:t sym val range)
+	      -> (let ((this-indent (get-indent tok))
+		       (top-indent (get-top-indent)))
+		   (set! start-of-line #f)
+		   (set! held-token tok)
+		   (cond ((> this-indent top-indent)
+			  (set! indents (list:cons this-indent indents))
+			  (token:t 'INDENT "" range))
+			 ((< this-indent top-indent)
+			  (set! indents (cdr indents))
+			  ;; go around again, might be more DEDENT
+			  (set! start-of-line #t)
+			  (token:t 'DEDENT "" range))
+			 (else
+			  (loop)))))
 	    ;; in the middle of a line somewhere
 	    (match tok with
-	      (token:t 'newline _)
+	      (token:t 'NEWLINE _ _)
 	      -> (match paren-stack with
-		   () -> (begin (set! start-of-line #t) (token:t 'newline ""))
+		   () -> (begin (set! start-of-line #t) tok)
 		   _  -> (loop))
-	      (token:t 'whitespace _) -> (loop)
-	      (token:t 'comment _ )   -> (loop)
-	      (token:t _ _) -> tok
+	      (token:t 'whitespace _ _) -> (loop)
+	      (token:t 'comment _ _)   -> (loop)
+	      (token:t _ _ _) -> tok
 	      ))
 	))
+
+;;     (define (next-token)
+;;       (let ((t (next-token0)))
+;; 	(print-string "next-token: ") (printn t)
+;; 	t))
 
     (let ((stack (stack:empty)))
 
@@ -151,21 +124,23 @@
 
       (define (lookup-action state kind)
 	(let loop ((l actions[state]))
-	  (vcase action-list l
-	     ((:nil) (error "missing action?"))
-	     ((:cons tkind action tl)
-	      (if (eq? terminals[tkind] kind)
-		  action
-		  (loop tl))))))
+	  (match l with
+            (action-list:nil)
+	    -> (error "missing action?")
+	    (action-list:cons tkind action tl)
+	    -> (if (eq? terminals[tkind] kind)
+		   action
+		   (loop tl)))))
 
       (define (lookup-goto state nt)
 	(let loop ((l goto[state]))
-	  (vcase goto-list l
-	     ((:nil) (error "missing goto?"))
-	     ((:cons nt0 new-state tl)
-	      (if (eq? nt0 nt)
-		  new-state
-		  (loop tl))))))
+	  (match l with
+	     (goto-list:nil)
+	     -> (error "missing goto?")
+	     (goto-list:cons nt0 new-state tl)
+	     -> (if (eq? nt0 nt)
+		    new-state
+		    (loop tl)))))
 
       (define (pop-n n)
 	(let loop ((n n) (result (list:nil)))
@@ -180,36 +155,40 @@
 	(match stack with
 	   (stack:elem item _ rest) -> (begin (set! stack rest) item)
 	   (stack:empty) -> (error "stack underflow")))
-	   
-;;       (let loop ((tok (next-token)))
-;; 	(match tok with
-;; 	  (token:t 'eof _)
-;; 	  -> (begin (pop) (pop))
-;; 	  (token:t kind val)
-;; 	  -> (match (lookup-action (get-state) kind) with
-;; 	       (action:shift state)
-;; 	       -> (begin (push (item:t kind val) state) (loop (next-token)))
-;; 	       (action:reduce plen nt)
-;; 	       -> (let ((args (pop-n plen))
-;; 			(next-state (lookup-goto (get-state) nt)))
-;; 		    (push (item:nt non-terminals[nt] args) next-state)
-;; 		    (loop tok)))))
+
+      (define (get-range args)
+	(let loop ((args args) (l0 -1) (p0 -1) (l1 -1) (p1 -1))
+	  (define test-range
+	    -1 tl (range:t l2 p2 l3 p3) -> (loop tl l2 p2 l3 p3)
+	     _ tl (range:t l2 p2 l3 p3) -> (loop tl l0 p0 l3 p3)
+	     _ tl (range:f)             -> (loop tl l0 p0 l1 p1)
+	     )
+	  (match l0 args with
+	     -1 ()                     -> (range:f)
+	      _ ()                     -> (range:t l0 p0 l1 p1)
+	      _ ((item:t  _ r _) . tl) -> (test-range l0 tl r)
+	      _ ((item:nt _ r _) . tl) -> (test-range l0 tl r)
+	      )))
 
       (let loop ((tok (next-token)))
 	(cond ((eq? tok eof-token) (pop) (pop))
 	      (else
+	       ;(print-string "token: ") (printn tok)
+	       ;(print-string "state: ") (printn (get-state))
 	       (vcase token tok
-		 ((:t kind val)
+		 ((:t kind val range)
 		  (let ((a (lookup-action (get-state) kind)))
 		    (vcase action a
 		      ((:shift state)
-		       (push (item:t kind val) state)
+		       (push (item:t kind range val) state)
 		       (loop (next-token)))
 		      ((:reduce plen nt)
 		       (let ((args (pop-n plen))
 			     (next-state (lookup-goto (get-state) nt)))
-			 (push (item:nt non-terminals[nt] args) next-state))
-		       (loop tok)))))))))
+			 (push (item:nt non-terminals[nt] (get-range args) args) next-state))
+		       (loop tok)))
+		    )))
+	       )))
       )))
 
 (define (print-parse-tree t)
@@ -225,9 +204,9 @@
 	      (t t))
     (indent d)
     (vcase item t
-      ((:t sym str)
+      ((:t sym range str)
        (print sym) (print-string " ") (printn str))
-      ((:nt sym items)
+      ((:nt sym range items)
        (printn sym)
        (let loop1 ((l items))
 	 (vcase list l
@@ -239,8 +218,8 @@
       
 ;; print a parse tree out in a way that facilitates writing patterns for it.
 (define ppt
-  (item:nt sym items) -> (begin (print-string "(item:nt ") (print sym) (print-string " ") (ppt-list items) (print-string ")"))
-  (item:t  sym str)   -> (begin (print-string "(item:t ") (print sym) (print-string " \"") (print-string str) (print-string "\")"))
+  (item:nt sym range items) -> (begin (print-string "(item:nt ") (print sym) (print-string " ") (ppt-list items) (print-string ")"))
+  (item:t  sym range str)   -> (begin (print-string "(item:t ") (print sym) (print-string " \"") (print-string str) (print-string "\")"))
   )
 
 (define (ppt-list l)
@@ -267,40 +246,54 @@
 
 ;; parse-tree->AST
 
+(define (p-file-input l)
+  (let loop ((acc (list:nil))
+	     (l l))
+    (match l with
+      ()                                                          -> acc
+      ((item:nt _ _ ((item:t 'NEWLINE _ _))) (item:nt _ _ splat)) -> (loop acc splat) ;; ignore NEWLINE tokens
+      ((item:nt _ _ (item0)) (item:nt _ _ splat))                 -> (loop (list:cons (p-expr item0) acc) splat)
+      _ -> (error "p-file-input"))
+    ))
+
 (define p-atom
-  (item:t 'NAME x)   -> (atom:name x)
-  (item:t 'NUMBER x) -> (atom:number (string->int x))
-  (item:t 'STRING x) -> (atom:string x)
+  (item:t 'NAME _ x)   -> (atom:name x)
+  (item:t 'NUMBER _ x) -> (atom:number (string->int x))
+  (item:t 'STRING _ x) -> (atom:string x)
   _ -> (error "p-atom")
   )
 
 (define p-list
-  (item:nt _ ((item:t 'comma _) expr recur)) -> (list:cons (p-expr expr) (p-list recur))
-  (item:nt _ ())      -> (list:nil)
+  (item:nt _ _ ((item:t 'comma _ _) expr recur)) -> (list:cons (p-expr expr) (p-list recur))
+  (item:nt _ _ ())      -> (list:nil)
   _ -> (error "p-list2")
   )
 
 (define p-args
-  (item:nt _ ((item:nt 'list (expr rest)))) -> (list:cons (p-expr expr) (p-list rest))
-  (item:nt _ ()) -> (list:nil)
+  (item:nt _ _ ((item:nt 'list _ (expr rest)))) -> (list:cons (p-expr expr) (p-list rest))
+  (item:nt _ _ ()) -> (list:nil)
   _ -> (error "p-args")
   )
 
 (define p-expr2
-  (item:nt 'predicate ((item:t 'NAME name) _ args _)) -> (expr:pred name (p-args args))
-  (item:nt 'atom (x)) -> (expr:atom (p-atom x))
+  (item:nt 'predicate _ ((item:t 'NAME _ name) _ args _)) -> (expr:pred name (p-args args))
+  (item:nt 'atom _ (x)) -> (expr:atom (p-atom x))
   _ -> (error "p-expr2")
   )
 
 (define p-expr
-  (item:nt 'expr (x)) -> (p-expr2 x)
+  (item:nt 'expr _ (x)) -> (p-expr2 x)
   _ -> (error "p-expr")
   )
+
+(define start
+  (item:nt 'file _ val) -> (p-file-input val)
+  _ -> (error "start"))
 
 ;; an unparser
 
 (define print-expr
-  (expr:pred name args) -> (begin (print-string name) (print-string "(") (print-args args) (print-string ")") #u)
+  (expr:pred name args) -> (begin (print-string name) (print-string " (") (print-args args) (print-string ")") #u)
   (expr:atom atom)      -> (print-atom atom))
 
 (define print-args
@@ -310,18 +303,22 @@
   )
 
 (define print-atom
-  (atom:string s) -> (begin (print-string s) #u)
+  (atom:string s) -> (begin (print-string s) #u)  ;; quotes are included
   (atom:number n) -> (begin (print-string (int->string n)) #u)
   (atom:name s)   -> (begin (print-string s) #u)
   )
 
-(let ((t (if (> (sys:argc) 1) (parse sys:argv[1]) (parse "tests/parse_0.py"))))
+(let ((t (if (> sys.argc 1) (parse sys.argv[1]) (parse "tests/parse_0.py"))))
   (printn t)
   (print-parse-tree t)
-  (ppt t)
+  ;;(ppt t)
   (terpri)
-  (let ((parsed (p-expr t)))
-    (printn parsed)
-    (print-expr parsed)
-    )
-  )
+  (let ((parsed (start t)))
+    ;;(printn parsed)
+    (let loop ((l parsed))
+      (match l with
+	() -> #f
+	(hd . tl) -> (begin (print-expr hd) (terpri) (loop tl))
+	))
+    ))
+
