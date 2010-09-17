@@ -49,7 +49,7 @@
 (define (make-lex-generator file)
 
   (define (producer)
-    (file:read-char file))
+    (file/read-char file))
 
   (make-generator
    (lambda (consumer)
@@ -59,7 +59,7 @@
        (forever))
      )))
 
-(let ((f (file:open-read "nodes.py")))
+(let ((f (file/open-read "nodes.py")))
   (define g (make-lex-generator f))
   (let loop ((tok (g)))
     (cond ((eq? tok eof-token) 23)
