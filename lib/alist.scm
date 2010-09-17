@@ -7,12 +7,18 @@
   (:entry 'a 'b (alist 'a 'b))
   )
 
-(define lookup
+(define alist/lookup
   (alist:nil)            k -> (maybe:no)
   (alist:entry k0 v0 tl) k -> (if (eq? k0 k)
 				  (maybe:yes v0)
-				  (lookup tl k))
+				  (alist/lookup tl k))
   )
+
+(define (alist/lookup* l k default)
+  (match (alist/lookup l k) with
+    (maybe:yes v) -> v
+    (maybe:no)    -> default
+    ))
 
 (defmacro alist/make
   (alist/make)                     -> (alist:nil)
