@@ -155,8 +155,21 @@ if __name__ == '__main__':
     c.no_range = argtest ('-nrc')
     c.print_types = argtest ('-pt')
 
-    if '-f' in sys.argv:
-        sys.argv.remove ('-f')
+    if len (sys.argv) != 2:
+        W = sys.stderr.write
+        W ("Usage: %s <irken-source-file>\n" % sys.argv[0])
+        W ("Options:\n")
+        W ("   -O : optimize\n")
+        W ("   -a : annotate\n")
+        W ("   -v : verbose\n")
+        W ("   -t : emit tracing code\n")
+        W ("   -ni : no inline; suppress most inlining\n")
+        W ("   -f32 : force 32-bits on a 64-bit machine\n")
+        W ("   -ss : single-step the type solver\n")
+        W ("   -tt : 'type twice': run the type solver before inlining as well as after.\n")
+        W ("   -nrc : no range checks\n")
+        #W ("   -pt : print types\n")
+    else:
         name = sys.argv[1]
         #import cProfile
         #cProfile.runctx ("compile_file (open (name, 'rb'), name, c)", globals(), locals())
