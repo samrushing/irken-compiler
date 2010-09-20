@@ -1,0 +1,633 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html> <head>
+<title>The Irken Language</title>
+  <style type="text/css">
+td.linenos { background-color: #f0f0f0; padding-right: 10px; }
+span.lineno { background-color: #f0f0f0; padding: 0 5px 0 5px; }
+pre { line-height: 125%; }
+body .hll { background-color: #ffffcc }
+body  { background: #f8f8f8; }
+body .c { color: #408080; font-style: italic } /* Comment */
+body .err { border: 1px solid #FF0000 } /* Error */
+body .k { color: #008000; font-weight: bold } /* Keyword */
+body .o { color: #666666 } /* Operator */
+body .cm { color: #408080; font-style: italic } /* Comment.Multiline */
+body .cp { color: #BC7A00 } /* Comment.Preproc */
+body .c1 { color: #408080; font-style: italic } /* Comment.Single */
+body .cs { color: #408080; font-style: italic } /* Comment.Special */
+body .gd { color: #A00000 } /* Generic.Deleted */
+body .ge { font-style: italic } /* Generic.Emph */
+body .gr { color: #FF0000 } /* Generic.Error */
+body .gh { color: #000080; font-weight: bold } /* Generic.Heading */
+body .gi { color: #00A000 } /* Generic.Inserted */
+body .go { color: #808080 } /* Generic.Output */
+body .gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+body .gs { font-weight: bold } /* Generic.Strong */
+body .gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+body .gt { color: #0040D0 } /* Generic.Traceback */
+body .kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+body .kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+body .kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+body .kp { color: #008000 } /* Keyword.Pseudo */
+body .kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+body .kt { color: #B00040 } /* Keyword.Type */
+body .m { color: #666666 } /* Literal.Number */
+body .s { color: #BA2121 } /* Literal.String */
+body .na { color: #7D9029 } /* Name.Attribute */
+body .nb { color: #008000 } /* Name.Builtin */
+body .nc { color: #0000FF; font-weight: bold } /* Name.Class */
+body .no { color: #880000 } /* Name.Constant */
+body .nd { color: #AA22FF } /* Name.Decorator */
+body .ni { color: #999999; font-weight: bold } /* Name.Entity */
+body .ne { color: #D2413A; font-weight: bold } /* Name.Exception */
+body .nf { color: #0000FF } /* Name.Function */
+body .nl { color: #A0A000 } /* Name.Label */
+body .nn { color: #0000FF; font-weight: bold } /* Name.Namespace */
+body .nt { color: #008000; font-weight: bold } /* Name.Tag */
+body .nv { color: #19177C } /* Name.Variable */
+body .ow { color: #AA22FF; font-weight: bold } /* Operator.Word */
+body .w { color: #bbbbbb } /* Text.Whitespace */
+body .mf { color: #666666 } /* Literal.Number.Float */
+body .mh { color: #666666 } /* Literal.Number.Hex */
+body .mi { color: #666666 } /* Literal.Number.Integer */
+body .mo { color: #666666 } /* Literal.Number.Oct */
+body .sb { color: #BA2121 } /* Literal.String.Backtick */
+body .sc { color: #BA2121 } /* Literal.String.Char */
+body .sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+body .s2 { color: #BA2121 } /* Literal.String.Double */
+body .se { color: #BB6622; font-weight: bold } /* Literal.String.Escape */
+body .sh { color: #BA2121 } /* Literal.String.Heredoc */
+body .si { color: #BB6688; font-weight: bold } /* Literal.String.Interpol */
+body .sx { color: #008000 } /* Literal.String.Other */
+body .sr { color: #BB6688 } /* Literal.String.Regex */
+body .s1 { color: #BA2121 } /* Literal.String.Single */
+body .ss { color: #19177C } /* Literal.String.Symbol */
+body .bp { color: #008000 } /* Name.Builtin.Pseudo */
+body .vc { color: #19177C } /* Name.Variable.Class */
+body .vg { color: #19177C } /* Name.Variable.Global */
+body .vi { color: #19177C } /* Name.Variable.Instance */
+body .il { color: #666666 } /* Literal.Number.Integer.Long */
+ </style>
+
+</head>
+
+<body>
+<h1>The Irken Language</h1>
+
+<h2>Irken</h2>
+
+<p>Irken is a simplified, statically-typed dialect of <a href="http://en.wikipedia.org/wiki/Scheme_%28programming_language%29"
+>Scheme</a>. It uses an ML-like type system supporting <a
+ href="http://en.wikipedia.org/wiki/Type_polymorphism#Parametric_polymorphism">parametetric polymorphism</a> (i.e., "let
+polymorphism") over algebraic datatypes.  With type inference and a pattern-matching syntax, it could be considered <i>ML with a
+lisp/scheme syntax</i>.</p>
+
+<h2>Syntax</h2>
+<p>Irken's syntax is nearly identical to Scheme's.  The main differences are:</p>
+<ul>
+  <li>postfix array-indexing (e.g., <code>"(+ x[i] y[i])</code>)"</li>
+  <li>record literals (e.g., <code>{field0=10 field1="foo" field2="bar"}</code>).</li>
+  <li>colon (<code>":"</code>) is a reserved character (it identifies constructors).</li>
+  <li>pattern-matching expressions (which use <code>"->"</code>) and function definitions.
+</ul>
+
+<p>[A few other discrepancies will remain undocumented in the hope that they will someday be fixed]</p>
+
+<h2>Datatypes</h2>
+
+<p>Compared to Scheme, the biggest change is that all expressions are statically typed.  Expressions like <code>'(1
+"two" three)</code> will not pass the type checker.  All lists must be monomorphic, i.e., a list of ints, or a list of bools, etc...  This
+sounds horribly restrictive, but in practice it is not; indeed the type safety guarantees made by this type system make for a more
+secure design that can outperform dynamic languages because it needs no runtime type checking.</p>
+
+<p>You may, for example, declare a datatype (i.e., a <a href="http://en.wikipedia.org/wiki/Sum_type" >union</a>) of these three types and make a list of <i>those</i> objects.</p>
+<p>Irken implements <a href="http://en.wikipedia.org/wiki/Algebraic_data_type" >algebraic data types</a> using the <code>datatype</code> declaration:</p>
+
+<div class="highlight"><pre><span class="c1">;; -*- Mode: Irken -*-</span>
+
+<span class="p">(</span><span class="nf">include</span> <span class="s">&quot;lib/core.scm&quot;</span><span class="p">)</span>
+<span class="p">(</span><span class="nf">include</span> <span class="s">&quot;lib/pair.scm&quot;</span><span class="p">)</span>
+
+<span class="p">(</span><span class="nf">datatype</span> <span class="nv">thing</span>
+  <span class="p">(</span><span class="nf">:int</span> <span class="nv">int</span><span class="p">)</span>
+  <span class="p">(</span><span class="nf">:str</span> <span class="nv">string</span><span class="p">)</span>
+  <span class="p">(</span><span class="nf">:sym</span> <span class="nv">symbol</span><span class="p">)</span>
+  <span class="p">)</span>
+</pre>
+<p>Note: <code>int</code>, <code>string</code>, and <code>symbol</code> are builtin base/ground types</p>
+ <p>Objects of this datatype are created by calling their constructors:</p>
+<pre>
+<span class="p">(</span><span class="nf">LIST</span> <span class="p">(</span><span class="nf">thing:int</span> <span class="mi">1</span><span class="p">)</span> <span class="p">(</span><span class="nf">thing:str</span> <span class="s">&quot;two&quot;</span><span class="p">)</span> <span class="p">(</span><span class="nf">thing:sym</span> <span class="ss">&#39;three</span><span class="p">))</span>
+</pre>
+
+<p>The <code>list</code> datatype is declared thus:</p>
+<pre>
+<span class="p">(</span><span class="nf">datatype</span> <span class="nv">list</span>
+  <span class="p">(</span><span class="nf">:nil</span><span class="p">)</span>
+  <span class="p">(</span><span class="nf">:cons</span> <span class="ss">&#39;a</span> <span class="p">(</span><span class="nb">list </span><span class="ss">&#39;a</span><span class="p">))</span>
+ <span class="p">)</span>
+</pre>
+  
+<p>In English, this means that the datatype <code>list</code> consists of two different variants.  The first,
+  <code>nil</code>, contains no additional data, and corresponds to an empty list.  The second, <code>cons</code>, contains two
+  objects.  The first element is of type <code>'a</code>, and the second is of type <code>(list 'a)</code>, making this a
+  recursively defined datatype.  In other words, a <code>cons</code> object has a <code>CAR</code> of any type, and a
+  <code>CDR</code> of a list of that same type.  The type <code>'a</code> is a <a
+  href="http://en.wikipedia.org/wiki/Type_variable">type variable</a>, which means it can take on any type.</p>
+
+<p><code>list</code> is not built into the compiler, but rather declared as part of the
+  prologue in the file <a href="lib/pair.scm.html" >"lib/pair.scm"</a>.</p>
+
+<p>If you want to write a function that deals with lists, the type checker will force you to deal with each branch of the datatype.
+This is the source of Irken's type safety: it's impossible to accidentally not handle a nil case.</p>
+
+</div>
+
+<h2>Constructors</h2>
+
+<p>A <code>constructor</code> is an automatically generated function that creates an object based on one of the branches/variants of
+a datatype declaration.  The name of a constructor function is formed from the names of the datatype and variant, delimited with a
+colon: <code>&lt;datatype&gt;:&lt;constructor&gt;</code>.</p>
+
+<p>For example, to create an empty list, you would call <code>list:nil</code>:</p>
+
+<div class="highlight"><pre>
+<span class="p">(</span><span class="nf">list:nil</span><span class="p">)</pre></div>
+<p>To create a list of one element:</p>
+<div class="highlight"><pre>
+<span class="p">(</span><span class="nf">list:cons</span> <span class="mi">x</span> <span class="p">(</span><span class="nf">list:nil</span><span class="p">)<span class="p">)
+</pre></div>
+
+<p>This may seem a little tedious, and it can be.  Like ML, Irken has some extra support for the list datatype (like the
+<code>LIST</code> macro used above) to make it a bit more convenient.</p>
+
+<p>In the ML family of languages, constructors are usually globally unique, so the datatype prefix is unnecessary.  A single global
+namespace for constructors means you can't use the same name more than once.  This leads to the use of <a href="http://en.wikipedia.org/wiki/Hungarian_notation" >Hungarian
+notation</a> (e.g, "TXNil"); I think it's cleaner to just require the name of the datatype to disambiguate.</p>
+
+<h2>Pattern Matching</h2>
+
+<p>How do you write functions that deal with this datatype? Irken has a builtin <code>vcase</code> special form (similar to a Scheme
+<code>case</code>), that covers the branches of a datatype constructor.  Here's how the <code>length</code> function looks using <code>vcase</code>:</p>
+
+<div class="highlight"><pre>
+
+<span class="p">(</span><span class="k">define </span><span class="p">(</span><span class="nb">length </span><span class="nv">l</span><span class="p">)</span>
+  <span class="p">(</span><span class="k">let </span><span class="nv">loop</span> <span class="p">((</span><span class="nf">l</span> <span class="nv">l</span><span class="p">)</span>
+	     <span class="p">(</span><span class="nf">n</span> <span class="mi">0</span><span class="p">))</span>
+    <span class="p">(</span><span class="nf">vcase</span> <span class="nv">list</span> <span class="nv">l</span>
+       <span class="p">((</span><span class="nf">:nil</span><span class="p">)</span> <span class="nv">n</span><span class="p">)</span>
+       <span class="p">((</span><span class="nf">:cons</span> <span class="nv">_</span> <span class="nv">tl</span><span class="p">)</span>
+	<span class="p">(</span><span class="nf">loop</span> <span class="nv">tl</span> <span class="p">(</span><span class="nb">+ </span><span class="nv">n</span> <span class="mi">1</span><span class="p">))))))</span>
+</pre></div>
+<p>And here's a version using pattern matching:</p>
+<div class="highlight"><pre>
+<span class="p">(</span><span class="k">define </span><span class="nv">length</span>
+    <span class="p">()</span>       <span class="nv">-&gt;</span> <span class="mi">0</span>
+    <span class="p">(</span><span class="nf">_</span> <span class="o">.</span> <span class="nv">tl</span><span class="p">)</span> <span class="nv">-&gt;</span> <span class="p">(</span><span class="nb">+ </span><span class="mi">1</span> <span class="p">(</span><span class="nb">length </span><span class="nv">tl</span><span class="p">)))</span>
+
+<span class="p">(</span><span class="nb">length </span><span class="o">&#39;</span><span class="p">(</span><span class="mi">1</span> <span class="mi">2</span> <span class="mi">3</span> <span class="mi">4</span> <span class="mi">5</span><span class="p">))</span>
+</pre></div>
+
+<p>Wow, that looks a lot cleaner!  (There's actually something a little unfair about the comparison that I will explain later).  The
+<code>vcase</code> special form isn't really needed in Irken any more; however pattern matching expressions are translated
+automatically by the compiler into <code>vcase</code> expressions.</p>
+
+<p>Notice a few things about this definition of <code>length</code>.  First, there is no argument list; the name of the function
+follows <code>define</code> unadorned.  That's because names for the formal arguments are superfluous - the patterns
+destructure the cases, (optionally) binding variables to the objects inside each branch.</p>
+
+<p>Secondly, you see some of the builtin language support for the list datatype.  Normally, the patterns would have to be
+written like this:</p>
+<div class="highlight"><pre>
+<span class="p">(</span><span class="k">define </span><span class="nv">length1</span>
+  <span class="p">(</span><span class="nf">list:nil</span><span class="p">)</span>       <span class="nv">-&gt;</span> <span class="mi">0</span>
+  <span class="p">(</span><span class="nf">list:cons</span> <span class="nv">_</span> <span class="nv">tl</span><span class="p">)</span> <span class="nv">-&gt;</span> <span class="p">(</span><span class="nb">+ </span><span class="mi">1</span> <span class="p">(</span><span class="nf">length1</span> <span class="nv">tl</span><span class="p">)))</span>
+</pre>
+
+<p>The empty list <code>()</code> corresponds to <code>(list:nil)</code>, and <code>(_ . tl)</code> corresponds
+  to <code>(list:cons _ tl)</code>.  (If you're from the ML/Haskell world, <code>(hd . tl)</code> is the same thing as <code>[hd::tl]</code>).
+
+<p>A third thing to note are the wildcard variables, denoted with underscores (<code>_</code>).  These are "don't cares", and
+  internally the compiler doesn't even bother to look at them or bind them.</p>
+
+<p>Let's look at another example of pattern matching on something other than lists.</p>
+
+<div class="highlight"><pre><span class="c1">;; -*- Mode: Irken -*-</span>
+
+<span class="p">(</span><span class="nf">include</span> <span class="s">&quot;lib/core.scm&quot;</span><span class="p">)</span>
+
+<span class="p">(</span><span class="nf">datatype</span> <span class="nv">tree</span>
+  <span class="p">(</span><span class="nf">:empty</span><span class="p">)</span>
+  <span class="p">(</span><span class="nf">:node</span> <span class="ss">&#39;a</span> <span class="p">(</span><span class="nf">tree</span> <span class="ss">&#39;a</span><span class="p">)</span> <span class="p">(</span><span class="nf">tree</span> <span class="ss">&#39;a</span><span class="p">))</span>
+  <span class="p">)</span>
+
+<span class="p">(</span><span class="k">define </span><span class="nv">indent</span>
+  <span class="mi">0</span> <span class="nv">-&gt;</span> <span class="no">#f</span>
+  <span class="nv">n</span> <span class="nv">-&gt;</span> <span class="p">(</span><span class="k">begin </span><span class="p">(</span><span class="nf">print-string</span> <span class="s">&quot;  &quot;</span><span class="p">)</span> <span class="p">(</span><span class="nf">indent</span> <span class="p">(</span><span class="nb">- </span><span class="nv">n</span> <span class="mi">1</span><span class="p">)))</span>
+  <span class="p">)</span>
+
+<span class="p">(</span><span class="k">define </span><span class="nv">tree/print</span>
+  <span class="nv">d</span> <span class="p">(</span><span class="nf">tree:empty</span><span class="p">)</span>               <span class="nv">-&gt;</span> <span class="no">#f</span>
+  <span class="nv">d</span> <span class="p">(</span><span class="nf">tree:node</span> <span class="nv">val</span> <span class="nv">left</span> <span class="nv">right</span><span class="p">)</span> <span class="nv">-&gt;</span> <span class="p">(</span><span class="nf">begin</span>
+				    <span class="p">(</span><span class="nf">indent</span> <span class="nv">d</span><span class="p">)</span>
+				    <span class="p">(</span><span class="nf">tree/print</span> <span class="p">(</span><span class="nb">+ </span><span class="nv">d</span> <span class="mi">1</span><span class="p">)</span> <span class="nv">left</span><span class="p">)</span>
+				    <span class="p">(</span><span class="nf">print</span> <span class="nv">val</span><span class="p">)</span>
+				    <span class="p">(</span><span class="nf">print-string</span> <span class="s">&quot;\n&quot;</span><span class="p">)</span>
+				    <span class="p">(</span><span class="nf">tree/print</span> <span class="p">(</span><span class="nb">+ </span><span class="nv">d</span> <span class="mi">1</span><span class="p">)</span> <span class="nv">right</span><span class="p">)))</span>
+
+<span class="p">(</span><span class="k">let </span><span class="p">((</span><span class="nf">t</span> <span class="p">(</span><span class="nf">tree:node</span>
+	  <span class="mi">5</span>
+	  <span class="p">(</span><span class="nf">tree:node</span> <span class="mi">7</span> <span class="p">(</span><span class="nf">tree:empty</span><span class="p">)</span> <span class="p">(</span><span class="nf">tree:node</span> <span class="mi">12</span> <span class="p">(</span><span class="nf">tree:empty</span><span class="p">)</span> <span class="p">(</span><span class="nf">tree:empty</span><span class="p">)))</span>
+	  <span class="p">(</span><span class="nf">tree:node</span> <span class="mi">9</span> <span class="p">(</span><span class="nf">tree:empty</span><span class="p">)</span> <span class="p">(</span><span class="nf">tree:empty</span><span class="p">))</span>
+	  <span class="p">)))</span>
+  <span class="p">(</span><span class="nf">tree/print</span> <span class="mi">0</span> <span class="nv">t</span><span class="p">)</span>
+  <span class="p">)</span>
+</pre></div>
+
+<p>The datatype <code>tree</code> defines a simple binary tree.  A <code>tree</code> is either <code>empty</code>, or
+a node containing an object of type <code>'a</code> (i.e., this datatype is polymorphic), and two more trees of that same type - the
+left and right branches of that node.</p>
+
+<p>The <code>tree/print</code> function uses a helper for indenting its output.  We've defined it succinctly using pattern matching.
+The <code>indent</code> function takes a single integer argument - the amount of indentation to print.  The base case of zero simply
+returns a boolean, which becomes the return type of the whole function.  The second case binds the argument to the variable
+<code>n</code>, which is then used to print two spaces before recursively calling indent.</p>
+
+<p>The <code>tree/print</code> function itself takes two arguments - a depth argument <code>d</code> and the tree to print.  It
+prints the left side of the tree first (indented by one step), the value of that node, then finally the right tree.</p>
+
+<h3>The <code>match</code> special form</h3>
+
+<p>Sometimes you want to pattern match somewhere other than the arguments to a <code>defined</code> function.  The
+<code>match</code> special form facilitates this:</p>
+<div class="highlight"><pre>
+<span class="p">(</span><span class="nf">match</span> <span class="nv">&lt;exp0&gt;</span> <span class="nv">&lt;exp1&gt;</span> <span class="o">...</span> <span class="nv">with</span>
+  <span class="nv">&lt;pat0&gt;</span> <span class="nv">&lt;pat1&gt;</span> <span class="o">...</span> <span class="nv">-&gt;</span> <span class="nv">&lt;result0&gt;</span>
+  <span class="nv">&lt;pat0&gt;</span> <span class="nv">&lt;pat1&gt;</span> <span class="o">...</span> <span class="nv">-&gt;</span> <span class="nv">&lt;result1&gt;</span>
+  <span class="p">)</span>
+
+  <span class="p">(</span><span class="nf">match</span> <span class="p">(</span><span class="nb">+ </span><span class="mi">1</span> <span class="nv">x</span><span class="p">)</span> <span class="nv">y</span> <span class="nv">with</span>
+     <span class="mi">12</span> <span class="nv">z</span> <span class="nv">-&gt;</span> <span class="p">(</span><span class="nb">+ </span><span class="nv">z</span> <span class="mi">9</span><span class="p">)</span>
+     <span class="mi">15</span> <span class="mi">9</span> <span class="nv">-&gt;</span> <span class="mi">0</span>
+     <span class="nv">x</span>  <span class="nv">y</span> <span class="nv">-&gt;</span> <span class="p">(</span><span class="nb">+ </span><span class="nv">x</span> <span class="nv">y</span><span class="p">)</span>
+     <span class="p">))</span>
+
+</pre></div>
+
+
+
+<h2>Tail Recursion is Iteration</h2>
+
+<p>Like Scheme, Irken is properly tail recursive.  Irken doesn't have imperative-style looping constructs.  Instead, the compiler
+  detects tail-recursive calls and translates them into a <code>goto</code> (with the C back end, literally).  For most people,
+  picking up this style of programming is relatively easy, especially when you learn the 'accumulator' trick.  Let's take another
+  look at that pattern-matching <code>length</code> function:</p>
+  
+<div class="highlight"><pre>
+<span class="p">(</span><span class="k">define </span><span class="nv">length</span>
+    <span class="p">()</span>       <span class="nv">-&gt;</span> <span class="mi">0</span>
+    <span class="p">(</span><span class="nf">_</span> <span class="o">.</span> <span class="nv">tl</span><span class="p">)</span> <span class="nv">-&gt;</span> <span class="p">(</span><span class="nb">+ </span><span class="mi">1</span> <span class="p">(</span><span class="nb">length </span><span class="nv">tl</span><span class="p">)))</span>
+</pre></div>
+
+<p>This function is recursive, but it's not tail-recursive.  Why?  Look at the recursive call to <code>length</code>.  After calling
+length, it adds one to the result.  When length is called, the stack will fill up with a bunch of +1 calls until it reaches the end
+of the list.  It's O(N) time, but it's also O(N) space.  The accumulator trick will fix the problem:</p>
+
+<div class="highlight"><pre>
+<span class="p">(</span><span class="k">define </span><span class="nv">length2</span>
+  <span class="p">()</span>       <span class="nv">acc</span> <span class="nv">-&gt;</span> <span class="nv">acc</span>
+  <span class="p">(</span><span class="nf">_</span> <span class="o">.</span> <span class="nv">tl</span><span class="p">)</span> <span class="nv">acc</span> <span class="nv">-&gt;</span> <span class="p">(</span><span class="nf">length2</span> <span class="nv">tl</span> <span class="p">(</span><span class="nb">+ </span><span class="mi">1</span> <span class="nv">acc</span><span class="p">))</span>
+  <span class="p">)</span>
+
+<span class="p">(</span><span class="k">define </span><span class="p">(</span><span class="nf">length3</span> <span class="nv">l</span><span class="p">)</span>
+  <span class="p">(</span><span class="nf">length2</span> <span class="nv">l</span> <span class="mi">0</span><span class="p">))</span>
+</pre></div>
+
+<p>Note here that the call to the <code>+</code> function is <i>inside</i> the recursive call (i.e., one of its arguments), rather
+than <i>outside</i>.  This version of the <code>length</code> function is properly tail recursive, and will compute the length of a
+list in O(N) time and O(1) space; just like the loop you might have written in C.  [It's called a <b>tail call</b> because it's the
+very last thing the function does].  Another thing: <code>length2</code> takes two
+arguments, not one.  Note how the <code>acc</code> variable passes through the pattern match untouched.
+</p>
+
+<p>Notice the auxiliary function <code>length3</code>.  It provides the same interface as the original function, and provides the
+initial value for the accumulator.  You could hide the definition of <code>length2</code> inside <code>length3</code>, like
+this:</p>
+
+<div class="highlight"><pre>
+<span class="p">(</span><span class="k">define </span><span class="p">(</span><span class="nf">length4</span> <span class="nv">l</span><span class="p">)</span>
+  <span class="p">(</span><span class="k">define </span><span class="nv">recur</span>
+    <span class="p">()</span>       <span class="nv">acc</span> <span class="nv">-&gt;</span> <span class="nv">acc</span>
+    <span class="p">(</span><span class="nf">_</span> <span class="o">.</span> <span class="nv">tl</span><span class="p">)</span> <span class="nv">acc</span> <span class="nv">-&gt;</span> <span class="p">(</span><span class="nf">recur</span> <span class="nv">tl</span> <span class="p">(</span><span class="nb">+ </span><span class="mi">1</span> <span class="nv">acc</span><span class="p">))</span>
+    <span class="p">)</span>
+  <span class="p">(</span><span class="nf">recur</span> <span class="nv">l</span> <span class="mi">0</span><span class="p">)</span>
+  <span class="p">)</span>
+</pre></div>
+
+<p>Another approach would be to bind <code>acc</code> inside length4, avoiding the <code>acc</code> argument inside
+<code>recur</code>.  These are style issues, ones that I'm still working out myself.</p>
+
+<p>Now you understand why the <code>vcase</code> comparison above was a little unfair.  The <code>vcase</code> version was written
+with an accumulator loop, and the first pattern-matching version was not.</p>
+
+<h2>Macros</h2>
+
+<p>Irken includes a simplified version of Scheme's <code>syntax-rules</code> macro facility.  The main purpose of macros in Irken is
+for syntax extension, <i>not</i> for inlining of functions (the compiler already inlines aggressively).</p>  The macro facility is
+of the 'macro by example' variety.  The syntax superficially resembles normal pattern matching in Irken, but it's important to
+remember that you are manipulating <i>source code</i>, <b>before</b> it gets to the compiler.</p>
+
+<p>Here's the definition of the <code>and</code> special form (see <a href="lib/derived.scm.html" >"lib/derived.scm"</a>):<p>
+<div class="highlight"><pre>
+<span class="p">(</span><span class="nf">defmacro</span> <span class="nv">and</span>
+  <span class="p">(</span><span class="k">and</span><span class="p">)</span>                 <span class="k">-&gt; </span><span class="no">#t</span>
+  <span class="p">(</span><span class="k">and </span><span class="nv">test</span><span class="p">)</span>            <span class="k">-&gt; </span><span class="nv">test</span>
+  <span class="p">(</span><span class="k">and </span><span class="nv">test1</span> <span class="nv">test2</span> <span class="o">...</span><span class="p">)</span> <span class="k">-&gt; </span><span class="p">(</span><span class="k">if </span><span class="nv">test1</span> <span class="p">(</span><span class="k">and </span><span class="nv">test2</span> <span class="o">...</span><span class="p">)</span> <span class="no">#f</span><span class="p">)</span>
+  <span class="p">)</span>
+</pre></div>
+<p>This macro defines three cases of translation.  An empty <code>and</code> is converted into the boolean <code>#t</code>.  An
+<code>and</code> with only one case in it simplifies to that case.  The normal use of <code>and</code> is converted into an
+<code>if</code> conditional.  Notice that the macro itself is recursive!
+
+<p>Here's another useful macro.  Given a datatype for a lisp 'association list'... (see <a href="lib/alist.scm.html" >"lib/alist.scm"</a>)</p>
+
+<div class="highlight"><pre>
+<span class="p">(</span><span class="nf">datatype</span> <span class="nv">alist</span>
+  <span class="p">(</span><span class="nf">:nil</span><span class="p">)</span>
+  <span class="p">(</span><span class="nf">:entry</span> <span class="ss">&#39;a</span> <span class="ss">&#39;b</span> <span class="p">(</span><span class="nf">alist</span> <span class="ss">&#39;a</span> <span class="ss">&#39;b</span><span class="p">))</span>
+ <span class="p">)</span>
+</pre></div>
+<p>...you might want to create a table.  But the constructor syntax is pretty annoying:</p>
+<div class="highlight"><pre>
+<span class="p">(</span><span class="k">define </span><span class="nv">numbers</span>
+  <span class="p">(</span><span class="nf">literal</span>
+   <span class="p">(</span><span class="nf">alist:entry</span>
+    <span class="mi">0</span> <span class="ss">&#39;zero</span>
+    <span class="p">(</span><span class="nf">alist:entry</span>
+     <span class="mi">1</span> <span class="ss">&#39;one</span>
+     <span class="p">(</span><span class="nf">alist:entry</span>
+      <span class="mi">2</span> <span class="ss">&#39;two</span>
+      <span class="p">(</span><span class="nf">alist:entry</span>
+       <span class="mi">3</span> <span class="ss">&#39;three</span>
+       <span class="p">(</span><span class="nf">alist:entry</span>
+	<span class="mi">4</span> <span class="ss">&#39;four</span>
+	<span class="p">(</span><span class="nf">alist:entry</span>
+	 <span class="mi">5</span> <span class="ss">&#39;five</span>
+	 <span class="p">(</span><span class="nf">alist:entry</span>
+	  <span class="mi">6</span> <span class="ss">&#39;six</span>
+	  <span class="p">(</span><span class="nf">alist:entry</span>
+	   <span class="mi">7</span> <span class="ss">&#39;seven</span>
+	   <span class="p">(</span><span class="nf">alist:entry</span>
+	    <span class="mi">8</span> <span class="ss">&#39;eight</span>
+	    <span class="p">(</span><span class="nf">alist:entry</span>
+	     <span class="mi">9</span> <span class="ss">&#39;nine</span>
+	     <span class="p">(</span><span class="nf">alist:nil</span><span class="p">)))))))))))))</span>
+</pre></div>
+<p>Here's a macro to the rescue:</p>
+<div class="highlight"><pre>
+<span class="p">(</span><span class="nf">defmacro</span> <span class="nv">alist/make</span>
+  <span class="p">(</span><span class="nf">alist/make</span><span class="p">)</span>                     <span class="k">-&gt; </span><span class="p">(</span><span class="nf">alist:nil</span><span class="p">)</span>
+  <span class="p">(</span><span class="nf">alist/make</span> <span class="p">(</span><span class="nf">k0</span> <span class="nv">v0</span><span class="p">)</span> <span class="p">(</span><span class="nf">k1</span> <span class="nv">v1</span><span class="p">)</span> <span class="o">...</span><span class="p">)</span> <span class="k">-&gt; </span><span class="p">(</span><span class="nf">alist:entry</span> <span class="nv">k0</span> <span class="nv">v0</span> <span class="p">(</span><span class="nf">alist/make</span> <span class="p">(</span><span class="nf">k1</span> <span class="nv">v1</span><span class="p">)</span> <span class="o">...</span><span class="p">))</span>
+ <span class="p">)</span>
+</pre></div>
+<p>And the much cleaner table definition</p>
+<div class="highlight"><pre>
+<span class="p">(</span><span class="k">define </span><span class="nv">numbers2</span>
+  <span class="p">(</span><span class="nf">literal</span>
+   <span class="p">(</span><span class="nf">alist/make</span> 
+    <span class="p">(</span><span class="mi">0</span> <span class="ss">&#39;zero</span><span class="p">)</span>
+    <span class="p">(</span><span class="mi">1</span> <span class="ss">&#39;one</span><span class="p">)</span>
+    <span class="p">(</span><span class="mi">2</span> <span class="ss">&#39;two</span><span class="p">)</span>
+    <span class="p">(</span><span class="mi">3</span> <span class="ss">&#39;three</span><span class="p">)</span>
+    <span class="p">(</span><span class="mi">4</span> <span class="ss">&#39;four</span><span class="p">)</span>
+    <span class="p">(</span><span class="mi">5</span> <span class="ss">&#39;five</span><span class="p">)</span>
+    <span class="p">(</span><span class="mi">6</span> <span class="ss">&#39;six</span><span class="p">)</span>
+    <span class="p">(</span><span class="mi">7</span> <span class="ss">&#39;seven</span><span class="p">)</span>
+    <span class="p">(</span><span class="mi">8</span> <span class="ss">&#39;eight</span><span class="p">)</span>
+    <span class="p">(</span><span class="mi">9</span> <span class="ss">&#39;nine</span><span class="p">)</span>
+    <span class="p">)))</span>
+</pre></div>
+
+<h2>Polymorphic Records</h2>
+
+<p>Irken supports polymorphic records based on rows.  A great introduction to Row Polymorphism (especially to support object-oriented
+features) is a <a href="http://www.cs.cmu.edu/~neelk/rows.pdf" >slide set from Neel Krishnaswami</a> at CMU.  Rows are a very
+powerful feature, one that you won't find in Standard ML or Haskell.  Of the mainstream ML's, only OCaml supports them, and uses them
+as the base for their OO/class features.</p>
+
+<p>Ok, now in English/Tutorialese.</p>
+
+<p>Here's how you can create a record ('struct' in C parlance) in Irken:</p>
+
+<div class="highlight"><pre><span class="c1">;; -*- Mode: Irken -*-</span>
+
+<span class="p">(</span><span class="nf">include</span> <span class="s">&quot;lib/core.scm&quot;</span><span class="p">)</span>
+
+<span class="p">(</span><span class="k">define </span><span class="nv">my-record</span> <span class="k">{</span><span class="nv">f0=</span><span class="no">#t</span> <span class="nv">f1=</span><span class="s">&quot;stringy&quot;</span> <span class="nv">f2=1234</span><span class="k">}</span><span class="p">)</span>
+
+<span class="p">(</span><span class="nf">printn</span> <span class="nv">my-record</span><span class="o">.</span><span class="nv">f0</span><span class="p">)</span>
+<span class="p">(</span><span class="nf">printn</span> <span class="nv">my-record</span><span class="o">.</span><span class="nv">f1</span><span class="p">)</span>
+</pre></div>
+
+<p>The brackets <code>{</code> and <code>}</code> surround the record literal.  Each slot in the record is named with a label.</p>
+<p>When you run this file through the compiler, you'll see the type assigned to <code>my-record</code>:</p>
+<pre>my-record: {f2=int, f1=string, f0=bool}</pre>
+<p>(Note: at the moment the compiler is printing row types in a much more frightening way, this will be fixed soon).</p>
+
+<p>As far as the compiler is concerned, the ordering of these fields is arbitray.</p>
+
+<p>Here's a function that will deal with that record:</p>
+
+<div class="highlight"><pre>
+<span class="p">(</span><span class="k">define </span><span class="p">(</span><span class="nf">fun</span> <span class="nv">r</span><span class="p">)</span>
+  <span class="p">(</span><span class="nb">+ </span><span class="nv">r</span><span class="o">.</span><span class="nv">f2</span> <span class="mi">34</span><span class="p">))</span>
+</pre></div>
+
+<p>If you look at the type of <code>fun</code> as discovered by the compiler, you'll see that it is polymorphic on the field
+<code>f2</code>.:</p>
+<pre>fun: {f2=int, ...}</pre>
+<p>What this means is that <code>fun</code> will accept for its argument any record type containing an integer field named <code>"f2"</code>.</p>
+
+<p>There is no need to declare record types, just use them.  Here's an <a href="tests/t_match_record.scm.html" >example of pattern matching on records</a>:</p>
+<div class="highlight"><pre><span class="p">(</span><span class="nf">include</span> <span class="s">&quot;lib/core.scm&quot;</span><span class="p">)</span>
+
+<span class="p">(</span><span class="k">define </span><span class="nv">thing</span>
+  <span class="k">{</span><span class="nv">a=x</span> <span class="nv">b=2</span><span class="k">}</span> <span class="k">-&gt; </span><span class="nv">x</span>
+  <span class="k">{</span><span class="nv">a=3</span> <span class="nv">b=y</span><span class="k">}</span> <span class="k">-&gt; </span><span class="nv">y</span>
+  <span class="k">{</span><span class="nv">a=m</span> <span class="nv">b=n</span><span class="k">}</span> <span class="k">-&gt; </span><span class="p">(</span><span class="nb">+ </span><span class="nv">m</span> <span class="nv">n</span><span class="p">)</span>
+  <span class="p">)</span>
+
+<span class="p">(</span><span class="nf">printn</span> <span class="p">(</span><span class="nf">thing</span> <span class="k">{</span><span class="nv">a=3</span> <span class="nv">b=1</span><span class="k">}</span><span class="p">))</span>
+<span class="p">(</span><span class="nf">printn</span> <span class="p">(</span><span class="nf">thing</span> <span class="k">{</span><span class="nv">a=3</span> <span class="nv">b=2</span><span class="k">}</span><span class="p">))</span>
+<span class="p">(</span><span class="nf">printn</span> <span class="p">(</span><span class="nf">thing</span> <span class="k">{</span><span class="nv">a=4</span> <span class="nv">b=5</span><span class="k">}</span><span class="p">))</span>
+</pre></div>
+
+<h2>Polymorphic Variants</h2>
+
+<p>There's a type-theoretic flip side to polymorphic records: polymorphic variants are the <a
+ href="http://en.wikipedia.org/wiki/Duality_%28mathematics%29" >dual</a> of polymorphic records.  Mathematically, records are a
+"product type", and variants are a "sum type".  The <code>datatype</code> declaration in Irken declares a boring, statically defined
+ variant/sum type.  But in Irken, you can create and use polymorphic variants on the fly:</p>
+
+<div class="highlight"><pre><span class="c1">;; -*- Mode: Irken -*-</span>
+
+<span class="p">(</span><span class="nf">include</span> <span class="s">&quot;lib/core.scm&quot;</span><span class="p">)</span>
+
+<span class="p">(</span><span class="k">define </span><span class="nv">v0</span> <span class="p">(</span><span class="nf">:pair</span> <span class="mi">3</span> <span class="no">#t</span><span class="p">))</span>
+<span class="p">(</span><span class="k">define </span><span class="nv">v1</span> <span class="p">(</span><span class="nf">:thingy</span> <span class="mi">12</span><span class="p">))</span>
+
+<span class="p">(</span><span class="k">define </span><span class="p">(</span><span class="nf">fun</span> <span class="nv">x</span><span class="p">)</span>
+  <span class="p">(</span><span class="nf">vcase</span> <span class="nv">x</span>
+    <span class="p">((</span><span class="nf">:pair</span> <span class="nv">n</span> <span class="nv">b</span><span class="p">)</span> <span class="nv">n</span><span class="p">)</span>
+    <span class="p">((</span><span class="nf">:thingy</span> <span class="nv">n</span><span class="p">)</span> <span class="nv">n</span><span class="p">)</span>
+    <span class="p">))</span>
+
+<span class="p">(</span><span class="nf">printn</span> <span class="nv">v0</span><span class="p">)</span>
+<span class="p">(</span><span class="nf">printn</span> <span class="p">(</span><span class="nf">fun</span> <span class="nv">v0</span><span class="p">))</span>
+<span class="p">(</span><span class="nf">printn</span> <span class="p">(</span><span class="nf">fun</span> <span class="nv">v1</span><span class="p">))</span>
+</pre></div>
+
+<p>Note: for the moment polymorphic variants are not supported by the pattern-matching compiler.  This will be fixed soon,
+hopefully!  In the meanwhile you can use the secret, undocumented variant of the <code>vcase</code> special form that understands
+them.  The compiler distinguishes it from the other version of <code>vcase</code> by the absence of a datatype.</p>
+
+<p>The type for the function <code>fun</code> is:</p>
+<pre>&#931;{thingy='a pair=('a,'b)}</pre>
+This means it'll accept any polymorphic variant of that shape: a variant called 'thingy' containing one object (of any type), or a
+variant named 'pair' containing two objects (where the first one matches the type held by the <code>thingy</code> variant)
+
+<p>Polymorphic variants are very handy; their ease of use, without declaration, anywhere, reminds me of a dynamically typed language
+like Python.  They feel very Pythonic, yet have all the type safety you could ask for.  In fact, I spent some months trying to get
+by in Irken with polymorphic variants as the main datatype abstraction.  Two issues stopped me: First, they're inappropriate for
+systems-level programming - i.e., they are underspecified and would never fly in something like an OS Kernel.  The second issue had
+to do with performance of the type solver given huge data structures (like parser tables) built using them.
+<p>OCaml <a href="http://caml.inria.fr/pub/docs/manual-ocaml/manual006.html#toc36" >supports polymorphic variants</a>, they are introduced with a backtick in OCaml's syntax.</p>
+
+<h2>Type Inference</h2>
+
+<p>Irken uses a constraint-based type inference algorithm, based directly on Chapter 10 of "Advanced Topics in Types and Programming
+Languages".  An extended version of the chapter is <a href="http://cristal.inria.fr/attapl/" >available online</a>.  Currently, the
+type solver does not support subtyping (it uses equality where a subtype rule would apply), but this should be relatively easy to
+change when the time is right.</p>
+
+<h2>The Compiler</h2>
+<p>The Irken compiler is written in Python, and compiles to C.  It's a whole-program compiler that generates a single C file, in
+fact, a single C function, to represent the Irken program.  The compiler translates Irken source to a core lambda-calculus
+language.  After typing and optimization, the program is transformed into a <a href="http://en.wikipedia.org/wiki/Continuation-passing_style">CPS</a> register-machine
+language before the final output to C.</p>
+
+<p>The C output relies critically on two gcc extensions: the ability to take the <a href="http://gcc.gnu.org/onlinedocs/gcc-2.95.3/gcc_4.html#SEC64" >address of a label</a>, and <a href="http://gcc.gnu.org/onlinedocs/gcc-2.95.3/gcc_4.html#SEC65" >inline/lexical functions</a>.
+Other C compilers support the address-of-label extension, but fewer support lexical functions.  The garbage collector is implemented
+as a lexical function to give it access to local heap-related variables, while still allowing the compiler to put them in registers.
+I've experimented with a non-lexical gc() function (and thus putting the heap-related variables into globals), and the impact and
+performance is hugely bad.</p>
+
+<p>In practice, there are three compilers that can be used on the output from Irken:</p>
+
+<ol>
+  <li>gcc</li>
+  <li>llvm-gcc</li>
+  <li>dragon egg</i>
+</ol>
+
+<p>The LLVM compiler actually does a better job of compiling the Irken output.  Both compilers are able to see right through the
+integer tags and generate amazingly good code for integer math, for example.</p>
+<p>The CPS/RTL output is <a href="http://alien.nightmare.com/2010/05/temptations-of-llvm.html"> extremely well suited</a> for an <a href="http://alien.nightmare.com/2010/05/possible-approach-to-writing-llvm.html" >LLVM backend</a>, and I hope to someday explore this possibility.</p>
+<p>In the meanwhile, the best performance to be had is with the <a href="http://dragonegg.llvm.org/" >dragonegg compiler</a>.  This is an LLVM backend jammed into gcc using
+its new plugin architecture.</p>
+
+<h2>The Runtime</h2>
+<p>Irken has a very lisp/scheme-like runtime.  It uses runtime type tagging to enable the garbage collector to work without needing
+extra data from the compiler on the composition of the stack.  This simplifies debugging enormously, and allows the runtime to print
+out objects in a useful manner.  Do not underestimate the importance of this!  However, there is nothing in the language that
+requires runtime type tagging.  At some point in the future, a tagless, unboxed runtime could be designed (similar to OCaml), that
+would cut down on some of the heap and runtime overhead.</p>
+
+<h3>Integers</h3>
+<p>Integers are tagged with a single bit, the least significant.  This allows the runtime to distinguish an integer by looking only
+at this bit.  Any odd value is an integer.  This means our <code>int</code> datatype loses one bit of information.  In the 16-bit
+days, this was horribly painful.  In the 32-bit days, it was a mild inconvenience.  Today, with 64 bits, I would claim that it
+hardly matters at all.</p>
+<h3>Other immediate types</h3>
+<p>
+Characters, <code>#t, #f, #undefined, nil</code>, enum types, etc... are all represented with the second bit set and lowest bit cleared (i.e., multiples
+of 2, but not 4).  A dataype declaration with an empty variant constructor is also represented from this code space.  This allows
+all these values to be stored in a single word, and thus in a register.</p>
+<h3>Pointer Types</h3>
+<p>All pointer types have a one-word header stored on the heap.  The lowest byte of this header gives a type code (allowing the
+runtime to distinguish between datatypes, and between builtin types).  The remainder of the word gives the number of words to
+follow.  Pointer types are distinguished at runtime by having their lowest two bits cleared - in other words, they are aligned to
+(at least) a 32-bit boundary.</p>
+
+<h3>The Garbage Collector</h3>
+<p>The garbage collector is a very simple <a href="http://en.wikipedia.org/wiki/Cheney%27s_algorithm" >Cheney two-space copying
+collector</a>.  It consists of <a href="http://dark.nightmare.com/rushing/irken/irken/gc.c.html" >153 lines of C</a>.  Someday,
+someone will write a generational collector for Irken.</p>
+
+<h3>Image Dump/Load</h3>
+
+<p>The copying collector enables Irken to have a dump/load facility.  An image of the running system can be dumped to disk and
+reloaded later very quickly.  This would be useful for things like moving or distributing a computation, checkpointing, or to
+get a CGI to load quickly.</p>
+
+<h2>Features/Motivation</h2>
+
+<p> Why have I written this compiler?  The compiler's main purpose is to compile a VM for a python-like language.  The
+continuation-passing design in combination with the address-of-label extension just happens to generate code identical to what
+someone would write by hand when implementing a <a href="http://en.wikipedia.org/wiki/Threaded_code" >threaded virtual machine</a>.  I hope to be able to write a high-performance VM
+in Irken directly.  The other main advantage is scalability.  Both the VM (for a python-like language) and its low-level runtime
+(written in Irken) will support full-blown continuations.  This will enable the design of massively scalable systems built on
+<a href="http://en.wikipedia.org/wiki/Green_threads" >user/green/non-preemptive threads</a>.  The engineering goal is to support
+100,000+ threads.  This goal cannot be efficiently reached with a runtime that uses pre-allocated C stacks for each thread, so we
+avoid using the C stack completely.</p>
+
+<p>Look <a href="http://dark.nightmare.com/rushing/irken/irken/vm/vm.scm.html" >here</a> to get an idea what the VM code will look like.</p>
+
+<p>It has been my experience that having a green-threaded VM is not enough to build world-class systems.  Usually there is a
+requirement for performance that dictates dropping down into C.  With a system like <a href="http://www.stackless.com/" >Stackless Python</a>, this means writing C in
+continuation-passing style.  This is not a job for mortals.  Now, to write CPS code in C without introducing bugs that impact
+stability and security is even harder... a job for the gods themselves.</p>
+<p>The plan is thus to drop down to <i>Irken</i> when extra performance is needed, and this will be much safer than C.  It will also
+be possible to push performance-critical networking code down to the Irken layer.</p>
+
+<h2>History</h2>
+<p>Irken began life as a straightforward implementation of Scheme, intended for writing a VM without having to do so in C (which I
+despise).  One of my favorite Scheme implementations is <a href="http://www.s48.org/">scheme48</a>, which uses a similar implementation technique - a restricted
+version of Scheme called '<a href="http://en.wikipedia.org/wiki/PreScheme" >PreScheme</a>' that uses type inference to cut down on runtime type checking as much as possible.  I decided
+to try to learn about type inference.  After about 18 months, I finally had something working well enough for my purposes.</p>
+
+<h2>Related Work</h2>
+
+<p>A similar project, with much bigger goals, is the <a href="http://www.bitc-lang.org/">BitC project</a>.  It is in many ways much
+further along than Irken, but less suited to my purposes because it uses the C stack.  And they dumped the lisp syntax. 8^) But it's
+definitely worth following the project, I very much look forward to seeing kernels written in BitC soon!</p>
+
+<h2>References</h2>
+<p>This project is the culmination of about 15 years of work with Scheme, originally inspired by <a href="http://www.cs.indiana.edu/eip/eopl.html" >The Essentials of Programming
+Languages</a>.  All three editions are excellent, and very different books.  The first edition is the largest and most challenging; but
+it contains a lot more information about continuation-passing style than the others.</p>
+<p>Other critical references:</p>
+<ul>
+  <li>Friedman, Wand, & Haynes, <a href="http://www.amazon.com/dp/0262062798" >"The Essentials of Progamming Languages"</a>. (all three editions)</li>
+  <li>Appel, <a href="http://www.amazon.com/dp/052103311X" >"Compiling with Continuations"</a>.</li>
+  <li>Appel, <a href="http://www.amazon.com/dp/0521607647" >"Modern Compiler Implemenation in ML"</a>.</li>
+  <li>Jones & Lins, <a href="http://www.amazon.com/dp/0471941484" >"Garbage Collection: Algorithms for Automatic Dynamic Memory Management"</a>.</li>
+  <li>Pierce, <a href="http://www.amazon.com/dp/0262162091" >"Types and Programming Languages"</a>.</li>
+  <li>Pierce, <a href="http://www.amazon.com/dp/0262162288" >"Advanced Topics in Types and Programming Languages"</a>.</li>
+  <li>Okasaki, <a href="http://www.amazon.com/dp/0521663504" >"Purely Functional Data Structures"</a>.</li>
+</ul>
+<p>The following books have the additional advantage of being available online for free.  Many thanks to the authors!</p>
+<ul>
+  <li>Peyton-Jones, <a href="http://research.microsoft.com/en-us/um/people/simonpj/papers/slpj-book-1987/" >"The Implementation of Functional Programming Languages"</a>.</li>
+  <li>Krishnamurthi, <a href="http://www.cs.brown.edu/~sk/Publications/Books/ProgLangs/2007-04-26/" >"Programming Languages: Application and Interpretation"</a></li>
+</ul>
+
+<p>[XXX: I have a stack of 20 or so papers that should also be listed here]</p>
+
+<br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
+
+<hr>
+<address></address>
+<!-- hhmts start --> Last modified: Sun Sep 19 16:56:35 PDT 2010 <!-- hhmts end -->
+</body> </html>
