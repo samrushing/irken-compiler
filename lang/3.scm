@@ -11,6 +11,13 @@
     ((:thingy n) n)
     ))
 
+(define fun1
+  (:pair n _) -> n
+  (:thingy n) -> n
+  )
+
 (printn v0)
 (printn (fun v0))
 (printn (fun v1))
+(printn (fun1 v0))
+(printn (fun1 v1))
