@@ -477,20 +477,15 @@ as the base for their OO/class features.</p>
 <span class="p">(</span><span class="k">define </span><span class="nv">v0</span> <span class="p">(</span><span class="nf">:pair</span> <span class="mi">3</span> <span class="no">#t</span><span class="p">))</span>
 <span class="p">(</span><span class="k">define </span><span class="nv">v1</span> <span class="p">(</span><span class="nf">:thingy</span> <span class="mi">12</span><span class="p">))</span>
 
-<span class="p">(</span><span class="k">define </span><span class="p">(</span><span class="nf">fun</span> <span class="nv">x</span><span class="p">)</span>
-  <span class="p">(</span><span class="nf">vcase</span> <span class="nv">x</span>
-    <span class="p">((</span><span class="nf">:pair</span> <span class="nv">n</span> <span class="nv">b</span><span class="p">)</span> <span class="nv">n</span><span class="p">)</span>
-    <span class="p">((</span><span class="nf">:thingy</span> <span class="nv">n</span><span class="p">)</span> <span class="nv">n</span><span class="p">)</span>
-    <span class="p">))</span>
+<span class="p">(</span><span class="k">define </span><span class="nv">fun</span>
+  <span class="p">(</span><span class="nf">:pair</span> <span class="nv">n</span> <span class="nv">_</span><span class="p">)</span> <span class="nv">-&gt;</span> <span class="nv">n</span>
+  <span class="p">(</span><span class="nf">:thingy</span> <span class="nv">n</span><span class="p">)</span> <span class="nv">-&gt;</span> <span class="nv">n</span>
+  <span class="p">)</span>
 
 <span class="p">(</span><span class="nf">printn</span> <span class="nv">v0</span><span class="p">)</span>
 <span class="p">(</span><span class="nf">printn</span> <span class="p">(</span><span class="nf">fun</span> <span class="nv">v0</span><span class="p">))</span>
 <span class="p">(</span><span class="nf">printn</span> <span class="p">(</span><span class="nf">fun</span> <span class="nv">v1</span><span class="p">))</span>
 </pre></div>
-
-<p>Note: for the moment polymorphic variants are not supported by the pattern-matching compiler.  This will be fixed soon,
-hopefully!  In the meanwhile you can use the secret, undocumented variant of the <code>vcase</code> special form that understands
-them.  The compiler distinguishes it from the other version of <code>vcase</code> by the absence of a datatype.</p>
 
 <p>The type for the function <code>fun</code> is:</p>
 <pre>&#931;{thingy='a pair=('a,'b)}</pre>
@@ -502,7 +497,7 @@ like Python.  They feel very Pythonic, yet have all the type safety you could as
 by in Irken with polymorphic variants as the main datatype abstraction.  Two issues stopped me: First, they're inappropriate for
 systems-level programming - i.e., they are underspecified and would never fly in something like an OS Kernel.  The second issue had
 to do with performance of the type solver given huge data structures (like parser tables) built using them.
-<p>OCaml <a href="http://caml.inria.fr/pub/docs/manual-ocaml/manual006.html#toc36" >supports polymorphic variants</a>, they are introduced with a backtick in OCaml's syntax.</p>
+<p>OCaml <a href="http://caml.inria.fr/pub/docs/manual-ocaml/manual006.html#toc36" >supports polymorphic variants</a>, they are introduced with a backquote in OCaml's syntax.</p>
 
 <h2>Type Inference</h2>
 
@@ -528,7 +523,7 @@ performance is hugely bad.</p>
 <ol>
   <li>gcc</li>
   <li>llvm-gcc</li>
-  <li>dragon egg</i>
+  <li>dragonegg</i>
 </ol>
 
 <p>The LLVM compiler actually does a better job of compiling the Irken output.  Both compilers are able to see right through the
@@ -629,5 +624,5 @@ it contains a lot more information about continuation-passing style than the oth
 
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Sun Sep 19 16:56:35 PDT 2010 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Tue Sep 21 16:03:20 PDT 2010 <!-- hhmts end -->
 </body> </html>
