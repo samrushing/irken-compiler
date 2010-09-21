@@ -531,7 +531,7 @@ class c_backend:
                 try:
                     tag = self.context.variant_labels[label]
                 except KeyError:
-                    raise ValueError ('variant constructor ":%s" never called!' % label)
+                    raise ValueError ('variant constructor ":%s" never called; no runtime tag available.' % label)
                 if orig_arity == 0:
                     tag = 'TC_USERIMM+%d' % (tag * 4)
                 else:
