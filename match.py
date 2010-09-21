@@ -39,6 +39,9 @@ class constructor:
     def __init__ (self, name, subs):
         self.datatype, self.alt = name.split (':')
         self.subs = subs
+    def __len__ (self):
+        # arity of this constructor
+        return len (self.subs)
     def __repr__ (self):
         return '(%s/%s %s)' % (self.datatype, self.alt, ' '.join ([repr(x) for x in self.subs]))
 
@@ -177,11 +180,26 @@ class compiler:
         else:
             return ['%%fatbar', e1, e2]
 
+    def get_arity (self, rules):
+        # given a set of polymorphic variant rules:
+        # 1) compute the constructor arity
+        # 2) verify that they're all the same
+        arity = len (rules[0][0][0])
+        for pats, code in rules[1:]:
+            if len(pats[0]) != arity:
+                raise MatchError ("arity mismatch in polymorphic variant pattern", rules)
+        return arity
+
     def constructor_rule (self, vars, rules, default):
+        # Note: this rule is used for normal constructors *and* polymorphic variants.
         # ok, group them by constructor (retaining the order within each constructor alt).
         alts = {}
         datatype = rules[0][0][0].datatype
-        dt = self.context.datatypes[datatype]
+        if datatype != 'None':
+            dt = self.context.datatypes[datatype]
+        else:
+            # polymorphic variant
+            dt = None
         for pats, code in rules:
             alt = pats[0].alt
             # XXX raise this as a real syntax error...
@@ -197,7 +215,11 @@ class compiler:
             default0 = default
         for alt, rules0 in alts.iteritems():
             # new variables to stand for the fields of the constructor
-            vars0 = [ self.gensym() for x in range (dt.arity (alt)) ]
+            if dt:
+                arity = dt.arity (alt)
+            else:
+                arity = self.get_arity (rules0)
+            vars0 = [ self.gensym() for x in range (arity) ]
             wild  = [ True for x in vars0 ]
             rules1 = []
             for pats, code in rules0:
@@ -215,27 +237,21 @@ class compiler:
             cases.append (
                 [[['colon', None, alt]] + vars1, self.match (vars0 + vars[1:], rules1, default0)]
                 )
-        if len(alts) < len (dt.alts):
-            # an incomplete vcase, stick in an else clause.
-            cases.append (['else', default0])
-        result = ['vcase', datatype, vars[0]] + cases
+        if dt:
+            if len(alts) < len (dt.alts):
+                # an incomplete vcase, stick in an else clause.
+                cases.append (['else', default0])
+                result = ['vcase', datatype, vars[0]] + cases
+        else:
+            # this will turn into 'pvcase' when the missing datatype is detected
+            result = ['vcase', vars[0]] + cases
         if default != ERROR:
             return self.fatbar (result, default)
         else:
             return result
 
     def record_rule (self, vars, rules, default):
-        # (define thing
-        #   {a=x b=2} -> x
-        #   {a=3 b=y} -> y
-        #   )
-        # => 
-        # (define (thing r)
-        #   (match r.a r.b with
-        #     x 2 -> x
-        #     3 y -> y
-        #     ))
-        
+
         # XXX do sanity checks on record rules, sort, etc...
         def get_sig (pat):
             sig = [x[0] for x in pat.pairs]
