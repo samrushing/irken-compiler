@@ -241,7 +241,7 @@ class compiler:
             if len(alts) < len (dt.alts):
                 # an incomplete vcase, stick in an else clause.
                 cases.append (['else', default0])
-                result = ['vcase', datatype, vars[0]] + cases
+            result = ['vcase', datatype, vars[0]] + cases
         else:
             # this will turn into 'pvcase' when the missing datatype is detected
             result = ['vcase', vars[0]] + cases
