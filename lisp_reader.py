@@ -211,7 +211,8 @@ class reader:
         result = []
         while 1:
             p = self.peek()
-            if not (p in string.letters or p in string.digits):
+            # record names have a more limited space
+            if not (p in string.letters or p in string.digits or p in "-"):
                 return ''.join (result)
             else:
                 result.append (p)
