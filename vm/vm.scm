@@ -1,9 +1,4 @@
-;; -*- Mode: Scheme -*-
-
-(include "lib/core.scm")
-(include "lib/pair.scm")
-(include "lib/string.scm")
-(include "lib/io.scm")
+;; -*- Mode: Irken -*-
 
 (datatype object
   (:int int)
@@ -41,8 +36,8 @@
 
 (define (load path)
 
-  (let ((f (file:open-read path))
-	(code (file:read-buffer f))
+  (let ((f (file/open-read path))
+	(code (file/read-buffer f))
 	(pc 0)
 	(r (NIL))
 	)
@@ -184,6 +179,7 @@
   )
 
 (define (insn-lit)
+  ;; <LIT> <target> <litnum>
   (set! REGS[CODE[(+1 pc)]] LITS[CODE[(+2 pc)]])
   (set! pc (+3 pc))
   (next-insn)
@@ -476,14 +472,15 @@
 ;; return value from functions
 (define RETVAL (object:int 0))
 
-(let ((code (load sys:argv[1])))
-  (set! CODE (list->vec16 code.code))
-  (set! LITS (list->vector code.lits))
-  (set! STACK (vmcont:nil))
-  (printn OPS)
-  (printn CODE)
-  (printn LITS)
-  (set! pc 0)
-  (next-insn)
-  (printn RETVAL)
-  )
+(define (test)
+  (let ((code (load sys.argv[1])))
+    (set! CODE (list->vec16 code.code))
+    (set! LITS (list->vector code.lits))
+    (set! STACK (vmcont:nil))
+    (printn OPS)
+    (printn CODE)
+    (printn LITS)
+    (set! pc 0)
+    (next-insn)
+    (printn RETVAL)
+    ))
