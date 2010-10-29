@@ -437,6 +437,8 @@ class constraint_generator:
             vars.append (ptype)
             row = rlabel (label, pre(ptype), row)
             if len(formals):
+                # XXX this c_let may be redundant, since <alt> contains its own
+                #   lambda to do the bindings...
                 conj.append (c_let (formals, args, c_true(), self.gen (alt, t)))
             else:
                 conj.append (self.gen (alt, t))
@@ -450,6 +452,7 @@ class constraint_generator:
         dt = self.context.datatypes[exp.vtype]
         if len(dt.tvars):
             # it's a type scheme, instantiate it
+            # (strange thing to do during constraint generation, probably WRONG)
             scheme = instantiate_scheme (c_forall (dt.tvars, dt.scheme))
             conj = [self.gen (exp.value, scheme.constraint)]
         else:
@@ -764,7 +767,7 @@ class unifier:
         #self.pprint()
         #self.sanity()
         def p (t):
-            # XXX speed hack, this function is called a *lot*
+            # XXX speed hacks, this function is called a *lot*
             #if is_a (t, t_var):
             if t.__class__ is t_var:
                 if t.in_u is self:
@@ -773,8 +776,12 @@ class unifier:
                 else:
                     # free variable
                     return t
-            elif is_a (t, t_predicate):
-                return t_predicate (t.name, [p(x) for x in t.args])
+            # elif is_a (t, t_predicate):
+            elif t.__class__ is t_predicate:
+                #return t_predicate (t.name, [p(x) for x in t.args])
+                # another speed hack
+                t.args = [p(x) for x in t.args]
+                return t
             else:
                 return t
         unname = set()
@@ -885,7 +892,8 @@ class unifier:
         y = []
         for eq in self.eqs:
             t = eq.type
-            if is_a (t, t_predicate):
+            #if is_a (t, t_predicate):
+            if t.__class__ is t_predicate:
                 for v in t.args:
                     if is_a (v, t_var) and v in free:
                         y.append (eq.rep)
