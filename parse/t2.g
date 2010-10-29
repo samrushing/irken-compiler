@@ -1,5 +1,7 @@
 # -*- Mode: Python -*-
-# based on 1.5.2, stripped down, slight mods
+# based on 1.5.2, stripped down, slight mods.
+# XXX find a way to express precedence, and
+#  pass that through the Parsing.py LR(1) generator.
 file_input: (NEWLINE | stmt)*
 
 funcdef: 'def' NAME '(' [varargslist] ')' ':' suite
@@ -53,4 +55,4 @@ exprlist: expr (',' expr)* [',']
 testlist: test (',' test)* [',']
 
 arglist:  argument (',' argument)* [',']
-argument: [test '='] test	# Really [keyword '='] test
+argument: [NAME '='] test	# Really [keyword '='] test
