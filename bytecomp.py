@@ -73,7 +73,7 @@ def compile_file (f, name, c):
         cps.pretty_print (exp5)
 
     fo = open ('%s.byc' % base, 'wb')
-    num_regs = cps.the_register_allocator.max_reg
+    num_regs = ic.regalloc.max_reg
     b = compiler (fo, name, num_regs, c)
     b.go (exp5)
     fo.close()
@@ -363,12 +363,13 @@ if __name__ == '__main__':
         else:
             return False
 
-    name = sys.argv[1]
-    f = open (name, 'rb')
     c = context.context()
 
     c.verbose  = argtest ('-v')
     c.noinline = argtest ('-ni')
     c.literals = {}
+
+    name = sys.argv[1]
+    f = open (name, 'rb')
 
     compile_file (f, name, c)
