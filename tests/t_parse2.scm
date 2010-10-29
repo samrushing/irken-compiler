@@ -13,18 +13,6 @@
 
 ;; parser tables
 
-(datatype action
-  (:shift int)
-  (:reduce int int))
-
-(datatype action-list
-  (:nil)
-  (:cons int (action) (action-list)))
-
-(datatype goto-list
-  (:nil)
-  (:cons int int (goto-list)))
-
 (include "parse/t2.scm")
 
 (datatype item
