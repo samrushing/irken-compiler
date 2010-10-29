@@ -65,6 +65,12 @@
 	 #t
 	 (member x tl =)))))
 
+(define nth
+  ()       _ -> (error "list index out of range")
+  (hd . _) 0 -> hd
+  (_ . tl) n -> (nth tl (- n 1))
+  )
+
 (define (range n)
   (let loop ((n n)
 	     (l (list:nil)))
