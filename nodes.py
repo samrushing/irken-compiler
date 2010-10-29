@@ -204,12 +204,6 @@ class node:
             self.recursive = self.params
             self.rator = self.subs[0]
             self.rands = self.subs[1:]
-        elif self.kind == 'get':
-            [self.ob] = self.subs
-            self.name = self.params
-        elif self.kind == 'set':
-            [self.ob, self.val] = self.subs
-            self.name = self.params
         elif self.kind == 'make_tuple':
             (self.ttype, self.tag) = self.params
             self.args = self.subs
@@ -319,12 +313,6 @@ def let_subst (vars, body):
 def application (rator, rands):
     return node ('application', False, [rator] + rands)
     
-def get (ob, name):
-    return node ('get', name, [ob])
-
-def set (ob, name, val):
-    return node ('set', name, [ob, val])
-
 def pvcase (value, alt_formals, alts):
     return node ('pvcase', alt_formals, [value] + alts)
 
@@ -374,6 +362,7 @@ def parse_type (exp, tvars=None):
         else:
             return x
 
+    #print 'pfun (%r) => %r' % (exp, pfun (exp))
     return pfun (exp)
 
 from lisp_reader import atom
@@ -440,12 +429,6 @@ class walker:
                     names = [vardef (x) for x in names]
                     inits = [WALK (x)   for x in inits]
                     return fix (names, inits, WALK (body))
-                elif rator == 'get':
-                    ignore, ob, name = exp
-                    return get (WALK (ob), name)
-                elif rator == 'set':
-                    ignore, ob, name, val = exp
-                    return set (WALK (ob), name, WALK (val))
                 elif rator == 'pvcase':
                     ignore, value, alt_formals, alts = exp
                     alt_formals = [ (selector, type, [vardef (name) for name in formals]) for selector, type, formals in alt_formals ]
@@ -501,6 +484,7 @@ def apply_substs (exp):
             return walk (exp.subs[0], lenv)
         elif exp.one_of ('varref', 'varset'):
             exp.params = lookup (exp.params, lenv)
+        # XXX urgh, destructive update bad, bad, bad.
         exp.subs = [walk (sub, lenv) for sub in exp.subs ]
         return exp
     
@@ -562,6 +546,7 @@ def rename_variables (exp, context):
         elif exp.is_a ('pvcase'):
             # this is a strangely shaped binding construct
             # note: nvcase uses let internally for binding, and does not need to be here.
+            # XXX I think this is probably true of pvcase too, now.
             rename (exp.value, lenv)
             n = len (exp.alts)
             for i in range (n):
@@ -590,6 +575,10 @@ def rename_variables (exp, context):
 
     # first, apply any pending substs
     exp = apply_substs (exp)
+    # because of the destructive update we gotta redo this
+    for node in exp:
+        node.fix_attribute_names()
+    
     #exp.pprint()
     rename (exp, None)
     # now go back and change the names of the vardefs
@@ -603,4 +592,7 @@ def rename_variables (exp, context):
     for vd in vars:
         result[vd.name] = vd
     return result
+
+# leave this here for tests/t_lex.scm
+42
 
