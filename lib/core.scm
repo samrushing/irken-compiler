@@ -15,6 +15,8 @@
 (define (terpri)
   (print-char #\newline))
 
+(define newline terpri)
+
 (define (= a b)
   (%%cexp (int int -> bool) "%s==%s" a b))
 
