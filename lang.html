@@ -79,7 +79,7 @@ body .il { color: #666666 } /* Literal.Number.Integer.Long */
 <p>Irken is a simplified, statically-typed dialect of <a href="http://en.wikipedia.org/wiki/Scheme_%28programming_language%29"
 >Scheme</a>. It uses an ML-like type system supporting <a
  href="http://en.wikipedia.org/wiki/Type_polymorphism#Parametric_polymorphism">parametetric polymorphism</a> (i.e., "let
-polymorphism") over algebraic datatypes.  With type inference and a pattern-matching syntax, it could be considered <i>ML with a
+polymorphism") and <a href="http://en.wikipedia.org/wiki/Algebraic_data_type">algebraic datatypes</a>.  With type inference and a pattern-matching syntax, it could be considered <i>ML with a
 lisp/scheme syntax</i>.</p>
 
 <h2>Syntax</h2>
@@ -435,7 +435,7 @@ as the base for their OO/class features.</p>
 <pre>my-record: {f2=int, f1=string, f0=bool}</pre>
 <p>(Note: at the moment the compiler is printing row types in a much more frightening way, this will be fixed soon).</p>
 
-<p>As far as the compiler is concerned, the ordering of these fields is arbitray.</p>
+<p>As far as the compiler is concerned, the ordering of these fields is arbitrary.</p>
 
 <p>Here's a function that will deal with that record:</p>
 
@@ -517,7 +517,7 @@ language before the final output to C.</p>
 <p>The C output relies critically on two gcc extensions: the ability to take the <a href="http://gcc.gnu.org/onlinedocs/gcc-2.95.3/gcc_4.html#SEC64" >address of a label</a>, and <a href="http://gcc.gnu.org/onlinedocs/gcc-2.95.3/gcc_4.html#SEC65" >inline/lexical functions</a>.
 Other C compilers support the address-of-label extension, but fewer support lexical functions.  The garbage collector is implemented
 as a lexical function to give it access to local heap-related variables, while still allowing the compiler to put them in registers.
-I've experimented with a non-lexical gc() function (and thus putting the heap-related variables into globals), and the impact and
+I've experimented with a non-lexical gc() function (and thus putting the heap-related variables into globals), and the impact on
 performance is hugely bad.</p>
 
 <p>In practice, there are three compilers that can be used on the output from Irken:</p>
