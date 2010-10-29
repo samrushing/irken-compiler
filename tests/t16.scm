@@ -52,10 +52,10 @@
   (printn (tree/member t < 1234))
   (printn (tree/member t < 9999))
   (tree/print t)
-  (set! t2 (tree/insert t2 string-<? "howdy" 0))
-  (set! t2 (tree/insert t2 string-<? "there" 2))
+  (set! t2 (tree/insert t2 string<? "howdy" 0))
+  (set! t2 (tree/insert t2 string<? "there" 2))
   (tree/print t2)
-  (let ((probe (tree/member t2 string-<? "there")))
+  (let ((probe (tree/member t2 string<? "there")))
     (vcase maybe probe
       ((:no) (printn "nope") #t)
       ((:yes val) (printn val) #t)))
