@@ -62,7 +62,7 @@
 (let ((f (file/open-read "nodes.py")))
   (define g (make-lex-generator f))
   (let loop ((tok (g)))
-    (cond ((eq? tok eof-token) 23)
+    (cond ((eq? tok eof-token) "done")
 	  (else
  	   (printn tok)
 	   (loop (g))))))
