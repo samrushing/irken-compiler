@@ -37,8 +37,24 @@ def build_tables (s):
         goto2.append (d)
     return goto2, action2, token_map, nt_map
 
+datatypes = """
+(datatype action
+  (:shift int)
+  (:reduce int int))
+
+(datatype action-list
+  (:nil)
+  (:cons int (action) (action-list)))
+
+(datatype goto-list
+  (:nil)
+  (:cons int int (goto-list)))
+
+"""
+
 def gen_irken (file, tables):
     W = file.write
+    W (datatypes)
     goto, actions, tm, ntm = tables
     items = tm.items()
     items.sort (lambda a,b: cmp (a[1],b[1]))
