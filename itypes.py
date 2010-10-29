@@ -8,17 +8,23 @@ class TypeError (Exception):
 # 'itypes' since 'types' is a standard python module
 
 class _type:
-    def unify (self, other):
-        raise TypeError
+    def __iter__ (self):
+        return walk_type (self)
+    def sub (self, other):
+        return False
 
 class t_base (_type):
     name = 'base'
+    code = 'b'
     def __cmp__ (self, other):
         return cmp (self.__class__, other.__class__)
     def __repr__ (self):
         return self.name
     def __hash__ (self):
         return hash (self.name)
+    def sub (self, other):
+        # cheap implementation of the subtyping relationship
+        return issubclass (self.__class__, other.__class__)
 
 class t_int (t_base):
     name = 'int'
@@ -80,6 +86,10 @@ class t_var (_type):
     counter = 1
     in_u = False
     node = None
+    val = None
+    code = 'v'
+    mv = None
+    pending = False
     def __init__ (self):
         self.id = t_var.counter
         t_var.counter += 1
@@ -87,8 +97,11 @@ class t_var (_type):
         return base_n (self.id, len(self.letters), self.letters)
 
 class t_predicate (_type):
+    code = 'p'
     def __init__ (self, name, args):
         self.name = name
+        if self.name in ('rlabel', 'rdefault'):
+            self.code = 'R'
         self.args = tuple (args)
     def __repr__ (self):
         # special cases
@@ -101,6 +114,14 @@ class t_predicate (_type):
         #    return '{%s}' % (rlabels_repr (self.args[0]),)
         else:
             return '%s(%s)' % (self.name, ', '.join ([repr(x) for x in self.args]))
+
+def walk_type (t):
+    yield t
+    if is_a (t, t_predicate):
+        for arg in t.args:
+            for x in walk_type (arg):
+                yield x
+
 
 def rlabels_repr (t):
     r = []
@@ -169,6 +190,22 @@ def abs():
 
 def pre (x):
     return t_predicate ('pre', (x,))
+
+# used to represent equirecursive types ('moo' is a pun on the 'μ' notation).
+class moo_var (_type):
+    counter = 1
+    letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    code = 'm'
+    def __init__ (self):
+        # this id is probably redundant, given the presence of a real tvar here.
+        self.id = moo_var.counter
+        moo_var.counter += 1
+        self.tvar = t_var()
+    def __repr__ (self):
+        return base_n (self.id, len(self.letters), self.letters)
+
+def moo (mvar, x):
+    return t_predicate ('moo', (mvar, x))
 
 # an algebraic datatype
 class datatype:
