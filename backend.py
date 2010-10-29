@@ -404,12 +404,12 @@ class c_backend:
         elif name.startswith ('%array-ref'):
             [base, index] = insn.regs
             if name[-1] != '%':
-                self.write ('range_check (GET_TUPLE_LENGTH((object*)r%d), unbox(r%d));' % (base, index))
+                self.write ('range_check (GET_TUPLE_LENGTH(*(object*)r%d), unbox(r%d));' % (base, index))
             self.write ('r%d = ((pxll_vector*)r%d)->val[unbox(r%d)];' % (insn.target, base, index))
         elif name.startswith ('%array-set'):
             [base, index, val] = insn.regs
             if name[-1] != '%':
-                self.write ('range_check (GET_TUPLE_LENGTH((object*)r%d), unbox(r%d));' % (base, index))
+                self.write ('range_check (GET_TUPLE_LENGTH(*(object*)r%d), unbox(r%d));' % (base, index))
             self.write ('((pxll_vector*)r%d)->val[unbox(r%d)] = r%d;' % (base, index, val))
         elif name == '%record-get':
             [record] = insn.regs
@@ -579,42 +579,46 @@ class c_backend:
         dtype, tags, alts, ealt = insn.params
         dt = self.context.datatypes[dtype]
         use_else = len(dt.alts) != len(alts)
-        get_typecode = self.which_typecode_fun (dt)
-        self.write ('switch (%s (r%d)) {' % (get_typecode, test_reg))
-        for i in range (len (tags)):
-            label = tags[i]
-            tag = dt.tags[label]
-            arity = dt.arity (label)
-            if is_a (tag, str):
-                tag = 'TC_%s' % (tag.upper())
-            elif arity == 0:
-                # immediate/unit-constructor
-                tag = 'TC_USERIMM+%d' % (tag * 4)
-            elif arity == 1 and dt.uimm.has_key (label):
-                typename = dt.uimm[label].name.upper()
-                tag = 'TC_%s' % (typename)
-            else:
-                # tuple constructor
-                tag = 'TC_USEROBJ+%d' % (tag * 4)
-            self.indent += 1
-            if i == len(tags)-1 and not use_else:
+        if len(alts) == 1 and len (dt.alts) == 1:
+            # nothing to switch on, just emit the code
+            self.emit (alts[0])
+        else:
+            get_typecode = self.which_typecode_fun (dt)
+            self.write ('switch (%s (r%d)) {' % (get_typecode, test_reg))
+            for i in range (len (tags)):
+                label = tags[i]
+                tag = dt.tags[label]
+                arity = dt.arity (label)
+                if is_a (tag, str):
+                    tag = 'TC_%s' % (tag.upper())
+                elif arity == 0:
+                    # immediate/unit-constructor
+                    tag = 'TC_USERIMM+%d' % (tag * 4)
+                elif arity == 1 and dt.uimm.has_key (label):
+                    typename = dt.uimm[label].name.upper()
+                    tag = 'TC_%s' % (typename)
+                else:
+                    # tuple constructor
+                    tag = 'TC_USEROBJ+%d' % (tag * 4)
+                self.indent += 1
+                if i == len(tags)-1 and not use_else:
+                    self.write ('default: {')
+                else:
+                    self.write ('case (%s): {' % (tag))
+                self.indent += 1
+                self.emit (alts[i])
+                self.indent -= 1
+                self.write ('} break;')
+                self.indent -= 1
+            if use_else:
+                self.indent += 1
                 self.write ('default: {')
-            else:
-                self.write ('case (%s): {' % (tag))
-            self.indent += 1
-            self.emit (alts[i])
-            self.indent -= 1
-            self.write ('} break;')
-            self.indent -= 1
-        if use_else:
-            self.indent += 1
-            self.write ('default: {')
-            self.indent += 1
-            self.emit (ealt)
-            self.indent -= 1
+                self.indent += 1
+                self.emit (ealt)
+                self.indent -= 1
+                self.write ('}')
+                self.indent -= 1
             self.write ('}')
-            self.indent -= 1
-        self.write ('}')
 
     def insn_fatbar (self, insn):
         label, e1, e2 = insn.params
