@@ -4,7 +4,6 @@ import lisp_reader
 import transform
 import graph
 import nodes
-import solver
 import analyze
 import cps
 import backend
@@ -48,30 +47,27 @@ def compile_file (f, name, c):
     c.dep_graph = graph.build_dependency_graph (exp3)
     c.scc_graph, c.scc_map = graph.strongly (c.dep_graph)
 
-    print 'typing...'
     if c.typetype:
-        t = solver.typer (c, c.verbose, step=c.step_solver)
-        t.go (exp3)
+        print 'type 1...'
+        type_exp (c, exp3)
         if c.verbose:
             print '--- typing 1 ---'
             exp3.pprint()
 
+    print 'inlining...'
     a = analyze.analyzer (c)
     exp4 = a.analyze (exp3)
 
     if c.verbose:
-        print '--- analyzer ---'
         exp4.pprint()
 
-    t = solver.typer (c, c.verbose, step=c.step_solver)
-    t.go (exp4)
-    #from pdb import set_trace as trace
-    #trace()
-    #import cProfile
-    #cProfile.runctx ("t.go (exp4)", globals(), locals())
+    print 'type 2...'
+    type_exp (c, exp4)
+        
     if c.verbose:
-        print '--- typing 2 ---'
         exp4.pprint()
+
+    print 'cps...'
 
     ic = cps.cps (c, verbose=c.verbose)
     exp5 = ic.go (exp4)
@@ -83,11 +79,23 @@ def compile_file (f, name, c):
     fo = open ('%s.c' % base, 'wb')
     #num_regs = cps.the_register_allocator.max_reg
     num_regs = ic.regalloc.max_reg
+    print 'codegen...'
     b = backend.c_backend (fo, name, num_regs, c)
     b.emit (exp5)
     b.done()
     fo.close()
     cc (name, c)
+
+def type_exp (c, exp):
+    # we have two different type solvers, so this fun abstracts that step.
+    if False:
+        import solver
+        t = solver.typer (c, c.verbose, step=c.step_solver)
+        return t.go (exp)
+    else:
+        import typing
+        t = typing.typer (c)
+        return t.go (exp)
 
 def cc (name, context):
     import os
