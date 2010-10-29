@@ -100,7 +100,7 @@
 (define (tree/make-generator tree end-key end-val)
   (make-generator
    (lambda (consumer)
-     (tree/inorder tree (lambda (k v) (consumer (:pair k v))))
+     (tree/inorder (lambda (k v) (consumer (:pair k v))) tree)
      (let loop ()
        (consumer (:pair end-key end-val))
        (loop))
