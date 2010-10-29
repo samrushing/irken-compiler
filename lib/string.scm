@@ -64,11 +64,11 @@
 	       (if (< alen blen) -1 1)))
 	  (else cmp))))
 
-(define (string-=? s1 s2)
+(define (string=? s1 s2)
   (= (string-compare s1 s2) 0))
-(define (string-<? s1 s2)
+(define (string<? s1 s2)
   (< (string-compare s1 s2) 0))
-(define (string->? s1 s2)
+(define (string>? s1 s2)
   (> (string-compare s1 s2) 0))
 
 (define (zero-terminate s)
