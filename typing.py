@@ -15,52 +15,45 @@ is_a = isinstance
 # To 'apply the subst', simply follow the path through each type variable
 #   until you get to something that's not a tvar.
 
-def apply_subst_to_type (t, all=True):
+def apply_subst_to_type (t):
 
-    # another task performed here: the detection of recursive types.
-    # this is done by passing <vars>, a list of all tvars seen up to
-    #   this point.  When we detect a cycle, we create a new moo_var,
-    #   and at the appropriate place create a 'moo' predicate binding
-    #   the variable.
+    # Another task performed here: the detection of recursive types.
+    # This is done by adding a notation to a tvar before recursing
+    # into it.  When we detect a cycle, we create a new moo_var, and
+    # at the appropriate place create a 'moo' predicate binding the
+    # variable.
 
-    def p (t, vars):
+    def p (t):
         # replace all known tvars in <t>
-        if is_a (t, t_base):
-            # base type
+        if is_a (t, (t_base, str, moo_var)):
             return t
+        elif is_a (t, t_predicate):
+            return t_predicate (t.name, [p(x) for x in t.args])
         elif is_a (t, t_var):
             # a type variable
-            if t in vars:
+            if t.pending:
                 mv = moo_var()
                 t.mv = mv
                 return mv
-            else:
-                vars = [t]+vars
             t0 = lookup_subst (t)
             if is_a (t0, t_var):
                 # search ends in another type variable
                 return t0
-            elif all:
+            else:
                 # search ends with a type, which we also need to expand
-                r = p (t0, vars)
+                t.pending = True
+                r = p (t0)
+                del t.pending
                 if t.mv:
                     return moo (t.mv, r)
                 else:
                     return r
-            else:
-                return t0
-        elif is_a (t, t_predicate):
-            return t_predicate (t.name, [p(x,vars) for x in t.args])
-        elif is_a (t, str):
-            return t
-        elif is_a (t, moo_var):
-            return t
         else:
             raise ValueError (t)
-    return p (t, [])
+
+    return p (t)
 
 def extend_subst (tvar, type):
-    #print '%r == %r' % (tvar, type)
     if tvar.val is not None and tvar.val != type:
         raise KeyError ("type var already bound!")
     else:
@@ -82,11 +75,8 @@ def lookup_subst (tvar):
             break
     return t
 
-W = sys.stderr.write
-    
 # reconcile types t1 and t2 from <exp> given <subst>
-def unify (ot1, ot2, tenv, exp):
-    #W ('[%s%s]' % (ot1.code, ot2.code))
+def unify (ot1, ot2):
     t1 = apply_subst_to_type (ot1)
     t2 = apply_subst_to_type (ot2)
     if t1 == t2:
@@ -100,59 +90,67 @@ def unify (ot1, ot2, tenv, exp):
         # other way
         #occurrence_check (t1, t2, exp)
         extend_subst (t2, t1)
-    elif is_a (t1, moo_var) and is_a (t2, moo_var):
-        # don't follow the recursion
-        # XXX should we unify the attached tvars?  or does that just create the loop again?
-        unify (t1.tvar, t2.tvar, tenv, exp)
-        #pass
+    elif is_a (t1, moo_var):
+        #unify (t1.tvar, t2)
+        pass
+    elif is_a (t2, moo_var):
+        #unify (t1, t2.tvar)
+        pass
     elif is_pred (t1, 'moo') or is_pred (t2, 'moo'):
-        unify_moo (t1, t2, tenv, exp)
+        unify_moo (t1, t2)
     elif is_pred (t1, 'rlabel', 'rdefault') or is_pred (t2, 'rlabel', 'rdefault'):
-        unify_rows (t1, t2, tenv, exp)
+        unify_rows (t1, t2)
     elif is_a (t1, t_predicate) and is_a (t2, t_predicate):
         if t1.name == t2.name and len (t1.args) == len (t2.args):
             for i in range (len (t1.args)):
-                unify (t1.args[i], t2.args[i], tenv, exp)
+                unify (t1.args[i], t2.args[i])
         else:
             raise TypeError (t1, t2)
     elif t1.sub (t2) or t2.sub (t1):
         # hack: subtyping implemented using python classes (e.g., t_int vs t_int16)
         #  this must certainly be wrong, testing if either is a subtype.
+        # XXX NOT WORKING
         pass
     else:
         raise TypeError (t1, t2)
 
 # XXX TODO: verify that all recursive types go through a row type.
 # XXX can I be simplified?
-def unify_moo (t0, t1, tenv, exp):
+def unify_moo (t0, t1):
     if is_pred (t0, 'moo') and is_pred (t1, 'moo'):
         # they're both recursive types, equate the attached tvars
-        unify (t0.args[0].tvar, t1.args[0].tvar, tenv, exp)
+        unify (t0.args[0].tvar, t1.args[0].tvar)
+        # unify their types
+        unify (t0.args[1], t1.args[1])
     else:
         if is_pred (t1, 'moo'):
             # reverse the args forcing t0 to be the moo
             t0, t1 = t1, t0
         if is_a (t1, moo_var):
             # the other is a moo_var, unify their attached tvars
-            unify (t0.args[0].tvar, t1.tvar, tenv, exp)
+            unify (t0.args[0].tvar, t1.tvar)
         else:
             # is this enough?
-            unify (t0.args[1], t1, tenv, exp)
+            unify (t0.args[1], t1)
 
-def unify_rows (ty0, ty1, tenv, exp):
+# This implementation of rows is based on the one in ATTPL, all of which are based on Rémy's
+#  addition of pre() and abs() predicates to Wand's formulation.  See section 10.8 of ATTPL,
+#  or "Type Inference for Records in a Natural Extension of ML" by Rémy.
+
+def unify_rows (ty0, ty1):
     if is_pred (ty0, 'rlabel') and is_pred (ty1, 'rlabel'):
         if ty0.args[0] != ty1.args[0]:
             # distinct head labels, C-MUTATE-LL
             l0, t0, d0 = ty0.args
             l1, t1, d1 = ty1.args
             x = t_var()
-            unify (d0, rlabel (l1, t1, x), tenv, exp)
-            unify (d1, rlabel (l0, t0, x), tenv, exp)
+            unify (d0, rlabel (l1, t1, x))
+            unify (d1, rlabel (l0, t0, x))
         else:
             l0, t0, d0 = ty0.args
             l1, t1, d1 = ty1.args
-            unify (t0, t1, tenv, exp)
-            unify (d0, d1, tenv, exp)
+            unify (t0, t1)
+            unify (d0, d1)
     elif is_pred (ty0, 'rlabel') or is_pred (ty1, 'rlabel'):
         # only one is an rlabel
         if is_pred (ty1, 'rlabel'):
@@ -161,8 +159,8 @@ def unify_rows (ty0, ty1, tenv, exp):
         if is_pred (ty1, 'rdefault'):
             # C-MUTATE-DL
             x = ty1.args[0]
-            unify (x, ty0.args[1], tenv, exp)
-            unify (ty1, ty0.args[2], tenv, exp)
+            unify (x, ty0.args[1])
+            unify (ty1, ty0.args[2])
         elif is_a (ty1, t_predicate):
             # some other predicate
             # S-MUTATE-GL
@@ -171,10 +169,10 @@ def unify_rows (ty0, ty1, tenv, exp):
             tvars1 = [t_var() for x in ty1.args]
             l0, t0, d0 = ty0.args
             g = ty1.name
-            unify (t_predicate (g, tvars0), t0, tenv, exp)
-            unify (t_predicate (g, tvars1), d0, tenv, exp)
+            unify (t_predicate (g, tvars0), t0)
+            unify (t_predicate (g, tvars1), d0)
             for i in range (n):
-                unify (ty1.args[i], rlabel (l0, tvars0[i], tvars1[i]), tenv, exp)
+                unify (ty1.args[i], rlabel (l0, tvars0[i], tvars1[i]))
         else:
             #self.dprint ('s-clash')
             raise TypeError ((ty0, ty1))
@@ -185,15 +183,15 @@ def unify_rows (ty0, ty1, tenv, exp):
         if is_pred (ty1, 'rdefault'):
             # they're both rdefault - normal decompose here
             assert (len(ty0.args) == 1 and len(ty1.args) == 1)
-            unify (ty0.args[0], ty1.args[0], tenv, exp)
+            unify (ty0.args[0], ty1.args[0])
         elif is_a (ty1, t_predicate):
             # some other predicate, S-MUTATE-GD
             n = len (ty1.args)
             g = ty1.name
             tvars = [ t_var() for x in ty1.args ]
-            unify (ty0.args[0], t_predicate (g, tvars), tenv, exp)
+            unify (ty0.args[0], t_predicate (g, tvars))
             for i in range (n):
-                unify (ty1.args[i], rdefault (tvars[i]), tenv, exp)
+                unify (ty1.args[i], rdefault (tvars[i]))
         else:
             #self.dprint ('s-clash')
             raise TypeError ((ty0, ty1))
@@ -213,6 +211,9 @@ def occurrence_check (tvar, t, exp):
     if occurs_in_type (tvar, t):
         raise TypeError ((tvar, t, exp))
 
+# XXX apparently this is done differently in many implementations,
+#   somehow passing a depth argument around the type_of() functions
+#   makes this easier?
 def occurs_free_in_tenv (tvar, tenv):
     while tenv:
         rib, tenv = tenv
@@ -226,6 +227,7 @@ def occurs_free_in_tenv (tvar, tenv):
 
 # if a node has user-supplied type, use it.  otherwise
 #   treat it as a type variable.
+# XXX untested in this new solver.
 def optional_type (exp, tenv):
     if exp.type:
         return apply_tenv (tenv, exp.type)
@@ -239,12 +241,6 @@ class forall:
 
     def __repr__ (self):
         return '<forall %r %r>' % (self.gens, self.type)
-
-# build_tscheme (type, tenv):
-#   this will build a type scheme given a type, by finding all the
-#   non-free tvars in the expression.
-
-# XXX probably don't need this.
 
 def build_type_scheme (type, tenv, name):
     
@@ -261,17 +257,18 @@ def build_type_scheme (type, tenv, name):
             pass
         elif is_a (t, str):
             pass
+        elif is_a (t, moo_var):
+            list_generic_tvars (t.tvar)
         else:
             raise ValueError
 
+    type = apply_subst_to_type (type)
     list_generic_tvars (type)
+
     if not gens:
         return type
     else:
-        r = forall (gens, type)
-        #if True:
-        #    print 'built type scheme for %s:%r' % (name, r)
-        return r
+        return forall (gens, type)
 
 def instantiate_type (type, tvar, fresh_tvar):
     def f (t):
@@ -292,17 +289,13 @@ def instantiate_type_scheme (tscheme):
     for gen in gens:
         # ah, it's just repeatedly substituting...
         body = instantiate_type (body, gen, t_var())
-    #print 'instantiating %r => %r' % (tscheme, body)
     return body
 
 def apply_tenv (tenv, name):
 
     def inst (t):
         if is_a (t, forall):
-            r = instantiate_type_scheme (t)
-            #if True:
-            #    print 'type of %r %r instantiated as %r' % (name, t, r)
-            return r
+            return instantiate_type_scheme (t)
         else:
             return t
 
@@ -324,11 +317,15 @@ class typer:
         self.verbose = self.context.verbose
 
     def go (self, exp):
+        self.exp = exp
         tenv = (self.initial_type_environment(), None)
-        result = self.type_of (exp, tenv)
+        try:
+            result = self.type_of (exp, tenv)
+        except TypeError:
+            sys.exit (1)
         for node in exp:
             if node.type:
-                node.type = apply_subst_to_type (node.type, True)
+                node.type = apply_subst_to_type (node.type)
         if self.verbose:
             for n in exp:
                 if n.is_a ('function'):
@@ -347,7 +344,49 @@ class typer:
         return constructors
 
     def unify (self, t0, t1, tenv, exp):
-        return unify (t0, t1, tenv, exp)
+        try:
+            return unify (t0, t1)
+        except TypeError as terr:
+            self.print_type_error (exp, terr)
+
+    def print_type_error (self, exp, terr):
+        t0, t1 = terr
+        W = sys.stderr.write
+
+        W ('\n---------------\nType Error:\n')
+        W ('  t0: %r\n' % (t0,))
+        W ('  t1: %r\n' % (t1,))
+        W ('\nnear:\n')
+
+        # find the portion of the program
+        all = []
+        def walk_depth (n, d):
+            all.append ((n, d))
+            for sub in n.subs:
+                walk_depth (sub, d+1)
+
+        walk_depth (self.exp, 0)
+
+        def near (n):
+            lines = self.context.type_error_lines
+            # we want <lines> before and after
+            total = len (all)
+            start = 0
+            end   = total
+            for i in range (total):
+                if all[i][0] is n:
+                    start = max (i-lines, start)
+                    end   = min (i+lines, end)
+                    break
+            for ni, depth in all[start:end]:
+                if ni is n:
+                    indent = '--'
+                else:
+                    indent = '  '
+                W ('%s%r\n' % (indent * depth, ni))
+
+        near (exp)
+        raise
 
     def type_of (self, exp, tenv):
         kind = exp.kind
@@ -393,8 +432,13 @@ class typer:
     def type_of_let_splat (self, exp, tenv):
         n = len (exp.inits)
         for i in range (n):
-            ta = self.type_of (exp.inits[i], tenv)
-            tenv = ([(exp.names[i].name, ta)], tenv)
+            init = exp.inits[i]
+            name = exp.names[i]
+            ta = self.type_of (init, tenv)
+            # user-supplied type
+            if name.type is not None:
+                self.unify (ta, name.type, tenv, exp)
+            tenv = ([(name.name, ta)], tenv)
         return self.type_of (exp.body, tenv)
 
     def type_of_function (self, exp, tenv):
@@ -421,7 +465,8 @@ class typer:
         return result_type
 
     def type_of_varref (self, exp, tenv):
-        return apply_tenv (tenv, exp.name)
+        r = apply_tenv (tenv, exp.name)
+        return r
 
     def type_of_varset (self, exp, tenv):
         # XXX implement the no-generalize rule for vars that are assigned.
@@ -546,6 +591,8 @@ class typer:
             return forall ((0,), arrow (t_undefined(), vector (0), t_int(), 0))
         elif name == '%vec16-set':
             return forall ((), arrow (t_undefined(), vector(t_int16()), t_int(), t_int16()))
+        elif name == '%vec16-ref':
+            return forall ((), arrow (t_int16(), vector(t_int16()), t_int(), t_int16()))
         # ------
         # pattern matching
         # ------
@@ -570,8 +617,6 @@ class typer:
             # adjust for the hacked pre-installed labels like 'cons' and 'nil'.
             vl[label] = len (vl) - self.context.nvariant_offset
 
-    # XXX here we are XXX
-
     def type_of_fix (self, exp, tenv):
         # reorder fix into dependency order
         partition = graph.reorder_fix (exp, self.context.scc_graph)
@@ -594,15 +639,21 @@ class typer:
             # type each init in temp_tenv
             for i in part:
                 init = exp.inits[i]
+                name = exp.names[i]
                 ti = self.type_of (init, temp_tenv)
                 self.unify (ti, init_tvars[i], temp_tenv, init)
                 init_types[i] = ti
+                if name.type:
+                    # user-specified type
+                    print '%r: user type=%r' % (name, name.type)
+                    self.unify (name.type, ti, tenv, init)
             # now extend the environment with type schemes instead
             type_rib = []
             for i in part:
-                name = exp.names[i].name
+                init = exp.inits[i]
+                name = exp.names[i]
                 tsi = build_type_scheme (init_types[i], tenv, name)
-                type_rib.append ((name, tsi))
+                type_rib.append ((name.name, tsi))
             # we now have a polymorphic environment for this subset
             tenv = (type_rib, tenv)
             n2 += len (type_rib)
