@@ -49,7 +49,11 @@ def test_t22():
 
 def test_t_lex():
     out = run_test ('t_lex')
-    assert (out.split ('\n')[-3].lower() == '{u0 newline "\\0x0a"}')
+    assert (out.split('\n')[-4:] == ['{u0 NUMBER "42"}', '{u0 NEWLINE "\\0x0a"}', '"done"', ''])
+
+def test_t_vm():
+    out = run_test ('t_vm', 'vm/tests/t11.byc')
+    assert (out.split()[-2:] == ['7', '#u'])
 
 PJ = os.path.join
 
@@ -69,6 +73,11 @@ special = [x[5:] for x in dir() if x.startswith ('test_')]
 
 failed = []
 
+# nobody wants to wait for a non-optimized tak20
+optimize = ['t_vm']
+
+succeeded = 0
+
 for size, file in files:
     if file.endswith ('.scm'):
         base, ext = os.path.splitext (file)
@@ -77,6 +86,9 @@ for size, file in files:
         fail = file.startswith ('f')
         c = context.context()
         c.verbose = False
+        c.typetype = True
+        if base in optimize:
+            c.optimize = True
         try:
             compile.compile_file (open (path, 'rb'), path, c)
         except:
@@ -87,7 +99,6 @@ for size, file in files:
             if fail:
                 failed.append ((base, 'compile did not fail like expected'))
                 #raise ValueError ("oops - expected compilation to fail")
-            #compile.cc (path, optimize=False)
             if base not in special:
                 out = run_test (base)
                 exp_path = PJ ('tests', base + '.exp')
@@ -96,10 +107,20 @@ for size, file in files:
                     if out != exp:
                         failed.append ((base, 'did not match expected output'))
                         #raise ValueError ("oops - output didn't match on test '%s'" % (base,))
+                    else:
+                        succeeded += 1
+                else:
+                    succeeded += 1                    
             else:
                 # tests that require special handling for whatever reason.
-                eval ('test_%s()' % (base,))
+                try:
+                    eval ('test_%s()' % (base,))
+                except:
+                    failed.append ((base, 'assertion failed'))
+                else:
+                    succeeded += 1
 
+print '%d tests passed' % succeeded
 if len(failed):
     print '%d tests failed!!' % (len(failed))
     for base, reason in failed:
