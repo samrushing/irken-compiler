@@ -6,19 +6,14 @@
   (:cons 'a (list 'a))
   )
 
-(define (error)
-  (%%cexp (-> 'a) "goto Lreturn")
-  (%%cexp (-> 'a) "PXLL_UNDEFINED")
-  )
-
 (define car
   (x . _) -> x
-  _       -> (error)
+  _       -> (error "car")
   )
 
 (define cdr
   (_ . y) -> y
-  _       -> (error)
+  _       -> (error "cdr")
   )
 
 (cdr '(1 2 3))
