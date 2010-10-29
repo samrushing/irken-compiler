@@ -1,11 +1,16 @@
 ;; -*- Mode: Scheme -*-
 
 (cinclude "fcntl.h")
+(cinclude "unistd.h")
 
 (define O_RDONLY (%%cexp int "O_RDONLY"))
 (define O_WRONLY (%%cexp int "O_WRONLY"))
 (define O_RDWR   (%%cexp int "O_RDWR"))
 (define O_CREAT  (%%cexp int "O_CREAT"))
+
+(define STDIN_FILENO  (%%cexp int "STDIN_FILENO"))
+(define STDOUT_FILENO (%%cexp int "STDOUT_FILENO"))
+(define STDERR_FILENO (%%cexp int "STDERR_FILENO"))
 
 (define (open path oflag mode)
   (let ((fd (%%cexp (string int int -> int) "open (%s, %s, %s)" (zero-terminate path) oflag mode)))
@@ -51,6 +56,17 @@
 
 (define (file/open-write path create? mode)
   { fd = (open path (if create? (+ O_WRONLY O_CREAT) O_WRONLY) mode)
+    buf = (make-string 16384)
+    pos = 0 })
+
+(define (file/open-stdin)
+  { fd = STDIN_FILENO
+    buf = (make-string 16384)
+    pos = 0
+    end = 0 })
+
+(define (file/open-stdout)
+  { fd = STDOUT_FILENO
     buf = (make-string 16384)
     pos = 0 })
 
