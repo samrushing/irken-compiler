@@ -10,6 +10,10 @@
 ;;   all symbols found at compile time.
 
 (define (string->uninterned-symbol str)
+  ;; This is the *only* place that %%make-tuple is used.  If we rewrite
+  ;;   this using a datatype we can get rid of the make_tuple node.
+  ;;   What special knowledge does the runtime have of symbols?  Can't we
+  ;;   just use the same tricks used for the (list) datatype?
   (%%make-tuple symbol symbol str))
 
 (define (symbol->string sym)
@@ -20,14 +24,14 @@
 (define (intern-symbol str)
   (let ((sym (string->uninterned-symbol str)))
     (set! the-symbol-table
-	  (tree/insert the-symbol-table string-<? str sym))
+	  (tree/insert the-symbol-table string<? str sym))
     sym))
 
 (define (string->symbol str)
-  (let ((probe (tree/member the-symbol-table string-<? str)))
+  (let ((probe (tree/member the-symbol-table string<? str)))
     (vcase maybe probe
       ((:no) (intern-symbol str))
       ((:yes sym) sym))))
 
-(define (symbol-<? s1 s2)
-  (string-<? (symbol->string s1) (symbol->string s2)))
+(define (symbol<? s1 s2)
+  (string<? (symbol->string s1) (symbol->string s2)))
