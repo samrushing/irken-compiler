@@ -118,6 +118,7 @@ class opcodes:
     call   = 17
     pop    = 18
     ge     = 19
+    _print  = 20
 
 class label:
     counter = 0
@@ -163,6 +164,9 @@ class compiler:
                 # placeholder
                 r.append (None)
                 pc += 1
+            elif x == 'dead':
+                # ignore dead targets
+                pass
             else:
                 r.append (x)
                 pc += 1
@@ -246,6 +250,7 @@ class compiler:
         '%-' : 'sub',
         '%=' : 'eq',
         '%>=' : 'ge',
+        '%print' : '_print',
         }
 
     def insn_primop (self, insn):
