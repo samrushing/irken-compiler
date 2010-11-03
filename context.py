@@ -26,16 +26,7 @@ class context:
         self.records2 = {}
         self.labels2 = {}
         # XXX should probably remove this hack since we're not using polymorphic variants this way any more.
-        self.variant_labels = {
-            # Hack.  since pxll.h and header.c:dump_object() already
-            #   know about the 'builtin' cons and nil constructors, we
-            #   hard-code them in here.  You'll note that TC_PAIR is
-            #   two entries before TC_USEROBJ...
-            'cons': -3,
-            'nil': -3,
-            }
-        # don't throw away precious tag space.
-        self.nvariant_offset = len(self.variant_labels)
+        self.variant_labels = {}
         # constructed literals
         self.constructed = []
         self.symbols = {}
