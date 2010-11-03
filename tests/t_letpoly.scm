@@ -4,6 +4,8 @@
   (:cons 'a (list 'a))
   )
 
+(datatype bool (:true) (:false))
+
 (define (make-stack)
   (let ((l (list:nil)))
     (lambda (e)
