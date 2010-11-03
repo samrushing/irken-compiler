@@ -204,9 +204,6 @@ class node:
             self.recursive = self.params
             self.rator = self.subs[0]
             self.rands = self.subs[1:]
-        elif self.kind == 'make_tuple':
-            (self.ttype, self.tag) = self.params
-            self.args = self.subs
         elif self.kind == 'pvcase':
             self.alt_formals = self.params
             self.value = self.subs[0]
@@ -288,9 +285,6 @@ def sequence (exprs):
 def cexp (form, type_sig, args):
     return node ('cexp', (form, type_sig), args)
 
-def make_tuple (type, tag, args):
-    return node ('make_tuple', (type, tag), args)
-
 def conditional (test_exp, then_exp, else_exp):
     return node ('conditional', (), [test_exp, then_exp, else_exp])
 
@@ -358,7 +352,9 @@ def parse_type (exp, tvars=None):
             if itypes.base_types.has_key (x):
                 return itypes.base_types[x]
             else:
-                raise ValueError ("unknown type: %r" % (x,))
+                # allow nullary constructors
+                #raise ValueError ("unknown type: %r" % (x,))
+                return itypes.t_predicate (x, ())
         else:
             return x
 
@@ -393,11 +389,6 @@ class walker:
                     type_sig = parse_type (exp[1], tvars)
                     form = exp[2].value
                     return cexp (form, (tvars.values(), type_sig), [ WALK (x) for x in exp[3:]])
-                elif rator == '%%make-tuple':
-                    type = exp[1]
-                    tag = exp[2]
-                    args = exp[3:]
-                    return make_tuple (type, tag, [ WALK (x) for x in args ] )
                 elif rator.startswith ('%'):
                     return primapp (rator, [WALK (x) for x in exp[1:]])
                 elif rator == 'begin':
