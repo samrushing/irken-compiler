@@ -184,6 +184,7 @@
   )
 
 (define (insn-lit)
+  ;; <LIT> <target> <litnum>
   (set! REGS[CODE[(+1 pc)]] LITS[CODE[(+2 pc)]])
   (set! pc (+3 pc))
   (next-insn)
@@ -239,6 +240,11 @@
 	 (next-insn))
     _ _ -> (vm-error)
     ))
+
+(define (insn-print)
+  (printn REGS[CODE[(+1 pc)]])
+  (set! pc (+2 pc))
+  (next-insn))
 
 (define (insn-tst)
   ;; tst <reg> <&L0> <then-code> <jmp &L1> L0: <else-code> L1:
@@ -306,7 +312,6 @@
     -> (begin
 	 (set! args[CODE[(+3 pc)]] REGS[CODE[(+2 pc)]])
 	 (set! pc (+4 pc))
-;	 (printn args)
 	 (next-insn))
     _ -> (vm-error)
     ))
@@ -441,6 +446,7 @@
     insn-call
     insn-pop
     insn-ge
+    insn-print
     ))
 
 (define (OI name nargs)
@@ -467,6 +473,7 @@
     (OI "call" 3)
     (OI "pop" 1)
     (OI "ge" 3)
+    (OI "print" 1)
     ))
 
 ;; lexical env
