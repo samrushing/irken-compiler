@@ -423,7 +423,7 @@ class typer:
 
     def type_of_conditional (self, exp, tenv):
         t1 = self.type_of (exp.test_exp, tenv)
-        self.unify (t1, t_bool(), tenv, exp.test_exp)
+        self.unify (t1, t_predicate ('bool', ()), tenv, exp.test_exp)
         t2 = self.type_of (exp.then_exp, tenv)
         t3 = self.type_of (exp.else_exp, tenv)
         self.unify (t2, t3, tenv, exp)
@@ -615,7 +615,7 @@ class typer:
         vl = self.context.variant_labels
         if not vl.has_key (label):
             # adjust for the hacked pre-installed labels like 'cons' and 'nil'.
-            vl[label] = len (vl) - self.context.nvariant_offset
+            vl[label] = len (vl)
 
     def type_of_fix (self, exp, tenv):
         # reorder fix into dependency order
