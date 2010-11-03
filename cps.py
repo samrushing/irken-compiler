@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 
 from pdb import set_trace as trace
+from pprint import pprint as pp
 
 import nodes
 import solver
@@ -25,6 +26,9 @@ class register_rib:
 class fatbar_rib:
     def __init__ (self, name):
         self.name = name
+
+class IncompleteMatch (Exception):
+    pass
 
 class compiler:
 
@@ -62,7 +66,6 @@ class compiler:
 
         #import sys; W = sys.stdout.write
         #W ('compile_exp: [%3d] %r\n' % (exp.serial, exp,))
-
         if tail_pos:
             k = self.cont (k[1], self.gen_return)
         
@@ -91,8 +94,6 @@ class compiler:
                 return self.compile_let_reg (tail_pos, exp, lenv, k)
             else:
                 return self.compile_let_splat (tail_pos, exp, lenv, k)
-        elif exp.is_a ('make_tuple'):
-            return self.compile_primargs (exp.args, ('%make-tuple', exp.type, exp.tag), lenv, k)
         elif exp.is_a ('primapp'):
             return self.compile_primapp (tail_pos, exp, lenv, k)
         elif exp.is_a ('pvcase'):
@@ -106,40 +107,44 @@ class compiler:
         # add this literal to the global list
         cc = self.context.constructed
 
+        def add (ob):
+            index = len (cc)
+            cc.append (ob)
+            ob.index = index
+            return index
+
         # search inside a constructed literal for other constructed literals,
         #  so we can emit them (in the correct order).
         def scan (exp):
             if exp.is_a ('primapp'):
-                for x in exp.args:
-                    scan (x)
-                return None
+                if exp.name == '%dtcon/symbol/t':
+                    string = exp.args[0]
+                    probe = self.context.symbols.get (string.value, None)
+                    if probe is not None:
+                        string.index, exp.index = probe
+                        return exp.index
+                    else:
+                        index0 = add (string)
+                        index1 = add (exp)
+                        self.context.symbols[string.value] = (index0, index1)
+                        return index1
+                else:
+                    for x in exp.args:
+                        scan (x)
+                    return None
             elif exp.is_a ('literal'):
                 if exp.ltype == 'string':
-                    index = len(cc)
-                    cc.append (exp)
-                    exp.index = index
-                    return index
-                elif exp.ltype == 'symbol':
-                    probe = self.context.symbols.get (exp.value, None)
-                    if probe:
-                        exp.index = probe
-                        return probe
-                    else:
-                        string = nodes.literal ('string', exp.value)
-                        index = len(cc)
-                        cc.append (string)
-                        string.index = index
-                        index += 1
-                        cc.append (exp)
-                        exp.index = index
-                        self.context.symbols[exp.value] = index
-                        return index
+                    return add (exp)
+                elif exp.ltype in ('int', 'char', 'undefined'):
+                    pass
+                else:
+                    raise ValueError ("unexpected object in constructed literal")
+            else:
+                raise ValueError ("huh?")
 
         index = scan (exp)
         if index is None:
-            index = len(cc)
-            cc.append (exp)
-            exp.index = index
+            index = add (exp)
         return index
 
     def safe_for_let_reg (self, tail_pos, exp, lenv, k):
@@ -196,7 +201,7 @@ class compiler:
                 return make_application (None)
 
     def compile_literal (self, tail_pos, exp, lenv, k):
-        if exp.ltype in ('string', 'symbol'):
+        if exp.ltype == 'string':
             return self.gen_constructed (self.scan_constructed (exp), k)
         else:
             # immediates
@@ -267,7 +272,7 @@ class compiler:
             return self.compile_record_literal (exp, lenv, k)
         elif exp.name.startswith ('%vector-literal/'):
             if len (exp.args) < 5:
-                return self.compile_primargs (exp.args, ('%make-tuple', exp.type, 'vector'), lenv, k)
+                return self.compile_primargs (exp.args, ('%make-tuple', exp.type, 'TC_VECTOR'), lenv, k)
             else:
                 return self.compile_vector_literal (exp.args, lenv, k)
         elif exp.name.startswith ('%make-vector'):
@@ -368,10 +373,13 @@ class compiler:
         return self.compile_exp (False, exp.value, lenv, self.cont (k[1], finish))
 
     def compile_nvcase (self, tail_pos, exp, lenv, k):
+        dt = self.context.datatypes[exp.vtype]
         def finish (test_reg):
             jump_k = self.cont (k[1], lambda reg: self.gen_jump (reg, k))
             alts = [self.compile_exp (tail_pos, alt, lenv, jump_k) for alt in exp.alts]
             ealt = self.compile_exp (tail_pos, exp.else_clause, lenv, jump_k)
+            if len(dt.alts) != len(alts) and ealt.name == 'primop' and ealt.params[0] == '%%match-error':
+                raise IncompleteMatch (exp)
             return self.gen_nvcase (test_reg, exp.vtype, exp.tags, alts, ealt, k)
         return self.compile_exp (False, exp.value, lenv, self.cont (k[1], finish))
 
