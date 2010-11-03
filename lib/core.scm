@@ -139,6 +139,8 @@
 
 ;; haskell maybe /ml option
 (datatype maybe (:yes 'a) (:no))
+(datatype bool (:true) (:false))
+(datatype symbol (:t string))
 
 ;; world save/load
 ;; is this is a big restriction - requiring that the thunk return an int?
