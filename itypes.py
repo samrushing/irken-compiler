@@ -35,13 +35,6 @@ class t_char (t_base):
 class t_string (t_base):
     name = 'string'
 
-class t_symbol (t_base):
-    name = 'symbol'
-
-# XXX consider using a true/false variant, then implementing 'if' as a filter.
-class t_bool (t_base):
-    name = 'bool'
-
 class t_undefined (t_base):
     name = 'undefined'
 
@@ -58,13 +51,15 @@ class t_int16 (t_int):
 
 base_types = {
     'int' : t_int(),
-    'bool' : t_bool(),
+    # bool now has a proper datatypes
+    #'bool' : t_bool(),
     'char' : t_char(),
     'string' : t_string(),
     'undefined' : t_undefined(),
     'unit': t_unit(),
     'continuation' : t_continuation(),
-    'symbol' : t_symbol(),
+    # now a proper datatype
+    #'symbol' : t_symbol(),
     'int16' : t_int16(),
     }
 
@@ -214,7 +209,9 @@ class datatype:
     # not sure what else would go in here...
     # XXX need a way to stop a user from defining a 'whacky' list type.
     builtin_tags = {
-        'list': {'cons':'pair', 'nil':'nil'}
+        'list': {'cons':'TC_PAIR', 'nil':'TC_NIL'},
+        'bool': {'true':'PXLL_TRUE', 'false':'PXLL_FALSE'},
+        'symbol': {'t':'TC_SYMBOL'},
         }
 
     def __init__ (self, context, name, alts, tvars):
@@ -259,6 +256,12 @@ class datatype:
         #
         # can be represented with no runtime overhead, because
         # both alternatives can be a simple immediate.
+
+        if self.name == 'symbol':
+            # XXX In this *particular* case, we want to avoid the UIMM
+            #   hack, because the runtime knows about symbols already.
+            return {}
+
         good = {}
         bad = set()
         for tag, prod in self.alts:
