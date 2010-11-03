@@ -112,15 +112,19 @@ class transformer:
             if exp.kind == 'string':
                 return exp
             elif exp.kind == 'symbol':
-                return exp
+                return self.build_symbol (exp)
             elif exp.kind == 'vector':
                 return self.build_vector (exp)
             elif exp.kind == 'record':
                 return self.build_record (exp)
+            elif exp.kind == 'bool':
+                return self.build_bool (exp)
             else:
                 return exp
         elif is_a (exp, list):
-            if len(exp):
+            if len (exp) == 0:
+                return []
+            else:
                 rator = self.expand_exp (exp[0])
                 if is_a (rator, list) and len(rator) == 3 and rator[0] == 'colon':
                     if rator[1] is None:
@@ -152,8 +156,6 @@ class transformer:
                             return self.cheat_check ([rator] + [self.expand_exp (x) for x in exp[1:]])
                 else:
                     return [self.expand_exp (x) for x in exp]
-            else:
-                return [self.expand_exp (x) for x in exp]
         else:
             return exp
 
@@ -197,11 +199,14 @@ class transformer:
 
     # ----------- core forms ----------------
 
+    # XXX could this be handled with a macro?
     def expand_if (self, exp):
         # (if <test> <then-clause> [<else-clause>])
         EE = self.expand_exp
         if len(exp) == 3:
-            return ['if', EE (exp[1]), EE (exp[2]), atom ('bool', 'false')]
+            # an if with no else clause is almost always done for side-effect,
+            #  and thus should default to type <undefined>.
+            return ['if', EE (exp[1]), EE (exp[2]), atom ('undefined', 'undefined')]
         else:
             return ['if', EE (exp[1]), EE (exp[2]), EE (exp[3])]
 
@@ -283,30 +288,10 @@ class transformer:
 
     # ----------- special forms ----------------
 
-    def expand_and (self, exp):
-        EE = self.expand_exp
-        if len(exp) == 1:
-            return atom ('bool', 'true')
-        elif len(exp) == 2:
-            return EE (exp[1])
-        else:
-            return EE (['if', exp[1], ['and'] + exp[2:]])
-
-    def expand_or (self, exp):
-        EE = self.expand_exp
-        if len(exp) == 1:
-            return ('bool', 'false')
-        elif len(exp) == 2:
-            return EE (exp[1])
-        else:
-            return EE (
-                ['if', exp[1], atom ('bool', 'true'), ['or'] + self.expand_all (exp[2:])]
-                )
-
     def expand_cond (self, exp):
         EE = self.expand_exp
         if exp == ['cond']:
-            return atom ('bool', 'false')
+            return atom ('undefined', 'undefined')
         elif exp[1][0] == 'else':
             # (cond (else ...))
             return EE (['begin'] + exp[1][1:])
@@ -673,21 +658,37 @@ class transformer:
             r = ['%%rextend/%s' % name, r, val]
         return self.expand_exp (r)
 
+    def build_bool (self, exp):
+        if exp.value == 'true':
+            return self.expand_exp ([['colon', 'bool', 'true']])
+        else:
+            return self.expand_exp ([['colon', 'bool', 'false']])
+
+    def build_symbol (self, exp):
+        return self.expand_exp (
+            ['literal',
+             [['colon', 'symbol', 't'], atom ('string', exp.value)]]
+            )
+
     # walk a literal, making sure it can be represented as a constructed value.
 
     # XXX I need to think clearly about literals, QUOTE, and LITERAL.  This code
     #   is a mess and doesn't know exactly what it's doing.
 
     def build_literal (self, exp, as_list=False, backquote=False):
+        
         # urgh, can't assign to a lexical variable
         runtime_only = [False]
 
         def build (exp):
             if is_a (exp, atom):
-                if exp.kind in ('int', 'char', 'bool', 'undefined'):
-                    # XXX itypes should have a list of immediate base types
-                    return exp
-                elif exp.kind in ('symbol', 'string'):
+                if exp.kind == 'bool':
+                    # turn this into a constructor call
+                    trace()
+                    return ['%dtcon/bool']
+                elif exp.kind == 'symbol':
+                    trace()
+                elif itypes.base_types.has_key (exp.kind):
                     return exp
                 else:
                     runtime_only[0] = True
@@ -714,7 +715,8 @@ class transformer:
                     return ['%dtcon/list/nil']
             elif is_a (exp, str) and as_list:
                 # in a list literal, this is a symbol
-                return atom ('symbol', exp)
+                return ['%dtcon/symbol/t', atom ('string', exp)]
+                #return atom ('symbol', exp)
             else:
                 runtime_only[0] = True
                 return exp
