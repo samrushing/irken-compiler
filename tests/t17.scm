@@ -1,4 +1,6 @@
 
+(datatype bool (:true) (:false))
+
 (define (random)
   (%%cexp (-> int) "random()"))
 
