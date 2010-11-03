@@ -10,7 +10,7 @@ get_typecode (object * ob)
 {
   if (IMMEDIATE(ob)) {
     if (IS_INTEGER(ob)) {
-      return 0;
+      return TC_INT;
     } else {
       return (pxll_int)ob & 0xff;
     }
@@ -19,22 +19,41 @@ get_typecode (object * ob)
   }
 }
 
+// for pvcase/nvcase
 static
 inline
 pxll_int
-get_noint_typecode (object * ob)
+get_case (object * ob)
 {
-  if (IMMEDIATE (ob)) {
-    return (pxll_int) ob & 0xff;
+  if (is_immediate (ob)) {
+    if (is_int (ob)) {
+      return TC_INT;
+    } else {
+      return (pxll_int)ob;
+    }
+  } else {
+    return (pxll_int)*((pxll_int *)ob) & 0xff;
+  }
+}
+
+// for pvcase/nvcase
+static
+inline
+pxll_int
+get_case_noint (object * ob)
+{
+  if (is_immediate (ob)) {
+    return (pxll_int) ob;
   } else {
     return (pxll_int) * ((pxll_int*) ob) & 0xff;
   }
 }
 
+// for pvcase/nvcase
 static
 inline
 pxll_int
-get_imm_typecode (object * ob)
+get_case_imm (object * ob)
 {
   return (pxll_int)ob & 0xff;
 }
@@ -42,9 +61,17 @@ get_imm_typecode (object * ob)
 static
 inline
 pxll_int
-get_tup_typecode (object * ob)
+get_case_tup (object * ob)
 {
   return (pxll_int)*((pxll_int *)ob) & 0xff;
+}
+
+static
+inline
+pxll_int
+get_imm_payload (object * ob)
+{
+  return ((pxll_int) ob) >> 8;
 }
 
 static
@@ -192,7 +219,7 @@ dump_object (object * ob, int depth)
       break;
     default:
       // a user immediate unit-type...
-      fprintf (stdout, "<u%d>", (tc-TC_USERIMM)>>2);
+      fprintf (stdout, "<u%d>", (tc>>8));
     }
   }
   return (object *) PXLL_UNDEFINED;
