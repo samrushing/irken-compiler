@@ -6,6 +6,8 @@
   (:cons 'a (list 'a))
   )
 
+(datatype bool (:true) (:false))
+
 (define (+ a b)
   (%%cexp (int int -> int) "%s+%s" a b))
 
