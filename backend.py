@@ -79,7 +79,7 @@ class c_backend:
                 return t
             else:
                 # these values will break as soon as the TC_XXX numbers get changed.
-                return {'pair':-3, 'nil':-3}[t]
+                return {'TC_PAIR':-3, 'TC_BOOL':-4, 'TC_SYMBOL':-2}[t]
         
         # now we walk the bitch, appending to a list of pxll_ints.
         def walk (exp):
@@ -89,7 +89,9 @@ class c_backend:
                     ignore, dtname, alt = exp.name.split ('/')
                     dt = dtm[dtname]
                     tag = dt.tags[alt]
-                    if dt.uimm.has_key (alt):
+                    if dtname == 'symbol':
+                        return 'UPTR(%d,1)' % (exp.index)
+                    elif dt.uimm.has_key (alt):
                         # a single immediate argument, use it directly.
                         assert (len(exp.args) == 1)
                         return walk (exp.args[0])
@@ -101,7 +103,11 @@ class c_backend:
                         addr = len (l)
                         l.append ('UOHEAD(%d,%d)' % (len(exp.args), dotag (tag)))
                         l.extend (args)
-                        return 'UCON(%d,%d)' % (i, addr)
+                        exp.index = -1
+                        return 'UPTR(%d,%d)' % (i, addr)
+                    elif tag == 'TC_NIL':
+                        # XXX ugh, special case again, fixme
+                        return 'TC_NIL'
                     else:
                         # constructor with no args, an immediate
                         return 'UITAG(%d)' % (dotag (tag,))
@@ -110,7 +116,7 @@ class c_backend:
                     addr = len (l)
                     l.append ('(%d<<8)|TC_VECTOR' % (len(exp.args),))
                     l.extend (args)
-                    return 'UCON(%d,%d)' % (i, addr)
+                    return 'UPTR(%d,%d)' % (i, addr)
                 else:
                     raise ValueError ("unsupported primapp in constructed literal: %r" % (exp,))
             elif exp.is_a ('literal'):
@@ -118,39 +124,42 @@ class c_backend:
                 if exp.ltype == 'int':
                     return (exp.value << 1) | 1
                 elif exp.ltype == 'char':
-                    if lit.value == 'eof':
+                    if exp.value == 'eof':
                         return 257<<8|0x02
                     else:
-                        return ord(lit.value)<<8|0x02
+                        return ord(exp.value)<<8|0x02
                 elif exp.ltype == 'undefined':
                     return 0x0e
                 elif exp.ltype == 'string':
-                    return 'UCON0(%d)' % (exp.index)
-                elif exp.ltype == 'symbol':
-                    return 'UCON0(%d)' % (exp.index)
+                    return 'UPTR0(%d)' % (exp.index)
                 else:
                     raise ValueError ("unsupported type in constructed literal: %r" % (exp,))
             elif exp.is_a ('constructed'):
-                return 'UCON(%d)' % (exp.index)
+                return 'UPTR(%d)' % (exp.index)
             else:
                 raise ValueError ("unsupported type in constructed literal: %r" % (exp,))
-        
+
+        # go through the list of top-level constructed literals, and emit them.
         lengths = []
         for i in range (len (self.context.constructed)):
             lit = self.context.constructed[i]
-            if lit.is_a ('literal'):
-                if lit.ltype == 'string':
-                    s = lit.value
-                    slen = len(s)
-                    self.write ('pxll_string constructed_%d = { STRING_HEADER(%d), %d, "%s" };' % (i, slen, slen, self.c_string (s)))
-                elif lit.ltype == 'symbol':
-                    self.write ('pxll_int constructed_%d[] = {1<<8|TC_SYMBOL, (pxll_int)&constructed_%d};' % (i, i-1))
+            if lit.is_a ('literal') and lit.ltype == 'string':
+                # strings are a special case here because they have a non-uniform structure: the existence of
+                #   the uint32_t <length> field means it's hard for us to put a UPTR in the front.
+                s = lit.value
+                slen = len(s)
+                self.write ('pxll_string constructed_%d = { STRING_HEADER(%d), %d, "%s" };' % (i, slen, slen, self.c_string (s)))
+            elif lit.is_a ('primapp') and lit.name == '%dtcon/symbol/t':
+                # there's a temptation to skip the extra pointer at the front, but that would require additional smarts
+                #   in insn_constructed (as already exist for strings).
+                # NOTE: this reference to the string object only works because it comes before the symbol in self.context.constructed.
+                self.write ('pxll_int constructed_%d[] = {UPTR(%d,1), SYMBOL_HEADER, UPTR0(%d)};' % (i, i, lit.args[0].index))
             else:
+                # normal constructors
                 l = [None]
-                name = 'constructed_%d' % (i,)
                 val = walk (lit)
                 l[0] = val
-                self.write ('pxll_int %s[] = {%s};' % (name, ', '.join ([str(x) for x in l])))
+                self.write ('pxll_int constructed_%d[] = {%s};' % (i, ', '.join ([str(x) for x in l])))
                 lengths.append (len (l))
 
     def emit_gc_copy_regs (self, nregs):
@@ -272,7 +281,7 @@ class c_backend:
         # a reference to a constructed literal - refer to its variable directly.
         index = insn.params
         val = self.context.constructed[index]
-        if val.is_a ('literal') and val.ltype in ('string', 'symbol'):
+        if val.is_a ('literal') and val.ltype == 'string':
             self.write ('r%d = (object*) &constructed_%d;' % (insn.target, index))
         else:
             self.write ('r%d = (object*) constructed_%d[0];' % (insn.target, index))
@@ -324,7 +333,7 @@ class c_backend:
     def wrap_out (self, type, exp):
         if is_a (type, itypes.t_int):
             return 'box(%s)' % (exp,)
-        elif is_a (type, itypes.t_bool):
+        elif itypes.is_pred (type, 'bool'):
             # hmm... this is more like a cast, and should probably be
             # expressed as such.
             return 'PXLL_TEST(%s)' % (exp,)
@@ -387,17 +396,15 @@ class c_backend:
                         #   in the garbage collector to avoid address range checks.
                         # each tuple type (that might be empty) needs a corresponding immediate
                         #   type to represent the empty version of it.
-                        if tag == 'vector':
+                        if tag == 'TC_VECTOR':
                             self.write ('r%d = (object *) TC_EMPTY_VECTOR;' % insn.target)
                         elif is_a (tag, str):
-                            self.write ('r%d = (object *) TC_%s;' % (insn.target, tag.upper()))
+                            self.write ('r%d = (object *) %s;' % (insn.target, tag.upper()))
                         else:
                             raise ValueError ("attempt to create unsupported empty tuple type")
                     else:
                         if is_a (tag, int):
                             tag = '(TC_USEROBJ+%d)' % (tag << 2,)
-                        else:
-                            tag = 'TC_%s' % (tag.upper(),)
                         self.alloc ('t = alloc_no_clear (%s, %d);' % (tag, nargs), insn, nargs)
                         self.write (' '.join (['t[%d] = r%d;' % (i+1, regs[i]) for i in range (nargs) ]))
                         self.write ('r%d = t;' % (insn.target,))
@@ -518,13 +525,14 @@ class c_backend:
         self.write ('}')
 
     def insn_pvcase (self, insn):
-        # this version uses get_safe_typecode() to avoid segregating into
-        #   immediate/pointer cases...
+        # this version uses get_pvariant_tag() to avoid segregating into
+        #   immediate/pointer cases... note that each unique label is given
+        #   a unique tag, regardless of its arity (which can vary!)
         [test_reg] = insn.regs
         alt_formals, alts = insn.params
         units = []
         tuples = []
-        self.write ('switch (get_safe_typecode (r%d)) {' % test_reg)
+        self.write ('switch (get_case_noint (r%d)) {' % test_reg)
         for i in range (len (alts)):
             if i < len(alt_formals):
                 label, orig_arity, formals = alt_formals[i]
@@ -533,7 +541,7 @@ class c_backend:
                 except KeyError:
                     raise ValueError ('variant constructor ":%s" never called; no runtime tag available.' % label)
                 if orig_arity == 0:
-                    tag = 'TC_USERIMM+%d' % (tag * 4)
+                    tag = 'TC_USERIMM+%d' % (tag<<8)
                 else:
                     tag = 'TC_USEROBJ+%d' % (tag * 4)
                 case = 'case (%s): {' % (tag,)
@@ -552,27 +560,26 @@ class c_backend:
         # XXX cache this!
         # getting the typecode of an unknown object involves three steps:
         # 1) is it an integer? (check the lowest bit, return TC_INT == 0)
-        # 2) is it an immediate (check the next lowest bit, return ob & 0xff)
+        # 2) is it an immediate (check the next lowest bit, return ob)
         # 3) it's a pointer (indirect through it, return (*ob)&0xff
         #
         # if a datatype is all-immediate, or all-tuple, then using a
         # specific form of get_typecode(), can often lead to
-        # single-instruction typecode fetching.
+        # single-instruction typecode fetching. (also, avoiding a branch)
         if len (dt.uimm):
             # if we're using the uimm hack, we have to check for everything, including TC_INT.
-            return 'get_typecode'
+            return 'get_case'
         alts = dt.alts
         arity = len (alts[0][1])
         for i in range (1, len (alts)):
             tag, prod = alts[i]
             if len(prod) != arity:
-                if dt.name == 'action':
-                    trace()
-                return 'get_noint_typecode'
+                return 'get_case_noint'
         if arity == 0:
-            return 'get_imm_typecode'
+            # no function needed, compare the value directly
+            return '(pxll_int)'
         else:
-            return 'get_tup_typecode'
+            return 'get_case_tup'
 
     def insn_nvcase (self, insn):
         [test_reg] = insn.regs
@@ -590,10 +597,12 @@ class c_backend:
                 tag = dt.tags[label]
                 arity = dt.arity (label)
                 if is_a (tag, str):
-                    tag = 'TC_%s' % (tag.upper())
+                    # e.g., PXLL_FALSE
+                    tag = '((pxll_int)%s)' % (tag,)
                 elif arity == 0:
                     # immediate/unit-constructor
-                    tag = 'TC_USERIMM+%d' % (tag * 4)
+                    #tag = 'TC_USERIMM+%d' % (tag * 4)
+                    tag = 'TC_USERIMM+%d' % (tag << 8)
                 elif arity == 1 and dt.uimm.has_key (label):
                     typename = dt.uimm[label].name.upper()
                     tag = 'TC_%s' % (typename)
