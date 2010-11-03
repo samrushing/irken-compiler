@@ -1,4 +1,6 @@
 
+(datatype bool (:true) (:false))
+
 (datatype list
   (:nil)
   (:cons 'a (list 'a))
