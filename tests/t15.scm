@@ -1,6 +1,8 @@
 
 ;; tests cexp type decls
 
+(datatype bool (:true) (:false))
+
 (define (printn x)
   (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
 
