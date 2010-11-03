@@ -56,7 +56,10 @@ class record:
         return '{%s}' % (' '.join (l))
 
 # bad match
-class MatchError:
+class MatchError (Exception):
+    pass
+
+class IncompleteMatch (Exception):
     pass
 
 FAIL = ['%%fail']
@@ -288,12 +291,22 @@ class compiler:
             else:
                 groups.append ([(pats,code)])
                 last = pats[0]
+        # the constant rule should never have a default case of ERROR, that indicates
+        #   an incomplete match.
+        #if default is ERROR:
+        #    raise IncompleteMatch
         while groups:
             group = groups.pop()
             rules0 = []
             for pats, code in group:
                 rules0.append ((pats[1:], code))
-            default = ['if', ['eq?', pats[0].value, vars[0]], self.match (vars[1:], rules0, default), default]
+            # decide which comparison function to use...
+            # eq? works on everything (so far) but strings.
+            if pats[0].value.kind == 'string':
+                comp_fun = 'string=?'
+            else:
+                comp_fun = 'eq?'
+            default = ['if', [comp_fun, pats[0].value, vars[0]], self.match (vars[1:], rules0, default), default]
         return default
                 
     def mixture_rule (self, vars, rules, default):
