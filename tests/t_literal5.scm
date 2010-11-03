@@ -1,7 +1,6 @@
 ;; create a bunch of symbols.
 
-(datatype list
-  (:nil)
-  (:cons 'a (list 'a)))
+(include "lib/core.scm")
+(include "lib/pair.scm")
 
 '(one two three four five six seven eight nine ten)
