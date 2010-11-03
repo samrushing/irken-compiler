@@ -4,13 +4,20 @@
   (:cons 'a (list 'a))
   )
 
+(datatype symbol (:t string))
+
 (define (eq? a b)
   (%%cexp ('a 'a -> bool) "%s==%s" a b))
 
 (define parse
-  (list:nil)          -> 0
-  (list:cons 'expr x) -> 1
-  (list:cons x y)     -> 2
+  ()          -> 0
+  ('expr . _) -> 1
+  _           -> 2
   )
 
-(parse '(expr a b c))
+(define (printn x)
+  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+
+(let ((x '(expr a b c)))
+  (printn x)
+  (parse x))
