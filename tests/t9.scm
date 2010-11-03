@@ -1,6 +1,8 @@
 
 ;; do some allocation in the loop
 
+(datatype bool (:true) (:false))
+
 (define (- a b)
   (%%cexp (int int -> int) "%s-%s" a b))
 
