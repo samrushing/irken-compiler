@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(datatype bool (:true) (:false))
+
 (define (< a b)
   (%%cexp (int int -> bool) "%s<%s" a b))
 
