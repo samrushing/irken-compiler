@@ -25,7 +25,6 @@ class context:
         self.cincludes = set()
         self.records2 = {}
         self.labels2 = {}
-        # XXX should probably remove this hack since we're not using polymorphic variants this way any more.
         self.variant_labels = {}
         # constructed literals
         self.constructed = []
