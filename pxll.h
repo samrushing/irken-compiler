@@ -80,6 +80,7 @@ object * heap1 = NULL;
 #define HOW_MANY(x,n)		(((x)+(n)-1)/(n))
 #define STRING_TUPLE_LENGTH(n)  HOW_MANY (n + sizeof(int32_t), sizeof(object))
 #define STRING_HEADER(n)        STRING_TUPLE_LENGTH(n)<<8|TC_STRING
+#define SYMBOL_HEADER           ((1<<8)|TC_SYMBOL)
 #define VEC16_TUPLE_LENGTH(n)   HOW_MANY ((n*2) + sizeof(int32_t), sizeof(object))
 
 // these make the C output more compact & readable
@@ -91,9 +92,9 @@ object * heap1 = NULL;
 
 // useful in code output for literals
 #define UOTAG(n)                (TC_USEROBJ+(n*4))
-#define UITAG(n)                (TC_USERIMM+(n*4))
-#define UCON(n,o)               ((pxll_int)(constructed_##n+o))
-#define UCON0(n)                ((pxll_int)(&constructed_##n))
+#define UITAG(n)                (TC_USERIMM+(n<<8))
+#define UPTR(n,o)               ((pxll_int)(constructed_##n+o))
+#define UPTR0(n)                ((pxll_int)(&constructed_##n))
 
 #define UOHEAD(l,n)             ((l<<8)|UOTAG(n))
 
