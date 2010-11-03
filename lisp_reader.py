@@ -101,10 +101,10 @@ class reader:
                 result = atom ('int', string.atoi (self.read_atom(), 2))
             elif ch in 'Tt':
                 self.next()
-                result = atom ('bool', 'true')
+                result = [['colon', 'bool', 'true']]
             elif ch in 'Ff':
                 self.next()
-                result = atom ('bool', 'false')
+                result = [['colon', 'bool', 'false']]
             elif ch in 'Uu':
                 self.next()
                 result = atom ('undefined', 'undefined')
