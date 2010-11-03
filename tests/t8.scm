@@ -1,7 +1,6 @@
 ;; testing variant with else clause
 
-(define (+ a b)
-  (%%cexp (int int -> int) "%s+%s" a b))
+(include "lib/core.scm")
 
 (let ((w (:doubleu))
       (x (:fnord 12))
