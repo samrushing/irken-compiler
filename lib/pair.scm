@@ -57,13 +57,15 @@
        ((:cons _ tl)
 	(loop tl (+ n 1))))))
 
-(define (member x l =)
+;; this is different enough from the scheme <member> to warrant
+;;   the new name.
+(define (member? x l =)
   (vcase list l
     ((:nil) #f)
     ((:cons hd tl)
      (if (= hd x)
 	 #t
-	 (member x tl =)))))
+	 (member? x tl =)))))
 
 (define nth
   ()       _ -> (error "list index out of range")
