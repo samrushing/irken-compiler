@@ -67,6 +67,11 @@
 	 #t
 	 (member? x tl =)))))
 
+(define member-eq?
+  x () -> #f
+  x (hd . tl) -> (if (eq? x hd) #t (member-eq? x tl))
+  )
+
 (define nth
   ()       _ -> (error "list index out of range")
   (hd . _) 0 -> hd
