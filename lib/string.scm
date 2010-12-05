@@ -72,11 +72,12 @@
   (> (string-compare s1 s2) 0))
 
 (define (zero-terminate s)
-  (if (char=? (string-ref s (- (string-length s) 1)) #\null)
+  (if (char=? (string-ref s (- (string-length s) 1)) #\nul)
       s
       (let ((n (string-length s))
 	    (s2 (make-string (+ n 1))))
 	(buffer-copy s 0 n s2 0)
+	(string-set! s2 n #\nul)
 	s2)))
 
 (define (list->string l)
