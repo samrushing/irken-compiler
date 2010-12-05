@@ -27,10 +27,15 @@ class c_backend:
         self.context = context
         self.annotate = context.annotate
         self.trace = context.trace
+        self.profile = context.profile
         self.toplevel_env = False
         self.current_fun = function ('toplevel')
         self.write_header()
         self.max_free = 0
+
+    def go (self, insns):
+        self.emit (insns)
+        self.done()
 
     def write_header (self):
         for header in self.context.cincludes:
@@ -41,6 +46,8 @@ class c_backend:
         stop0 = header.find (tag0) + len (tag0)
         self.out.write (header[:stop0])
         self.emit_constructed_literals()
+        if self.profile:
+            self.emit_profile_counters()
         tag1 = '// REGISTER_DECLARATIONS //\n'
         stop1 = header.find (tag1) + len (tag1)
         self.out.write (header[stop0:stop1])
@@ -139,6 +146,8 @@ class c_backend:
             else:
                 raise ValueError ("unsupported type in constructed literal: %r" % (exp,))
 
+        # synthesize an extra constant, a vector of all the symbols.
+
         # go through the list of top-level constructed literals, and emit them.
         lengths = []
         for i in range (len (self.context.constructed)):
@@ -162,6 +171,12 @@ class c_backend:
                 self.write ('pxll_int constructed_%d[] = {%s};' % (i, ', '.join ([str(x) for x in l])))
                 lengths.append (len (l))
 
+        #pxll_int constructed_8[] = {UPTR(8,1), (4<<8)|TC_VECTOR, UPTR(1,1), UPTR(3,1), UPTR(5,1), UPTR(7,1)};
+        syms = []
+        for sym, (index0, index1) in self.context.symbols.iteritems():
+            syms.append ('UPTR(%d,1)' % (index1,))
+        self.write ('pxll_int pxll_internal_symbols[] = {(%d<<8)|TC_VECTOR, %s};' % (len(syms), ', '.join (syms)))
+
     def emit_gc_copy_regs (self, nregs):
         # emit functions to copy registers in and out of the heap as gc roots
         self.write ('')
@@ -176,6 +191,18 @@ class c_backend:
             self.write ('  case %d: r%d = heap0[%d];' % (i+1, i, i+3))
         self.write ('}}')
 
+    def emit_profile_counters (self):
+        # for now, all we do is count function calls
+        self.write ('// PROFILE COUNTERS')
+        for fun in self.context.functions:
+            label = self.function_label (fun)
+            self.write ('pxll_int prof_count_%s = 0;' % label)
+
+    def emit_dump_profile (self):
+        for fun in self.context.functions:
+            label = self.function_label (fun)
+            self.write ('fprintf (stderr, "%%20ld %s\\n", prof_count_%s);' % (label, label))
+
     def emit (self, insns):
         for insn in insns:
             name = 'insn_%s' % (insn.name,)
@@ -188,11 +215,11 @@ class c_backend:
     def done (self):
         #print 'max_free =', self.max_free
         # close out the vm() function...
-        self.out.write (
-            " Lreturn:\n"
-            "  return (pxll_int) result;\n"
-            "}\n"
-            )
+        self.indent = 0
+        self.write (' Lreturn:')
+        if self.profile:
+            self.emit_dump_profile()
+        self.write (" return (pxll_int) result;\n}")
         if len(self.context.records2):
             # write out the record field lookup function
             self.out.write (
@@ -208,6 +235,7 @@ class c_backend:
                     self.out.write ("    case %d: return %d; break;\n" % (self.context.labels2[label], i))
                 self.out.write ("  } break;\n")
             self.out.write ("}}\n")
+            
 
     label_counter = 0
 
@@ -318,6 +346,8 @@ class c_backend:
                 elif itypes.is_pred (t, 'vector'):
                     # vectors
                     result.append (args[i])
+                elif itypes.is_pred (t, 'symbol'):
+                    result.append (args[i])                    
                 else:
                     raise ValueError ("unexpected predicate in cexp type sig: %r" % (t,))
             elif is_a (t, itypes.t_var):
@@ -733,8 +763,8 @@ class c_backend:
         name = var.name
         depth, index = addr
         if insn.target != 'dead':
-            if self.trace:
-                self.write ('stack_depth_indent (k); fprintf (stderr, "(%d, %d)");' % (depth, index))
+            #if self.trace:
+            #    self.write ('stack_depth_indent (k); fprintf (stderr, "(%d, %d)\\n");' % (depth, index))
             if is_top:
                 self.write ('r%d = top[%d];' % (insn.target, index+2))
             else:
@@ -767,6 +797,8 @@ class c_backend:
         self.indent += 1
         if self.trace:
             self.write ('stack_depth_indent(k); fprintf (stderr, ">> [%%d] %s\\n", __LINE__);' % ((fun.name or 'lambda'),))
+        if self.profile:
+            self.write ('prof_count_%s += 1;' % (proc_label,))
         if insn.allocates:
             self.write ('check_heap (0);')
         calling_fun = self.current_fun
