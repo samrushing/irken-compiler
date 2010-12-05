@@ -416,10 +416,8 @@ class typer:
                 ta = self.type_of (arg, tenv)
                 self.unify (ta, arg_type, tenv, arg)
             return result_type
-        elif is_a (sig, t_base):
-            return sig
         else:
-            raise NotImplementedError ("unhandled cexp type")
+            return sig
 
     def type_of_conditional (self, exp, tenv):
         t1 = self.type_of (exp.test_exp, tenv)
