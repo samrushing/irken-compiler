@@ -7,6 +7,7 @@ class context:
     noinline = False
     annotate = False
     trace = False
+    profile = False
     step_solver = False
     typetype = False
     no_range = False
@@ -32,3 +33,5 @@ class context:
         self.standard_macros = "lib/derived.scm"
         # number of lines before and after a type error node
         self.type_error_lines = 8
+        # all functions seen by the back end
+        self.functions = []
