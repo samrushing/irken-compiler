@@ -16,7 +16,7 @@
   (let ((fd (%%cexp (string int int -> int) "open (%s, %s, %s)" (zero-terminate path) oflag mode)))
     (if (>= fd 0)
 	fd
-	(error "open() failed"))))
+	(error1 "open() failed" (zero-terminate path)))))
 
 (define (read fd size)
   (let* ((buffer (make-string size))
