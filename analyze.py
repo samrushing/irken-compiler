@@ -767,7 +767,8 @@ class analyzer:
         # descend the node tree, marking nodes as 'leaf' (or not) on the way up.
 
         def search (exp):
-            if exp.is_a ('application'):
+            if exp.is_a ('application') and not exp.recursive:
+                # XXX need to do better here: I think what we want to distinguish are tail calls.
                 is_leaf = False
             else:
                 is_leaf = True
