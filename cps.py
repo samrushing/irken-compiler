@@ -703,6 +703,8 @@ class cps (compiler):
         return INSN ('varset', [reg], (addr, is_top, var), k)
 
     def gen_closure (self, fun, body, k):
+        # track all functions for the back end
+        self.context.functions.append (fun)
         return INSN ('close', [], (fun, body, k[1]), k)
 
     def gen_test (self, test_reg, then_code, else_code, k):
