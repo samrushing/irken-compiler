@@ -85,8 +85,16 @@ class reader:
                     ch = '\n'
                 elif probe == 'space':
                     ch = ' '
+                elif probe == 'return':
+                    ch = '\r'
                 elif probe == 'eof':
                     ch = 'eof'
+                elif probe == 'nul':
+                    ch = '\000'
+                elif probe == 'tab':
+                    ch = '\t'
+                elif len(probe) > 1:
+                    raise ValueError ("unknown character constant: %r" % probe)
                 else:
                     ch = probe[0]
                 result = atom ('char', ch)
