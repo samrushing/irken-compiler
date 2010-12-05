@@ -29,7 +29,7 @@ get_case (object * ob)
     if (is_int (ob)) {
       return TC_INT;
     } else {
-      return (pxll_int)ob;
+      return (pxll_int)ob & 0xff;
     }
   } else {
     return (pxll_int)*((pxll_int *)ob) & 0xff;
@@ -117,7 +117,15 @@ dump_object (object * ob, int depth)
 	// deliberately out-of-range character
 	fprintf (stdout, "#\\eof");
       } else {
-	fprintf (stdout, "#\\%c", (char)((pxll_int)ob>>8));
+	char ch = ((char)((pxll_int)ob>>8));
+	switch (ch) {
+	case '\000': fprintf (stdout, "#\\nul"); break;
+	case ' '   : fprintf (stdout, "#\\space"); break;
+	case '\n'  : fprintf (stdout, "#\\newline"); break;
+	case '\r'  : fprintf (stdout, "#\\return"); break;
+	case '\t'  : fprintf (stdout, "#\\tab"); break;
+	default    : fprintf (stdout, "#\\%c", ch);
+	}
       }
       break;
     case TC_BOOL:
