@@ -1,13 +1,4 @@
-
-;; this should probably become a datatype, or at least a record.
-
-;; XXX a big question remains about 'lisp symbols' vs what we will
-;;   have: can/should we have new symbols available at runtime?  If we
-;;   say "no", then there is no need for a runtime map, we can find
-;;   them all at compile time.  This question is more important now
-;;   that we emit literal constants, because if we intend for these
-;;   funs to work correctly it needs to be populated with the set of
-;;   all symbols found at compile time.
+;; -*- Mode: Irken -*-
 
 (define (string->uninterned-symbol str)
   (symbol:t str))
