@@ -81,8 +81,7 @@ def compile_file (f, name, c):
     num_regs = ic.regalloc.max_reg
     print 'codegen...'
     b = backend.c_backend (fo, name, num_regs, c)
-    b.emit (exp5)
-    b.done()
+    b.go (exp5)
     fo.close()
     cc (name, c)
 
@@ -162,6 +161,7 @@ if __name__ == '__main__':
     c.typetype = argtest ('-tt')
     c.no_range = argtest ('-nrc')
     c.print_types = argtest ('-pt')
+    c.profile  = argtest ('-p')
 
     if len (sys.argv) != 2:
         W = sys.stderr.write
