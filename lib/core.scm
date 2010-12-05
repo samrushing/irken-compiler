@@ -112,6 +112,12 @@
   (%%cexp (-> 'a) "PXLL_UNDEFINED")
   )
 
+(define (error1 msg ob)
+  (newline)
+  (print-string msg)
+  (print-string " ")
+  (error ob))
+
 (define (impossible)
   (error "impossible"))
 
