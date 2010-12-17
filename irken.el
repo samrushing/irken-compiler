@@ -52,4 +52,12 @@
 (put 'match 'scheme-indent-function 'scheme-let-indent)
 (put 'datatype 'scheme-indent-function 1)
 
+;; This allows "M-x align" to line up a series of pattern-matches, try it!
+(add-to-list 'align-rules-list
+   '(irken-patterns
+      (tab-stop . nil)
+      (regexp . "\\(\\s-*\\)\\->\\(\\s-*\\)")
+      (modes . '(irken-mode)))
+   )
+
 (provide 'irken)
