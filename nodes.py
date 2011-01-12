@@ -76,14 +76,12 @@ class node:
         print '%3d %s' % (self.serial, leaf),
         print '  ' * depth, self.kind,
         print '[%d]' % (self.size,),
-        if self.type:
-            print '%s ' % (self.type,),
-        else:
-            print '? ',
         if self.params:
-            print self.params
+            print self.params,
+        if self.type:
+            print '%s ' % (self.type,)
         else:
-            print
+            print '? '
         for sub in self.subs:
             sub.pprint (depth+1)
 
@@ -174,7 +172,7 @@ class node:
         elif self.kind == 'constructed':
             self.value = self.params
         elif self.kind == 'primapp':
-            self.name = self.params
+            self.name, self.name_params = self.params
             self.args = self.subs
         elif self.kind == 'sequence':
             self.exprs = self.subs
@@ -274,8 +272,8 @@ def literal (kind, value):
 def constructed (value):
     return node ('constructed', value)
 
-def primapp (name, args):
-    return node ('primapp', name, args)
+def primapp (name, args, params=None):
+    return node ('primapp', (name, params), args)
 
 def sequence (exprs):
     if not exprs:
@@ -320,12 +318,16 @@ class ConfusedError (Exception):
 
 import itypes
 
-# should this be moved to transform.py?
+# should this be moved to transform.py? [or itypes.py?]
 
 def parse_type (exp, tvars=None):
 
     if tvars is None:
         tvars = {}
+
+    tv_counter = serial_counter()
+    def new_tvar():
+        return get_tvar ('r%d' % (tv_counter.next()))
 
     def get_tvar (name):
         if not tvars.has_key (name):
@@ -355,7 +357,20 @@ def parse_type (exp, tvars=None):
                 # allow nullary constructors
                 #raise ValueError ("unknown type: %r" % (x,))
                 return itypes.t_predicate (x, ())
+        elif is_a (x, atom) and x.kind == 'record':
+            # record type
+            pairs = x.value[:]
+            pairs.reverse()
+            if pairs[0][0] == '...':
+                t = new_tvar()
+                pairs = pairs[1:]
+            else:
+                t = itypes.rdefault (itypes.abs())
+            for fname, ftype in pairs:
+                t = itypes.rlabel (fname, itypes.pre (pfun (ftype)), t)
+            return itypes.rproduct (t)
         else:
+            raise ValueError
             return x
 
     #print 'pfun (%r) => %r' % (exp, pfun (exp))
@@ -389,8 +404,17 @@ class walker:
                     type_sig = parse_type (exp[1], tvars)
                     form = exp[2].value
                     return cexp (form, (tvars.values(), type_sig), [ WALK (x) for x in exp[3:]])
+                elif rator == '%nvcase':
+                    ignore, vtype, value, alts, ealt = exp
+                    dt = self.context.datatypes[vtype]
+                    tags = [x[0] for x in alts]
+                    alts = [x[1] for x in alts]
+                    return nvcase (vtype, WALK(value), tags, [WALK (x) for x in alts], WALK(ealt))
                 elif rator.startswith ('%'):
                     return primapp (rator, [WALK (x) for x in exp[1:]])
+                elif rator.startswith ('&'):
+                    # primap with parameters
+                    return primapp (rator, [WALK (x) for x in exp[2:]], exp[1])
                 elif rator == 'begin':
                     return sequence ([WALK (x) for x in exp[1:]])
                 elif rator == 'set_bang':
@@ -420,16 +444,6 @@ class walker:
                     names = [vardef (x) for x in names]
                     inits = [WALK (x)   for x in inits]
                     return fix (names, inits, WALK (body))
-                elif rator == 'pvcase':
-                    ignore, value, alt_formals, alts = exp
-                    alt_formals = [ (selector, type, [vardef (name) for name in formals]) for selector, type, formals in alt_formals ]
-                    return pvcase (WALK(value), alt_formals, [WALK (x) for x in alts])
-                elif rator == 'nvcase':
-                    ignore, vtype, value, alts, ealt = exp
-                    dt = self.context.datatypes[vtype]
-                    tags = [x[0] for x in alts]
-                    alts = [x[1] for x in alts]
-                    return nvcase (vtype, WALK(value), tags, [WALK (x) for x in alts], WALK(ealt))
                 else:
                     # a varref application
                     return application (WALK (rator), [WALK (x) for x in exp[1:]])
