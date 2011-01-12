@@ -29,7 +29,7 @@ get_case (object * ob)
     if (is_int (ob)) {
       return TC_INT;
     } else {
-      return (pxll_int)ob & 0xff;
+      return (pxll_int) ob;
     }
   } else {
     return (pxll_int)*((pxll_int *)ob) & 0xff;
@@ -55,7 +55,7 @@ inline
 pxll_int
 get_case_imm (object * ob)
 {
-  return (pxll_int)ob & 0xff;
+  return (pxll_int)ob;
 }
 
 static
@@ -225,9 +225,9 @@ dump_object (object * ob, int depth)
       }
     }
       break;
-    default:
+    case TC_USERIMM:
       // a user immediate unit-type...
-      fprintf (stdout, "<u%d>", (tc>>8));
+      fprintf (stdout, "<u%d>", (((pxll_int)ob)>>8));
     }
   }
   return (object *) PXLL_UNDEFINED;
@@ -343,7 +343,7 @@ inline
 range_check (unsigned int length, unsigned int index)
 {
   if (index >= length) {
-    fprintf (stderr, "array reference out of range\n");
+    fprintf (stderr, "array reference out of range: %ld[%d]\n", length, index);
     abort();
   }
 }
