@@ -219,12 +219,19 @@ class reader:
         result = []
         while 1:
             p = self.peek()
-            # record names have a more limited space
-            if not (p in string.letters or p in string.digits or p in "-"):
-                return ''.join (result)
-            else:
-                result.append (p)
+            if p == '.':
+                # special case '...' name
                 self.next()
+                assert (self.next() == '.')
+                assert (self.next() == '.')
+                return '...'
+            else:
+                # record names have a more limited space
+                if not (p in string.letters or p in string.digits or p in "-"):
+                    return ''.join (result)
+                else:
+                    result.append (p)
+                    self.next()
 
     def read_record (self):
         # { label=value label=value }
@@ -240,11 +247,18 @@ class reader:
             else:
                 name = self.read_name()
                 self.skip_whitespace()
-                if self.next() != '=':
-                    raise SyntaxError ("expected '=' in record literal")
+                if name == '...':
+                    result.append (('...', None))
+                    if self.peek() != '}':
+                        raise SyntaxError ("expected '}' after '...' in record literal")
+                    self.next()
+                    return atom ('record', result)
                 else:
-                    val = self.read()
-                    result.append ((name, val))
+                    if self.next() != '=':
+                        raise SyntaxError ("expected '=' in record literal")
+                    else:
+                        val = self.read()
+                        result.append ((name, val))
 
     def read_array_index (self):
         # throw away open bracket
