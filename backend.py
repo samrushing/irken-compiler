@@ -112,9 +112,9 @@ class c_backend:
                         l.extend (args)
                         exp.index = -1
                         return 'UPTR(%d,%d)' % (i, addr)
-                    elif tag == 'TC_NIL':
+                    elif tag in ('TC_NIL', 'PXLL_TRUE', 'PXLL_FALSE'):
                         # XXX ugh, special case again, fixme
-                        return 'TC_NIL'
+                        return '(pxll_int)%s' % (tag,)
                     else:
                         # constructor with no args, an immediate
                         return 'UITAG(%d)' % (dotag (tag,))
@@ -162,6 +162,7 @@ class c_backend:
                 # there's a temptation to skip the extra pointer at the front, but that would require additional smarts
                 #   in insn_constructed (as already exist for strings).
                 # NOTE: this reference to the string object only works because it comes before the symbol in self.context.constructed.
+                self.write ('// symbol %r' % (lit.args[0],))
                 self.write ('pxll_int constructed_%d[] = {UPTR(%d,1), SYMBOL_HEADER, UPTR0(%d)};' % (i, i, lit.args[0].index))
             else:
                 # normal constructors
@@ -225,7 +226,7 @@ class c_backend:
             self.out.write (
                 "static int lookup_field (int tag, int label)\n"
                 # "{ fprintf (stderr, \"[%d %d]\", tag, label);"
-                "{  switch (tag) {\n"
+                "{ switch (tag) {\n"
                 )
             for rec, tag in self.context.records2.iteritems():
                 self.out.write ("  case %d:\n" % tag)
@@ -598,7 +599,7 @@ class c_backend:
         # single-instruction typecode fetching. (also, avoiding a branch)
         if len (dt.uimm):
             # if we're using the uimm hack, we have to check for everything, including TC_INT.
-            return 'get_case'
+            return 'get_typecode'
         alts = dt.alts
         arity = len (alts[0][1])
         for i in range (1, len (alts)):
@@ -626,24 +627,29 @@ class c_backend:
                 label = tags[i]
                 tag = dt.tags[label]
                 arity = dt.arity (label)
+                uimm = False
                 if is_a (tag, str):
                     # e.g., PXLL_FALSE
                     tag = '((pxll_int)%s)' % (tag,)
                 elif arity == 0:
                     # immediate/unit-constructor
-                    #tag = 'TC_USERIMM+%d' % (tag * 4)
-                    tag = 'TC_USERIMM+%d' % (tag << 8)
+                    tag = 'TC_USERIMM+(%d<<8)' % tag
                 elif arity == 1 and dt.uimm.has_key (label):
                     typename = dt.uimm[label].name.upper()
                     tag = 'TC_%s' % (typename)
+                    uimm = True
                 else:
                     # tuple constructor
-                    tag = 'TC_USEROBJ+%d' % (tag * 4)
+                    tag = 'TC_USEROBJ+(%d<<2)' % tag
                 self.indent += 1
-                if i == len(tags)-1 and not use_else:
-                    self.write ('default: {')
+                if uimm:
+                    comment = '%s/uimm' % (label,)
                 else:
-                    self.write ('case (%s): {' % (tag))
+                    comment = label
+                if i == len(tags)-1 and not use_else:
+                    self.write ('default: { // %s' % (comment,))
+                else:
+                    self.write ('case (%s): { // %s' % (tag, comment))
                 self.indent += 1
                 self.emit (alts[i])
                 self.indent -= 1
@@ -651,7 +657,7 @@ class c_backend:
                 self.indent -= 1
             if use_else:
                 self.indent += 1
-                self.write ('default: {')
+                self.write ('default: { // <else>')
                 self.indent += 1
                 self.emit (ealt)
                 self.indent -= 1
