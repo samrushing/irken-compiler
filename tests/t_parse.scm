@@ -49,7 +49,7 @@
       ;; XXX handle or disallow tabs
       (token:t 'whitespace str _) -> (string-length str)
       ;; non-whitespace at the front of a line
-      (token:t _ _ _ _)           -> 0)
+      (token:t _ _ _ )            -> 0)
 
     (define (get-top-indent)
       (match indents with

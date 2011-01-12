@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/core.scm")
+(include "lib/pair.scm")
 (include "lib/alist.scm")
 
 ;; ok, here's how you would have to build a table without a macro facility:

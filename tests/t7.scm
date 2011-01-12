@@ -11,10 +11,10 @@
       (z (:shlum "howdy"))
       )
   ;; three args: (success-cont, failure-cont, sum)
-  (%vcase/fnord
+  (&vcase (fnord)
    (lambda (a) (+ a 3))
    (lambda (b)
-     (%vcase/blort
+     (&vcase (blort)
       (lambda (c) (if c 99 34))
       (lambda (d) 19)
       b))

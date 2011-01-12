@@ -18,6 +18,12 @@
      ((:blort _ _ _ ) 42)
      ((:urk) 666)))
 
+(define (glort2 a)
+  (vcase a
+     ((:blurb x) x)
+     ((:blort _ _ _ ) 42)
+     (else 4242)))
+
 (let ((x (:blurb 9))
       (y (:blort 12 13 14))
       (z (:urk))
@@ -28,4 +34,7 @@
   (printn (glort1 x))
   (printn (glort1 y))
   (printn (glort1 z))
+  (printn (glort2 x))
+  (printn (glort2 y))
+  (printn (glort2 z))
   )

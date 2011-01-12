@@ -2,14 +2,7 @@
 (include "lib/pair.scm")
 (include "lib/string.scm")
 
-(let ((sl
-       (list:cons
-	"not "
-	(list:cons
-	 "today "
-	 (list:cons
-	  "zurg!"
-	  (list:nil))))))
-  (print (string-append sl)))
-       
-	   
+(printn (string-append "not " "today " "zurg!"))
+(printn (string-append))
+(printn (string-append "stuff!"))
+(printn (string-append "a" "b" "c" "d"))
