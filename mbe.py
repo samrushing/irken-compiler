@@ -38,13 +38,18 @@ def matches_pattern (p, e):
             and matches_pattern (p[1:], e[1:])
             )
     elif is_symbol (p):
-        return True
+        if p[0] == '<' and p[-1] == '>':
+            return e == p[1:-1]
+        else:
+            return True
     else:
         return p == e
 
 def get_ellipsis_nestings (p):
     def sub (p):
         if is_ellipsis (p):
+            # XXX I think the second call to sub here is pointless since '... should
+            #     always be the last element of any list.
             return [sub(p[0])] + sub(p[2:])
         elif is_list (p) and len(p):
             return sub(p[0]) + sub(p[1:])
@@ -62,6 +67,7 @@ def ellipsis_sub_envs (nestings, r):
         return []
 
 def intersect (v, y):
+    # XXX I think this should be <and>, not <or>.
     if is_symbol (v) or is_symbol (y):
         return v == y
     else:
@@ -125,6 +131,8 @@ class macro:
             raise MatchError ("no matching clause", exp)
 
 def t0():
+    print get_ellipsis_nestings (['a', ['c', 'd'], 'd', ['b', ['x', '...']]])
+    print get_ellipsis_nestings ([[['a', 'b'], '...'], '...'])
     print matches_pattern ([1, 'x', 2], [1, 23, 2])
     print get_bindings ([1, 'x', ['y']], [1, 23, [2]])
     print get_bindings ([1, 'x', ['y']], [1, 23, ['bibble']])
@@ -133,10 +141,19 @@ def t0():
     print get_bindings (['x', '...'], [1, 2, 3, 4])
     print get_bindings (['thing', ['x', '...'], ['y']], ['thing', [1, 2, 3, 4], [100]])
     print get_bindings (['thing', ['x', 'y'], '...'], ['thing', [1, 2], [3, 4], [5, 6]])
+    print get_bindings ([[['x', 'y'], '...'], '...'], [[[1,2],[3,4]],[[5,6],[7,8]]])
     # => ((x ...) (y ...))
     # ((THING . THING) ((X Y) ((X . 1) (Y . 2)) ((X . 3) (Y . 4)) ((X . 5) (Y . 6))))
     # [('thing', 'thing'), [
-    print expand_pattern ([['x', '...'], ['y', '...']], [([['x'], ['y']], [[('x', 1), ('y', 2)], [('x', 3), ('y', 4)], [('x', 5), ('y', 6)]])])
+    p = ['thing', ['x', '...'], ['y']]
+    n = get_ellipsis_nestings (p)
+    print n
+    b = get_bindings (p, ['thing', [1, 2, 3, 4], [100]])
+    print b
+    rr = ellipsis_sub_envs (n, b)
+    print rr
+    print expand_pattern (['zorble', 'x', '...'], b)
+    return
     print expand_pattern (['thing', ['x', '...'], ['y', '...']], [('thing', 'thing'), (['x', 'y'], [[('x', 1), ('y', 2)], [('x', 3), ('y', 4)], [('x', 5), ('y', 6)]])])
     # (1, x, 2) => (1, x, x, 2)
     print expand_pattern ([1, 'x', 'x', 2], [('x', ['a', 'b'])])
