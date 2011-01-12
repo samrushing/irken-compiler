@@ -7,6 +7,8 @@
   (:cons 'a (list 'a))
   )
 
+;; null?/cons/car/cdr aren't actually used that much in Irken code,
+;;   since pattern matching is safer and easier to read.
 (define null?
   () -> #t
   _  -> #f
@@ -50,25 +52,28 @@
   (reverse-onto (reverse list1) list2))
 
 (define (length l)
-  (let loop ((l l)
-	     (n 0))
-    (vcase list l
-       ((:nil) n)
-       ((:cons _ tl)
-	(loop tl (+ n 1))))))
+  (define fun
+    () acc	  -> acc
+    (hd . tl) acc -> (fun tl (+ 1 acc)))
+  (fun l 0))
+
+;; A possible pattern-matching named-let construct?
+;; (define (length l)
+;;   (let loop (0 l)
+;;     acc ()	  -> acc
+;;     acc (hd . tl) -> (loop tl (+ 1 acc))))
 
 ;; this is different enough from the scheme <member> to warrant
 ;;   the new name.
-(define (member? x l =)
-  (vcase list l
-    ((:nil) #f)
-    ((:cons hd tl)
-     (if (= hd x)
-	 #t
-	 (member? x tl =)))))
 
+(define member?
+  x ()        = -> #f
+  x (hd . tl) = -> (if (= hd x) #t (member? x tl =))
+  )
+
+;; XXX need to get inlining to work through this
 (define member-eq?
-  x () -> #f
+  x ()	      -> #f
   x (hd . tl) -> (if (eq? x hd) #t (member-eq? x tl))
   )
 
@@ -92,15 +97,37 @@
 	l
 	(loop (- n 1) (cons x l)))))
 
-(define (map p l)
-  (vcase list l
-    ((:nil) l)
-    ((:cons hd tl)
-     (list:cons (p hd) (map p tl)))))
+(define map
+  p ()        -> '()
+  p (hd . tl) -> (list:cons (p hd) (map p tl)))
 
 (define for-each
-  p ()        -> #f
+  p ()        -> #u
   p (hd . tl) -> (begin (p hd) (for-each p tl)))
+
+(define fold
+  p acc ()	  -> acc
+  p acc (hd . tl) -> (fold p (p hd acc) tl)
+  )
+
+(define foldr
+  p acc ()	  -> acc
+  p acc (hd . tl) -> (p hd (foldr p acc tl))
+  )
+
+(define some
+  p () -> #f
+  p (hd . tl) -> (if (p hd) #t (some p tl)))
+
+(define every
+  p () -> #t
+  p (hd . tl) -> (if (p hd) (every p tl) #f))
+
+;; print a list with <proc>, and print <sep> between each item.
+(define print-sep
+  proc sep ()	     -> #u
+  proc sep (one)     -> (proc one)
+  proc sep (hd . tl) -> (begin (proc hd) (print-string sep) (print-sep proc sep tl)))
 
 (define (vector->list v)
   (let loop ((n (- (vector-length v) 1)) (acc (list:nil)))
