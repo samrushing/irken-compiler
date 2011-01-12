@@ -12,16 +12,32 @@
   (:t string sexp)
   )
 
+;; an s-expression datatype.
+
 (datatype sexp
-  (:list (list (sexp)))
+  (:list (list sexp))
   (:symbol symbol)
   (:string string)
   (:char char)
   (:bool bool)
   (:int int)
-  (:undef undefined)
-  (:vector (list (sexp)))
-  (:record (list (field)))
+  (:undef)
+  (:vector (list sexp))
+  (:record (list field))
+  (:cons symbol symbol) ;; constructor ':' syntax
+  (:attr sexp symbol)	;; attribute '.' syntax
+  )
+
+;; In retrospect, I think it may have been a mistake to embed 'list'
+;;   into sexp.  It forces all sexp-handling code to cover two cases,
+;;   often triggering the need for an auxiliary function.  Might be
+;;   cleaner to just have (sexp:nil) and (sexp:cons)...
+
+;; similar to the list macro.  think of this as the 'list' function
+;;   for s-expressions.
+(defmacro sexp
+  (sexp)       -> (sexp:list '())
+  (sexp x ...) -> (sexp:list (LIST x ...))
   )
 
 (define (char-class char-list)
@@ -36,20 +52,20 @@
 	(hd . tl) -> (begin (set! v[(char->ascii hd)] #t) (loop tl))
 	))))
 
-(define (reader file)
+(define (reader read-char)
 
   (let ((char #\eof)) ;; one-character buffer
 
     (define (peek)
       (if (eq? char #\eof)
-	  (set! char (file/read-char file))
+	  (set! char (read-char))
 	  #u)
       char)
     
     (define (next)
       (let ((result char))
 	;;(print result)
-	(set! char (file/read-char file))
+	(set! char (read-char))
 	result))
 
     (define (skip-peek)
@@ -63,11 +79,11 @@
     (define all-delimiters (append whitespace delimiters))
     (define digits         (string->list "0123456789"))
 
-    (define whitespace?   (char-class '(#\space #\tab #\newline #\return)))
-    (define delimiter?    (char-class all-delimiters))
-    (define digit?        (char-class digits))
-    (define letter?       (char-class letters))
-    (define field?        (char-class (cons #\- (append letters digits))))
+    (define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
+    (define delimiter?     (char-class all-delimiters))
+    (define digit?         (char-class digits))
+    (define letter?        (char-class letters))
+    (define field?         (char-class (cons #\- (append letters digits))))
 
     (define hex-table
       (literal
@@ -99,15 +115,38 @@
 
     (define (read-atom)
       (let ((all-digits? #t)
+	    (dot-count 0)
 	    (after-first-char? #f))
 	(let loop ((result '()))
 	  (let ((ch (peek)))
-	    (cond ((and after-first-char? (delimiter? ch))
-		   (:atom (list->string (reverse result)) all-digits? (length result)))
+	    (cond ((and after-first-char? (or (eq? ch #\eof) (delimiter? ch)))
+		   (:atom (list->string (reverse result)) all-digits? (length result) dot-count))
 		  (else
 		   (set! after-first-char? #t)
 		   (set! all-digits? (and all-digits? (digit? ch)))
+		   (if (eq? ch #\.) (set! dot-count (+ 1 dot-count)))
 		   (loop (list:cons (next) result))))))))
+
+    (define (dotted-symbol s n)
+      ;; handle dots in a symbol
+      ;; as a special case, allow all-dots symbols (like '...) through unscathed
+      (if (= n (string-length s))
+	  (sexp:symbol (string->symbol s))
+	  (let loop ((parts (reverse (string-split s #\.))))
+	    ;; a.b.c => (get (get a b) c)
+	    (match parts with
+	      ;; c b a
+	      (base)        -> (sexp:symbol (string->symbol base))
+	      (attr . rest) -> (sexp:attr (loop rest) (string->symbol attr))
+	      ()            -> (impossible)
+	      ))))
+
+    (define (read-symbol)
+      (match (read-atom) with
+	(:atom sym #t _ _) -> (error1 "expected symbol" sym)
+	(:atom sym #f _ 0) -> (string->symbol sym)
+	(:atom sym #f _ _) -> (error1 "no dots allowed in constructor names" sym)
+	))
 
     (define (read1)
       (skip-whitespace)
@@ -119,7 +158,7 @@
 	  #\"   -> (read-string)
 	  #\'   -> (begin (next) (sexp:list (LIST (sexp:symbol 'quote) (read))))
 	  #\,   -> (begin (next) (sexp:list (LIST (sexp:symbol 'comma) (read))))
-	  #\:   -> (begin (next) (sexp:list (LIST (sexp:symbol 'colon) (read))))
+	  #\:   -> (begin (next) (sexp:cons 'nil (read-symbol)))
 	  #\#   -> (begin
 		     (next)
 		     (set! ch (peek))
@@ -127,30 +166,30 @@
 		       #\\ -> (begin
 				(next) ;; skip backslash
 				(match (read-atom) with
-				   (:atom atom _ 1)      -> (sexp:char (string-ref atom 0))
-				   (:atom "newline" _ _) -> (sexp:char #\newline)
-				   (:atom "space" _ _)   -> (sexp:char #\space)
-				   (:atom "return" _ _)  -> (sexp:char #\return)
-				   (:atom "tab" _ _)     -> (sexp:char #\tab)
-				   (:atom "eof" _ _)     -> (sexp:char #\eof)
-				   (:atom "nul" _ _)     -> (sexp:char #\nul)
-				   _                     -> (error "bad character constant")
+				   (:atom atom _ 1 _)      -> (sexp:char (string-ref atom 0))
+				   (:atom "newline" _ _ _) -> (sexp:char #\newline)
+				   (:atom "space" _ _ _)   -> (sexp:char #\space)
+				   (:atom "return" _ _ _)  -> (sexp:char #\return)
+				   (:atom "tab" _ _ _)     -> (sexp:char #\tab)
+				   (:atom "eof" _ _ _)     -> (sexp:char #\eof)
+				   (:atom "nul" _ _ _)     -> (sexp:char #\nul)
+				   x                       -> (error1 "bad character constant" x)
 				   ))
 		       ;; Xx Oo Bb
-		       #\T -> (sexp:bool #t)
-		       #\t -> (sexp:bool #t)
-		       #\F -> (sexp:bool #f)
-		       #\f -> (sexp:bool #f)
-		       #\U -> (sexp:undef #u)
-		       #\u -> (sexp:undef #u)
+		       #\T -> (begin (next) (sexp:bool #t))
+		       #\t -> (begin (next) (sexp:bool #t))
+		       #\F -> (begin (next) (sexp:bool #f))
+		       #\f -> (begin (next) (sexp:bool #f))
+		       #\U -> (begin (next) (sexp:undef))
+		       #\u -> (begin (next) (sexp:undef))
 		       #\( -> (sexp:vector (read-list))
-		       x   -> (error "syntax error")
+		       x   -> (error1 "syntax error" x)
 		       ))
-	  ;;#\-   -> (sexp:int (- 0 (read-number)))
 	  #\)   -> (error "unexpected close-paren")
 	  _     -> (match (read-atom) with
-		      (:atom chars #t n) -> (sexp:int (read-int chars n))
-		      (:atom chars #f _) -> (sexp:symbol (string->symbol chars))
+		      (:atom chars #t n _) -> (sexp:int (read-int chars n))
+		      (:atom chars #f _ 0) -> (sexp:symbol (string->symbol chars))
+		      (:atom chars #f _ n) -> (dotted-symbol chars n)
 		      )
 	  )
 	)
@@ -167,8 +206,13 @@
 	    ;; infix colon syntax
 	    #\: -> (begin
 		     (next)
-		     (let ((rhs (read)))
-		       (sexp:list (LIST (sexp:symbol 'colon) result rhs))))
+		     (match result with
+		       (sexp:symbol dt) -> (sexp:cons dt (read-symbol))
+		       _ -> (error1 "colon follows non-datatype" result)))
+	    ;; infix 'get' syntax (i.e., attribute access)
+	    ;; XXX this is disabled because it breaks symbols like '...
+	    ;;   so we'll probably need to do the same hack as the python version
+	    ;;#\. -> (begin (next) (sexp:attr result (read-symbol)))
 	    _   -> result
 	    ))))
 
@@ -283,12 +327,10 @@
 (define (read-file path)
   (print-string "reading file ") (printn path)
   (let ((file (file/open-read path)))
-    (reader file)))
+    (reader (lambda () (file/read-char file)))))
 
-;; type hack so unread always returns int
-(define (printi x)
-  (print x)
-  0)
+(define (read-string s)
+  (reader (string-reader s)))
 
 (define unread-fields
   () -> #u
@@ -303,30 +345,45 @@
 
 (define unread-list
   ((sexp:symbol 'quote) ob) -> (begin (print-string "'") (unread ob))
-  ((sexp:symbol 'colon) ob) -> (begin (print-string ":") (unread ob))
-  ((sexp:symbol 'colon) ob0 ob1) -> (begin (unread ob0) (print-string ":") (unread ob1))
-  l -> (begin (print-string "(") (for-each (lambda (x) (unread x) (print-string " ")) l) (print-string ")"))
-  )
+  () -> (print-string "()")
+   l -> (begin (print-string "(")
+	       (print-sep unread " " l)
+	       (print-string ")")
+	       )
+   )
 
 (define unread
-  (sexp:list l)   -> (unread-list l)
-  (sexp:symbol s) -> (printi s)
-  (sexp:string s) -> (printi s)
-  (sexp:char ch)  -> (printi ch)
-  (sexp:bool #t)  -> (print-string "#t")
-  (sexp:bool #f)  -> (print-string "#f")
-  (sexp:int n)    -> (printi n)
-  (sexp:undef _)  -> (printi #u)
-  (sexp:vector v) -> (begin (print-string "#(") (for-each (lambda (x) (unread x) (print-string " ")) v) (print-string ")"))
-  (sexp:record fl) -> (begin (print-string "{ ") (unread-fields fl) (print-string "}"))
+  (sexp:list l)     -> (unread-list l)
+  (sexp:symbol s)   -> (print s)
+  (sexp:string s)   -> (print s)
+  (sexp:char ch)    -> (print ch)
+  (sexp:bool #t)    -> (print-string "#t")
+  (sexp:bool #f)    -> (print-string "#f")
+  (sexp:int n)      -> (print n)
+  (sexp:undef)      -> (print #u)
+  (sexp:vector v)   -> (begin (print-string "#(") (for-each (lambda (x) (unread x) (print-string " ")) v) (print-string ")"))
+  (sexp:record fl)  -> (begin (print-string "{ ") (unread-fields fl) (print-string "}"))
+  (sexp:cons dt c)  -> (begin (if (eq? dt 'nil) #u (print dt)) (print-string ":") (print c))
+  (sexp:attr lhs a) -> (begin (unread lhs) (print-string ".") (print a))
   )
 
-(let ((t (read-file
-	  (if (> sys.argc 1)
-	      sys.argv[1]
-	      "lib/core.scm"))))
-;;  (printn t)
-  (for-each (lambda (x) (unread x) (newline)) t)
-  #u
-  )
+(define (test-file)
+  (let ((t (read-file
+	    (if (> sys.argc 1)
+		sys.argv[1]
+		"lib/core.scm"))))
+    ;;  (printn t)
+    (for-each (lambda (x) (printn x) (unread x) (newline)) t)
+    #u
+    ))
+
+(define (test-string)
+  (for-each
+   (lambda (x) (printn x) (unread x) (newline))
+   ;;(read-string "(testing one two 0 1 #\\newline (\"string\" . xxx))")
+   (read-string "(datatype list (:cons 'a (list 'a)) (:nil))")
+   ))
+
+;;(test-lisp-reader)
+;;(test-string)
 
