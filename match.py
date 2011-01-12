@@ -227,6 +227,8 @@ class compiler:
             rules1 = []
             for pats, code in rules0:
                 rules1.append ((pats[0].subs + pats[1:], code))
+                if len (pats[0].subs) != arity:
+                    raise MatchError ("arity mismatch in variant pattern", rules0)
                 for i in range (len (pats[0].subs)):
                     sub = pats[0].subs[i]
                     if not (is_a (sub, variable) and sub.name == '_'):
