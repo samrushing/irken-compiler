@@ -1,3 +1,4 @@
+;; -*- Mode: Irken -*-
 
 (define (make-string n)
   (%%cexp
@@ -29,6 +30,11 @@
 (define (char->ascii c)
   (%%cexp (char -> int) "GET_CHAR(%s)" c))
 
+(define (char->string ch)
+  (let ((r (make-string 1)))
+    (string-set! r 0 ch)
+    r))
+
 (define (string-ref s n)
   ;; XXX need range-check
   (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%s)[%s])" s n))
@@ -39,7 +45,7 @@
    (string int char -> undefined)
    "(%s[%s] = GET_CHAR (%s), PXLL_UNDEFINED)" s n c))
 
-(define (string-append l)
+(define (string-concat l)
   ;; merge a list of strings into one string
   (let ((tsize
 	 (let loop ((l0 l) (size 0))
@@ -53,6 +59,29 @@
 	 (hd . tl) -> (begin
 			(buffer-copy hd 0 (string-length hd) buffer pos)
 			(loop tl (+ pos (string-length hd))))))))
+
+(defmacro string-append
+  (string-append)           -> ""
+  (string-append s0)        -> s0
+  (string-append s0 s1 ...) -> (string-concat (LIST s0 s1 ...))
+  )
+
+(define (string-join l sep)
+  (define sj
+    ()        acc -> (string-concat (reverse acc))
+    (one)     acc -> (string-concat (reverse (list:cons one acc)))
+    (hd . tl) acc -> (sj tl (list:cons sep (list:cons hd acc))))
+  (sj l '()))
+
+(define (string-split s ch)
+  (let loop ((i 0)
+	     (j 0)
+	     (acc '()))
+    (cond ((= i (string-length s)) (reverse (list:cons (substring s j i) acc)))
+	  ((char=? (string-ref s i) ch)
+	   (loop (+ i 1) (+ i 1) (list:cons (substring s j i) acc)))
+	  (else
+	   (loop (+ i 1) j acc)))))
 
 (define (string-compare a b)
   (let* ((alen (string-length a))
@@ -94,6 +123,7 @@
 	l
 	(loop (list:cons (string-ref s (- n 1)) l) (- n 1)))))
 
+;; XXX should *not* use ascii conversions.
 ;; really dumb temp version, only works with [0-9]+ !!
 (define (string->int s)
   (let ((sl (string-length s)))
@@ -105,13 +135,26 @@
 		   (- (char->ascii (string-ref s i)) 48)))))))
 
 (define (int->string n)
+  (if (= 0 n)
+      (char->string #\0) ;; don't use a constant here, mutable string
+      (let loop ((x (abs n)) (r '()))
+	(if (= 0 x)
+	    (list->string
+	     (if (< n 0) (list:cons #\- r) r))
+	    (loop (/ x 10)
+		  (list:cons (ascii->char (+ 48 (remainder x 10))) r)
+		  )))))
+
+(define hex-table (literal #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\a #\b #\c #\d #\e #\f)))
+
+(define (int->hex-string n)
   (let loop ((x (abs n)) (r '()))
     (if (= 0 x)
-        (list->string
-         (if (< n 0) (list:cons #\- r) r))
-        (loop (/ x 10)
-              (list:cons (ascii->char (+ 48 (remainder x 10))) r)
-	      ))))
+	(list->string
+	 (if (< n 0)
+	     (list:cons #\- r) r))
+	(loop (>> x 4)
+	      (list:cons hex-table[(logand x 15)] r)))))
 
 (define sys
   (let ((argc (%%cexp (-> int) "argc"))
