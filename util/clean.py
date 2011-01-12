@@ -41,6 +41,17 @@ for root, dirs, files in os.walk ('./vm', topdown=False):
                 # an executable
                 os.remove (jp)
 
+for root, dirs, files in os.walk ('./self', topdown=False):
+    for name in files:
+        jp = os.path.join (root, name)
+        if name.endswith ('.c'):
+            os.remove (jp)
+        else:
+            stat = os.stat (jp)
+            if stat.st_mode & 1:
+                # an executable
+                os.remove (jp)
+
 def unlink (p):
     try:
         os.unlink (p)
