@@ -4,7 +4,7 @@ from pdb import set_trace as trace
 from pprint import pprint as pp
 
 import nodes
-import solver
+#import solver
 import itypes
 
 is_a = isinstance
@@ -147,6 +147,20 @@ class compiler:
             index = add (exp)
         return index
 
+    # XXX a possible improvement: if we know that the body of the let
+    #  makes only tail calls, then it should be safe as well.  Need to
+    #  find an easy way to detect that case...
+
+    # XXX this could be done *much* smarter.  Here's how: record the
+    #   set of registers used by each and every function (transitively),
+    #   which will let us know exactly which registers we can bind in
+    #   a let around a call to that function.
+    #
+    #   For example: let's say we're about to call function X, which
+    #     calls function Y.  If X uses only r0-r3, and Y only uses r0-r2,
+    #     then we can safely bind to r4+.  The effect will be to let leaf-like
+    #     functions use registers for binding.
+
     def safe_for_let_reg (self, tail_pos, exp, lenv, k):
         # we only want to use registers for bindings when
         #  1) we're in a leaf position (to avoid consuming registers
@@ -155,9 +169,6 @@ class compiler:
         #  2) there's not too many bindings (again, avoid consuming regs)
         #  3) none of the variables escape (storing a binding in a reg
         #     defeats the idea of a closure)
-        # XXX a possible improvement: if we know that the body of the let
-        #  makes only tail calls, then it should be safe as well.  Need to
-        #  find an easy way to detect that case...
         if exp.leaf and len(exp.names) <= 4:
             for name in exp.names:
                 if name.escapes:
@@ -263,8 +274,10 @@ class compiler:
         if exp.name.startswith ('%raccess/') or exp.name.startswith ('%rset/'):
             prim, field = exp.name.split ('/')
             # try to get constant-time field access...
-            sig = solver.get_record_sig (exp.args[0].type)
+            sig = itypes.get_record_sig (exp.args[0].type)
             if prim == '%raccess':
+                if sig is None:
+                    trace()
                 return self.compile_primargs (exp.args, ('%record-get', field, sig), lenv, k)
             else:
                 return self.compile_primargs (exp.args, ('%record-set', field, sig), lenv, k)                
@@ -297,8 +310,8 @@ class compiler:
             ignore, label, arity = exp.name.split ('/')
             tag = self.context.variant_labels[label]
             return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
-        elif exp.name.startswith ('%vget/'):
-            ignore, label, arity, index = exp.name.split ('/')
+        elif exp.name == ('&vget'):
+            label, arity, index = exp.name_params
             return self.compile_primargs (exp.args, ('%vget', index), lenv, k)
         elif exp.name.startswith ('%nvget/'):
             ignore, dtype, label, index = exp.name.split ('/')
@@ -311,7 +324,11 @@ class compiler:
             ignore, dtname, label = exp.name.split ('/')
             dt = self.context.datatypes[dtname]
             tag = dt.tags[label]
-            if dt.uimm.has_key (label):
+            if dtname == 'symbol' and exp.args[0].is_a ('literal'):
+                # special case: only triggered when symbols are present in data structures
+                #   that cannot be built at compile-time.
+                return self.gen_constructed (self.scan_constructed (exp), k)
+            elif dt.uimm.has_key (label):
                 return self.compile_exp (tail_pos, exp.args[0], lenv, k)
             else:
                 return self.compile_primargs (exp.args, ('%make-tuple', label, tag), lenv, k)
@@ -555,7 +572,7 @@ class compiler:
         #   one or more fields {c,d}.  We'll need to compile a
         #   'make-tuple' with args fetched from the source record
         #   mixed in with new args, all in the correct order.
-        sig = solver.get_record_sig (exp.type)
+        sig = itypes.get_record_sig (exp.type)
         if '...' in sig:
             raise ValueError ("can't extend record - only a partial type available")
         labels = [x[0] for x in fields]
