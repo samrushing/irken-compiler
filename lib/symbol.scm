@@ -38,8 +38,3 @@
 	    (loop (+ i 1)))))))
 
 (initialize-symbol-table)
-
-  
-
-
-	
