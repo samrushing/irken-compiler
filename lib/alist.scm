@@ -28,3 +28,8 @@
 (defmacro alist/push
   (alist/push a k v) -> (set! a (alist:entry k v a))
   )
+
+(define alist/iterate
+  p (alist:nil) -> #u
+  p (alist:entry k0 v0 tl) -> (begin (p k0 v0) (alist/iterate p tl))
+  )
