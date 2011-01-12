@@ -7,6 +7,10 @@
   (%%cexp ('a -> undefined) "dump_object (%s, 0)" x))
 
 (define (print-string s)
+  (%%cexp (string int -> undefined) "(fwrite (%s, 1, %s, stdout), PXLL_UNDEFINED)" s (string-length s)))
+
+;; original version returns how many chars were written...
+(define (print-string* s)
   (%%cexp (string int -> int) "fwrite (%s, 1, %s, stdout)" s (string-length s)))
 
 (define (print-char ch)
@@ -62,6 +66,7 @@
 (define (>> a b)
   (%%cexp (int int -> int) "%s>>%s" a b))
 
+;; any reason I can't use the same characters that C does?
 (define (logior a b)
   (%%cexp (int int -> int) "%s|%s" a b))
 
@@ -76,6 +81,9 @@
 
 (define (min x y)
   (if (< x y) x y))
+
+(define (max x y)
+  (if (> x y) x y))
 
 (define (abs x) (if (< x 0) (- 0 x) x))
 
@@ -101,6 +109,9 @@
   (%%cexp
    ((vector 'a) (vector 'a) -> int)
    "(%s == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%s)" v v))
+
+(define (address-of ob)
+  (%%cexp ('a -> int) "(pxll_int)%s" ob))
 
 ;; this is a little harsh. 8^)
 ;; think of it as a placeholder for something better to come.
