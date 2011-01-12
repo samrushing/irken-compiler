@@ -32,6 +32,6 @@ class context:
         self.symbols = {}
         self.standard_macros = "lib/derived.scm"
         # number of lines before and after a type error node
-        self.type_error_lines = 8
+        self.type_error_lines = 15
         # all functions seen by the back end
         self.functions = []
