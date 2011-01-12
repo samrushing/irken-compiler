@@ -73,6 +73,8 @@ class transformer:
             exp = ['fix', [], [], exp]
         names = exp[1]
         inits = exp[2]
+        # XXX need to create constructors for all pvariants in case we need
+        #     to use one in a higher-level function.
         for name, init in self.constructors:
             names.insert (0, name)
             inits.insert (0, init)
@@ -126,13 +128,6 @@ class transformer:
                 return []
             else:
                 rator = self.expand_exp (exp[0])
-                if is_a (rator, list) and len(rator) == 3 and rator[0] == 'colon':
-                    if rator[1] is None:
-                        # polymorphic variant constructor
-                        rator = '%%vcon/%s' % (rator[2],)
-                    else:
-                        # datatype constructor
-                        rator = '%%dtcon/%s/%s' % (rator[1], rator[2])
                 if is_a (rator, str):
                     if rator.startswith ('%') and '/' in rator:
                         # handle names with encoded meta-parameters like %vcon
@@ -182,7 +177,11 @@ class transformer:
     def expand_atom (self, exp):
         # a.b => (get a b)
         # a.b.c => (get (get a b) c)
-        if '.' in exp:
+        # XXX should be done in the reader, just like ':'
+        if not [ch for ch in exp if ch != '.']:
+            # don't mangle symbols containing just dots like '...
+            return exp
+        elif '.' in exp:
             parts = exp.split ('.')
             result = parts[0]
             while len(parts) > 1:
@@ -286,119 +285,24 @@ class transformer:
             raise ValueError ("variable arity not supported")
         return formals
 
-    # ----------- special forms ----------------
-
-    def expand_cond (self, exp):
-        EE = self.expand_exp
-        if exp == ['cond']:
-            return atom ('undefined', 'undefined')
-        elif exp[1][0] == 'else':
-            # (cond (else ...))
-            return EE (['begin'] + exp[1][1:])
-        elif exp[1][1] == '=>':
-            # (cond (test => result) ...)
-            sym = self.gensym()
-            return EE (['let',
-                        [[sym, exp[1][0]]],
-                        ['if', sym,
-                         [exp[1][2], sym],
-                         ['cond'] + exp[2:]]])
-        elif len(exp) == 2 and len(exp[1]) == 1:
-            # (cond (test)) => test
-            return EE(exp[1][0])
-        elif len(exp[1]) == 1:
-            # (cond (test) ...)
-            sym = self.gensym()
-            return EE (['let',
-                        [[sym, exp[1][0]]],
-                        ['if', sym,
-                         sym,
-                         ['cond'] + exp[2:]]])
-        elif len(exp[1]) > 1 and len(exp) == 2:
-            # (cond (test result1 result2))
-            return EE (['if', exp[1][0], ['begin'] + exp[1][1:]])
+    def expand_colon (self, exp):
+        colon, datatype, alt = exp
+        if datatype:
+            # refer to the global constructor function,
+            # usually inlined if in the rator position.
+            return '%s:%s' % (datatype, alt)
         else:
-            # (cond (test result1 result2) ...)
-            return EE (['if', exp[1][0], ['begin'] + exp[1][1:], ['cond'] + exp[2:]])
+            # can't have one single constructor for variants, because
+            #  the number of args could vary.  Instead, turn it into
+            #  the name of the primapp.  [this will fail variable lookup
+            #  if you refer to it outside of the rator position]
+            return '%%vcon/%s' % (alt,)
 
-    def expand_case (self, exp):
-        # similar to a scheme case - rather than using memv it inlines calls to eq? (NOT eqv?)
-        #   this is safe to use with ints, symbols, as long as the lists are short...
-        clauses = exp[2:]
-        keysym = self.gensym ('case')
-        # (case <key>
-        #    ((x0 x1 x2 ...) <sequence0>)
-        #    ((y0 y1 ...) <sequence1>)
-        #    (else <sequence>))
-        # => (let ((keysym <key>))
-        #       (cond ((or (eq? keysym x0) ...) <sequence0>)
-        #             ((or (eq? keysym y0) ...) <sequence1>)))
-        cond_clauses = []
-        for clause in clauses:
-            keys = clause[0]
-            seq  = clause[1:]
-            if keys == 'else':
-                # XXX assert this is the last clause...
-                cond_clauses.append (['else'] + seq)
-            elif len(keys) == 1:
-                cond_clauses.append ([['eq?', keysym, ['quote', keys[0]]]] + seq)
-            else:
-                or_clauses = ['or'] + [['eq?', keysym, ['quote', k]] for k in keys]
-                cond_clauses.append ([or_clauses] + seq)
-        return self.expand_exp (['let', [[keysym, exp[1]]], ['cond'] + cond_clauses])
+    # ----------- special forms ----------------
 
     def expand_let_splat (self, exp):
         vars = [ (x[0], self.expand_exp (x[1])) for x in exp[1] ]
         return (['let_splat', vars, self.expand_body (exp[2:])])
-
-    opt_strict_letrec = False
-
-    def expand_let (self, exp):
-        EE = self.expand_exp
-        EA = self.expand_all
-        if is_a (exp[1], list):
-            # normal let
-            vars = exp[1]
-            names = [x[0] for x in vars]
-            vals  = [x[1] for x in vars]
-            body = exp[2:]
-            #return EE (
-            #    [['function', None, names] + body] + vals
-            #    )
-            # replace with let*, our new core binding construct
-            return EE (['let_splat'] + exp[1:])
-
-        elif is_a (exp[1], str):
-            # named let
-            tag  = exp[1]
-            vars = exp[2]
-            names = [x[0] for x in vars]
-            vals  = [x[1] for x in vars]
-            body = exp[3:]
-            # although this matches the one given in R5RS, I don't understand why the (tag val0 val1 ...)
-            #   call is *outside* the letrec?  Why return the function and then apply it, why not make
-            #   that the body?
-            # Answer: this is covered in the 'pitfalls' tests.
-            # See http://groups.google.com/group/comp.lang.scheme/msg/3e2d267c8f0ef180?pli=1
-            # However, I'm going to leave it like this for now because This Is Not Scheme,
-            #   and it looks like it might have a pretty big performance impact...
-            if self.opt_strict_letrec:
-                return EE ([['letrec', [[tag, ['function', tag, names] + body]], tag]] + vals)
-            else:
-                return EE (['letrec', [[tag, ['function', tag, names] + body]], [tag] + vals])
-        else:
-            raise SyntaxError ("malformed let", exp)
-
-    # original non-fix version
-    def expand_xletrec (self, exp):
-        decls = exp[1]
-        body = exp[2:]
-        undefined_marker = atom ('undefined', 'undefined')
-        empty_decls = [ [x[0], undefined_marker] for x in decls ]
-        assigns = [ ['set!', x[0], x[1]] for x in decls ]
-        return self.expand_exp (
-            ['let', empty_decls] + assigns + body
-            )
 
     def expand_letrec (self, exp):
         # (letrec ((f1 (lambda (...)))
@@ -490,10 +394,29 @@ class transformer:
         else:
             return self.exp_pvcase (exp)
 
+    # nvcase/pvcase: the problem is that they're done two different ways.
+    # 1. I'd like to get rid of 'magic names', e.g "vcase/name1/0" by switching
+    #    to primapp-with-params.
+    # 2. I'd like to stop pvcase going through a 'lambda' phase and back
+    #    just to make typing 'easier' when the original syntax already has
+    #    to be typed anyway.
+    # 3. nvcase stays relatively sane, but unfort goes through a translation
+    #    to a let binding that needs to emit %nvget/name/index primapps.  I
+    #    want those to become lambdas and introduce %nvget as late as possible.
+    #    [the question here is how to handle don't-cares?]
+    # 4. By moving as much as possible into lib/derived.scm, I simplify the
+    #    compiler, and simplify that translation into Irken.
+
+    # read -> transform -> node -> type -> analyze -> type -> cps -> backend
+    # so at which point will %nvget be called?  if we can put it off until cps
+    # that would be the cleanest... but then we need to teach all the rest of
+    # the compiler about it, sigh.  or do we?  Maybe leave it to the backend?
+
     def exp_nvcase (self, exp):
         # (nvcase type x 
         #    ((<select0> <formal0> <formal1> ...) <body0>)
         #    ((<select1> <formal0> <formal1> ...) <body1>)
+        #    (else <body2>)
         #    ...)
         # =>
         # (nvcase type x
@@ -526,9 +449,6 @@ class transformer:
                 if formal != '_':
                     binds.append ([formal, ['%%nvget/%s/%s/%d' % (datatype, label, j), val]])
             if len(binds):
-                names = [x[0] for x in binds]
-                inits = [x[1] for x in binds]
-                #alts0.append ((label, self.expand_exp ([['lambda', names] + body] + inits)))
                 alts0.append ((label, self.expand_exp (['let', binds] + body)))
             else:
                 alts0.append ((label, self.expand_exp (['begin'] + body)))
@@ -538,7 +458,7 @@ class transformer:
             print "variant case does not have correct number of alternatives"
         if not else_clause:
             else_clause = ['%%match-error']
-        return ['nvcase', datatype, self.expand_exp (val), alts0, self.expand_exp (else_clause)]
+        return ['%nvcase', datatype, self.expand_exp (val), alts0, self.expand_exp (else_clause)]
 
     def exp_pvcase (self, exp):
         # (vcase <exp>
@@ -565,7 +485,7 @@ class transformer:
                 if r is None:
                     # no else clause
                     r = ['lambda', ['vfail'], ['%vfail', 'vfail']]
-                r = ['lambda', ['vval'], ['%%vcase/%s/%d' % (label, len(formals)), s, r, 'vval']]
+                r = ['lambda', ['vval'], ['&vcase', [label, len(formals)], s, r, 'vval']]
         # discard the outermost lambda binding, use <val> instead
         r = r[2]
         r[-1] = val
@@ -607,22 +527,27 @@ class transformer:
         # we don't need union vs product here, since <product> datatypes should use records instead.
         # (datatype <name> (tag0 type0 type1 ...) (tag1 type0 type1 ...) ...)
         name = exp[1]
-        subs = exp[2:]
         tvars = {}
-        alts = []
-        for sub in subs:
-            tag = sub[0]
-            assert (is_a (tag, list) and len(tag) == 3 and tag[0] == 'colon' and tag[1] is None)
-            tag = tag[2]
-            prod = [ nodes.parse_type (x, tvars) for x in sub[1:] ]
-            alts.append ((tag, prod))
-            args = ['arg%d' % x for x in range (len (prod))]
-            # build a convenient constructor function
-            self.constructors.append ((
-                    ('%s:%s' % (name, tag)),
-                    self.expand_exp (['lambda', args, ['%%dtcon/%s/%s' % (name, tag)] + args])
-                    ))
-        self.context.datatypes[name] = itypes.datatype (self.context, name, alts, tvars)
+        if len(exp) == 3 and not is_a (exp[2], list):
+            # (datatype <name> <type>)
+            # a datatype alias
+            self.context.datatypes[name] = nodes.parse_type (exp[2], tvars)
+        else:
+            subs = exp[2:]
+            alts = []
+            for sub in subs:
+                tag = sub[0]
+                assert (is_a (tag, list) and len(tag) == 3 and tag[0] == 'colon' and tag[1] is None)
+                tag = tag[2]
+                prod = [ nodes.parse_type (x, tvars) for x in sub[1:] ]
+                alts.append ((tag, prod))
+                args = ['arg%d' % x for x in range (len (prod))]
+                # build a convenient constructor function
+                self.constructors.append ((
+                        ('%s:%s' % (name, tag)),
+                        self.expand_exp (['lambda', args, ['%%dtcon/%s/%s' % (name, tag)] + args])
+                        ))
+            self.context.datatypes[name] = itypes.datatype (self.context, name, alts, tvars)
 
     # ----------- user macros ---------------
 
@@ -660,14 +585,14 @@ class transformer:
 
     def build_bool (self, exp):
         if exp.value == 'true':
-            return self.expand_exp ([['colon', 'bool', 'true']])
+            return self.expand_exp (['%dtcon/bool/true'])
         else:
-            return self.expand_exp ([['colon', 'bool', 'false']])
+            return self.expand_exp (['%dtcon/bool/false'])
 
     def build_symbol (self, exp):
         return self.expand_exp (
             ['literal',
-             [['colon', 'symbol', 't'], atom ('string', exp.value)]]
+             ['%dtcon/symbol/t', atom ('string', exp.value)]]
             )
 
     # walk a literal, making sure it can be represented as a constructed value.
@@ -682,11 +607,8 @@ class transformer:
 
         def build (exp):
             if is_a (exp, atom):
-                if exp.kind == 'bool':
-                    # turn this into a constructor call
-                    trace()
-                    return ['%dtcon/bool']
-                elif exp.kind == 'symbol':
+                if exp.kind in ('bool', 'symbol'):
+                    print 'fixme'
                     trace()
                 elif itypes.base_types.has_key (exp.kind):
                     return exp
@@ -697,7 +619,15 @@ class transformer:
                 if len(exp):
                     if is_a (exp[0], str):
                         name = exp[0].split ('/')
-                        if name[0] in ('%vector-literal', '%dtcon'):
+                        if name[0].count (':') == 1:
+                            # constructor, inline it here so the back end can see it correctly
+                            dt, alt = name[0].split (':')
+                            if dt:
+                                name = '%%dtcon/%s/%s' % (dt, alt)
+                            else:
+                                name = '%%vcon/%s' % (alt,)
+                            return [name] + [build(x) for x in exp[1:]]
+                        elif name[0] in ('%vector-literal', '%dtcon'):
                             return [exp[0]] + [build (x) for x in exp[1:]]
                         elif exp[0] == 'comma' and backquote:
                             runtime_only[0] = True
@@ -705,8 +635,10 @@ class transformer:
                         elif exp[0] == 'constructed':
                             # redundant
                             return exp[1]
-                        else:
+                        elif as_list:
                             return ['%dtcon/list/cons', build (exp[0]), build (exp[1:])]
+                        else:
+                            raise ValueError ("I'm so confused!")
                     elif as_list:
                         return ['%dtcon/list/cons', build (exp[0]), build (exp[1:])]
                     else:
