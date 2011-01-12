@@ -10,6 +10,12 @@ import backend
 import os
 import context
 
+# path through the compiler:
+# read -> transform -> node -> type -> analyze -> type -> cps -> backend
+#
+# transform includes builtin transforms and user macros (i.e., lib/derived.scm).
+# typing may be done twice, depending on the '-tt' option.
+
 def compile_file (f, name, c):
     base, ext = os.path.splitext (name)
     print 'read...'
@@ -46,6 +52,10 @@ def compile_file (f, name, c):
     print 'call graph...'
     c.dep_graph = graph.build_dependency_graph (exp3)
     c.scc_graph, c.scc_map = graph.strongly (c.dep_graph)
+
+    if c.verbose:
+        print '--- node tree ---'
+        exp3.pprint()
 
     if c.typetype:
         print 'type 1...'
