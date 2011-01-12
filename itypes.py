@@ -107,6 +107,8 @@ class t_predicate (_type):
                 return '(%r->%r)' % (self.args[1:], self.args[0])
         #elif self.name == 'rproduct' and len(self.args) == 1:
         #    return '{%s}' % (rlabels_repr (self.args[0]),)
+        elif len(self.args) == 0:
+            return self.name
         else:
             return '%s(%s)' % (self.name, ', '.join ([repr(x) for x in self.args]))
 
@@ -118,6 +120,7 @@ def walk_type (t):
                 yield x
 
 
+# this still doesn't do a very good job...
 def rlabels_repr (t):
     r = []
     while 1:
@@ -202,6 +205,30 @@ class moo_var (_type):
 def moo (mvar, x):
     return t_predicate ('moo', (mvar, x))
 
+def get_record_sig (t):
+    # rproduct (rlabel (...))
+    assert (is_pred (t, 'rproduct'))
+    labels = []
+    t = t.args[0]
+    while 1:
+        if is_pred (t, 'rlabel'):
+            label, type, rest = t.args
+            if is_pred (type, 'pre'):
+                labels.append (label)
+            t = rest
+        elif is_pred (t, 'rdefault'):
+            break
+        elif is_pred (t, 'moo'):
+            # follow the moo!
+            t = t.args[1]
+        elif is_a (t, t_var):
+            labels.append ('...')
+            break
+        else:
+            return None
+    labels.sort()
+    return tuple (labels)
+
 # an algebraic datatype
 class datatype:
 
@@ -265,7 +292,12 @@ class datatype:
         good = {}
         bad = set()
         for tag, prod in self.alts:
-            if len(prod) == 1 and is_a (prod[0], t_base):
+            if len(prod) == 0:
+                # enums break this optimization, because it makes it
+                #  impossible for the typecode function to distinguish
+                #  between user immediates and builtin immediates.
+                return {}
+            elif len(prod) == 1 and is_a (prod[0], t_base):
                 ty = prod[0]
                 if good.has_key (ty):
                     bad.add (ty)
