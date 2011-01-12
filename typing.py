@@ -75,6 +75,12 @@ def lookup_subst (tvar):
             break
     return t
 
+# XXX thinking about type aliases.
+# how best to do it?  or should I even try?
+# the obvious approach seems to be to make a type alias a predictate,
+#  but that requires modifying unify() to know about the set of aliases,
+#  so that it can resolve them.
+
 # reconcile types t1 and t2 from <exp> given <subst>
 def unify (ot1, ot2):
     t1 = apply_subst_to_type (ot1)
@@ -326,7 +332,7 @@ class typer:
         for node in exp:
             if node.type:
                 node.type = apply_subst_to_type (node.type)
-        if self.verbose:
+        if self.verbose or self.context.print_types:
             for n in exp:
                 if n.is_a ('function'):
                     print n.name, n.type
@@ -447,7 +453,11 @@ class typer:
             arg_types.append (t)
             type_rib.append ((formal.name, t))
         body_type = self.type_of (exp.body, (type_rib, tenv))
-        return arrow (body_type, *arg_types)
+        r = arrow (body_type, *arg_types)
+        # useful during complex type debugging
+        #if exp.name:
+        #    print exp.name, apply_subst_to_type (r)
+        return r
 
     def type_of_application (self, exp, tenv):
         n = len (exp.rands)
@@ -481,7 +491,7 @@ class typer:
 
     def type_of_primapp (self, exp, tenv):
         # look it up in the environment.
-        scheme = self.lookup_special_names (exp.name)
+        scheme = self.lookup_special_names (exp.name, exp.name_params)
         sig = instantiate_type_scheme (scheme)
         # XXX almost identical to type_of_cexp(), factor it out.
         result_type = sig.args[0]
@@ -493,7 +503,7 @@ class typer:
             self.unify (ta, arg_type, tenv, arg)
         return result_type
 
-    def lookup_special_names (self, name):
+    def lookup_special_names (self, name, params):
         if name == '%rmake':
             return forall ((), arrow (rproduct (rdefault (abs()))))
         elif name.startswith ('%rextend/'):
@@ -540,9 +550,8 @@ class typer:
                 # ∀ABCD.Π(A,B,C) → Σ(l:pre (Π(A,B,C));D)
                 args = tuple(range (arity))
                 return forall (range(arity+1), arrow (rsum (rlabel (label, pre (product(*args)), arity)), *args))
-        elif name.startswith ('%vcase/'):
-            what, label, arity = name.split ('/')
-            arity = int (arity)
+        elif name == '&vcase':
+            label, arity = params
             # ∀012345.(3,4,5) → 0, Σ(l:1;2) → 0, Σ(l:pre(Π(3,4,5);2) → 0
             # ∀012345.f0,f1,s1 → 0
             args = range (3, arity+3)
@@ -557,10 +566,8 @@ class typer:
                 t = product (*args)
             s1 = rsum (rlabel (label, pre (t), 2))
             return forall (range(arity+3), arrow (0, f0, f1, s1))
-        elif name.startswith ('%vget/'):
-            what, label, arity, index = name.split ('/')
-            arity = int (arity)
-            index = int (index)
+        elif name == '&vget':
+            label, arity, index = params
             args = range (arity)
             rest = arity
             # e.g., to pick the second arg:
@@ -658,10 +665,6 @@ class typer:
         assert (n2 == n)
         # and type the body in that tenv
         return self.type_of (exp.body, tenv)
-
-    def type_of_make_tuple (self, exp, tenv):
-        # THIS NODE TYPE IS ABOUT TO GO AWAY
-        return base_types[exp.ttype]
 
     def type_of_pvcase (self, exp, tenv):
         # (pvcase <alt_formals> <alt0> <alt1> ...)
