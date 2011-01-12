@@ -20,9 +20,9 @@ object * heap1 = NULL;
 
 /* Type Tags */
 
-/* immediate types (multiples of 2 (but not 4!)) */
-
 #define TC_INT                  (0<<1) // 00000000 00
+
+/* immediate types (multiples of 2 (but not 4!)) */
 #define TC_CHAR                 (1<<1) // 00000010 02
 #define TC_BOOL                 (3<<1) // 00000110 06
 #define TC_NIL                  (5<<1) // 00001010 0a
@@ -50,7 +50,7 @@ object * heap1 = NULL;
 // immediate constants
 #define PXLL_FALSE		(object *) (0x000 | TC_BOOL)
 #define PXLL_TRUE		(object *) (0x100 | TC_BOOL)
-#define PXLL_MAYBE		(object *) (0x200 | TC_BOOL)
+#define PXLL_MAYBE		(object *) (0x200 | TC_BOOL)  // just kidding
 #define PXLL_NIL		(object *) (0x000 | TC_NIL)
 #define PXLL_UNDEFINED		(object *) (0x000 | TC_UNDEFINED)
 
@@ -90,8 +90,8 @@ object * heap1 = NULL;
 #define UOBJ_GET(o,i)           (((pxll_vector*)(o))->val[i])
 #define UOBJ_SET(o,i,v)         (((pxll_vector*)(o))->val[i] = v)
 
-// useful in code output for literals
-#define UOTAG(n)                (TC_USEROBJ+(n*4))
+// code output for literals
+#define UOTAG(n)                (TC_USEROBJ+(n<<2))
 #define UITAG(n)                (TC_USERIMM+(n<<8))
 #define UPTR(n,o)               ((pxll_int)(constructed_##n+o))
 #define UPTR0(n)                ((pxll_int)(&constructed_##n))
@@ -142,6 +142,18 @@ typedef struct _closure {
   pxll_tuple * lenv;
 } pxll_closure;
 
+// The layout of strings is actually an endless source of
+// hand-wringing.  I can't bring myself to waste an entire 64 bits for
+// the length part of this field (especially since the tuple header already
+// has *most* of this information), but this one departure from the
+// regular layout creates a mess of special-case code for strings...
+// Another possible encoding (that's really tempting) would be to store
+// a uint8 in the first character that says how many characters of the
+// full-word length are junk.  (so that you would compute the length by
+// ((tc>>8)*sizeof(object))-((uint8)data[0]))
+// 
+// Another thing to consider - like python, always secretly
+// zero-terminate strings.
 typedef struct _string {
   header tc;
   uint32_t len;
