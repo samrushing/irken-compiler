@@ -80,6 +80,11 @@ def lookup_subst (tvar):
 # the obvious approach seems to be to make a type alias a predictate,
 #  but that requires modifying unify() to know about the set of aliases,
 #  so that it can resolve them.
+# here's an even more obvious approach.  resolve all aliases at compile
+#  time.  That is, when scanning for datatypes, collect all aliases first.
+#  Then whenever an alias is referred to, substitute it.  This is done
+#  before the typer is even invoked.  [in other words, modify itypes.parse_type()
+#  to resolve them].
 
 # reconcile types t1 and t2 from <exp> given <subst>
 def unify (ot1, ot2):
