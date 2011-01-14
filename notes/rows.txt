@@ -43,3 +43,12 @@ order the fields alphabetically.
 Now.  Do we care what type is stored in each field?  I don't think so
 (at least not yet).  We only care about their order.  So a record is
 uniquely identified by the set of labels attached to it.
+
+-----------------------
+What I did: I ended up doing something very close to this.  When the
+typer can get a closed record at compile-time, it will just emit the
+constant lookup via index.  When it can't, it calls a lookup_field()
+function to do the lookup at runtime.  Most lookups seem to be known
+ones, so I think this approach gets the best of both worlds.
+
+
