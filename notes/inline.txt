@@ -68,3 +68,9 @@ Ok, here's the plan:
      only once, then use substitution.
   c) if some arguments are non-simple *and* referenced more than
      once, use let*.
+
+
+--------------
+What I did: pretty much what is described here, with one additional
+related feature.  In leaf procedures, <let> will store some bindings
+into a register, depending on conditions.
