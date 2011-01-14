@@ -32,3 +32,9 @@ for example the real 'make-alist' function will take zero args].
 
 
 [XXX see 'intentional type analysis', POPL95 Harper/Morrisett]
+
+----------
+What I did: ok, not sure what I was thinking here.  I was probably
+just confused about how let-polymorphism worked.  The answer is that
+the type of an alist has a type variable, which is instantiated at
+each use.
