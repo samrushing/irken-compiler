@@ -35,6 +35,9 @@
     (string-set! r 0 ch)
     r))
 
+(define (bool->string b)
+  (copy-string (if b "#t" "#f") 2))
+
 (define (string-ref s n)
   ;; XXX need range-check
   (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%s)[%s])" s n))
@@ -155,6 +158,16 @@
 	     (list:cons #\- r) r))
 	(loop (>> x 4)
 	      (list:cons hex-table[(logand x 15)] r)))))
+
+;; simple format macro
+(defmacro format
+  (format)                       -> (list:nil)
+  (format (<int> n) item ...)    -> (list:cons (int->string n) (format item ...))
+  (format (<char> ch) item ...)  -> (list:cons (char->string ch) (format item ...))
+  (format (<bool> b) item ...)   -> (list:cons (bool->string b) (format item ...))
+  (format (<string> s) item ...) -> (list:cons s (format item ...))
+  (format x item ...)            -> (list:cons x (format item ...))
+  )
 
 (define sys
   (let ((argc (%%cexp (-> int) "argc"))
