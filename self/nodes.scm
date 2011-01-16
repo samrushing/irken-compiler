@@ -133,8 +133,8 @@
   x -> (error1 "syntax error 2: " x)
   )
 
-(define (frob sym num)
-  (string->symbol (format (sym sym) "_" (int num))))
+(define (frob name num)
+  (string->symbol (format (sym name) "_" (int num))))
 
 (define (make-vardef name serial)
   (let ((frobbed (frob name serial)))
