@@ -2,20 +2,19 @@
 
 (define (make-string n)
   (%%cexp
-   (int int -> string)
-   "(t=alloc_no_clear (TC_STRING, string_tuple_length (%s)), ((pxll_string*)(t))->len = %s, t)"
-   n
+   (int -> string)
+   "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((pxll_string*)(t))->len = %0, t)"
    n))
 
 (define (copy-string s1 n)
   (let ((s2 (make-string n)))
-    (%%cexp (string string int -> undefined) "(memcpy (%s, %s, %s), PXLL_UNDEFINED)" s2 s1 n)
+    (%%cexp (string string int -> undefined) "(memcpy (%0, %1, %2), PXLL_UNDEFINED)" s2 s1 n)
     s2))
 
 (define (buffer-copy src src-start n dst dst-start)
   (%%cexp
    (string int string int int -> undefined)
-   "(memcpy (%s+%s, %s+%s, %s), PXLL_UNDEFINED)" dst dst-start src src-start n))
+   "(memcpy (%0+%1, %2+%3, %4), PXLL_UNDEFINED)" dst dst-start src src-start n))
 
 (define (substring src start end)
   ;; XXX range check
@@ -25,10 +24,10 @@
     r))
 
 (define (ascii->char n)
-  (%%cexp (int -> char) "TO_CHAR(%s)" n))
+  (%%cexp (int -> char) "TO_CHAR(%0)" n))
 
 (define (char->ascii c)
-  (%%cexp (char -> int) "GET_CHAR(%s)" c))
+  (%%cexp (char -> int) "GET_CHAR(%0)" c))
 
 (define (char->string ch)
   (let ((r (make-string 1)))
@@ -40,13 +39,13 @@
 
 (define (string-ref s n)
   ;; XXX need range-check
-  (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%s)[%s])" s n))
+  (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
 
 (define (string-set! s n c)
   ;; XXX need range-check
   (%%cexp
    (string int char -> undefined)
-   "(%s[%s] = GET_CHAR (%s), PXLL_UNDEFINED)" s n c))
+   "(%0[%1] = GET_CHAR (%2), PXLL_UNDEFINED)" s n c))
 
 (define (string-concat l)
   ;; merge a list of strings into one string
@@ -89,7 +88,7 @@
 (define (string-compare a b)
   (let* ((alen (string-length a))
 	 (blen (string-length b))
-	 (cmp (%%cexp (string string int -> int) "memcmp (%s, %s, %s)" a b (min alen blen))))
+	 (cmp (%%cexp (string string int -> int) "memcmp (%0, %1, %2)" a b (min alen blen))))
     (cond ((= cmp 0)
 	   (if (= alen blen)
 	       0
@@ -160,23 +159,27 @@
 	      (list:cons hex-table[(logand x 15)] r)))))
 
 ;; simple format macro
-(defmacro format
-  (format)                       -> (list:nil)
-  (format (<int> n) item ...)    -> (list:cons (int->string n) (format item ...))
-  (format (<char> ch) item ...)  -> (list:cons (char->string ch) (format item ...))
-  (format (<bool> b) item ...)   -> (list:cons (bool->string b) (format item ...))
-  (format (<string> s) item ...) -> (list:cons s (format item ...))
-  (format x item ...)            -> (list:cons x (format item ...))
+(defmacro formatl
+  (formatl)                       -> (list:nil)
+  (formatl (<int> n) item ...)    -> (list:cons (int->string n) (formatl item ...))
+  (formatl (<char> ch) item ...)  -> (list:cons (char->string ch) (formatl item ...))
+  (formatl (<bool> b) item ...)   -> (list:cons (bool->string b) (formatl item ...))
+  (formatl (<hex> n) item ...)    -> (list:cons (int->hex-string n) (formatl item ...))
+  (formatl (<sym> s) item ...)    -> (list:cons (symbol->string s) (formatl item ...))
+  (formatl (<string> s) item ...) -> (list:cons s (formatl item ...))
+  (formatl x item ...)            -> (list:cons x (formatl item ...))
   )
+(defmacro format (format item ...)		 -> (string-concat (formatl item ...)))
+(defmacro format-join (format-join sep item ...) -> (string-join (formatl item ...) sep))
 
 (define sys
   (let ((argc (%%cexp (-> int) "argc"))
 	(argv 
 	 (let ((v (%make-vector argc "")))
 	   (define (get-arg n)
-	     (let* ((len (%%cexp (int -> int) "strlen(argv[%s])" n))
-		    (r (make-string len)))
-	       (%%cexp (string int int -> undefined) "(memcpy (%s, argv[%s], %s), PXLL_UNDEFINED)" r n len)
+	     (let ((len (%%cexp (int -> int) "strlen(argv[%0])" n))
+		   (r (make-string len)))
+	       (%%cexp (string int int -> undefined) "(memcpy (%0, argv[%1], %2), PXLL_UNDEFINED)" r n len)
 	       r))
 	   (let loop ((n argc))
 	     (cond ((zero? n) v)
