@@ -1,20 +1,20 @@
 ;; -*- Mode: Irken -*-
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (print x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0)" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
 
 (define (print-string s)
-  (%%cexp (string int -> undefined) "(fwrite (%s, 1, %s, stdout), PXLL_UNDEFINED)" s (string-length s)))
+  (%%cexp (string int -> undefined) "(fwrite (%0, 1, %1, stdout), PXLL_UNDEFINED)" s (string-length s)))
 
 ;; original version returns how many chars were written...
 (define (print-string* s)
-  (%%cexp (string int -> int) "fwrite (%s, 1, %s, stdout)" s (string-length s)))
+  (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)))
 
 (define (print-char ch)
-  (%%cexp (char -> int) "fputc (GET_CHAR(%s), stdout)" ch))
+  (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" ch))
 
 (define (terpri)
   (print-char #\newline))
@@ -22,62 +22,62 @@
 (define newline terpri)
 
 (define (= a b)
-  (%%cexp (int int -> bool) "%s==%s" a b))
+  (%%cexp (int int -> bool) "%0==%1" a b))
 
 (define (zero? a)
-  (%%cexp (int -> bool) "%s==0" a))
+  (%%cexp (int -> bool) "%0==0" a))
 
 (define (< a b)
-  (%%cexp (int int -> bool) "%s<%s" a b))
+  (%%cexp (int int -> bool) "%0<%1" a b))
 
 (define (<= a b)
-  (%%cexp (int int -> bool) "%s<=%s" a b))
+  (%%cexp (int int -> bool) "%0<=%1" a b))
 
 (define (> a b)
-  (%%cexp (int int -> bool) "%s>%s" a b))
+  (%%cexp (int int -> bool) "%0>%1" a b))
 
 (define (>= a b)
-  (%%cexp (int int -> bool) "%s>=%s" a b))
+  (%%cexp (int int -> bool) "%0>=%1" a b))
 
 (define (>0 a)
-  (%%cexp (int -> bool) "%s>0" a))  
+  (%%cexp (int -> bool) "%0>0" a))  
 
 (define (<0 a)
-  (%%cexp (int -> bool) "%s<0" a))  
+  (%%cexp (int -> bool) "%0<0" a))  
 
 (define (+ a b)
-  (%%cexp (int int -> int) "%s+%s" a b))
+  (%%cexp (int int -> int) "%0+%1" a b))
 
 (define (- a b)
-  (%%cexp (int int -> int) "%s-%s" a b))
+  (%%cexp (int int -> int) "%0-%1" a b))
 
 (define (* a b)
-  (%%cexp (int int -> int) "%s*%s" a b))
+  (%%cexp (int int -> int) "%0*%1" a b))
 
 (define (/ a b)
-  (%%cexp (int int -> int) "%s/%s" a b))
+  (%%cexp (int int -> int) "%0/%1" a b))
 
 (define (remainder a b)
-  (%%cexp (int int -> int) "%s %% %s" a b))
+  (%%cexp (int int -> int) "%0 %% %1" a b))
 
 (define (<< a b)
-  (%%cexp (int int -> int) "%s<<%s" a b))
+  (%%cexp (int int -> int) "%0<<%1" a b))
 
 (define (>> a b)
-  (%%cexp (int int -> int) "%s>>%s" a b))
+  (%%cexp (int int -> int) "%0>>%1" a b))
 
 ;; any reason I can't use the same characters that C does?
 (define (logior a b)
-  (%%cexp (int int -> int) "%s|%s" a b))
+  (%%cexp (int int -> int) "%0|%1" a b))
 
 (define (logxor a b)
-  (%%cexp (int int -> int) "%s^%s" a b))
+  (%%cexp (int int -> int) "%0^%1" a b))
 
 (define (logand a b)
-  (%%cexp (int int -> int) "%s&%s" a b))
+  (%%cexp (int int -> int) "%0&%1" a b))
 
 (define (lognot a b)
-  (%%cexp (int int -> int) "%s~%s" a b))
+  (%%cexp (int int -> int) "%0~%1" a b))
 
 (define (min x y)
   (if (< x y) x y))
@@ -88,16 +88,16 @@
 (define (abs x) (if (< x 0) (- 0 x) x))
 
 (define (eq? a b)
-  (%%cexp ('a 'a -> bool) "%s==%s" a b))
+  (%%cexp ('a 'a -> bool) "%0==%1" a b))
 
 (define (not x)
   (eq? x #f))
 
 (define (char=? a b)
-  (%%cexp (char char -> bool) "%s==%s" a b))
+  (%%cexp (char char -> bool) "%0==%1" a b))
 
 (define (string-length s)
-  (%%cexp ((raw string) -> int) "%s->len" s))
+  (%%cexp ((raw string) -> int) "%0->len" s))
 
 (define (make-vector n val)
   (%make-vector n val))
@@ -107,11 +107,11 @@
 
 (define (vector-length v)
   (%%cexp
-   ((vector 'a) (vector 'a) -> int)
-   "(%s == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%s)" v v))
+   ((vector 'a) -> int)
+   "(%0 == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%0)" v))
 
 (define (address-of ob)
-  (%%cexp ('a -> int) "(pxll_int)%s" ob))
+  (%%cexp ('a -> int) "(pxll_int)%0" ob))
 
 ;; this is a little harsh. 8^)
 ;; think of it as a placeholder for something better to come.
@@ -139,7 +139,7 @@
 
 ;; using 'b here - is that hand-waving?
 (define (putcc k r)
-  (%%cexp (continuation 'a -> 'b) "(k=%s, %s)" k r))
+  (%%cexp (continuation 'a -> 'b) "(k=%0, %1)" k r))
 
 ;; the '^' prefix tells the compiler to never inline this
 ;;  function - which would not work correctly otherwise
@@ -165,10 +165,10 @@
 ;; argument from call/cc.
 
 (define (dump filename thunk)
-  (%%cexp (string ('a -> int) -> int) "dump_image (%s, %s)" filename thunk))
+  (%%cexp (string ('a -> int) -> int) "dump_image (%0, %1)" filename thunk))
 
 (define (load filename)
-  (%%cexp (string -> ('a -> int)) "load_image (%s)" filename))
+  (%%cexp (string -> ('a -> int)) "load_image (%0)" filename))
 
 ;; *********************************************************************
 ;; VERY IMPORTANT LESSON: do not *ever* make a generator that doesn't
