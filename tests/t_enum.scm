@@ -2,7 +2,7 @@
 (include "lib/core.scm")
 
 (define (print-imm x)
-  (%%cexp ('a -> int) "fprintf (stderr, \"code=%%p\\n\", (object*)%s)" x))
+  (%%cexp ('a -> int) "fprintf (stderr, \"code=%%p\\n\", (object*)%0)" x))
 
 (datatype foo
   (:one)

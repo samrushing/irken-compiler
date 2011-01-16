@@ -1,6 +1,6 @@
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (let ((v (%make-vec16 25)))
   (printn v)

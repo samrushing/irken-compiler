@@ -85,15 +85,15 @@
 ;; performance hacks - these could definitely go away with a little
 ;;   more smarts in analyze.py.
 (define (+1 a)
-  (%%cexp (int -> int) "%s+1" a))
+  (%%cexp (int -> int) "%0+1" a))
 (define (+2 a)
-  (%%cexp (int -> int) "%s+2" a))
+  (%%cexp (int -> int) "%0+2" a))
 (define (+3 a)
-  (%%cexp (int -> int) "%s+3" a))
+  (%%cexp (int -> int) "%0+3" a))
 (define (+4 a)
-  (%%cexp (int -> int) "%s+4" a))
+  (%%cexp (int -> int) "%0+4" a))
 (define (sub1 a)
-  (%%cexp (int -> int) "%s-1" a))
+  (%%cexp (int -> int) "%0-1" a))
 
 (define print-object
   (object:int n) -> (print n)

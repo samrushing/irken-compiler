@@ -10,19 +10,19 @@
 ;;   of everything on the stack]
 
 (define (malloc n)
-  (%%cexp (int -> int) "(pxll_int)malloc(%s)" n))
+  (%%cexp (int -> int) "(pxll_int)malloc(%0)" n))
 
 (define (free n)
-  (%%cexp (int -> undefined) "free((void*)%s); PXLL_UNDEFINED" n))
+  (%%cexp (int -> undefined) "free((void*)%0); PXLL_UNDEFINED" n))
 
 (define (write-int p n)
-  (%%cexp (int int -> undefined) "(*(pxll_int *)(%s)) = %s" p n))
+  (%%cexp (int int -> undefined) "(*(pxll_int *)(%0)) = %1" p n))
 
 (define (read-int p)
-  (%%cexp (int -> int) "(*(pxll_int *)(%s))" p))
+  (%%cexp (int -> int) "(*(pxll_int *)(%0))" p))
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (sizeof-int)
   (%%cexp (-> int) "sizeof(pxll_int)"))

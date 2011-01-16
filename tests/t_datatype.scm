@@ -9,13 +9,13 @@
 (datatype bool (:true) (:false))
 
 (define (+ a b)
-  (%%cexp (int int -> int) "%s+%s" a b))
+  (%%cexp (int int -> int) "%0+%1" a b))
 
 (define (- a b)
-  (%%cexp (int int -> int) "%s-%s" a b))
+  (%%cexp (int int -> int) "%0-%1" a b))
 
 (define (zero? a)
-  (%%cexp (int -> bool) "%s==0" a))
+  (%%cexp (int -> bool) "%0==0" a))
 
 (define (length l)
   (let loop ((l l) (r 0))
@@ -45,10 +45,10 @@
 	    (loop tl))))))
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (= a b)
-  (%%cexp (int int -> bool) "%s==%s" a b))
+  (%%cexp (int int -> bool) "%0==%1" a b))
 
 (let ((l0 (range 5))
       (l1 (list:nil))

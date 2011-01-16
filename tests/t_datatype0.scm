@@ -7,10 +7,10 @@
   )
 
 (define (+ a b)
-  (%%cexp (int int -> int) "%s+%s" a b))
+  (%%cexp (int int -> int) "%0+%1" a b))
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (length l)
   (let loop ((l l) (r 0))

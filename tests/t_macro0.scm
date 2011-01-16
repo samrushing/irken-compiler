@@ -3,7 +3,7 @@
 (datatype bool (:true) (:false))
 
 (define (< a b)
-  (%%cexp (int int -> bool) "%s<%s" a b))
+  (%%cexp (int int -> bool) "%0<%1" a b))
 
 (defmacro zand
   (zand)                 -> #t

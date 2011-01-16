@@ -1,10 +1,10 @@
 ;; -*- Mode: Irken -*-
 
 (define (eq? a b)
-  (%%cexp ('a 'a -> bool) "%s==%s" a b))
+  (%%cexp ('a 'a -> bool) "%0==%1" a b))
 
 (define (+ a b)
-  (%%cexp (int int -> int) "%s+%s" a b))
+  (%%cexp (int int -> int) "%0+%1" a b))
 
 (define (kons x l)
   (:kons x l))

@@ -2,7 +2,7 @@
 ;; polymorphic variant lists
 
 (define (+ a b)
-  (%%cexp (int int -> int) "%s+%s" a b))
+  (%%cexp (int int -> int) "%0+%1" a b))
 
 (define (length l)
   (let loop ((l l)

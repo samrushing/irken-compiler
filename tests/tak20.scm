@@ -1,12 +1,12 @@
 
 (define (>= a b)
-  (%%cexp (int int -> bool) "%s>=%s" a b))
+  (%%cexp (int int -> bool) "%0>=%1" a b))
 
 (define (- a b)
-  (%%cexp (int int -> int) "%s-%s" a b))
+  (%%cexp (int int -> int) "%0-%1" a b))
 
 (define (zero? a)
-  (%%cexp (int -> bool) "%s==0" a))
+  (%%cexp (int -> bool) "%0==0" a))
 
 (define (tak x y z)
   (if (>= y x)

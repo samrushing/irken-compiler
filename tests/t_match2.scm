@@ -32,7 +32,7 @@
   (reverse-onto l (list:nil)))
 
 (define (+ a b)
-  (%%cexp (int int -> int) "%s+%s" a b))
+  (%%cexp (int int -> int) "%0+%1" a b))
 
 (reverse (map-pairs + '(1 2 3 4) '(5 6 7 8)))
 

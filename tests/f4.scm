@@ -3,7 +3,7 @@
 
 (define (z x)
   (vcase x
-    ((:thing v) (%%cexp (int int -> int) "%s+%s" v 1))))
+    ((:thing v) (%%cexp (int int -> int) "%0+%1" v 1))))
 
 (let ((y (:thing #\A)))
   (z y))

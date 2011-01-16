@@ -4,17 +4,17 @@
 (datatype bool (:true) (:false))
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (random)
   (%%cexp (-> int) "random()"))
 
 (define (srandom n)
-  (%%cexp (int -> undefined) "(srandom (%s), PXLL_UNDEFINED)" n))
+  (%%cexp (int -> undefined) "(srandom (%0), PXLL_UNDEFINED)" n))
 
 (define (fun p)
   ;; takes and returns an identity function
-  (%%cexp (('a -> 'a) -> ('a -> 'a)) "%s" p))
+  (%%cexp (('a -> 'a) -> ('a -> 'a)) "%0" p))
 
 (let ((x {a=1 b="two" c=#f}))
   ;; so we get repeatable results

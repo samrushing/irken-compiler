@@ -7,7 +7,7 @@
 (datatype symbol (:t string))
 
 (define (eq? a b)
-  (%%cexp ('a 'a -> bool) "%s==%s" a b))
+  (%%cexp ('a 'a -> bool) "%0==%1" a b))
 
 (define parse
   ()          -> 0
@@ -16,7 +16,7 @@
   )
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (let ((x '(expr a b c)))
   (printn x)

@@ -1,10 +1,10 @@
 ;; -*- Mode: Irken -*-
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (eq? a b)
-  (%%cexp ('a 'a -> bool) "%s==%s" a b))
+  (%%cexp ('a 'a -> bool) "%0==%1" a b))
 
 (define thing
   (:pair x 2) -> x

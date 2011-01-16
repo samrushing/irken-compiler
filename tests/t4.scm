@@ -2,7 +2,7 @@
 (datatype bool (:true) (:false))
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%s, 0); fprintf (stdout, \"\\n\")" x))
+  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (bigger z n)
   (%rextend/c z n))
