@@ -134,7 +134,7 @@
   )
 
 (define (frob sym num)
-  (string->symbol (string-append (symbol->string sym) "_" (int->string num))))
+  (string->symbol (format (sym sym) "_" (int num))))
 
 (define (make-vardef name serial)
   (let ((frobbed (frob name serial)))
@@ -191,7 +191,7 @@
 	))
 
     (rename n '())
-    (printn (varmap.get))
+;;    (printn (varmap.get))
     ))
 
 (define (test-nodes)
