@@ -5,6 +5,7 @@
 (include "self/types.scm")
 (include "self/context.scm")
 
+
 (define (transformer context)
 
   (define counter 0)
@@ -14,39 +15,6 @@
 ;;       (set! counter (+ counter 1))
 ;;       (sexp:symbol (string->symbol r))))
 
-;;   (define safe-name-map
-;;     (literal
-;;      (alist/make
-;;       (#\! "_bang")
-;;       (#\* "_splat")
-;;       (#\? "_question")
-;;       (#\- "_")
-;;       (#\+ "_plus")
-;;       (#\% "_percent")
-;;       )))
-
-;;   (define c-legal? (char-class (string->list "abcdefghijklmnopqrstuvwxyz_0123456789")))
-;;   (define (frob-name name)
-;;     (define (frob)
-;;       (let loop ((i 0) (r '()))
-;; 	(if (= i (string-length name))
-;; 	    r
-;; 	    (let ((ch (string-ref name i))
-;; 		  (probe (alist/lookup safe-name-map ch)))
-;; 	      (loop (+ i 1)
-;; 		    (list:cons
-;; 		     (match probe with
-;; 		       (maybe:yes sub) -> sub
-;; 		       (maybe:no)      -> (if (c-legal? ch)
-;; 					      (char->string ch)
-;; 					      ;; not quite right, needs to be reversible
-;; 					      (string-concat (LIST "_" (int->hex-string (char->ascii ch))))))
-;; 		     r))))))
-;;       (let ((r (string-concat (reverse (frob)))))
-;; 	(if (string=? r "_")
-;; 	    ;; special-case
-;; 	    "minus"
-;; 	    r)))
   
   (define (go exp)
     (let ((expanded
@@ -142,7 +110,7 @@
     x     -> (error1 "bad args to BACKQUOTE" x))
 
   (define expand-lambda
-    (formals . body) -> (exp-function (sexp:symbol 'lambda) formals (sexp1 'begin (map expand body)))
+    (formals . body) -> (exp-function (sexp:symbol 'lambda) formals (expand (sexp1 'begin body)))
     x		     -> (error1 "malformed LAMBDA" x))
 
   (define expand-function
