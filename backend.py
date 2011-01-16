@@ -390,6 +390,29 @@ class c_backend:
             #print 'ambiguous', orow, candidates
             return None
 
+    def cexp_subst (self, template, values):
+        r = []
+        i = 0
+        j = 0
+        lt = len (template)
+        while i < lt:
+            ch = template[i]
+            if ch == '%':
+                r.append (template[j:i])
+                i += 1
+                ch = template[i]
+                if ch == '%':
+                    r.append ('%')
+                elif ch in '0123456789':
+                    r.append (values[int (ch)])
+                else:
+                    # for more than 10 args, we can introduce a new syntax like %{10}
+                    raise ValueError ("bad template: %s" % template)
+                j = i + 1
+            i += 1
+        r.append (template[j:])
+        return ''.join (r)
+
     def insn_primop (self, insn):
         # XXX consider making some of these insns in their own right?
         regs = insn.regs
@@ -404,7 +427,7 @@ class c_backend:
                 result_type, arg_types = sig, ()
             regs = tuple('r%d' % x for x in regs)
             regs = self.wrap_in (arg_types, regs)
-            exp = self.wrap_out (result_type, form % regs)
+            exp = self.wrap_out (result_type, self.cexp_subst (form, regs))
             if insn.target == 'dead':
                 # probably a side-effect expression
                 self.write ('%s;' % (exp,))
@@ -541,7 +564,7 @@ class c_backend:
             code, (tvars, sig) = cexp
             regs = tuple ('r%d' % x for x in insn.regs)
             regs = self.wrap_in (sig.args[1:], regs)
-            exp = self.wrap_out (sig.args[0], code % regs)
+            exp = self.wrap_out (sig.args[0], self.cexp_subst (code, regs))
             self.write ('if PXLL_IS_TRUE(%s) {' % exp)
         else:
             # this is a scheme-like definition of test/#t/#f
