@@ -3,6 +3,8 @@
 (cinclude "fcntl.h")
 (cinclude "unistd.h")
 
+;; redo the file object using records (i.e., with methods).
+
 (define O_RDONLY (%%cexp int "O_RDONLY"))
 (define O_WRONLY (%%cexp int "O_WRONLY"))
 (define O_RDWR   (%%cexp int "O_RDWR"))
@@ -13,14 +15,14 @@
 (define STDERR_FILENO (%%cexp int "STDERR_FILENO"))
 
 (define (open path oflag mode)
-  (let ((fd (%%cexp (string int int -> int) "open (%s, %s, %s)" (zero-terminate path) oflag mode)))
+  (let ((fd (%%cexp (string int int -> int) "open (%0, %1, %2)" (zero-terminate path) oflag mode)))
     (if (>= fd 0)
 	fd
 	(error1 "open() failed" (zero-terminate path)))))
 
 (define (read fd size)
   (let* ((buffer (make-string size))
-	 (r (%%cexp (int string int -> int) "read (%s, %s, %s)" fd buffer size)))
+	 (r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
     (if (= r size)
 	buffer
 	(if (< r size)
@@ -30,21 +32,21 @@
 (define (read-into-buffer fd buffer)
   (let* ((size (string-length buffer))
 	 ;; XXX range check
-	 (r (%%cexp (int string int -> int) "read (%s, %s, %s)" fd buffer size)))
+	 (r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
     r))
 
 (define (write fd s)
-  (%%cexp (int string int -> int) "write (%s, %s, %s)" fd s (string-length s)))
+  (%%cexp (int string int -> int) "write (%0, %1, %2)" fd s (string-length s)))
 
 (define (write-substring fd s start len)
   ;; XXX range check
-  (%%cexp (int string int int -> int) "write (%s, %s+%s, %s)" fd s start len))
+  (%%cexp (int string int int -> int) "write (%0, %1+%2, %3)" fd s start len))
 
 (define (read-stdin)
   (read 0 1024))
 
 (define (close fd)
-  (%%cexp (int -> int) "close (%s)" fd))
+  (%%cexp (int -> int) "close (%0)" fd))
 
 ;; file I/O 'object'
 
@@ -125,7 +127,3 @@
 	  (let ((r (string-ref s pos)))
 	    (set! pos (+ 1 pos))
 	    r)))))
-
-
-	  
-	
