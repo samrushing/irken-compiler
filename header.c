@@ -227,7 +227,7 @@ dump_object (object * ob, int depth)
       break;
     case TC_USERIMM:
       // a user immediate unit-type...
-      fprintf (stdout, "<u%d>", (((pxll_int)ob)>>8));
+      fprintf (stdout, "<u%ld>", (((pxll_int)ob)>>8));
     }
   }
   return (object *) PXLL_UNDEFINED;
@@ -343,7 +343,7 @@ inline
 range_check (unsigned int length, unsigned int index)
 {
   if (index >= length) {
-    fprintf (stderr, "array reference out of range: %ld[%d]\n", length, index);
+    fprintf (stderr, "array reference out of range: %d[%d]\n", length, index);
     abort();
   }
 }
