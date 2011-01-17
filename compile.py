@@ -129,8 +129,9 @@ def cc (name, context):
         #cc = '/Developer/usr/bin/clang'
         # *does* work as of os x 10.6
         #cc = '/Developer/usr/bin/llvm-gcc'
-        cc = '/usr/local/bin/gcc'
-        #arch += ' -fnested-functions'
+        #cc = '/usr/local/bin/gcc'
+        cc = 'gcc'
+        arch += ' -fnested-functions'
         if not context.force_32:
             arch += ' -m64'
     if context.no_range:
