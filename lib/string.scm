@@ -73,7 +73,9 @@
     ()        acc -> (string-concat (reverse acc))
     (one)     acc -> (string-concat (reverse (list:cons one acc)))
     (hd . tl) acc -> (sj tl (list:cons sep (list:cons hd acc))))
-  (sj l '()))
+  (if (= (string-length sep) 0)
+      (string-concat l)
+      (sj l '())))
 
 (define (string-split s ch)
   (let loop ((i 0)
@@ -160,15 +162,17 @@
 
 ;; simple format macro
 (defmacro formatl
-  (formatl)                       -> (list:nil)
-  (formatl (<int> n) item ...)    -> (list:cons (int->string n) (formatl item ...))
-  (formatl (<char> ch) item ...)  -> (list:cons (char->string ch) (formatl item ...))
-  (formatl (<bool> b) item ...)   -> (list:cons (bool->string b) (formatl item ...))
-  (formatl (<hex> n) item ...)    -> (list:cons (int->hex-string n) (formatl item ...))
-  (formatl (<sym> s) item ...)    -> (list:cons (symbol->string s) (formatl item ...))
-  (formatl (<string> s) item ...) -> (list:cons s (formatl item ...))
-  (formatl x item ...)            -> (list:cons x (formatl item ...))
+  (formatl)			      -> (list:nil)
+  (formatl (<int> n) item ...)	      -> (list:cons (int->string n) (formatl item ...))
+  (formatl (<char> ch) item ...)      -> (list:cons (char->string ch) (formatl item ...))
+  (formatl (<bool> b) item ...)	      -> (list:cons (bool->string b) (formatl item ...))
+  (formatl (<hex> n) item ...)	      -> (list:cons (int->hex-string n) (formatl item ...))
+  (formatl (<sym> s) item ...)	      -> (list:cons (symbol->string s) (formatl item ...))
+  (formatl (<join> p sep l) item ...) -> (list:cons (string-join (map p l) sep) (formatl item ...))
+  (formatl (<string> s) item ...)     -> (list:cons s (formatl item ...))
+  (formatl x item ...)		      -> (list:cons x (formatl item ...))
   )
+
 (defmacro format (format item ...)		 -> (string-concat (formatl item ...)))
 (defmacro format-join (format-join sep item ...) -> (string-join (formatl item ...) sep))
 
