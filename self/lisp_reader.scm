@@ -52,6 +52,32 @@
 	(hd . tl) -> (begin (set! v[(char->ascii hd)] #t) (loop tl))
 	))))
 
+(define hex-map
+  (literal
+   (alist/make
+    (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
+    (#\a 10) (#\b 11) (#\c 12) (#\d 13) (#\e 14) (#\f 15)
+    (#\A 10) (#\B 11) (#\C 12) (#\D 13) (#\E 14) (#\F 15)
+    )))
+
+(define dec-map
+  (literal
+   (alist/make
+    (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
+    )))
+
+(define whitespace    '(#\space #\tab #\newline #\return))
+(define delimiters     (string->list "()[]{}:"))
+(define letters        (string->list "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+(define all-delimiters (append whitespace delimiters))
+(define digits         (string->list "0123456789"))
+
+(define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
+(define delimiter?     (char-class all-delimiters))
+(define digit?         (char-class digits))
+(define letter?        (char-class letters))
+(define field?         (char-class (cons #\- (append letters digits))))
+
 (define (reader read-char)
 
   (let ((char #\eof)) ;; one-character buffer
@@ -73,32 +99,6 @@
       (peek)
       )
 
-    (define whitespace    '(#\space #\tab #\newline #\return))
-    (define delimiters     (string->list "()[]{}:"))
-    (define letters        (string->list "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-    (define all-delimiters (append whitespace delimiters))
-    (define digits         (string->list "0123456789"))
-
-    (define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
-    (define delimiter?     (char-class all-delimiters))
-    (define digit?         (char-class digits))
-    (define letter?        (char-class letters))
-    (define field?         (char-class (cons #\- (append letters digits))))
-
-    (define hex-table
-      (literal
-       (alist/make
-	(#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
-	(#\a 10) (#\b 11) (#\c 12) (#\d 13) (#\e 14) (#\f 15)
-	(#\A 10) (#\B 11) (#\C 12) (#\D 13) (#\E 14) (#\F 15)
-	)))
-
-    (define dec-table
-      (literal
-       (alist/make
-	(#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
-	)))
-    
     (define (skip-comment)
       (let loop ((ch (next)))
 	(match ch with
@@ -225,7 +225,7 @@
 	    (error "expected closing ]/} character"))))
 	   
     (define (read-hex-digit ch)
-      (match (alist/lookup hex-table ch) with
+      (match (alist/lookup hex-map ch) with
 	     (maybe:no) -> (error "bad hex digit")
 	     (maybe:yes num) -> num))
 
@@ -302,7 +302,7 @@
 		 (r 0))
 	(if (= i n)
 	    r
-	    (match (alist/lookup dec-table (string-ref s i)) with
+	    (match (alist/lookup dec-map (string-ref s i)) with
 	      (maybe:no) -> (error "bad decimal digit?")
 	      (maybe:yes digit) -> (loop (+ i 1) (+ (* r 10) digit)))
 	    )))
