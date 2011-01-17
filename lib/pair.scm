@@ -36,6 +36,10 @@
   (PUSH l v)     -> (set! l (list:cons v l))
   )
 
+(defmacro prepend
+  (prepend l)	    -> l
+  (prepend a b ...) -> (list:cons a (prepend b ...)))
+
 ;; http://groups.google.com/group/comp.lang.scheme/msg/0055f311d1e1ce08
 
 (define (reverse-onto l1 l2)
@@ -98,8 +102,15 @@
 	(loop (- n 1) (cons x l)))))
 
 (define map
-  p ()        -> '()
+  p () -> '()
   p (hd . tl) -> (list:cons (p hd) (map p tl)))
+
+;; could we use a macro to define nary map?
+(define map2
+  p () ()		    -> '()
+  p (hd0 . tl0) (hd1 . tl1) -> (list:cons (p hd0 hd1) (map2 p tl0 tl1))
+  p _ _			    -> (error "map2: unequal-length lists")
+  )
 
 (define for-each
   p ()        -> #u
@@ -156,3 +167,38 @@
     (_ . _)  -> (let ((n (length l))
 		      (v (%make-vec16 n)))
 		  (recur v 0 l))))
+
+;; http://www.codecodex.com/wiki/Merge_sort#OCaml
+
+(define (sort < l)
+
+  (define (merge la lb)
+    (let loop ((la la) (lb lb))
+      (match la lb with
+	() lb	   -> lb
+	(_ . _) () -> la ;; problem with the match compiler here (see 5.2.6 of SLPJ)
+	(ha . ta) (hb . tb)
+	-> (if (< ha hb)
+	       (list:cons ha (loop ta (list:cons hb tb)))
+	       (list:cons hb (loop (list:cons ha ta) tb))
+	       )
+	)))
+
+  (define (halve l)
+    (match l with
+      ()  -> (:pair l '())
+      (x) -> (:pair l '())
+      (hd . tl)
+      -> (match (halve tl) with
+	   (:pair t0 t1) -> (:pair (list:cons hd t1) t0))))
+  
+  (define (merge-sort l)
+    (match l with
+      ()   -> l
+      (x)  -> l
+      list -> (match (halve l) with
+		(:pair l0 l1) -> (merge (merge-sort l0) (merge-sort l1)))))
+  
+  (merge-sort l)
+
+  )
