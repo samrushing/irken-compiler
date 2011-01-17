@@ -1,3 +1,4 @@
+#!/usr/local/bin/python2.5
 
 import os
 from pygments.cmdline import main as highlight
