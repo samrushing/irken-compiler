@@ -43,6 +43,14 @@
 ;; 			     )
   )
 
+(define type-repr
+  (type:base name)                  -> (format (sym name))
+  (type:tvar name)                  -> (format "'" (sym name))
+  (type:pred 'arrow (rtype . args)) -> (format "(" (join type-repr ", " args) ")->" (type-repr rtype))
+  (type:pred pred ())               -> (format (sym pred))
+  (type:pred pred args)             -> (format (sym pred) "(" (join type-repr ", " args) ")")
+  )
+
 (define (get-tvars t)
   (let ((tvars (make-set '() eq?)))
     (define recur
