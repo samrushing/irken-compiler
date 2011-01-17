@@ -7,5 +7,5 @@
 (printn (string-split "thing" #\/))
 (printn (string-split "" #\a))
 (printn (string-split "..." #\.))
-
+(printn (string-split "%0 %% %1" #\%))
 
