@@ -4,21 +4,22 @@
 
 ;; RTL instructions
 (datatype insn
-  (:return int)			 ;; return register
-  (:literal literal cont)	 ;; <value> <k>
-  (:cexp string (list int) cont) ;; <template> <args> <k>
-  (:test int insn insn cont)	 ;; <reg> <then> <else> <k>
-  (:jump int cont)		 ;; <reg> <k>
-  (:close symbol insn cont)	 ;; <name> <body> <k>
-  (:varref int int cont)	 ;; <depth> <index> <k>
-  (:varset int int int cont)	 ;; <depth> <index> <reg> <k>
-  (:new-env int cont)		 ;; <size> <k>
-  (:store int int int int cont)	 ;; <offset> <arg> <tuple> <i> <k>
-  (:invoke int int cont)	 ;; <closure> <args> <k>
-  (:tail int int cont)		 ;; <closure> <args> <k>
+  (:return int)				;; return register
+  (:literal literal cont)		;; <value> <k>
+  (:cexp type string (list int) cont)	;; <sig> <template> <args> <k>
+  (:test int insn insn cont)		;; <reg> <then> <else> <k>
+  (:jump int cont)			;; <reg> <k>
+  (:close symbol insn cont)		;; <name> <body> <k>
+  (:varref int int cont)		;; <depth> <index> <k>
+  (:varset int int int cont)		;; <depth> <index> <reg> <k>
+  (:new-env int cont)			;; <size> <k>
+  (:store int int int int cont)		;; <offset> <arg> <tuple> <i> <k>
+  (:invoke int int cont)		;; <closure> <args> <k>
+  (:tail int int cont)			;; <closure> <args> <k>
   )
 
 ;; continuation
+;; XXX wonder if this would make more sense as a record?
 (datatype cont
   (:k int (list int) insn) ;; <target-registers> <free-registers> <code>
   )
@@ -59,7 +60,7 @@
     (node:function name formals) -> (c-function name formals (car exp.subs) lenv k)
     (node:varref name)		 -> (c-varref name lenv k)
     (node:varset name)		 -> (c-varset name (car exp.subs) lenv k)
-    (node:cexp _ template)       -> (c-primapp template exp.subs lenv k)
+    (node:cexp sig template)     -> (c-cexp sig template exp.subs lenv k)
     (node:call)			 -> (c-call tail? exp lenv k)
     _ -> (begin (pp-node exp 0) (error1 "NYI" exp))
     )
@@ -131,11 +132,17 @@
 	       (lambda (reg)
 		 (insn:varset depth index reg k))))))
 
-(define (c-primapp cexp args lenv k)
-  (c-primargs cexp args lenv k))
+;; XXX these two aren't right
+;; (define (c-primapp cexp args lenv k)
+;;   (c-primargs cexp args lenv k))
 
-(define (c-primargs cexp args lenv k)
-  (collect-primargs args '() lenv k (lambda (regs) (insn:cexp cexp regs k))))
+;; (define (c-primargs cexp args lenv k)
+;;   (collect-primargs args '() lenv k (lambda (regs) (insn:cexp cexp regs k))))
+
+(define (c-cexp sig template args lenv k)
+  (collect-primargs args '() lenv k
+		    (lambda (regs)
+		      (insn:cexp sig template regs k))))
 
 (define (collect-primargs args regs lenv k ck)
   (match args with
@@ -208,23 +215,24 @@
 	   (print-insn k0 d)
 	   )))
   (define (ps x) (print x) (print-string " "))
+  (define (ps2 x) (print-string x) (print-string " "))
   (match insn with
-    (insn:return target)        -> (begin (newline) (indent d) (print-string "- ret ") (print target))
-    (insn:literal lit k)        -> (print-line (lambda () (print-string "lit ") (print lit)) k)
-    (insn:cexp template args k) -> (print-line (lambda () (print-string "cexp ") (ps template) (ps args)) k)
-    (insn:test reg then else k) -> (print-line (lambda () (print-string "test ") (print reg) (print-insn then (+ d 1)) (print-insn else (+ d 1))) k)
-    (insn:jump reg k)           -> (print-line (lambda () (print-string "jmp ") (print reg)) k)
-    (insn:close name body k)    -> (print-line (lambda () (print-string "close ") (print name) (print-insn body (+ d 1))) k)
-    (insn:varref d i k)         -> (print-line (lambda () (print-string "ref ") (ps d) (ps i)) k)
-    (insn:varset d i v k)       -> (print-line (lambda () (print-string "set ") (ps d) (ps i) (ps v)) k)
-    (insn:store o a t i k)	-> (print-line (lambda () (print-string "stor ") (ps o) (ps a) (ps t) (ps i)) k)
-    (insn:invoke c a k)         -> (print-line (lambda () (print-string "invoke ") (ps c) (ps a)) k)
-    (insn:tail c a k)		-> (print-line (lambda () (print-string "tail ") (ps c) (ps a)) k)
-    (insn:new-env n k)          -> (print-line (lambda () (print-string "env ") (ps n)) k)
+    (insn:return target)	    -> (begin (newline) (indent d) (ps2 "- ret") (print target))
+    (insn:literal lit k)	    -> (print-line (lambda () (ps2 "lit") (print lit)) k)
+    (insn:cexp sig template args k) -> (print-line (lambda () (ps2 "cexp") (ps2 (type-repr sig)) (ps template) (ps args)) k)
+    (insn:test reg then else k)	    -> (print-line (lambda () (ps2 "test") (print reg) (print-insn then (+ d 1)) (print-insn else (+ d 1))) k)
+    (insn:jump reg k)		    -> (print-line (lambda () (ps2 "jmp") (print reg)) k)
+    (insn:close name body k)	    -> (print-line (lambda () (ps2 "close") (print name) (print-insn body (+ d 1))) k)
+    (insn:varref d i k)		    -> (print-line (lambda () (ps2 "ref") (ps d) (ps i)) k)
+    (insn:varset d i v k)	    -> (print-line (lambda () (ps2 "set") (ps d) (ps i) (ps v)) k)
+    (insn:store o a t i k)	    -> (print-line (lambda () (ps2 "stor") (ps o) (ps a) (ps t) (ps i)) k)
+    (insn:invoke c a k)		    -> (print-line (lambda () (ps2 "invoke") (ps c) (ps a)) k)
+    (insn:tail c a k)		    -> (print-line (lambda () (ps2 "tail") (ps c) (ps a)) k)
+    (insn:new-env n k)		    -> (print-line (lambda () (ps2 "env") (ps n)) k)
     ))
 
 
-(define (test)
+(define (test-cps)
   (let ((context (make-context))
 	(transform (transformer context))
 	;;(exp0 (sexp:list (read-string "(lambda (x y) (set! y 9) (if #t x y))")))
@@ -243,4 +251,4 @@
     )
   )
 
-;(test)
+;(test-cps)
