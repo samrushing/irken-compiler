@@ -7,15 +7,50 @@ class TypeError (Exception):
 
 # 'itypes' since 'types' is a standard python module
 
+# The base class includes support for the union-find algorithm
 class _type:
+    pending = False
+    mv = None
+
+    def __init__ (self):
+        self.parent = self
+        self.rank = 0
+
     def __iter__ (self):
         return walk_type (self)
+
+    # for union-find
+    def find (self):
+        if self.parent is self:
+            return self
+        else:
+            self.parent = self.parent.find()
+            return self.parent
+
+    # for union-find
+    def union (x, y):
+        xroot = x.find()
+        yroot = y.find()
+        if xroot.rank > yroot.rank:
+            yroot.parent = xroot
+        elif xroot is not yroot:
+            xroot.parent = yroot
+            if xroot.rank == yroot.rank:
+                yroot.rank = yroot.rank + 1
+        return xroot, yroot
+
+    # subtyping (used?)
     def sub (self, other):
         return False
+
+# XXX unification would be simpler if all base types were done as no-arg predicates.
 
 class t_base (_type):
     name = 'base'
     code = 'b'
+    def __init__ (self):
+        _type.__init__ (self)
+        self.rank = 1000
     def __cmp__ (self, other):
         return cmp (self.__class__, other.__class__)
     def __repr__ (self):
@@ -38,9 +73,6 @@ class t_string (t_base):
 class t_undefined (t_base):
     name = 'undefined'
 
-class t_continuation (t_base):
-    name = 'continuation'
-
 # XXX may use product() instead...
 class t_unit (t_base):
     name = 'unit'
@@ -57,7 +89,6 @@ base_types = {
     'string' : t_string(),
     'undefined' : t_undefined(),
     'unit': t_unit(),
-    'continuation' : t_continuation(),
     # now a proper datatype
     #'symbol' : t_symbol(),
     'int16' : t_int16(),
@@ -73,6 +104,8 @@ def base_n (n, base, digits):
             break
     return ''.join (s)
 
+atv = {}
+
 class t_var (_type):
     next = None
     rank = -1
@@ -81,19 +114,22 @@ class t_var (_type):
     counter = 1
     in_u = False
     node = None
-    val = None
+    #val = None
     code = 'v'
     mv = None
-    pending = False
     def __init__ (self):
+        _type.__init__ (self)
         self.id = t_var.counter
         t_var.counter += 1
+        atv[repr(self)] = self
     def __repr__ (self):
         return base_n (self.id, len(self.letters), self.letters)
 
 class t_predicate (_type):
     code = 'p'
     def __init__ (self, name, args):
+        _type.__init__(self)
+        self.rank = 500
         self.name = name
         if self.name in ('rlabel', 'rdefault'):
             self.code = 'R'
@@ -105,8 +141,8 @@ class t_predicate (_type):
                 return '(%r->%r)' % (self.args[1], self.args[0])
             else:
                 return '(%r->%r)' % (self.args[1:], self.args[0])
-        #elif self.name == 'rproduct' and len(self.args) == 1:
-        #    return '{%s}' % (rlabels_repr (self.args[0]),)
+        elif self.name == 'rproduct' and len(self.args) == 1:
+            return '{%s}' % (rlabels_repr (self.args[0]),)
         elif len(self.args) == 0:
             return self.name
         else:
@@ -123,6 +159,7 @@ def walk_type (t):
 # this still doesn't do a very good job...
 def rlabels_repr (t):
     r = []
+    etc = False
     while 1:
         if is_pred (t, 'rlabel'):
             lname, ltype, t = t.args
@@ -132,7 +169,7 @@ def rlabels_repr (t):
             elif is_pred (ltype, 'abs'):
                 r.append ('%s=#f' % (lname,))
             else:
-                r.append ('...')
+                etc = True
                 break
         elif is_pred (t, 'rdefault'):
             if is_pred (t.args[0], 'abs'):
@@ -142,9 +179,11 @@ def rlabels_repr (t):
                 r.append (repr (t))
                 break
         else:
-            r.append ('...')
+            etc = True
             break
     r.sort()
+    if etc:
+        r.append ('...')
     return ' '.join (r)
 
 def is_pred (t, *p):
@@ -156,6 +195,9 @@ def arrow (*sig):
     # XXX this might be more clear as (<arg0>, <arg1>, ... <result>)
     return t_predicate ('arrow', sig)
     
+def continuation (*sig):
+    return t_predicate ('continuation', sig)
+
 def vector (type):
     return t_predicate ('vector', (type,))
 
@@ -189,23 +231,30 @@ def abs():
 def pre (x):
     return t_predicate ('pre', (x,))
 
+amv = {}
+
 # used to represent equirecursive types ('moo' is a pun on the 'μ' notation).
 class moo_var (_type):
     counter = 1
     letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     code = 'm'
     def __init__ (self):
+        _type.__init__ (self)
         # this id is probably redundant, given the presence of a real tvar here.
         self.id = moo_var.counter
         moo_var.counter += 1
         self.tvar = t_var()
+        amv[repr(self)] = self
     def __repr__ (self):
-        return base_n (self.id, len(self.letters), self.letters)
+        return '%s.%r' % (base_n (self.id, len(self.letters), self.letters), self.tvar)
 
 def moo (mvar, x):
     return t_predicate ('moo', (mvar, x))
 
 def get_record_sig (t):
+    if is_pred (t, 'moo'):
+        t0 = t
+        t = t.args[1]
     # rproduct (rlabel (...))
     assert (is_pred (t, 'rproduct'))
     labels = []
