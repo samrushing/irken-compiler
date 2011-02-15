@@ -484,7 +484,11 @@ def apply_substs (exp):
             lenv = shadow (names, lenv)
         elif exp.is_a ('let_subst'):
             # filter out wildcards from match expressions
-            names = [ (f, t) for (f, t) in exp.params if f != '_' ]
+            names = []
+            for fn, tn in exp.params:
+                if fn != '_':
+                    # follow chains of replacments...
+                    names.append ((fn, lookup (tn, lenv)))
             lenv = (names, lenv)
             return walk (exp.subs[0], lenv)
         elif exp.one_of ('varref', 'varset'):
