@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 
 from lisp_reader import atom
+from pprint import pprint as pp
 
 import itypes
 import lisp_reader
@@ -287,16 +288,24 @@ class transformer:
 
     def expand_colon (self, exp):
         colon, datatype, alt = exp
-        if datatype:
-            # refer to the global constructor function,
-            # usually inlined if in the rator position.
-            return '%s:%s' % (datatype, alt)
+        if is_a (alt, str):
+            if datatype:
+                # refer to the global constructor function,
+                # usually inlined if in the rator position.
+                return '%s:%s' % (datatype, alt)
+            else:
+                # can't have one single constructor for variants, because
+                #  the number of args could vary.  Instead, turn it into
+                #  the name of the primapp.  [this will fail variable lookup
+                #  if you refer to it outside of the rator position]
+                return '%%vcon/%s' % (alt,)
+        elif is_a (alt, list) and alt[0] == 'colon':
+            # method invocation syntax
+            ignore, ignore, method = alt
+            assert (is_a (method, str))
+            return '%%method/%s/%s' % (datatype, method)
         else:
-            # can't have one single constructor for variants, because
-            #  the number of args could vary.  Instead, turn it into
-            #  the name of the primapp.  [this will fail variable lookup
-            #  if you refer to it outside of the rator position]
-            return '%%vcon/%s' % (alt,)
+            raise SyntaxError (exp)
 
     # ----------- special forms ----------------
 
@@ -321,6 +330,8 @@ class transformer:
         names = [x[0] for x in decls]
         inits  = [x[1] for x in decls]
         body = exp[2:]
+        if not body:
+            raise ValueError ("empty <letrec> body", exp)
         return ['fix', names, self.expand_all (inits), self.expand_body (body)]
 
     # ----------- lambda bodies ----------------
@@ -382,6 +393,14 @@ class transformer:
     def expand__percent_percentcexp (self, exp):
         # (%%cexp <type> <format-string> arg0 arg1 ...)
         return ['%%cexp', exp[1], exp[2]] + self.expand_all (exp[3:])
+
+    def expand__percentmethod (self, exp):
+        # (x::add 10) => (x.o.add x 10)
+        # require that <x> is a varref, to avoid code duplication.
+        method = exp[0]
+        ignore, ob, mname = method.split ('/')
+        assert (is_a (ob, str))
+        return self.expand_exp (['%s.o.%s' % (ob, mname), ob] + exp[1:])
 
     # ok, let's make two kinds of vcase.  the polymorphic variant,
     #  and the normal variant.  we can distinguish between the two
@@ -655,6 +674,11 @@ class transformer:
 
         result = build (self.expand_exp (exp))
         if runtime_only[0]:
+            return result
+        elif len(result) == 1:
+            # in other words, a no-argument constructor... we're better off
+            # just leaving it as a primapp.
+            assert result[0].startswith ('%dtcon/')
             return result
         else:
             return ['constructed', result]
