@@ -36,21 +36,23 @@
   (PUSH l v)     -> (set! l (list:cons v l))
   )
 
+(defmacro pop
+  (pop l) -> (match l with
+	       (list:nil) -> (error "pop")
+	       (list:cons hd tl) -> (begin (set! l tl) hd)))
+
 (defmacro prepend
   (prepend l)	    -> l
   (prepend a b ...) -> (list:cons a (prepend b ...)))
 
 ;; http://groups.google.com/group/comp.lang.scheme/msg/0055f311d1e1ce08
 
-(define (reverse-onto l1 l2)
-  (vcase list l1
-    ((:nil) l2)
-    ((:cons hd tl)
-     (reverse-onto tl (list:cons hd l2)))
-    ))
+(define reverse-onto
+  () b	      -> b
+  (hd . tl) b -> (reverse-onto tl (list:cons hd b)))
 
 (define (reverse l)
-  (reverse-onto l (list:nil)))
+  (reverse-onto l '()))
 
 (define (append list1 list2)
   (reverse-onto (reverse list1) list2))
@@ -60,6 +62,13 @@
     () acc	  -> acc
     (hd . tl) acc -> (fun tl (+ 1 acc)))
   (fun l 0))
+
+(define (first l) (car l))
+(define (second l) (car (cdr l)))
+(define last
+  ()	   -> (error "last")
+  (last)   -> last
+  (_ . tl) -> (last tl))
 
 ;; A possible pattern-matching named-let construct?
 ;; (define (length l)
@@ -81,23 +90,34 @@
   x (hd . tl) -> (if (eq? x hd) #t (member-eq? x tl))
   )
 
+(define remove-eq
+  x () -> '()
+  x (hd . tl) -> (if (eq? hd x)
+		     tl
+		     (list:cons hd (remove-eq x tl))))
+
+(defmacro remove-eq!
+  (remove! item list) -> (set! list (remove-eq item list))
+  )
+
 (define nth
   ()       _ -> (error "list index out of range")
   (hd . _) 0 -> hd
   (_ . tl) n -> (nth tl (- n 1))
   )
 
+;; (range 5) => '(0 1 2 3 4)
 (define (range n)
-  (let loop ((n n)
+  (let loop ((n (- n 1))
 	     (l (list:nil)))
-    (if (= n 0)
+    (if (< n 0)
 	l
 	(loop (- n 1) (cons n l)))))
 
 (define (n-of n x)
   (let loop ((n n)
 	     (l (list:nil)))
-    (if (= n 0)
+    (if (<= n 0)
 	l
 	(loop (- n 1) (cons x l)))))
 
@@ -112,9 +132,32 @@
   p _ _			    -> (error "map2: unequal-length lists")
   )
 
+(defmacro map-range
+  (map-range vname num body ...)
+  -> (let (($n num))
+       (let $loop ((vname 0)
+		   ($acc (list:nil)))
+	 (if (= vname $n)
+	     (reverse $acc)
+	     ($loop (+ vname 1) (list:cons (begin body ...) $acc))))))
+
+(define filter
+  p () -> '()
+  p (hd . tl) -> (if (p hd)
+		     (list:cons hd (filter p tl))
+		     (filter p tl)))
+
+;; it's a shame that for-each puts the procedure first,
+;;   definitely hurts readability when using a lambda.
 (define for-each
   p ()        -> #u
   p (hd . tl) -> (begin (p hd) (for-each p tl)))
+
+(define for-each2
+  p () ()		-> #u
+  p (h0 . t0) (h1 . t1) -> (begin (p h0 h1) (for-each2 p t0 t1))
+  p _ _			-> (error "for-each2: unequal-length lists")
+  )
 
 (define fold
   p acc ()	  -> acc
@@ -126,19 +169,38 @@
   p acc (hd . tl) -> (p hd (foldr p acc tl))
   )
 
-(define some
+(define some?
   p () -> #f
-  p (hd . tl) -> (if (p hd) #t (some p tl)))
+  p (hd . tl) -> (if (p hd) #t (some? p tl)))
 
-(define every
+(define every?
   p () -> #t
-  p (hd . tl) -> (if (p hd) (every p tl) #f))
+  p (hd . tl) -> (if (p hd) (every? p tl) #f))
+
+(define every2?
+  p () () -> #t
+  p (h0 . t0) (h1 . t1) -> (if (p h0 h1) (every2? p t0 t1) #f)
+  p _ _ -> (error "every2?: unequal-length lists")
+  )
 
 ;; print a list with <proc>, and print <sep> between each item.
 (define print-sep
   proc sep ()	     -> #u
   proc sep (one)     -> (proc one)
   proc sep (hd . tl) -> (begin (proc hd) (print-string sep) (print-sep proc sep tl)))
+
+;; collect lists of duplicate runs
+;; http://www.christiankissig.de/cms/files/ocaml99/problem09.ml
+(define (pack l =)
+  (define (pack2 l s e)
+    (match l with
+      ()      -> (LIST s)
+      (h . t) -> (if (= h e)
+		     (pack2 t (list:cons h s) e)
+		     (list:cons s (pack2 t (LIST h) h)))))
+  (match l with
+    ()	    -> '()
+    (h . t) -> (pack2 t (LIST h) h)))
 
 (define (vector->list v)
   (let loop ((n (- (vector-length v) 1)) (acc (list:nil)))
@@ -175,8 +237,8 @@
   (define (merge la lb)
     (let loop ((la la) (lb lb))
       (match la lb with
-	() lb	   -> lb
-	(_ . _) () -> la ;; problem with the match compiler here (see 5.2.6 of SLPJ)
+	() lb -> lb
+	la () -> la
 	(ha . ta) (hb . tb)
 	-> (if (< ha hb)
 	       (list:cons ha (loop ta (list:cons hb tb)))
