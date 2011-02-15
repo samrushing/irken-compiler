@@ -95,6 +95,8 @@ for size, file in files:
             if not fail:
                 #raise
                 failed.append ((base, "compile failed"))
+            else:
+                succeeded += 1
         else:
             if fail:
                 failed.append ((base, 'compile did not fail like expected'))
