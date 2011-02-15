@@ -26,28 +26,29 @@ def apply_subst_to_type (t):
     # variable.
 
     def p (t):
-        # equivalence class
         if is_a (t, str):
+            # rlabel predicate does this
             return t
+        # equivalence class
         t = t.find()
         if t.pending:
-            mv = moo_var()
-            t.mv = mv
-            return mv
+            t.mv = t_var()
+            return t.mv
         else:
             # replace all known tvars in <t>
             if is_a (t, t_predicate):
-                t.pending = True
                 if t.name == 'moo':
-                    # urgh, probably means I need to redo moo. [or that we do two-phase solve]
-                    r = t_predicate ('moo', [t.args[0]] + [(x) for x in t.args[1:]])
+                    # we've already been here!
+                    return t
                 else:
+                    t.pending = True
                     r = t_predicate (t.name, [p(x) for x in t.args])
-                t.pending = False
-                if t.mv:
-                    return moo (t.mv, r)
-                else:
-                    return r
+                    t.pending = False
+                    if t.mv:
+                        r = moo (t.mv, r)
+                        return r
+                    else:
+                        return r
             else:
                 return t
 
@@ -73,11 +74,13 @@ def unify (t0, t1):
             raise TypeError ((u, v))            
         elif is_a (u, t_var) or is_a (v, t_var):
             pass
+        elif is_pred (u, 'moo') and is_pred (v, 'moo'):
+            pass
         elif is_pred (u, 'moo') or is_pred (v, 'moo'):
-            # note early exit here...
+            # note early exit...
             return unify_moo (u, v)
         elif is_pred (u, 'rlabel', 'rdefault') or is_pred (v, 'rlabel', 'rdefault'):
-            # ... and here.
+            # note early exit...
             return unify_rows (u, v)
         elif is_a (u, t_predicate) and is_a (v, t_predicate) and (u.name != v.name or len (u.args) != len (v.args)):
             raise TypeError ((u, v))
@@ -155,29 +158,12 @@ def unify_rows (ty0, ty1):
 # XXX TODO: verify that all recursive types go through a row type.
 # XXX can I be simplified?
 def unify_moo (t0, t1):
-    if is_pred (t0, 'moo') and is_pred (t1, 'moo'):
-        # they're both recursive types, equate the attached tvars
-        unify (t0.args[0].tvar, t1.args[0].tvar)
-        # unify their types
-        unify (t0.args[1], t1.args[1])
-    else:
-        if is_pred (t1, 'moo'):
-            # reverse the args forcing t0 to be the moo
-            t0, t1 = t1, t0
-        if is_a (t1, moo_var):
-            # the other is a moo_var, unify their attached tvars
-            unify (t0.args[0].tvar, t1.tvar)
-        else:
-            # is this enough?
-            unify (t0.args[1], t1)
+    if is_pred (t1, 'moo'):
+        # swap so t0 is always the moo
+        t1, t0 = t0, t1
+    # is this enough?
+    unify (t0.args[0], t1)
 
-def TT():
-    s = moo_var()
-    t = moo_var()
-    a = moo (s, arrow (s, t_int()))
-    b = moo (t, arrow (arrow (t, t_int()), t_int()))
-    return a, b
-    
 def occurs_in_type (tvar, type):
     for t in walk_type (type):
         if tvar == t:
@@ -509,7 +495,7 @@ class typer:
             what, dtname, label = name.split ('/')
             dt = self.context.datatypes[dtname]
             # e.g. list := nil | cons X list
-            # %dtcons/list/cons := ∀X.(X,list(X)) → list(X)
+            # %dtcon/list/cons := ∀X.(X,list(X)) → list(X)
             args = dt.constructors[label]
             return forall (dt.tvars, arrow (dt.scheme, *args))
         elif name.startswith ('%vcon/'):
