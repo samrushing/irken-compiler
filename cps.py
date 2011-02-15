@@ -37,6 +37,7 @@ class compiler:
         self.verbose = verbose
         self.constants = {}
         self.regalloc = register_allocator()
+        self.current_function = None
 
     def lexical_address (self, lenv, name):
         x = 0
@@ -178,8 +179,14 @@ class compiler:
         else:
             return False
 
+    # this optimization will mean less once we start passing arguments in registers.
     def safe_for_tr_call (self, app):
         if app.rator.is_a ('varref') and app.recursive and app.function:
+            # we can only use the trcall hack when we know exactly what
+            #   the stack looks like above us.  escaping funs do not provide
+            #   that guarantee.
+            if self.current_function.escapes:
+                return False
             for vardef in app.function.formals:
                 if vardef.escapes:
                     return False
@@ -430,6 +437,7 @@ class compiler:
             raise ValueError ("%%fail without fatbar??")
 
     def compile_function (self, tail_pos, exp, lenv, k):
+        self.current_function = exp
         if len(exp.formals):
             # don't extend the environment if there are no args
             lenv = (exp.formals, lenv)
@@ -445,14 +453,22 @@ class compiler:
             return self.compile_exp (tail_pos, exp.body, lenv, k)
         # becomes this sequence:
         #   (new_env, push_env, store_env0, ..., <body>, pop_env)
-        k_body = self.dead_cont (k[1], self.compile_exp (tail_pos, exp.body, (exp.names, lenv), self.cont (k[1], lambda reg: self.gen_pop_env (reg, k))))
+        k_body = self.dead_cont (k[1], self.compile_exp (tail_pos, exp.body, (exp.names, lenv),
+                                                         self.cont (k[1], lambda reg: self.gen_pop_env (reg, k))))
         return self.gen_new_env (
             len (exp.names),
             self.cont (
                 k[1],
                 lambda tuple_reg: self.gen_push_env (
                     tuple_reg,
-                    self.dead_cont (k[1], self.compile_store_rands (0, 1, exp.inits, tuple_reg, [tuple_reg] + k[1], (exp.names, lenv), k_body))
+                    self.dead_cont (
+                        k[1],
+                        self.compile_store_rands (
+                            0, 1, exp.inits, tuple_reg,
+                            [tuple_reg] + k[1],
+                            (exp.names, lenv),
+                            k_body)
+                        )
                     )
                 )
             )
