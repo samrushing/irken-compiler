@@ -48,9 +48,22 @@
          (font-lock-extra-managed-props syntax-table)))
   )
 
+(defun scheme-indent-match (state indent-point normal-indent)
+  ;; there's probably an easier way to do this, but I'd like to
+  ;;  be able to make this smarter in the future.  Specifically
+  ;;  it might be nice to leave a hanging -> at the end of a line,
+  ;;  and have this function automatically indent the next line by 2.
+  ;; See http://community.schemewiki.org/?emacs-indentation
+  (forward-char 1)
+  (goto-char (elt state 1))
+  (+ 2 (current-column)))
+
 (put 'vcase 'scheme-indent-function 'scheme-let-indent)
-(put 'match 'scheme-indent-function 'scheme-let-indent)
+(put 'match 'scheme-indent-function 'scheme-indent-match)
 (put 'datatype 'scheme-indent-function 1)
+(put 'map-range 'scheme-indent-function 1)
+(put 'for-range 'scheme-indent-function 1)
+(put 'let/cc 'scheme-indent-function 'scheme-let-indent)
 
 ;; This allows "M-x align" to line up a series of pattern-matches, try it!
 (add-to-list 'align-rules-list
