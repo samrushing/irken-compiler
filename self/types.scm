@@ -2,117 +2,160 @@
 
 (include "lib/set.scm")
 
+;; re-doing this now for Huet's algorithm.
+
+;; consider rank?
+
 (datatype type
-  (:base symbol)
-  (:tvar symbol)
-  (:pred symbol (list type))
-;; maybe leave this for the typing module.
-;;  (:forall (list symbol) type)
+  (:tvar int                {parent=(maybe type) pending=bool moo=(maybe type)})
+  (:pred symbol (list type) {parent=(maybe type) pending=bool moo=(maybe type)})
   )
 
+(define (pred name subs)
+  (type:pred name subs {parent=(maybe:no) pending=#f moo=(maybe:no)}))
+
 (define (arrow result-type arg-types)
-  (type:pred 'arrow (list:cons result-type arg-types)))
+  (pred 'arrow (list:cons result-type arg-types)))
+
+(define tvar-counter (make-counter 0))
+
+(define (new-tvar)
+  (type:tvar (tvar-counter.inc) {parent=(maybe:no) pending=#f moo=(maybe:no)}))
+
+;; singleton base types
+(define int-type	(pred 'int '()))
+(define char-type	(pred 'char '()))
+(define string-type	(pred 'string '()))
+(define undefined-type	(pred 'undefined '()))
+(define bool-type	(pred 'bool '()))
+(define symbol-type	(pred 'symbol '()))
 
 (define base-types
   (alist/make
-   ('int	   (type:base 'int))
-   ('char	   (type:base 'char))
-   ('string	   (type:base 'string))
-   ('undefined	   (type:base 'undefined))
-   ('unit	   (type:base 'unit))
-   ('continutation (type:base 'continutation))
+   ('int int-type)
+   ('char char-type)
+   ('string string-type)
+   ('undefined undefined-type)
+   ('bool bool-type)
+   ('symbol symbol-type)
    ))
 
-(define print-type
-  (type:base name)	-> (print name)
-  (type:tvar sym)	-> (begin (print-string "'") (print sym))
-  ;; XXX special case the arrow predicate
-  (type:pred pred ())	-> (print pred)
-  (type:pred pred args) -> (begin
-			     (print pred)
-			     (print-string "(")
-			     (print-sep print-type ", " args)
-			     (print-string ")")
-			     #u
-			     )
-;;   (type:forall vars t)    -> (begin
-;; 			     (print "∀")
-;; 			     (print-sep print "," vars)
-;; 			     (print-string ".")
-;; 			     (print-type t)
-;; 			     )
-  )
+;; row types
+(define (rproduct tl) (pred 'rproduct tl))
+(define (rsum row) (pred 'rsum (LIST row)))
+(define (rdefault arg) (pred 'rdefault (LIST arg)))
+(define (rlabel name type rest) (pred 'rlabel (LIST name type rest)))
 
 (define type-repr
-  (type:base name)                  -> (format (sym name))
-  (type:tvar name)                  -> (format "'" (sym name))
-  (type:pred 'arrow (rtype . args)) -> (format "(" (join type-repr ", " args) ")->" (type-repr rtype))
-  (type:pred pred ())               -> (format (sym pred))
-  (type:pred pred args)             -> (format (sym pred) "(" (join type-repr ", " args) ")")
+  (type:tvar id _)                    -> (format "t" (int id))
+  (type:pred 'arrow (rtype atype) _)  -> (format (type-repr atype) "->" (type-repr rtype))
+  (type:pred 'arrow (rtype . args) _) -> (format "(" (join type-repr ", " args) ")->" (type-repr rtype))
+  (type:pred pred () _)               -> (format (sym pred))
+  (type:pred pred args _)             -> (format (sym pred) "(" (join type-repr ", " args) ")")
   )
 
 (define (get-tvars t)
   (let ((tvars (make-set '() eq?)))
     (define recur
-      (type:base _) -> #u
-      (type:tvar tv) -> (tvars.add tv)
-      (type:pred sym types) -> (for-each recur types))
+      (type:pred sym types _) -> (for-each recur types)
+      x			      -> (tvars.add x))
     (recur t)
     (tvars.get)))
 
-(define (parse-type type)
+(define type->trec
+  (type:tvar _ r) -> r
+  (type:pred _ _ r) -> r)
 
-  (let ((tvars (alist:nil)))
+(define (type-find t)
+  (let ((trec (type->trec t)))
+    (match trec.parent with
+      (maybe:no)    -> t
+      (maybe:yes t0) -> (let ((p (type-find t0)))
+			 (set! trec.parent (maybe:yes p)) ;; path compression
+			 p))))
 
-    (define (get-tvar tv)
-      (match (alist/lookup tvars tv) with
-	(maybe:yes tv) -> tv
-	(maybe:no) -> (let ((r (type:tvar tv)))
-			(alist/push tvars tv r)
-			r)))
+(define (type-union a b)
+  (let ((pa (type-find a))
+	(pb (type-find b)))
+    (match pa pb with
+      (type:tvar _ ra) (type:pred _ _ _)    -> (set! ra.parent (maybe:yes pb))
+      (type:pred _ _ _) (type:tvar _ rb)    -> (set! rb.parent (maybe:yes pa))
+      (type:tvar _ ra) (type:tvar _ rb)     -> (set! rb.parent (maybe:yes pa))
+      (type:pred _ _ ra) (type:pred _ _ rb) -> (set! rb.parent (maybe:yes pa)))))
 
-    (define arrow-type?
-      ()                      -> #f
-      ((sexp:symbol '->) . _) -> #t
-      (_ . tl)                -> (arrow-type? tl)
-      )
+(define (parse-type* exp tvars)
+  (print-string "parse-type*:\n")
+  (pp 1 exp) (newline)
+  (printn tvars)
+  (define (get-tvar sym)
+    (match (tvars::get sym) with
+      (maybe:yes tv) -> tv
+      (maybe:no) -> (let ((r (new-tvar)))
+		      (tvars::add sym r)
+		      r)))
+
+  (define arrow-type?
+    ()                      -> #f
+    ((sexp:symbol '->) . _) -> #t
+    (_ . tl)                -> (arrow-type? tl)
+    )
   
-    (define (parse-arrow-type t)
-      (let loop ((args '()) (t t))
-	(match t with
-	  ((sexp:symbol '->) result-type) -> (arrow (parse-type result-type) args)
-	  (arg . rest) -> (loop (list:cons (parse-type arg) args) rest)
-	  () -> (impossible)
-	  )))
+  (define (parse-arrow-type t)
+    (let loop ((args '()) (t t))
+      (match t with
+	((sexp:symbol '->) result-type) -> (arrow (parse result-type) args)
+	(arg . rest) -> (loop (list:cons (parse arg) args) rest)
+	() -> (impossible)
+	)))
   
-    (define parse-predicate
-      ((sexp:symbol pred) . rest) -> (type:pred pred (map parse-type rest))
-      x -> (error1 "malformed predicate" x))
+  (define parse-predicate
+    ((sexp:symbol p) . rest) -> (pred p (map parse rest))
+    x -> (error1 "malformed predicate" x))
 
-    (define parse-list
-      ((sexp:symbol 'quote) (sexp:symbol tvar)) -> (get-tvar tvar)
-      ((sexp:symbol 'quote) . x)  -> (error1 "malformed type?" x)
-      l -> (if (arrow-type? l)
-	       (parse-arrow-type l)
-	       (parse-predicate l))
-      )
+  (define parse-list
+    ((sexp:symbol 'quote) (sexp:symbol tvar)) -> (get-tvar tvar)
+    ((sexp:symbol 'quote) . x)  -> (error1 "malformed type?" x)
+    l -> (if (arrow-type? l)
+	     (parse-arrow-type l)
+	     (parse-predicate l))
+    )
 
-    (match type with
+  (define (parse t)
+    (match t with
       (sexp:symbol sym)
       -> (match (alist/lookup base-types sym) with
 	   ;; known base type
 	   (maybe:yes t) -> t
 	   ;; allow nullary predicates
-	   (maybe:no) -> (type:pred sym '()))
+	   (maybe:no) -> (pred sym '()))
       (sexp:list l) -> (parse-list l)
-      _ -> (error1 "bad type" type))
-  
-    ))
+      _ -> (error1 "bad type" exp)))
 
-(define (test-types)
-  (print-type (parse-type (car (read-string "((list sexp) -> int)"))))
-  (newline)
-  (printn (get-tvars (parse-type (car (read-string "(thing 'a 'b (list 'a) (list 'b))")))))
+  (parse exp)
   )
 
-;(test-types)
+(define (parse-type exp)
+  (print-string (format "parsing type: " (p repr exp) "\n"))
+  (parse-type* exp (alist-maker)))
+
+(define (test-types)
+  (let ((t0 (parse-type (car (read-string "((list sexp) -> int)"))))
+	(t1 (parse-type (car (read-string "(thing 'a 'b (list 'a) (list 'b))"))))
+	(t2 (parse-type (car (read-string "'a"))))
+	)
+    
+    (printn t0)
+    (print-string (type-repr t0))
+    (newline)
+    (print-string (type-repr t1))
+    (newline)
+    (print-string (type-repr t2))
+    (newline)
+    (printn (get-tvars t1))
+    ))
+
+;; uncomment to test
+;; (include "self/lisp_reader.scm")
+;; (include "lib/counter.scm")
+;; (include "lib/alist2.scm")
+;; (test-types)
