@@ -47,12 +47,17 @@ class constructor:
 
 class record:
     def __init__ (self, pairs):
-        self.pairs = pairs
+        self.pairs = []
+        for name, val in pairs:
+            # for now, ignore ... in patterns
+            if name != '...':
+                self.pairs.append ((name, val))
+        # keep 'em sorted
+        self.pairs.sort (lambda a,b: cmp (a[0], b[0]))
     def __repr__ (self):
         l = []
         for i in range (len (self.pairs)):
             name, sub = self.pairs[i]
-            l.append ('%s=%r' % (name, sub))
         return '{%s}' % (' '.join (l))
 
 # bad match
@@ -131,7 +136,9 @@ class compiler:
 
     def match (self, vars, rules, default):
         #print '-------- match -------------'
-        #pp ((vars, rules, default))
+        #print vars
+        #pp (rules)
+        #pp (default)
         # the empty rule
         if not vars:
             if len(rules):
@@ -142,8 +149,7 @@ class compiler:
         # if every rule begins with a variable
         # apply if every rule begins with a variable
         if self.first_pats_are (rules, variable):
-            vars, rules, default = self.variable_rule (vars, rules, default)
-            return self.match (vars, rules, default)
+            return self.variable_rule (vars, rules, default)
         # if every rule is a constructor (i.e., no variables)
         if self.first_pats_are (rules, constructor):
             return self.constructor_rule (vars, rules, default)
@@ -173,7 +179,7 @@ class compiler:
         rules0 = []
         for pats, code in rules:
             rules0.append ((pats[1:], self.subst (var, pats[0].name, code)))
-        return vars, rules0, default
+        return self.match (vars, rules0, default)
 
     def fatbar (self, e1, e2):
         if e1 == FAIL:
@@ -257,11 +263,8 @@ class compiler:
 
     def record_rule (self, vars, rules, default):
 
-        # XXX do sanity checks on record rules, sort, etc...
         def get_sig (pat):
-            sig = [x[0] for x in pat.pairs]
-            sig.sort()
-            return sig
+            return [x[0] for x in pat.pairs]
 
         # sanity check
         sig = get_sig (rules[0][0][0])
@@ -293,10 +296,6 @@ class compiler:
             else:
                 groups.append ([(pats,code)])
                 last = pats[0]
-        # the constant rule should never have a default case of ERROR, that indicates
-        #   an incomplete match.
-        #if default is ERROR:
-        #    raise IncompleteMatch
         while groups:
             group = groups.pop()
             rules0 = []
@@ -308,7 +307,14 @@ class compiler:
                 comp_fun = 'string=?'
             else:
                 comp_fun = 'eq?'
-            default = ['if', [comp_fun, pats[0].value, vars[0]], self.match (vars[1:], rules0, default), default]
+            # we use fatbar here to avoid code duplication, which
+            #  can easily lead to exponential code explosion.
+            default = self.fatbar (
+                ['if', [comp_fun, pats[0].value, vars[0]],
+                 self.match (vars[1:], rules0, FAIL),
+                 FAIL],
+                default
+                )
         return default
                 
     def mixture_rule (self, vars, rules, default):
