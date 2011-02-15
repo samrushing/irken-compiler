@@ -1,6 +1,8 @@
 
 ;; should trigger a error for incomplete match
 
+(datatype bool (:true) (:false))
+
 (datatype thing
   (:one)
   (:two)
