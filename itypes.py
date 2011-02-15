@@ -104,8 +104,6 @@ def base_n (n, base, digits):
             break
     return ''.join (s)
 
-atv = {}
-
 class t_var (_type):
     next = None
     rank = -1
@@ -114,14 +112,12 @@ class t_var (_type):
     counter = 1
     in_u = False
     node = None
-    #val = None
     code = 'v'
     mv = None
     def __init__ (self):
         _type.__init__ (self)
         self.id = t_var.counter
         t_var.counter += 1
-        atv[repr(self)] = self
     def __repr__ (self):
         return base_n (self.id, len(self.letters), self.letters)
 
@@ -231,25 +227,9 @@ def abs():
 def pre (x):
     return t_predicate ('pre', (x,))
 
-amv = {}
-
 # used to represent equirecursive types ('moo' is a pun on the 'μ' notation).
-class moo_var (_type):
-    counter = 1
-    letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    code = 'm'
-    def __init__ (self):
-        _type.__init__ (self)
-        # this id is probably redundant, given the presence of a real tvar here.
-        self.id = moo_var.counter
-        moo_var.counter += 1
-        self.tvar = t_var()
-        amv[repr(self)] = self
-    def __repr__ (self):
-        return '%s.%r' % (base_n (self.id, len(self.letters), self.letters), self.tvar)
-
-def moo (mvar, x):
-    return t_predicate ('moo', (mvar, x))
+def moo (tv, x):
+    return t_predicate ('moo', (tv, x))
 
 def get_record_sig (t):
     if is_pred (t, 'moo'):
