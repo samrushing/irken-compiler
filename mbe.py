@@ -97,9 +97,18 @@ def assoc (key, pairs):
             return v
     return False
 
+gensym_counter = 0
+
+def gensym (prefix='g'):
+    global gensym_counter
+    r = gensym_counter
+    gensym_counter += 1
+    return '%s%d' % (prefix, r)
+
 def expand_pattern (p, r):
     # p = pattern
     # r = var bindings
+    newsyms = {}
     if is_ellipsis (p):
         p0 = p[0]
         nestings = get_ellipsis_nestings (p0)
@@ -122,11 +131,31 @@ class macro:
         self.name = name
         self.patterns = patterns
 
+    def gen_syms (self, out_pat):
+        "replace all $var in output using gensym"
+        newsyms = {}
+        def p (exp):
+            if is_a (exp, list):
+                return [ p(x) for x in exp ]
+            elif is_a (exp, str):
+                if exp.startswith ('$'):
+                    if newsyms.has_key (exp):
+                        r = newsyms[exp]
+                    else:
+                        r = gensym ('mbe_' + exp[1:] + '_')
+                        newsyms[exp] = r
+                    return r
+                else:
+                    return exp
+            else:
+                return exp
+        return p (out_pat)
+
     def apply (self, exp):
         for in_pat, out_pat in self.patterns:
             if matches_pattern (in_pat, exp):
                 r = get_bindings (in_pat, exp)
-                return expand_pattern (out_pat, r)
+                return expand_pattern (self.gen_syms (out_pat), r)
         else:
             raise MatchError ("no matching clause", exp)
 
