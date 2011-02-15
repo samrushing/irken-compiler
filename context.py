@@ -14,6 +14,7 @@ class context:
     optimize = False
     force_32 = False
     print_types = False
+    funsizes = False
 
     def __init__ (self):
         self.datatypes = {}
