@@ -1,0 +1,7 @@
+6(5 4 3)
+3
+#\B
+#\A
+(#f #t)
+"stack underflow"
+#u

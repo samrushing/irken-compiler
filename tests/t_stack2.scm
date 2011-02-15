@@ -1,0 +1,30 @@
+;; -*- Mode: Irken -*-
+
+;; test lib/stack2.scm
+
+(include "lib/core.scm")
+(include "lib/pair.scm")
+(include "lib/stack2.scm")
+
+(let ((s0 (new-stack))
+      (s1 (new-stack))
+      (s2 (new-stack))
+      )
+  (s0::push 3)
+  (s0::push 4)
+  (s1::push #t)
+  (s1::push #f)
+  (s0::push 5)
+  (s0::push 6)
+  (print (s0::pop))
+  (printn (s0::get))
+  (s2::push #\A)
+  (printn (s0::len))
+  (s1::pop)
+  (s1::pop)
+  (s2::push #\B)
+;;  (s1::pop)
+  (printn (s2::pop))
+  (printn (s2::pop))
+  (printn (s1::get))
+  )
