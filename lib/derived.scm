@@ -25,15 +25,17 @@
   (let ((name val) ...) body1 body2 ...)
   -> (let_splat ((name val) ...) body1 body2 ...)
 
-  ;; named let
-;;   (let tag ((name val) ...) body1 body2 ...)
-;;   -> (letrec ((tag (lambda (name ...) body1 body2 ...)))
-;;        (tag val ...))
+  ;; named let, strict version
+  ;; http://groups.google.com/group/comp.lang.scheme/msg/3e2d267c8f0ef180
+  ;; bad: this causes all recursive functions to 'escape' and thus lose tr_call!
+  ;;   (let tag ((name val) ...) body1 body2 ...)
+  ;;   -> ((letrec ((tag (lambda (name ...) body1 body2 ...)))
+  ;; 	tag) val ...)
 
-  ;; strict version, see http://groups.google.com/group/comp.lang.scheme/msg/3e2d267c8f0ef180
+  ;; not-strict version
   (let tag ((name val) ...) body1 body2 ...)
-  -> ((letrec ((tag (lambda (name ...) body1 body2 ...)))
-	tag) val ...)
+  -> (letrec ((tag (lambda (name ...) body1 body2 ...)))
+       (tag val ...))
 
   )
 
@@ -46,6 +48,21 @@
 			  (begin e1 e2 ...)
 			  (cond c1 c2 ...)))
 
+(defmacro while
+  (while test body ...)
+  -> (let $loop ()
+       (if test
+	   (begin body ... ($loop))
+	   #u)))
+
+(defmacro for-range
+  (for-range vname num body ...)
+  -> (let (($n num))
+       (let $loop ((vname 0))
+	 (if (= vname $n)
+	     #u
+	     (begin body ...
+		    ($loop (+ vname 1)))))))
 
 ;; because we have pattern matching, we don't really *need* <case>.
 ;; however, without or-patterns it's not quite as compact.
