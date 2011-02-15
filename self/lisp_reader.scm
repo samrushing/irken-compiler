@@ -8,8 +8,10 @@
 (include "lib/frb.scm")
 (include "lib/symbol.scm")
 
+;; XXX consider rewriting with more experience
+
 (datatype field
-  (:t string sexp)
+  (:t symbol sexp)
   )
 
 ;; an s-expression datatype.
@@ -295,7 +297,7 @@
 		 (ch (peek)))
 	(if (field? ch)
 	    (loop (list:cons ch result) (skip-peek))
-	    (list->string (reverse result)))))
+	    (string->symbol (list->string (reverse result))))))
 
     (define (read-int s n)
       (let loop ((i 0)
@@ -332,11 +334,39 @@
 (define (read-string s)
   (reader (string-reader s)))
 
+(define sexp->symbol
+  (sexp:symbol s) -> s
+  x -> (error1 "sexp->symbol" x))
+
+;; utility functions
+(define field=?
+  (field:t sa va) (field:t sb vb)
+  -> (and (eq? sa sb) (sexp=? va vb)))
+
+(define sexp=?
+  (sexp:undef) (sexp:undef)           -> #t
+  (sexp:symbol a) (sexp:symbol b)     -> (eq? a b)
+  (sexp:bool a) (sexp:bool b)         -> (eq? a b)
+  (sexp:int a) (sexp:int b)           -> (= a b)
+  (sexp:string a) (sexp:string b)     -> (string=? a b)
+  (sexp:char a) (sexp:char b)         -> (char=? a b)
+  (sexp:list l0) (sexp:list l1)       -> (every2? sexp=? l0 l1)
+  (sexp:vector a) (sexp:vector b)     -> (every2? sexp=? a b)
+  (sexp:record a) (sexp:record b)     -> (every2? field=? a b)
+  (sexp:cons a0 a1) (sexp:cons b0 b1) -> (and (eq? a0 b0) (eq? a1 b1))
+  (sexp:attr a0 a1) (sexp:attr b0 b1) -> (and (sexp=? a0 b0) (eq? a1 b1))
+  _ _ -> #f
+  )
+
+(define (sexp1 sym rest)
+  ;; build an s-expression with <sym> at the front followed by <rest>
+  (sexp:list (list:cons (sexp:symbol sym) rest)))
+
 (define unread-fields
   () -> #u
   ((field:t name val) . tl)
   -> (begin
-       (print-string name)
+       (print name)
        (print-string "=")
        (unread val)
        (print-string " ")
@@ -367,6 +397,66 @@
   (sexp:attr lhs a) -> (begin (unread lhs) (print-string ".") (print a))
   )
 
+(define (unreadn x)
+  (begin (unread x) (newline)))
+
+(define repr-field
+  (field:t name val) -> (format (sym name) "=" (p repr val)))
+
+(define repr
+  (sexp:list l)     -> (format "(" (join repr " " l) ")")
+  (sexp:symbol s)   -> (format (sym s))
+  (sexp:string s)   -> (format "\"" s "\"") ;; XXX escape backslashes...
+  (sexp:char ch)    -> (format "#\\" (char ch))
+  (sexp:bool #t)    -> "#t"
+  (sexp:bool #f)    -> "#f"
+  (sexp:int n)      -> (format (int n))
+  (sexp:undef)      -> "#u"
+  (sexp:vector v)   -> (format "#(" (join repr " " v) ")")
+  (sexp:record fl)  -> (format "{ " (join repr-field " " fl) "}")
+  (sexp:cons dt c)  -> (format (if (eq? dt 'nil) "" (symbol->string dt)) ":" (sym c))
+  (sexp:attr lhs a) -> (format (p repr lhs) "." (sym a))
+  )
+
+(define indent
+  0 -> #t
+  n -> (begin (print-string "  ") (indent (- n 1))))
+
+(define pp-size-field
+  (field:t name val) -> (+ (+ (string-length (symbol->string name))
+			      1) (pp-size val)))
+(define pp-size
+  (sexp:list l)     -> (foldr + (+ 1 (length l)) (map pp-size l))
+  (sexp:symbol s)   -> (string-length (symbol->string s))
+  (sexp:string s)   -> (+ 2 (string-length s)) ;; escaped backslashes!
+  (sexp:char ch)    -> (string-length (repr (sexp:char ch)))
+  (sexp:bool #t)    -> 2
+  (sexp:bool #f)    -> 2
+  (sexp:int n)      -> (string-length (int->string n))
+  (sexp:undef)      -> 2
+  (sexp:vector v)   -> (foldr + (+ 2 (length v)) (map pp-size v))
+  (sexp:record fl)  -> (foldr + (+ (length fl) 1) (map pp-size-field fl))
+  (sexp:cons dt c)  -> (+ 1 (+ (string-length (symbol->string dt)) (string-length (symbol->string c))))
+  (sexp:attr lhs a) -> (+ 1 (+ (pp-size lhs) (string-length (symbol->string a))))
+  )
+
+(define (pp d exp)
+  (let ((size (pp-size exp)))
+    (if (< size 80)
+	(print-string (repr exp))
+	(match exp with
+	  (sexp:list ())	-> (print-string "()")
+	  (sexp:list (hd . tl)) -> (begin (print-string "(")
+					  (pp d hd)
+					  (for-each
+					   (lambda (x)
+					     (newline)
+					     (indent (+ d 1))
+					     (pp (+ d 1) x)) tl)
+					  (print-string ")"))
+	  ;; XXX complete for vector & record.
+	  _ -> (print-string (repr exp))))))
+
 (define (test-file)
   (let ((t (read-file
 	    (if (> sys.argc 1)
@@ -384,6 +474,13 @@
    (read-string "(datatype list (:cons 'a (list 'a)) (:nil))")
    ))
 
+(define (test-sexp=?)
+  (printn (sexp=? (car (read-string "(thing (1 2 3) {a=1 b=#\\A} #t x.y)"))
+		  (car (read-string "(thing (1 2 3) {a=1 b=#\\A} #t x.y)"))))
+  (printn (sexp=? (car (read-string "(thing (1 2 3) {a=1 b=#\\A} #t x.y)"))
+		  (car (read-string "(thing (1 2 3) {a=1 b=#\\A} #t x.z)"))))
+  )
+
 ;;(test-lisp-reader)
 ;;(test-string)
-
+;;(test-sexp=?)
