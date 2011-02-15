@@ -9,6 +9,7 @@
 (define O_WRONLY (%%cexp int "O_WRONLY"))
 (define O_RDWR   (%%cexp int "O_RDWR"))
 (define O_CREAT  (%%cexp int "O_CREAT"))
+(define O_TRUNC  (%%cexp int "O_TRUNC"))
 
 (define STDIN_FILENO  (%%cexp int "STDIN_FILENO"))
 (define STDOUT_FILENO (%%cexp int "STDOUT_FILENO"))
@@ -57,7 +58,7 @@
     end = 0 })
 
 (define (file/open-write path create? mode)
-  { fd = (open path (if create? (+ O_WRONLY O_CREAT) O_WRONLY) mode)
+  { fd = (open path (logior O_TRUNC (if create? (logior O_WRONLY O_CREAT) O_WRONLY)) mode)
     buf = (make-string 16384)
     pos = 0 })
 
