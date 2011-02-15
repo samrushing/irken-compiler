@@ -97,6 +97,20 @@
 	       (if (< alen blen) -1 1)))
 	  (else cmp))))
 
+(define (string-find a b)
+  ;; find <a> in <b>
+  (let ((alen (string-length a))
+	(blen (string-length b)))
+    (if (< blen alen)
+	-1
+	(let loop ((i 0) (j 0))
+	  (cond ((= j alen) (- i j))
+		((= i blen) -1)
+		((eq? (string-ref a j) (string-ref b i))
+		 (loop (+ i 1) (+ j 1)))
+		(else
+		 (loop (+ i 1) 0)))))))
+
 (define (string=? s1 s2)
   (= (string-compare s1 s2) 0))
 (define (string<? s1 s2)
@@ -168,8 +182,13 @@
   (formatl (<bool> b) item ...)	      -> (list:cons (bool->string b) (formatl item ...))
   (formatl (<hex> n) item ...)	      -> (list:cons (int->hex-string n) (formatl item ...))
   (formatl (<sym> s) item ...)	      -> (list:cons (symbol->string s) (formatl item ...))
+  (formatl (<joins> l) item ...)      -> (list:cons (string-concat l) (formatl item ...))
+  ;; map <p> over list <l>, separate each with <sep>
   (formatl (<join> p sep l) item ...) -> (list:cons (string-join (map p l) sep) (formatl item ...))
   (formatl (<string> s) item ...)     -> (list:cons s (formatl item ...))
+  ;; fun <p> converts <x> to a string
+  (formatl (<p> p x) item ...)        -> (list:cons (p x) (formatl item ...))
+  ;; anything else is already a string
   (formatl x item ...)		      -> (list:cons x (formatl item ...))
   )
 
