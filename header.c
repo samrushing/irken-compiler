@@ -227,7 +227,7 @@ dump_object (object * ob, int depth)
       break;
     case TC_USERIMM:
       // a user immediate unit-type...
-      fprintf (stdout, "<u%ld>", (((pxll_int)ob)>>8));
+      fprintf (stdout, "<u%" PRIuPTR ">", (((pxll_int)ob)>>8));
     }
   }
   return (object *) PXLL_UNDEFINED;
@@ -490,7 +490,7 @@ vm (int argc, char * argv[])
     size = freep - start;
     offset = (pxll_int) heap0;
     // XXX add endian indicator...
-    fprintf (dump_file, "(pxll image %ld %p)\n", sizeof (pxll_int), start);
+    fprintf (dump_file, "(pxll image %" PRIuPTR " %p)\n", sizeof (pxll_int), start);
     fwrite (&offset, sizeof(pxll_int), 1, dump_file);
     fwrite (&size, sizeof(pxll_int), 1, dump_file);
     fwrite (start, sizeof(pxll_int), size, dump_file);
