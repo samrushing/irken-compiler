@@ -341,14 +341,8 @@ class c_backend:
                         result.append ('((pxll_string*)(%s))' % (args[i],))
                     else:
                         raise ValueError ("unknown 'raw' type: %r" % (t,))
-                elif itypes.is_pred (t, 'arrow'):
-                    # function type
+                elif itypes.is_pred (t, 'arrow', 'vector', 'symbol', 'continuation'):
                     result.append (args[i])
-                elif itypes.is_pred (t, 'vector'):
-                    # vectors
-                    result.append (args[i])
-                elif itypes.is_pred (t, 'symbol'):
-                    result.append (args[i])                    
                 else:
                     raise ValueError ("unexpected predicate in cexp type sig: %r" % (t,))
             elif is_a (t, itypes.t_var):
@@ -615,7 +609,7 @@ class c_backend:
         # getting the typecode of an unknown object involves three steps:
         # 1) is it an integer? (check the lowest bit, return TC_INT == 0)
         # 2) is it an immediate (check the next lowest bit, return ob)
-        # 3) it's a pointer (indirect through it, return (*ob)&0xff
+        # 3) it's a pointer (indirect through it, return (*ob)&0xff)
         #
         # if a datatype is all-immediate, or all-tuple, then using a
         # specific form of get_typecode(), can often lead to
@@ -625,12 +619,15 @@ class c_backend:
             return 'get_typecode'
         alts = dt.alts
         arity = len (alts[0][1])
+        # dunno what I'm thinking here... how does differing arity trigger a requirement
+        #  to check for int?
         for i in range (1, len (alts)):
             tag, prod = alts[i]
             if len(prod) != arity:
                 return 'get_case_noint'
         if arity == 0:
-            # no function needed, compare the value directly
+            # all are of the same zero arity, and no function is
+            # needed, just compare the value directly.
             return '(pxll_int)'
         else:
             return 'get_case_tup'
@@ -646,6 +643,7 @@ class c_backend:
         else:
             get_typecode = self.which_typecode_fun (dt)
             self.write ('switch (%s (r%d)) {' % (get_typecode, test_reg))
+            # XXX re-order tags to put immediate tests first!
             for i in range (len (tags)):
                 label = tags[i]
                 tag = dt.tags[label]
