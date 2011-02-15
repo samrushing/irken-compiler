@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+#include <inttypes.h>
 
 // it's arguable that there's no need for this include file, that it should
 //   just be placed at the top of header.c.
