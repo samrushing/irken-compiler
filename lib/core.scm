@@ -117,10 +117,7 @@
 ;; think of it as a placeholder for something better to come.
 (define (error x)
   (printn x)
-  (%%cexp (-> 'a) "goto Lreturn")
-  ;; NOTREACHED
-  ;; note: keep the 'a there... it allows a call to <error> to take any type...
-  (%%cexp (-> 'a) "PXLL_UNDEFINED")
+  (%%cexp ('a -> 'b) "PXLL_UNDEFINED; result = %0; goto Lreturn" x)
   )
 
 (define (error1 msg ob)
@@ -129,17 +126,28 @@
   (print-string " ")
   (error ob))
 
+(define (error2 msg ob0 ob1)
+  (newline)
+  (print-string msg)
+  (print-string "\n\t")
+  (print ob0)
+  (print-string "\n\t")
+  (print ob1)
+  (print-string "\n")
+  (%%cexp (-> 'a) "PXLL_UNDEFINED; goto Lreturn")
+  )
+
 (define (impossible)
-  (error "impossible"))
+  (error "Why, sometimes I've believed as many as six impossible things before breakfast."))
 
 (define (id x) x)
 
-(define (getcc)
-  (%%cexp (-> continuation) "k"))
-
-;; using 'b here - is that hand-waving?
-(define (putcc k r)
-  (%%cexp (continuation 'a -> 'b) "(k=%0, %1)" k r))
+;; these must be macros (rather than functions) so that call/cc etc
+;;   will still work if inlining is turned off.
+(defmacro getcc
+  (getcc) -> (%%cexp (-> (continuation 'a)) "k"))
+(defmacro putcc
+  (putcc k r) -> (%%cexp ((continuation 'a) 'a -> 'b) "(k=%0, %1)" k r))
 
 ;; the '^' prefix tells the compiler to never inline this
 ;;  function - which would not work correctly otherwise
@@ -148,7 +156,19 @@
 
 (define (^call/cc p)
   (let ((k (getcc)))
-    (p (lambda (r) (putcc k r)))))
+    (p (lambda (r) (putcc k r)))
+    ))
+
+;; this won't work because it captures the wrong continuation
+;; (defmacro let/cc
+;;   (let/cc name body ...)
+;;   -> (let ((k (getcc))
+;; 	   (name (lambda (r) (putcc k r))))
+;;        body ...))
+
+(defmacro let/cc
+  (let/cc name body ...)
+  -> (^call/cc (lambda (name) body ...)))
 
 ;; avoid forcing the user to use the funky name
 (define call/cc ^call/cc)
