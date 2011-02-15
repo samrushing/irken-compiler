@@ -20,9 +20,9 @@ def build_dependency_graph (root):
                 search (sub, current_fun)
     g['top'] = set()
     search (root, g['top'])
-    #from pprint import pprint as pp
-    #pp (g)
-    #raw_input()
+#     from pprint import pprint as pp
+#     pp (g)
+#     raw_input()
     return g
 
 def transpose (g):
@@ -62,7 +62,9 @@ def strongly (g):
         s.append (u)
 
     # walk the graph forward, pushing finished nodes onto <s>
-    for u in g.keys():
+    keys = g.keys()
+    keys.sort()
+    for u in keys:
         if u not in visited:
             visit0 (u)
         
@@ -84,9 +86,11 @@ def strongly (g):
             r1 = set()
             visit1 (u)
             # a strongly-connected component, collect it.
+            r1 = list (r1)
+            r1.sort()
             r0.append (r1)
-
-    # I think this puts the subcomponents in topological order.
+            
+    # this puts the subcomponents in topological order.
     r0.reverse()
     # make a handy map from vertex => component
     map = {}
@@ -94,6 +98,8 @@ def strongly (g):
         for v in component:
             map[v] = component
     return r0, map
+
+# why doesn't this use context.scc_map??
 
 def partition_fix (exp, scc_graph):
     # partition the functions in this fix into sets of mutually-recursive functions
@@ -103,8 +109,7 @@ def partition_fix (exp, scc_graph):
     for i in range (len (vardefs)):
         name_map[vardefs[i].name] = [i, False]
     names = [x.name for x in vardefs]
-    inits = exp.inits
-    n = len (inits)
+    n = len (names)
     leftover = range (n)
     parts = [[]]
     for component in scc_graph:
@@ -127,6 +132,10 @@ def partition_fix (exp, scc_graph):
     # within each part, retain original source order
     for part in parts:
         part.sort()
+    #print exp.names
+    #for part in parts:
+    #    print [vardefs[i] for i in part]
+    #raw_input()
     return parts
 
 def reorder_fix (exp, scc_graph):
