@@ -22,9 +22,18 @@
 (define (test3)
   (thing:t {x=4 y=#\a}))
 
+;; now match against them
+(define bar
+  {y=y x=x ...} -> (+ x 1))
+
+(define foo
+  (thing:t r) -> (bar r))
+
 (printn (test1))
 (printn (test2))
 (printn (test3))
-
+(printn (foo (test1)))
+(printn (foo (test2)))
+(printn (foo (test3)))
 
 
