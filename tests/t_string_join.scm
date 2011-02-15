@@ -4,3 +4,4 @@
 
 (printn (string-join '("quick" "brown" "fox") " "))
 (printn (string-join '("%%vcon" "list" "cons") "/"))
+(printn (string-join '("thing") ","))
