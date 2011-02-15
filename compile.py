@@ -77,6 +77,15 @@ def compile_file (f, name, c):
     if c.verbose:
         exp4.pprint()
 
+    if c.funsizes:
+        sizes = []
+        for node in exp4:
+            if node.is_a ('function'):
+                sizes.append ((node.size, node.name))
+        sizes.sort()
+        for s, n in sizes[-40:]:
+            print s, n
+
     print 'cps...'
 
     ic = cps.cps (c, verbose=c.verbose)
@@ -173,6 +182,7 @@ if __name__ == '__main__':
     c.no_range = argtest ('-nrc')
     c.print_types = argtest ('-pt')
     c.profile  = argtest ('-p')
+    c.funsizes = argtest ('-fs')
 
     if len (sys.argv) != 2:
         W = sys.stderr.write
@@ -187,6 +197,7 @@ if __name__ == '__main__':
         W ("   -ss : single-step the type solver\n")
         W ("   -tt : 'type twice': run the type solver before inlining as well as after.\n")
         W ("   -nrc : no range checks\n")
+        W ("   -fs : print function sizes\n")
         #W ("   -pt : print types\n")
     else:
         name = sys.argv[1]
