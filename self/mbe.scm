@@ -21,7 +21,7 @@
   -> #t
   ;; ellipsis pattern
   (p0 (sexp:symbol '...)) el
-  -> (every (lambda (x) (matches-pattern? p0 x)) el)
+  -> (every? (lambda (x) (matches-pattern? p0 x)) el)
   ;; any other list
   (p0 . pl) (e0 . el)
   -> (and (matches-pattern? p0 e0)
@@ -66,11 +66,11 @@
 (define intersect?
   (sexp:symbol v) (sexp:symbol y) -> (eq? v y)
   (sexp:list vl)  (sexp:list yl)
-  -> (some (lambda (vi)
-	     (some (lambda (yj)
-		     (intersect? vi yj))
-		   yl))
-	   vl)
+  -> (some? (lambda (vi)
+	      (some? (lambda (yj)
+		       (intersect? vi yj))
+		     yl))
+	    vl)
   _ _ -> #f
   )
 
