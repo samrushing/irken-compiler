@@ -41,6 +41,7 @@ class analyzer:
         # find aliases
         self.find_aliases (root)
         # perform simple transformations
+        root = self.optimize_nvcase (root)
         root = self.transform (root, 0)
         root = self.transform (root, 1)
         self.find_recursion (root)
@@ -48,9 +49,7 @@ class analyzer:
             print 'calls:'
             self.print_calls (root)
         self.find_applications (root)
-        
         self.escape_analysis (root)
-
         if self.inline:
             # XXX this is already being done in typing, let's combine them.
             self.call_graph = self.build_call_graph (root)
@@ -528,6 +527,12 @@ class analyzer:
                         return node
                 elif rator.is_a ('function'):
                     node.function = rator
+                    # XXX this isn't *always* a good idea, because
+                    #   we might duplicate the args.  This needs to be smarter. [could
+                    #   we just put the smarts in let_splat and turn this into that?]
+                    #  *or* we can look at the size of the args and the ref-count of
+                    #   each variable, and in some cases turn it into a let (hoping for
+                    #   let-reg).
                     result = self.inline_application (node)
                     if result.is_a ('application'):
                         #print 'inlining lambda...'
@@ -781,3 +786,82 @@ class analyzer:
             return is_leaf
 
         exp.leaf = search (exp)
+
+    def optimize_nvcase (self, root):
+
+        # Sometimes the match compiler will output nvcase expressions
+        #   for the same variable embedded inside each other.  Keep track
+        #   of which alts have already been tested, and eliminate the leaf
+        #   nvcase expressions when possible.  This has the nice side-effect
+        #   of eliminating erroneous %%match-error calls.
+
+        def lookup (name0, fat_env):
+            result = []
+            while fat_env:
+                (name1, tags), fat_env = fat_env
+                if name0 == name1:
+                    result.extend (tags)
+            return result
+
+        def search (exp, fat_env):
+            fatbar = False
+            if exp.is_a ('primapp') and exp.name == '%%fatbar':
+                fatbar = True
+            elif exp.is_a ('nvcase') and exp.value.is_a ('varref'):
+                # only trigger this when exp.val is a varref! [which cannot
+                # happen with the match compiler, only a manual nvcase will
+                # fail this test]
+                # ok, which alts are examined at this level?
+                name = exp.value.name
+                dt = self.context.datatypes[exp.vtype]
+                if len (exp.tags) < len (dt.tags):
+                    # this nvcase is not exhaustive.  but have we already looked at the
+                    # others?
+                    already = lookup (name, fat_env)
+                    if len(already) + len (exp.tags) == len (dt.tags):
+                        # ok, with the upstream nvcases this one *is* exhaustive.
+                        # so we can get rid of the else clause, and if there's only
+                        # a single alt to test, we can get rid of the nvcase too, leaving
+                        # only its alt body.
+                        if len (exp.tags) == 1:
+                            # remove the whole nvcase node.
+                            assert (len (exp.subs) == 3)
+                            assert (exp.subs[2].is_a ('primapp') and exp.subs[2].name in ('%%match-error', '%%fail'))
+                            exp = exp.subs[1]
+                            #print 'simplified nvcase completely'
+                        else:
+                            # just delete the %%match-error/%%fail
+                            assert (exp.subs[-1].is_a ('primapp') and exp.subs[-1].name in ('%%match-error', '%%fail'))
+                            exp.size -= exp.subs[-1].size
+                            del exp.subs[-1]
+                    else:
+                        # ok, still not exhaustive.  extend fat_env with this new tag.
+                        fat_env = ((name, exp.tags), fat_env)
+                else:
+                    # this nvcase is exhaustive.  no need to extend the fat_env
+                    pass
+            else:
+                pass
+            # fatbar is tricky here, because it can represent a sequence of tests,
+            #   but in such a way that the test performed is *not* a direct ancestor
+            #   of later tests... therefore when maintaining fat_env, we treat fatbar
+            #   specially, and preserve the interior version of fat_env for the second
+            #   test.  [theoretically this hack could be avoided if we had a variant of
+            #   fatbar that correctly maintained the parent/child relationship between
+            #   earlier and later tests... but this would require code duplication, the
+            #   elimination of which is the whole *purpose* of fatbar]
+            new_subs = []
+            size = 1
+            for sub in exp.subs:
+                new_sub, fat_env2 = search (sub, fat_env)
+                if fatbar:
+                    # if we are in a fatbar, preserve the value of fat_env for the second branch.
+                    fat_env = fat_env2
+                new_subs.append (new_sub)
+                size += new_sub.size
+            exp.subs = new_subs
+            exp.size = size
+            return exp, fat_env
+        
+        root2, fat_env = search (root, None)
+        return root2
