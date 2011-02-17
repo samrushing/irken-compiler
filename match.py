@@ -58,6 +58,7 @@ class record:
         l = []
         for i in range (len (self.pairs)):
             name, sub = self.pairs[i]
+            l.append ("%s=%r" % (name, sub))
         return '{%s}' % (' '.join (l))
 
 # bad match
@@ -276,11 +277,10 @@ class compiler:
         vars0 = ['%s_%s' % (vars[0], field) for field in sig]
         rules0 = []
         for pats, code in rules:
-            assert (len (pats) == 1)
             pats0 = [ x[1] for x in pats[0].pairs ]
-            rules0.append ((pats0, code))
+            rules0.append ((pats0 + pats[1:], code))
         bindings = [ [vars0[i], '%s.%s' % (vars[0], sig[i])] for i in range (len (sig)) ]
-        return ['let', bindings, self.match (vars0, rules0, default)]
+        return ['let', bindings, self.match (vars0 + vars[1:], rules0, default)]
 
     def constant_rule (self, vars, rules, default):
         # This is a simplified version of the constructor rule.  Here I'm departing from the book,
