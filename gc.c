@@ -16,20 +16,16 @@ do_gc (int nroots)
   object * copy (object * p) {
     object * pp = (object *) *p;
     if (is_immediate (pp)) {
-      //fprintf (stderr, "copy I %x\n", pp);
       return pp;
     } else if (sitting_duck (pp)) {
       if (*pp == (object) GC_SENTINEL) {
         // pp points into to_space, return the forwarding address
-	//fprintf (stderr, "copy S %x\n", pp);
         return (object *) (*(pp+1));
       } else {
-        //uint8_t tc = GET_TYPECODE (*pp);
 	// p points at an object in from_space, copy it
 	object * addr = freep;
 	pxll_int length = GET_TUPLE_LENGTH (*pp);
 	pxll_int k;
-	//fprintf (stderr, "copy T tc=0x%x len=%d %p\n", tc, length, pp);
 	// copy tag, children
 	for (k=0; k < length+1; k++) {
 	  *freep++ = *pp++;
@@ -66,20 +62,17 @@ do_gc (int nroots)
       
   while (scan < freep) {
     if (IMMEDIATE (*scan)) {
-      //fprintf (stderr, "I %x\n", *scan);
       scan++;
     } else {
       object * p = scan + 1;
       unsigned char tc = GET_TYPECODE (*scan);
       pxll_int length = GET_TUPLE_LENGTH (*scan);
       pxll_int i;
-      //fprintf (stderr, "tc=0x%x p=%p len=%d\n", tc, p, length);
 
       switch (tc) {
 
       case TC_CLOSURE:
 	// closure = { tag, pc, lenv }
-	//fprintf (stderr, "C%d", length);
 	p++;			// skip pc
 	*p = copy (p); p++;	// lenv
 	scan += 3;
@@ -87,7 +80,6 @@ do_gc (int nroots)
 
       case TC_SAVE:
 	// save = { tag, next, lenv, pc, regs[...] }
-	//fprintf (stderr, "S%d", length);
 	*p = copy (p); p++;		// next
 	*p = copy (p); p++;		// lenv
 	p++;				// pc
