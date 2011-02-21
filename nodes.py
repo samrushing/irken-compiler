@@ -50,9 +50,7 @@ class node:
     #     of them.
 
     # generic flag
-    flag = False
     leaf = False
-    constructor = False
     escapes = False
 
     def __init__ (self, kind, params=(), subs=(), type=None):
