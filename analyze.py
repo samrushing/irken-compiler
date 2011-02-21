@@ -118,7 +118,6 @@ class analyzer:
         inits = node.subs[:-1]
         body = node.subs[-1]
         # this is generated often by vcase: (let (x <init>) x)
-        # XXX probably not true any more XXX
         if len(names) == 1 and body.is_a ('varref') and body.params == names[0].name:
             return inits[0]
         elif body.is_a ('let_splat'):
