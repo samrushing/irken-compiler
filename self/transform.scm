@@ -28,10 +28,10 @@
 
   (define (wrap-fix names inits body)
     (if (> (length names) 0)
-	(sexp:list (LIST (sexp:symbol 'fix)
-			 (sexp:list names)
-			 (sexp:list inits)
-			 body))
+	(sexp (sexp:symbol 'fix)
+	      (sexp:list names)
+	      (sexp:list inits)
+	      body)
 	body))
 
   (define (wrap-begin exps)
@@ -78,7 +78,7 @@
     (field:t name exp) -> (field:t name (expand exp)))
 
   (define (expand exp)
-    (print-string "expanding... ") (unread exp) (newline)
+    ;;(print-string "expanding... ") (unread exp) (newline)
     (match exp with
       (sexp:symbol _)	   -> exp
       (sexp:string _)	   -> exp
@@ -102,7 +102,7 @@
 	   -> (match (alist/lookup transform-table sym) with
 		(maybe:yes fun) -> (fun rands)
 		(maybe:no)	-> (match (alist/lookup context.macros sym) with
-				     (maybe:yes macro) -> (begin (print-string " --- macro-expand --- \n") (expand (macro.apply (sexp:list l))))
+				     (maybe:yes macro) -> (expand (macro.apply (sexp:list l)))
 				     (maybe:no)	       -> (sexp:list (list:cons rator (map expand rands)))))
 	   _ -> (sexp:list (map expand l)))))
 
@@ -182,32 +182,31 @@
   ;;
   
   (define (make-nvget dt label index value)
-    (sexp:list (LIST (sexp:symbol '%nvget)
-		     (sexp:list (LIST (sexp:cons dt label) (sexp:int index)))
-		     value)))
+    (sexp (sexp:symbol '%nvget)
+	  (sexp (sexp:cons dt label) (sexp:int index))
+	  value))
 
   (define expand-vcase
     ((sexp:symbol dt) value . alts)
     -> (split-alts
 	alts
 	(lambda (tags formals alts ealt?)
-	  (print-string "expand-vcase:\n")
-	  (printn tags)
-	  (printn formals)
-	  (for-each (lambda (x) (unread x) (newline)) alts)
-	  (printn ealt?)
 	  (let ((alts0
 		 (map-range
 		     i (length alts)
 		     (let ((alt-formals (nth formals i))
+			   (nformals (length alt-formals))
 			   (tag (nth tags i))
-			   (binds (map-range
-				      j (length alt-formals)
-				      ;; (f0 (%nvget (list:cons 0) value))
-				      (sexp:list
-				       (LIST (nth alt-formals j)
-					     (make-nvget dt tag j value)
-					     )))))
+			   (binds (let loop ((j 0)
+					     (r '()))
+				    (if (= j nformals)
+					(reverse r)
+					(match (nth alt-formals j) with
+					  (sexp:symbol '_) -> (loop (+ j 1) r)
+					  formal -> (loop (+ j 1)
+							  (list:cons
+							   (sexp formal (make-nvget dt tag j value))
+							   r)))))))
 		       (if (not (null? binds))
 			   ;; (let ((f0 (%nvget (list:cons 0) value))
 			   ;;       (f1 (%nvget (list:cons 1) value)))
@@ -218,14 +217,14 @@
 			   ;; body
 			   (nth alts i))))))
 	    (for-each (lambda (x) (unread x) (newline)) alts0)
-	    (sexp1 '%nvcase
-		   (LIST (sexp:symbol dt)
-			 (expand value)
-			 (sexp:list (map sexp:symbol tags))
-			 (sexp:list alts0)
-			 (match ealt? with
-			   (maybe:no) -> match-error
-			   (maybe:yes ealt) -> ealt)))
+	    (sexp (sexp:symbol '%nvcase)
+		  (sexp:symbol dt)
+		  (expand value)
+		  (sexp:list (map sexp:symbol tags))
+		  (sexp:list alts0)
+		  (match ealt? with
+		    (maybe:no) -> match-error
+		    (maybe:yes ealt) -> ealt))
 	  )))
     x -> (error1 "expand-vcase" x))
 
@@ -274,10 +273,6 @@
 
       (define (get-alt-scheme tag)
 	(let ((alt (alt-map::get-err tag "no such alt in datatype")))
-	  (print-string "get-alt-scheme: tag=") (printn tag)
-	  (print-string "get-alt-scheme: keys=") (printn (tvars::keys))
-	  (print-string "get-alt-scheme: values=") (printn (tvars::values))	  
-	  (print-string "get-alt-scheme: types=") (printn alt.types)
 	  (let ((dtscheme (pred name (tvars::values))))
 	    (:scheme (tvars::values) (arrow dtscheme alt.types)))))
 
@@ -306,10 +301,10 @@
 
   (define (make-constructor dt tag arity)
     (let ((args (map-range i arity (sexp:symbol (string->symbol (format "arg" (int i)))))))
-      (sexp:list (LIST (sexp:symbol 'function)
-		       (sexp:symbol (string->symbol (format (sym dt) ":" (sym tag))))
-		       (sexp:list args)
-		       (sexp:list (list:cons (sexp:cons dt tag) args))))))
+      (sexp (sexp:symbol 'function)
+	    (sexp:symbol (string->symbol (format (sym dt) ":" (sym tag))))
+	    (sexp:list args)
+	    (sexp:list (list:cons (sexp:cons dt tag) args)))))
 
   (define (make-alt tvars tag types)
     (let ((types (map (lambda (t) (parse-type* t tvars)) types))
@@ -323,10 +318,8 @@
     ((sexp:symbol name) . subs)
     -> (let ((tvars (alist-maker))
 	     (dt (make-datatype tvars name)))
-	 (print-string "parsing datatype " ) (print name) (newline)
 	 (for-each
 	  (lambda (sub)
-	    (print-string "sub=\n") (pp 0 sub) (newline)
 	    (match sub with
 	      (sexp:list ((sexp:cons 'nil tag) . types)) -> (dt.add (make-alt tvars tag types))
 	      x						 -> (error1 "malformed alt in datatype" x)))
@@ -353,20 +346,21 @@
     (match (compile-pattern context expand body) with
       (:pair vars body0)
       -> (:pair name
-		   (sexp:list (LIST (sexp:symbol 'function)
-				    (sexp:symbol name)
-				    (sexp:list (map sexp:symbol vars))
-				    body0)))))
+		   (sexp (sexp:symbol 'function)
+			 (sexp:symbol name)
+			 (sexp:list (map sexp:symbol vars))
+			 (expand body0)))))
 
   (define (parse-no-formals-define name body)
     (:pair name (sexp:list body)))
 
   (define (parse-normal-definition name formals body)
-    (:pair name (sexp:list (append (LIST (sexp:symbol 'function)
-					 (sexp:symbol name)
-					 (sexp:list formals))
-				   body))))
-
+    (:pair name (sexp (sexp:symbol 'function)
+		      (sexp:symbol name)
+		      (sexp:list formals)
+		      ;; note: expand-body returns one sexp
+		      (expand-body body))))
+  
   (define transform-table
     (literal
      (alist/make
