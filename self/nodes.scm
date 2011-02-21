@@ -33,7 +33,7 @@
 
 ;; given a list of nodes, add up their sizes (+1)
 (define (sum-size l)
-  (fold (lambda (n acc) (+ n.s acc)) 1 l))
+  (fold (lambda (n acc) (+ n.size acc)) 1 l))
 
 (define no-type (pred '? '()))
 
@@ -42,53 +42,83 @@
   _ -> #f
   )
 
-(define (node t subs)
-  {t=t subs=subs s=(sum-size subs) id=(node-counter.inc) type=no-type}
+;; a cleaner way to do this might be with an alist? (makes sense if
+;;   most flags are clear most of the time?)
+;; flags
+(define (node-get-flag node i) 
+  (bit-get node.flags i))
+(define (node-set-flag! node i)
+  (set! node.flags (bit-set node.flags i)))
+
+;; defined node flags
+(define NFLAG-RECURSIVE 0)
+(define NFLAG-ESCAPES   1)
+(define NFLAG-LEAF      2)
+
+(define (make-node t subs)
+  {t=t subs=subs size=(sum-size subs) id=(node-counter.inc) type=no-type flags=0}
   )
 
 (define (node/varref name)
-  (node (node:varref name) '()))
+  (make-node (node:varref name) '()))
 
 (define (node/varset name val)
-  (node (node:varset name) (LIST val)))
+  (make-node (node:varset name) (LIST val)))
+
+(define varref->name
+  (node:varref name) -> name
+  _ -> (error "varref->name"))
 
 (define (node/literal lit)
-  (node (node:literal lit) '()))
+  (make-node (node:literal lit) '()))
 
 (define (node/cexp gens type template args)
-  (node (node:cexp gens type template) args))
+  (make-node (node:cexp gens type template) args))
 
 (define (node/sequence subs)
-  (node (node:sequence) subs))
+  (make-node (node:sequence) subs))
 
 (define (node/if test then else)
   (let ((nodes (LIST test then else)))
-    (node (node:if) nodes)))
+    (make-node (node:if) nodes)))
 
 (define (node/function name formals body)
-  (node (node:function name formals) (LIST body)))
+  (make-node (node:function name formals) (LIST body)))
 
 (define (node/call rator rands)
   (let ((subs (list:cons rator rands)))
-    (node (node:call) subs)))
+    (make-node (node:call) subs)))
 
 (define (node/fix names inits body)
   (let ((subs (append inits (LIST body))))
-    (node (node:fix names) subs)))
+    (make-node (node:fix names) subs)))
 
 (define (node/let names inits body)
   (let ((subs (append inits (LIST body))))
-    (node (node:let names) subs)))
+    (make-node (node:let names) subs)))
 
 (define (node/nvcase dt tags value alts else)
   (let ((subs (list:cons value (list:cons else alts))))
-    (node (node:nvcase dt tags) subs)))
+    (make-node (node:nvcase dt tags) subs)))
 
 (define (node/subst from to body)
-  (node (node:subst from to) (LIST body)))
+  (make-node (node:subst from to) (LIST body)))
 
 (define (node/primapp name params args)
-  (node (node:primapp name params) args))
+  (make-node (node:primapp name params) args))
+
+(define (node-copy node0)
+  (let ((node1 (make-node node0.t node0.subs)))
+    (set! node1.flags node0.flags)
+    (set! node1.type node0.type)
+    node1))
+
+(define (unpack-fix subs)
+  ;; unpack (init0 init1 ... body) for fix and let.
+  (let ((rsubs (reverse subs)))
+    (match rsubs with
+      (body . rinits) -> (:fixsubs body (reverse rinits))
+      _ -> (error "unpack-fix: no body?"))))
 
 (define literal->string
   (literal:string s) -> (format (char #\") s (char #\"))
@@ -98,12 +128,28 @@
   (literal:undef)    -> (format "#u")
   )
 
+(define (flags-repr n)
+  (let loop ((bits '())
+	     (n n))
+    (cond ((= n 0) (list->string bits))
+	  ((= (logand n 1) 1)
+	   (loop (list:cons #\1 bits) (>> n 1)))
+	  (else
+	   (loop (list:cons #\0 bits) (>> n 1))))))
+
+(define (indent-off n offset)
+  (let loop ((n (- (* 2 n) offset)))
+    (cond ((> n 0)
+	   (print-string " ")
+	   (loop (- n 1))))))
+
 (define (pp-node n d)
   (define PS print-string)
-  (let ((tr (type-repr n.type)))
+  (let ((tr (type-repr n.type))
+	(head (format (int n.id) " " (flags-repr n.flags))))
     (newline)
-    (indent d)
-    (PS (format (int n.s) " "))
+    (PS head)
+    (indent-off d (string-length head))
     (match n.t with
       (node:varref name)	     -> (PS (format "varref " (sym name) " : " tr))
       (node:varset name)	     -> (PS (format "varset " (sym name) " : " tr))
@@ -147,7 +193,7 @@
 	(result (parse-type* sig generic-tvars)))
     (:scheme (generic-tvars::values) result)))
 
-(define walk*
+(define walk
   (sexp:symbol s) -> (node/varref s)
   (sexp:string s) -> (node/literal (literal:string s))
   (sexp:int n)    -> (node/literal (literal:int n))
@@ -178,25 +224,28 @@
 	      _ -> (error1 "expected literal type" l)))
        ((sexp:symbol 'if) test then else)
        -> (node/if (walk test) (walk then) (walk else))
-       ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) body)
-       -> (node/function name (get-formals formals) (walk body))
-       ((sexp:symbol 'fix) (sexp:list names) (sexp:list inits) body)
-       -> (node/fix (get-formals names) (map walk inits) (walk body))
-       ((sexp:symbol 'let) (sexp:list bindings) body)
+       ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) . body)
+       -> (node/function name (get-formals formals) (node/sequence (map walk body)))
+       ((sexp:symbol 'fix) (sexp:list names) (sexp:list inits) . body)
+       -> (node/fix (get-formals names) (map walk inits) (node/sequence (map walk body)))
+       ((sexp:symbol 'let-splat) (sexp:list bindings) . body)
        -> (match (unpack-bindings bindings) with
 	    (:pair names inits)
-	    -> (node/let names (map walk inits) (walk body)))
-       ((sexp:symbol 'letrec) (sexp:list bindings) body)
+	    -> (node/let names (map walk inits) (node/sequence (map walk body))))
+       ((sexp:symbol 'letrec) (sexp:list bindings) . body)
        -> (match (unpack-bindings bindings) with
 	    (:pair names inits)
-	    -> (node/fix names (map walk inits) (walk body)))
+	    -> (node/fix names (map walk inits) (node/sequence (map walk body))))
        ((sexp:symbol 'let_subst) (sexp:list ((sexp:symbol from) (sexp:symbol to))) body)
        -> (node/subst from to (walk body))
        (rator . rands)
        -> (match rator with
 	    (sexp:symbol name)
 	    -> (if (eq? (string-ref (symbol->string name) 0) #\%)
-		   (node/primapp name (car rands) (map walk (cdr rands)))
+		   (match rands with
+		     (params . rands)
+		     -> (node/primapp name params (map walk rands))
+		     _ -> (error1 "null primapp missing params?" l))
 		   (node/call (walk rator) (map walk rands)))
 	    (sexp:cons dt alt)
 	    -> (node/primapp '%dtcon rator (map walk rands))
@@ -206,9 +255,9 @@
   x -> (error1 "syntax error 2: " x)
   )
 
-(define (walk exp)
-  (print-string "walking... ") (unread exp) (newline)
-  (walk* exp))
+;(define (walk exp)
+;  (print-string "walking... ") (unread exp) (newline)
+;  (walk* exp))
 
 (define (frob name num)
   (string->symbol (format (sym name) "_" (int num))))
@@ -253,8 +302,19 @@
       
       (match exp.t with
 	(node:function name formals)
-	-> (let ((rib (map varmap.add formals)))
-	     (set! exp.t (node:function name (map (lambda (x) x.name2) rib)))
+	-> (let ((rib (map varmap.add formals))
+		 (name2 (match (lookup name) with
+			  (maybe:no) -> name
+			  (maybe:yes vd) -> vd.name2)))
+	     (set! exp.t (node:function name2 (map (lambda (x) x.name2) rib)))
+	     (rename-all exp.subs (list:cons rib lenv)))
+	(node:fix names)
+	-> (let ((rib (map varmap.add names)))
+	     (set! exp.t (node:fix (map (lambda (x) x.name2) rib)))
+	     (rename-all exp.subs (list:cons rib lenv)))
+	(node:let names)
+	-> (let ((rib (map varmap.add names)))
+	     (set! exp.t (node:let (map (lambda (x) x.name2) rib)))
 	     (rename-all exp.subs (list:cons rib lenv)))
 	(node:varref name)
 	-> (match (lookup name) with
