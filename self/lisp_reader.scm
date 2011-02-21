@@ -158,8 +158,8 @@
 	  #\(   -> (sexp:list (read-list))
 	  #\{   -> (read-record)
 	  #\"   -> (read-string)
-	  #\'   -> (begin (next) (sexp:list (LIST (sexp:symbol 'quote) (read))))
-	  #\,   -> (begin (next) (sexp:list (LIST (sexp:symbol 'comma) (read))))
+	  #\'   -> (begin (next) (sexp (sexp:symbol 'quote) (read)))
+	  #\,   -> (begin (next) (sexp (sexp:symbol 'comma) (read)))
 	  #\:   -> (begin (next) (sexp:cons 'nil (read-symbol)))
 	  #\#   -> (begin
 		     (next)
@@ -204,7 +204,7 @@
 	  (match ch with
 	    ;; postfix array-reference syntax
 	    #\[ -> (let ((index (read-array-index)))
-		     (sexp:list (LIST (sexp:symbol '%%array-ref) result index)))
+		     (sexp (sexp:symbol '%%array-ref) result index))
 	    ;; infix colon syntax
 	    #\: -> (begin
 		     (next)
@@ -270,7 +270,7 @@
 	      ;; throw away the paren
 	      (begin (next) (reverse result))
 	      (let ((exp (read)))
-		;; XXX implement <include> here
+		;; XXX should I check for <include> here?
 		(loop (list:cons exp result)))
 	      ))))
 
@@ -430,8 +430,7 @@
   (sexp:symbol s)   -> (string-length (symbol->string s))
   (sexp:string s)   -> (+ 2 (string-length s)) ;; escaped backslashes!
   (sexp:char ch)    -> (string-length (repr (sexp:char ch)))
-  (sexp:bool #t)    -> 2
-  (sexp:bool #f)    -> 2
+  (sexp:bool _)     -> 2
   (sexp:int n)      -> (string-length (int->string n))
   (sexp:undef)      -> 2
   (sexp:vector v)   -> (foldr + (+ 2 (length v)) (map pp-size v))
