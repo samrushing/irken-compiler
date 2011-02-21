@@ -121,8 +121,8 @@
 
   (define (instantiate-type-scheme gens type)
     ;; map from gens->fresh
-    (print-string "gens= ") (printn gens)
-    (print-string "type= ") (print-string (type-repr type)) (newline)
+    ;;(print-string "gens= ") (printn gens)
+    ;;(print-string "type= ") (print-string (type-repr type)) (newline)
     (let ((fresh
 	   (foldr
 	    (lambda (gen al)
@@ -173,7 +173,7 @@
     (let ((gens (set-maker '())))
       (define (find-generic-tvars t)
 	(match t with
-	  (type:tvar _ _)      -> (if (occurs-free-in-tenv t tenv) (begin (print-string "occurs-free said yes\n") (gens::add t)))
+	  (type:tvar _ _)      -> (if (occurs-free-in-tenv t tenv) (gens::add t))
 	  (type:pred _ args _) -> (for-each find-generic-tvars args)))
       (let ((type (apply-subst type)))
 	(find-generic-tvars type)
@@ -211,9 +211,6 @@
     )
 
   (define (type-of-cexp gens sig exp tenv)
-    (print-string "type-of-cexp:\n")
-    (printn gens)
-    (printn sig)
     (let ((type (instantiate-type-scheme gens sig)))
       (match type with
 	(type:pred 'arrow pargs _)
@@ -266,9 +263,7 @@
     (match (alist/lookup tenv name) with
       (maybe:no) -> (error1 "apply-tenv: unbound variable" name)
       (maybe:yes (:scheme gens type))
-      -> (begin
-	   (print-string "apply-tenv: ") (printn type)
-	   (instantiate-type-scheme gens type))))
+      -> (instantiate-type-scheme gens type)))
 
   (define (type-of-varref name tenv)
     (apply-tenv name tenv))
@@ -324,7 +319,6 @@
 		 part)))
 	    partition)
 	   ;; type the body in the new polymorphic environment
-	   (print-string "polymorphic\n")
 	   (type-of body tenv))))
 
   (define (type-of-let names exp tenv)
@@ -372,6 +366,24 @@
       '%fatbar	    -> (:scheme (LIST T0) (arrow T0 (LIST T0 T0)))
       '%fail	    -> (:scheme (LIST T0) (arrow T0 '()))
       '%match-error -> (:scheme (LIST T0) (arrow T0 '()))
+      '%rmake       -> (:scheme '() (arrow (rproduct (rdefault (rabs))) '()))
+      '%rextend     -> (match params with
+			 (sexp:symbol label)
+			 -> (let ((plabel (make-label label)))
+			      (:scheme (LIST T0 T1 T2)
+				       (arrow (rproduct (rlabel plabel (rpre T2) T1))
+					      (LIST
+					       (rproduct (rlabel plabel T0 T1))
+					       T2))))
+			 _ -> (error1 "bad %rextend params" params))
+      '%raccess     -> (match params with
+			 (sexp:symbol label)
+			 -> (:scheme (LIST T0 T1)
+				     (arrow T0
+					    (LIST (rproduct (rlabel (make-label label)
+								    (rpre T0)
+								    T1)))))
+			 _ -> (error1 "bad %raccess params" params))
       '%dtcon       -> (match params with
 			 (sexp:cons dtname altname)
 			 -> (match (alist/lookup context.datatypes dtname) with
@@ -387,8 +399,6 @@
 			      -> (let ((alt (dt.get altname))
 				       (tvars (dt.get-tvars))
 				       (dtscheme (pred dtname tvars)))
-				   (print-string "in nvget alt.types=") (printn alt.types)
-				   (print-string "    and index=") (printn index)
 				   (:scheme tvars (arrow (nth alt.types index) (LIST dtscheme)))))
 			 _ -> (error1 "bad %nvget params" params))
       _ -> (error1 "lookup-primapp" name)))
@@ -397,15 +407,10 @@
     (match (lookup-primapp name params) with
       (:scheme gens type)
       -> (begin
-	   (print-string "type-of-primapp: ") (printn name)
-	   (print-string "gens= ") (printn gens)
-	   (print-string "type= ") (printn type)
 	   (match (instantiate-type-scheme gens type) with
 	   ;; very similar to type-of-cexp
 	   (type:pred 'arrow (result-type . arg-types) _)
 	   -> (begin
-		(print-string "for-range:") (printn (length arg-types))
-		(print-string "   subs=") (printn subs)
 		(for-range
 		    i (length arg-types)
 		    (let ((arg (nth subs i))
