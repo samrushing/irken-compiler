@@ -187,6 +187,8 @@ class compiler:
             #   that guarantee.
             if self.current_function.escapes:
                 return False
+            # XXX variables only escape if their containing function escapes,
+            #   so I think this second test is redundant.
             for vardef in app.function.formals:
                 if vardef.escapes:
                     return False
