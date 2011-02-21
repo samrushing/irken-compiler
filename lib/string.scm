@@ -38,14 +38,12 @@
   (copy-string (if b "#t" "#f") 2))
 
 (define (string-ref s n)
-  ;; XXX need range-check
+  (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
   (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
 
 (define (string-set! s n c)
-  ;; XXX need range-check
-  (%%cexp
-   (string int char -> undefined)
-   "(%0[%1] = GET_CHAR (%2), PXLL_UNDEFINED)" s n c))
+  (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
+  (%%cexp (string int char -> undefined) "(%0[%1] = GET_CHAR (%2), PXLL_UNDEFINED)" s n c))
 
 (define (string-concat l)
   ;; merge a list of strings into one string
@@ -174,26 +172,50 @@
 	(loop (>> x 4)
 	      (list:cons hex-table[(logand x 15)] r)))))
 
-;; simple format macro
-(defmacro formatl
-  (formatl)			      -> (list:nil)
-  (formatl (<int> n) item ...)	      -> (list:cons (int->string n) (formatl item ...))
-  (formatl (<char> ch) item ...)      -> (list:cons (char->string ch) (formatl item ...))
-  (formatl (<bool> b) item ...)	      -> (list:cons (bool->string b) (formatl item ...))
-  (formatl (<hex> n) item ...)	      -> (list:cons (int->hex-string n) (formatl item ...))
-  (formatl (<sym> s) item ...)	      -> (list:cons (symbol->string s) (formatl item ...))
-  (formatl (<joins> l) item ...)      -> (list:cons (string-concat l) (formatl item ...))
-  ;; map <p> over list <l>, separate each with <sep>
-  (formatl (<join> p sep l) item ...) -> (list:cons (string-join (map p l) sep) (formatl item ...))
-  (formatl (<string> s) item ...)     -> (list:cons s (formatl item ...))
-  ;; fun <p> converts <x> to a string
-  (formatl (<p> p x) item ...)        -> (list:cons (p x) (formatl item ...))
-  ;; anything else is already a string
-  (formatl x item ...)		      -> (list:cons x (formatl item ...))
+(define (pad width s left?)
+  (let ((n (string-length s)))
+    (if (> n width)
+	s ;; too wide
+	(let ((np (- width n)))
+	  (if left?
+	      (format (list->string (n-of np #\space)) s)
+	      (format s (list->string (n-of np #\space))))))))
+(define (lpad w s) (pad w s #t))
+(define (rpad w s) (pad w s #f))
+(define (cpad w s)
+  (let ((sl (string-length s))
+	(lp (+ sl (/ (- w sl) 2))))
+    (rpad w (lpad lp s))))
+
+(defmacro fitem
+  (fitem (<int> n))	      -> (int->string n)
+  (fitem (<char> ch))	      -> (char->string ch)
+  (fitem (<bool> b))	      -> (bool->string b)
+  (fitem (<hex> n))	      -> (int->hex-string n)
+  (fitem (<sym> s))	      -> (symbol->string s)
+  (fitem (<joins> l))	      -> (string-concat l)
+  (fitem (<join> p sep l))    -> (string-join (map p l) sep) ;; map <p> over list <l>, separate each with <sep>
+  (fitem (<string> s))	      -> s
+  (fitem (<p> p x))	      -> (p x) ;; fun <p> converts <x> to a string
+  (fitem (<lpad> n item ...)) -> (lpad n (format item ...)) ;; left-pad
+  (fitem (<rpad> n item ...)) -> (rpad n (format item ...)) ;; right-pad
+  (fitem (<cpad> n item ...)) -> (cpad n (format item ...)) ;; right-pad
+  (fitem x)		      -> x	;; anything else must already be a string
   )
 
-(defmacro format (format item ...)		 -> (string-concat (formatl item ...)))
-(defmacro format-join (format-join sep item ...) -> (string-join (formatl item ...) sep))
+(defmacro formatl
+  (formatl) -> (list:nil)
+  (formatl item items ...) -> (list:cons (fitem item) (formatl items ...))
+  )
+
+(defmacro format
+  (format item)	    -> (fitem item)
+  (format item ...) -> (string-concat (formatl item ...))
+  )
+
+(defmacro format-join
+  (format-join sep item ...) -> (string-join (formatl item ...) sep)
+  )
 
 (define sys
   (let ((argc (%%cexp (-> int) "argc"))
