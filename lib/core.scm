@@ -66,7 +66,14 @@
 (define (>> a b)
   (%%cexp (int int -> int) "%0>>%1" a b))
 
+(define (bit-get n i)
+  (%%cexp (int int -> bool) "(%0&(1<<%1))>0" n i))
+
+(define (bit-set n i)
+  (%%cexp (int int -> int) "%0|(1<<%1)" n i))
+
 ;; any reason I can't use the same characters that C does?
+;; yeah - '|' is a comment start character in scheme.
 (define (logior a b)
   (%%cexp (int int -> int) "%0|%1" a b))
 
@@ -116,6 +123,7 @@
 ;; this is a little harsh. 8^)
 ;; think of it as a placeholder for something better to come.
 (define (error x)
+  (print-string "\n***\nRuntime Error, halting: ")
   (printn x)
   (%%cexp ('a -> 'b) "PXLL_UNDEFINED; result = %0; goto Lreturn" x)
   )
@@ -159,6 +167,15 @@
     (p (lambda (r) (putcc k r)))
     ))
 
+;; sml-nj version
+(define (^callcc p)
+  (p (getcc)))
+
+(define callcc ^callcc)
+
+(define (throw k v)
+  (putcc k v))
+
 ;; this won't work because it captures the wrong continuation
 ;; (defmacro let/cc
 ;;   (let/cc name body ...)
@@ -170,6 +187,11 @@
   (let/cc name body ...)
   -> (^call/cc (lambda (name) body ...)))
 
+;; using smlnj callcc
+(defmacro letcc
+  (let/cc name body ...)
+  -> (callcc (lambda (name) body ...)))
+
 ;; avoid forcing the user to use the funky name
 (define call/cc ^call/cc)
 (define call-with-current-continuation ^call/cc)
@@ -178,6 +200,12 @@
 (datatype maybe (:yes 'a) (:no))
 (datatype bool (:true) (:false))
 (datatype symbol (:t string))
+
+;; useful for polyvariant pairs
+(define pair-first
+  (:pair a _) -> a)
+(define pair-second
+  (:pair _ b) -> b)
 
 ;; world save/load
 ;; is this is a big restriction - requiring that the thunk return an int?
