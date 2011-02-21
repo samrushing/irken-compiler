@@ -20,8 +20,8 @@
 (define rule->code (rule:t _ code) -> code)
 (define rule->pats (rule:t pats _) -> pats)
 
-(define match-error (sexp:list (LIST (sexp:symbol '%match-error) (sexp:bool #f))))
-(define match-fail  (sexp:list (LIST (sexp:symbol '%fail) (sexp:bool #f))))
+(define match-error (sexp (sexp:symbol '%match-error) (sexp:bool #f)))
+(define match-fail  (sexp (sexp:symbol '%fail) (sexp:bool #f)))
 
 (define (compile-pattern context expander exp)
 
@@ -126,15 +126,16 @@
     (cond ((eq? e1 match-fail) e2)
 	  ((eq? e2 match-fail) e1)
 	  (else
-	   (sexp1 '%fatbar (LIST e1 e2)))))
+	   (sexp1 '%fatbar (LIST (sexp:bool #f) e1 e2)))))
 
   (define (subst var0 pat code)
     (match pat with
       (pattern:variable var1)
       ;; record a subst to be applied during node building (unless it's a wildcard pattern)
       -> (if (not (eq? var0 '_))
-	     (sexp1 'let_subst
-		    (LIST (sexp:list (LIST (sexp:symbol var1) (sexp:symbol var0))) code))
+	     (sexp (sexp:symbol 'let_subst)
+		   (sexp (sexp:symbol var1)
+			 (sexp:symbol var0)) code)
 	     code)
       _ -> (impossible)
       ))
@@ -173,10 +174,10 @@
 		    (sexp:string _) -> (sexp:symbol 'string=?)
 		    _ -> (sexp:symbol 'eq?))))
 	     (loop groups
-		   (fatbar (sexp:list (LIST (sexp:symbol 'if)
-					    (sexp:list (LIST comp-fun (sexp:symbol (car vars)) lit))
-					    (compile-match (cdr vars) (map remove-first-pat rules0) match-fail)
-					    match-fail))
+		   (fatbar (sexp (sexp:symbol 'if)
+				 (sexp comp-fun (sexp:symbol (car vars)) lit)
+				 (compile-match (cdr vars) (map remove-first-pat rules0) match-fail)
+				 match-fail)
 			   default))))))
 
   (define (record-rule vars rules default)
@@ -257,16 +258,15 @@
 	   (let ((vars1 (map-range i alt.arity (if wild[i] '_ (nth vars0 i)))))
 	     (PUSH cases
 		   ;; ((:tag var0 var1 ...) (match ...))
-		   (sexp:list
-		    (LIST
-		     (sexp:list
-		      (list:cons (sexp:cons 'nil alt.name) (map sexp:symbol vars1)))
-		     (compile-match (append vars0 (cdr vars)) (reverse rules1) default0)))))))
+		   (sexp
+		    (sexp:list
+		     (list:cons (sexp:cons 'nil alt.name) (map sexp:symbol vars1)))
+		    (compile-match (append vars0 (cdr vars)) (reverse rules1) default0))))))
        alts)
       (let ((result
 	     (if (not (eq? dt.name 'nil))
 		 (begin (if (< nalts (dt.get-nalts))
-			    (PUSH cases (sexp:list (LIST (sexp:symbol 'else) default0))))
+			    (PUSH cases (sexp (sexp:symbol 'else) default0)))
 			(sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol dt.name) (sexp:symbol (car vars)))
 					   (reverse cases))))
 		 (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol (car vars)))
