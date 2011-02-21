@@ -3,8 +3,8 @@
 (include "lib/set2.scm")
 (include "lib/alist2.scm")
 
-(define (build-dependency-graph root)
-  (let ((g (alist-maker)))
+(define (build-dependency-graph root context)
+  (let ((g context.dep-graph))
     (define (search exp current-fun)
       (match exp.t with
 	(node:varref name) -> (current-fun::add name)
@@ -22,9 +22,6 @@
     (let ((top (set-maker '())))
       (g::add 'top top)
       (search root top))
-    (newline)
-    (print-string "about to return from build:")
-    (print-graph g)
     g))
 
 (define (transpose g)
@@ -149,7 +146,6 @@
 	(r '())
 	(i 0)
 	)
-    (print-string "reorder-fix: partition= ") (printn partition)
     (for-each
      (lambda (part)
        (let ((r0 '()))
