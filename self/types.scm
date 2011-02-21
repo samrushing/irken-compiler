@@ -2,10 +2,6 @@
 
 (include "lib/set.scm")
 
-;; re-doing this now for Huet's algorithm.
-
-;; consider rank?
-
 (datatype type
   (:tvar int                {parent=(maybe type) pending=bool moo=(maybe type)})
   (:pred symbol (list type) {parent=(maybe type) pending=bool moo=(maybe type)})
@@ -41,10 +37,13 @@
    ))
 
 ;; row types
-(define (rproduct tl) (pred 'rproduct tl))
-(define (rsum row) (pred 'rsum (LIST row)))
-(define (rdefault arg) (pred 'rdefault (LIST arg)))
+(define (rproduct row)          (pred 'rproduct (LIST row)))
+(define (rsum row)              (pred 'rsum (LIST row)))
+(define (rdefault arg)          (pred 'rdefault (LIST arg)))
 (define (rlabel name type rest) (pred 'rlabel (LIST name type rest)))
+(define (rabs)                  (pred 'abs '()))
+(define (rpre t)                (pred 'pre (LIST t)))
+(define (make-label sym)        (pred sym '()))
 
 (define type-repr
   (type:tvar id _)                    -> (format "t" (int id))
@@ -84,9 +83,7 @@
       (type:pred _ _ ra) (type:pred _ _ rb) -> (set! rb.parent (maybe:yes pa)))))
 
 (define (parse-type* exp tvars)
-  (print-string "parse-type*:\n")
-  (pp 1 exp) (newline)
-  (printn tvars)
+
   (define (get-tvar sym)
     (match (tvars::get sym) with
       (maybe:yes tv) -> tv
@@ -135,8 +132,32 @@
   )
 
 (define (parse-type exp)
-  (print-string (format "parsing type: " (p repr exp) "\n"))
   (parse-type* exp (alist-maker)))
+
+;; rproduct(rlabel(x, pre(bool), rlabel(y, pre(int), rdefault(abs))))
+;; => '(x y)
+(define get-record-sig
+  (type:pred 'moo (tv arg) _)
+  -> (get-record-sig arg)
+  (type:pred 'rproduct (row) _)
+  -> (let ((sig
+	    (let loop ((row row)
+		       (labels '()))
+	      (match row with
+		(type:pred 'rlabel ((type:pred label _ _) (type:pred 'pre _ _) rest) _)
+		-> (loop rest (list:cons label labels))
+		(type:pred 'moo (tv arg) _) -> (loop arg labels)
+		(type:pred 'rdefault _ _)   -> labels
+		(type:tvar _ _)		    -> (list:cons '... labels)
+		_			    -> '()))))
+       (sort symbol<? sig))
+  _ -> (impossible) ;; type solver should guarantee this
+  )
+
+;; as an sexp it can be attached to a primapp as a parameter.
+(define (get-record-sig-sexp t)
+  (let ((sig (get-record-sig t)))
+    (sexp:list (map sexp:symbol sig))))
 
 (define (test-types)
   (let ((t0 (parse-type (car (read-string "((list sexp) -> int)"))))
