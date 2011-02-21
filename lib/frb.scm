@@ -93,6 +93,9 @@
   (tree/make < (k0 v0) (k1 v1) ...) -> (tree/insert (tree/make < (k1 v1) ...) < k0 v0)
   )
 
+(defmacro tree/insert!
+  (tree/insert! root < k v) -> (set! root (tree/insert root < k v)))
+
 ;; the defn of make-generator, call/cc, etc... makes it pretty hard
 ;;  to pass more than one arg through a continuation.  so instead we'll
 ;;  use a 'pair' constructor to iterate through the tree...
