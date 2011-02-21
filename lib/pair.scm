@@ -106,6 +106,24 @@
   (_ . tl) n -> (nth tl (- n 1))
   )
 
+(define (index-eq v l)
+  (let loop ((i 0)
+	     (l l))
+    (match l with
+      ()	-> (error "list index out of range")
+      (hd . tl) -> (if (eq? hd v)
+		       i
+		       (loop (+ i 1) tl)))))
+
+;; needed: fancy pythonic slicing with negative index, slop, etc...
+(define (slice l start end)
+  (if (< (- end start) 0)
+      '()
+      (let loop ((l l) (i 0) (r '()))
+	(cond ((< i start) (loop (cdr l) (+ i 1) r))
+	      ((< i end) (loop (cdr l) (+ i 1) (list:cons (car l) r)))
+	      (else (reverse r))))))
+
 ;; (range 5) => '(0 1 2 3 4)
 (define (range n)
   (let loop ((n (- n 1))
