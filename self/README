@@ -20,3 +20,6 @@ For example, I'm currently working on the transform phase.  I have
 macros working, but I haven't yet attacked pattern matching.  Should I
 leave pattern matching out for now?  Why not?  [by that argument, I
 should probably have left macros out as well...]
+
+-----------------
+TODO: define a datatype for all the various kinds of errors
