@@ -346,7 +346,7 @@
 	       (init-tvars (list->vector (map-range i n (new-tvar))))
 	       (init-types (make-vector n no-type))
 	       )
-	   (print-string "reordered: ") (printn names0)
+	   ;;(print-string "reordered: ") (printn names0)
 	   (for-each
 	    (lambda (part)
 	      ;; build temp tenv for typing the inits
