@@ -89,10 +89,9 @@
 	(cps (compile noden context))
 	(ofile (file/open-write opath #t #o644))
 	(o (make-writer ofile)))
-    (print-string "\n-- RTL --\n")
-    (print-insn cps 0)
-    (newline)
-    ;;(iterate-insns cps)
+;;     (print-string "\n-- RTL --\n")
+;;     (print-insn cps 0)
+;;     (newline)
     (print-string "\n-- datatypes --\n")
     (alist/iterate
      (lambda (name dt)
