@@ -4,25 +4,29 @@
 (include "lib/alist2.scm")
 
 (define (build-dependency-graph root context)
-  (let ((g context.dep-graph))
+  (let ((g (alist-maker)))
     (define (search exp current-fun)
       (match exp.t with
-	(node:varref name) -> (current-fun::add name)
-	(node:varset name) -> (current-fun::add name)
-	(node:fix names) -> (begin
-			      (for-range
-				  i (length names)
-				  (let ((name (nth names i))
-					(init (nth exp.subs i))
-					(fun (set-maker '())))
-				    (g::add name fun)
-				    (search init fun)))
-			      (search (nth exp.subs (length names)) current-fun))
+	(node:varref name)
+	-> (current-fun::add name)
+	(node:varset name)
+	-> (begin (current-fun::add name)
+		  (search (car exp.subs) current-fun))
+	(node:fix names)
+	-> (begin
+	     (for-range
+		 i (length names)
+		 (let ((name (nth names i))
+		       (init (nth exp.subs i))
+		       (fun (set-maker '())))
+		   (g::add name fun)
+		   (search init fun)))
+	     (search (nth exp.subs (length names)) current-fun))
 	_ -> (for-each (lambda (sub) (search sub current-fun)) exp.subs)))
     (let ((top (set-maker '())))
       (g::add 'top top)
       (search root top))
-    g))
+    (set! context.dep-graph g)))
 
 (define (transpose g)
   (let ((gt (alist-maker)))
@@ -160,8 +164,3 @@
 	 ))
      partition)
     (:reordered (reverse names0) (reverse inits0) (nth inits n) (reverse r))))
-     
-     
-	    
-	  
-	  
