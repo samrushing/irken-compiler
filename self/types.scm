@@ -18,6 +18,12 @@
 (define (new-tvar)
   (type:tvar (tvar-counter.inc) {parent=(maybe:no) pending=#f moo=(maybe:no)}))
 
+(define (is-pred? t name)
+  (match t with
+    (type:pred name0 _ _)
+    -> (eq? name0 name)
+    _ -> #f))
+
 ;; singleton base types
 (define int-type	(pred 'int '()))
 (define char-type	(pred 'char '()))
@@ -32,7 +38,6 @@
    ('char char-type)
    ('string string-type)
    ('undefined undefined-type)
-   ('bool bool-type)
    ('symbol symbol-type)
    ))
 
@@ -98,11 +103,11 @@
     )
   
   (define (parse-arrow-type t)
-    (let loop ((args '()) (t t))
-      (match t with
-	((sexp:symbol '->) result-type) -> (arrow (parse result-type) args)
+    (let loop ((args '()) (t0 t))
+      (match t0 with
+	((sexp:symbol '->) result-type) -> (arrow (parse result-type) (reverse args))
 	(arg . rest) -> (loop (list:cons (parse arg) args) rest)
-	() -> (impossible)
+	() -> (error1 "bad arrow type" t)
 	)))
   
   (define parse-predicate
@@ -117,6 +122,11 @@
 	     (parse-predicate l))
     )
 
+  (define parse-field-list
+    ((field:t '... _))  -> (new-tvar)
+    ((field:t name type) . tl) -> (rlabel (make-label name) (rpre (parse type)) (parse-field-list tl))
+    () -> (rdefault (rabs)))
+
   (define (parse t)
     (match t with
       (sexp:symbol sym)
@@ -126,6 +136,7 @@
 	   ;; allow nullary predicates
 	   (maybe:no) -> (pred sym '()))
       (sexp:list l) -> (parse-list l)
+      (sexp:record fl) -> (rproduct (parse-field-list fl))
       _ -> (error1 "bad type" exp)))
 
   (parse exp)
@@ -151,7 +162,9 @@
 		(type:tvar _ _)		    -> (list:cons '... labels)
 		_			    -> '()))))
        (sort symbol<? sig))
-  _ -> (impossible) ;; type solver should guarantee this
+  ;; type solver should guarantee this
+  x -> (begin (print-string (format "unable to get record sig: " (type-repr x) "\n"))
+	      (error1 "bad record sig" x))
   )
 
 ;; as an sexp it can be attached to a primapp as a parameter.
@@ -163,6 +176,7 @@
   (let ((t0 (parse-type (car (read-string "((list sexp) -> int)"))))
 	(t1 (parse-type (car (read-string "(thing 'a 'b (list 'a) (list 'b))"))))
 	(t2 (parse-type (car (read-string "'a"))))
+	(t3 (parse-type (car (read-string "{x=int ...}"))))
 	)
     
     (printn t0)
@@ -171,6 +185,8 @@
     (print-string (type-repr t1))
     (newline)
     (print-string (type-repr t2))
+    (newline)
+    (print-string (type-repr t3))
     (newline)
     (printn (get-tvars t1))
     ))
