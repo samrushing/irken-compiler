@@ -376,7 +376,7 @@
     n p -> (list:cons (p) (nthunk (- n 1) p)))
 
   (let ((rules (parse-match expander exp)))
-    (for-each dump-rule rules)
+    ;;(for-each dump-rule rules)
     (let ((npats (length (rule->pats (car rules))))
 	  (vars (if (null? vars)
 		    (nthunk npats new-match-var)
