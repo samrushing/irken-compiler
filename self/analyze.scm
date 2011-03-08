@@ -204,7 +204,7 @@
 
     (define (safe-nvget-inline rands)
       (match rands with
-	({t=(node:primapp '%nvget' _) subs=({t=(node:varref name) ...} . _)  ...} . _)
+	({t=(node:primapp '%nvget _) subs=({t=(node:varref name) ...} . _)  ...} . _)
 	-> (let ((var (vars-get-var context name)))
 	     (= 0 var.sets))
 	_ -> #f))
