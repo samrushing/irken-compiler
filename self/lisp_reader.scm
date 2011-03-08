@@ -4,6 +4,7 @@
 (include "lib/pair.scm")
 (include "lib/string.scm")
 (include "lib/io.scm")
+(include "lib/os.scm")
 (include "lib/alist.scm")
 (include "lib/frb.scm")
 (include "lib/symbol.scm")
@@ -34,6 +35,9 @@
 ;;   into sexp.  It forces all sexp-handling code to cover two cases,
 ;;   often triggering the need for an auxiliary function.  Might be
 ;;   cleaner to just have (sexp:nil) and (sexp:cons)...
+
+;; idea: how about a set of macros, similar to the format macro,
+;;   to make sexps easier to build?  worth it?
 
 ;; similar to the list macro.  think of this as the 'list' function
 ;;   for s-expressions.
@@ -68,6 +72,12 @@
     (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
     )))
 
+(define oct-map
+  (literal
+   (alist/make
+    (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7)
+    )))
+
 (define whitespace    '(#\space #\tab #\newline #\return))
 (define delimiters     (string->list "()[]{}:"))
 (define letters        (string->list "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
@@ -75,7 +85,7 @@
 (define digits         (string->list "0123456789"))
 
 (define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
-(define delimiter?     (char-class all-delimiters))
+(define delim?         (char-class all-delimiters))
 (define digit?         (char-class digits))
 (define letter?        (char-class letters))
 (define field?         (char-class (cons #\- (append letters digits))))
@@ -115,19 +125,43 @@
 	      ((whitespace? ch) (loop (skip-peek)))
 	      (else #u))))
 
+    ;; very tricky, using a state machine
     (define (read-atom)
-      (let ((all-digits? #t)
+      (let ((state 0)
 	    (dot-count 0)
-	    (after-first-char? #f))
+	    (ch #\0))
 	(let loop ((result '()))
-	  (let ((ch (peek)))
-	    (cond ((and after-first-char? (or (eq? ch #\eof) (delimiter? ch)))
-		   (:atom (list->string (reverse result)) all-digits? (length result) dot-count))
-		  (else
-		   (set! after-first-char? #t)
-		   (set! all-digits? (and all-digits? (digit? ch)))
-		   (if (eq? ch #\.) (set! dot-count (+ 1 dot-count)))
-		   (loop (list:cons (next) result))))))))
+	  (set! ch (peek))
+	  (if (eq? ch #\.)
+	      (set! dot-count (+ dot-count 1)))
+	  (set! state
+		(match state with
+		  0 -> (cond ((eq? ch #\eof) 4)
+			     ((eq? ch #\-) 1)
+			     ((digit? ch) 2)
+			     ((delim? ch) 7)
+			     (else 3))
+		  1 -> (cond ((eq? ch #\eof) 5)
+			     ((delim? ch) 5)
+			     ((digit? ch) 2)
+			     (else 3))
+		  2 -> (cond ((eq? ch #\eof) 6)
+			     ((delim? ch) 6)
+			     ((digit? ch) 2)
+			     (else 3))
+		  3 -> (cond ((eq? ch #\eof) 5)
+			     ((delim? ch) 5)
+			     (else 3))
+		  _ -> (impossible)))
+	  (cond ((< state 4) (loop (list:cons (next) result))) ;; non-final
+		((= state 4) (error "unexpected end-of-file")) ;; error final
+		(else ;; all other finals: 5,6,7
+		 ;; single-character - for #\A
+		 (if (= state 7) (set! result (list:cons (next) result)))
+		 (:atom (list->string (reverse result)) ;; result string
+			(= state 6)			;; number?
+			(length result)			;; #chars
+			dot-count))))))			;; #dots
 
     (define (dotted-symbol s n)
       ;; handle dots in a symbol
@@ -177,7 +211,11 @@
 				   (:atom "nul" _ _ _)     -> (sexp:char #\nul)
 				   x                       -> (error1 "bad character constant" x)
 				   ))
-		       ;; Xx Oo Bb
+		       ;; Bb
+		       #\X -> (begin (next) (sexp:int (read-hex-int)))
+		       #\x -> (begin (next) (sexp:int (read-hex-int)))
+		       #\O -> (begin (next) (sexp:int (read-oct-int)))
+		       #\o -> (begin (next) (sexp:int (read-oct-int)))
 		       #\T -> (begin (next) (sexp:bool #t))
 		       #\t -> (begin (next) (sexp:bool #t))
 		       #\F -> (begin (next) (sexp:bool #f))
@@ -204,13 +242,17 @@
 	  (match ch with
 	    ;; postfix array-reference syntax
 	    #\[ -> (let ((index (read-array-index)))
-		     (sexp (sexp:symbol '%%array-ref) result index))
+		     ;; primops take a parameter---------V
+		     (sexp (sexp:symbol '%array-ref) (sexp:bool #f) result index))
 	    ;; infix colon syntax
 	    #\: -> (begin
 		     (next)
-		     (match result with
-		       (sexp:symbol dt) -> (sexp:cons dt (read-symbol))
-		       _ -> (error1 "colon follows non-datatype" result)))
+		     (match result (read) with
+		       (sexp:symbol dt) (sexp:symbol alt) -> (sexp:cons dt alt)
+		       ;; not forcing (sexp:symbol) on <ob> might allow 'builtin method calls'...
+		       ;;ob (sexp:cons 'nil method) -> (sexp:attr (sexp:attr ob 'o) method)
+		       ob (sexp:cons 'nil method) -> (sexp (sexp:symbol '%method) (sexp:symbol method) ob)
+		       x y -> (error1 "colon syntax" (:pair x y))))
 	    ;; infix 'get' syntax (i.e., attribute access)
 	    ;; XXX this is disabled because it breaks symbols like '...
 	    ;;   so we'll probably need to do the same hack as the python version
@@ -255,7 +297,7 @@
 		     #\t -> (loop (peek) (list:cons #\tab result))
 		     #\" -> (loop (peek) (list:cons #\" result))
 		     #\\ -> (loop (peek) (list:cons #\\ result))
-		     _   -> (error "bad backslash escape in string")
+		     _   -> (error1 "bad backslash escape in string" result)
 		     ))
 	  _   -> (loop (skip-peek) (list:cons ch result))
 	  )))
@@ -283,31 +325,54 @@
 	  (if (eq? p #\})
 	      (begin (next) (sexp:record (reverse result)))
 	      (let ((name (read-name)))
-		(skip-whitespace)
-		(if (not (eq? (peek) #\=))
-		    (error "expected '=' in record literal")
-		    (begin
-		      (next)
-		      (let ((val (read)))
-			(loop (list:cons (field:t name val) result))))))
+		(cond ((eq? name '...)
+		       (loop (list:cons (field:t name (sexp:bool #f)) result)))
+		      (else
+		       (skip-whitespace)
+		       (if (not (eq? (peek) #\=))
+			   (error1 "expected '=' in record literal" name)
+			   (begin
+			     (next)
+			     (let ((val (read)))
+			       (loop (list:cons (field:t name val) result))))))))
 	      ))))
 
     (define (read-name)
       (let loop ((result '())
-		 (ch (peek)))
-	(if (field? ch)
-	    (loop (list:cons ch result) (skip-peek))
-	    (string->symbol (list->string (reverse result))))))
+		 (ch (peek))
+		 (dots #f))
+	(cond ((or (field? ch) (eq? ch #\.))
+	       (loop (list:cons ch result) (skip-peek) #f))
+	      (else
+	       (string->symbol (list->string (reverse result)))))))
 
     (define (read-int s n)
-      (let loop ((i 0)
-		 (r 0))
-	(if (= i n)
-	    r
-	    (match (alist/lookup dec-map (string-ref s i)) with
-	      (maybe:no) -> (error "bad decimal digit?")
-	      (maybe:yes digit) -> (loop (+ i 1) (+ (* r 10) digit)))
-	    )))
+      (let ((neg? (eq? (string-ref s 0) #\-))
+	    (start (if neg? 1 0)))
+	(let loop ((i start)
+		   (r 0))
+	  (if (= i n)
+	      (if neg? (- 0 r) r)
+	      (match (alist/lookup dec-map (string-ref s i)) with
+		(maybe:no) -> (error1 "bad decimal digit?" s)
+		(maybe:yes digit) -> (loop (+ i 1) (+ (* r 10) digit)))
+	      ))))
+
+    (define (read-hex-int)
+      (let ((neg? (eq? (peek) #\-)))
+	(if neg? (begin (next) #u))
+	(let loop ((r 0) (ch (peek)))
+	  (match (alist/lookup hex-map ch) with
+	    (maybe:yes digit) -> (loop (+ (* r 16) digit) (skip-peek))
+	    (maybe:no) -> (if neg? (- 0 r) r)))))
+
+    (define (read-oct-int)
+      (let ((neg? (eq? (peek) #\-)))
+	(if neg? (begin (next) #u))
+	(let loop ((r 0) (ch (peek)))
+	  (match (alist/lookup oct-map ch) with
+	    (maybe:yes digit) -> (loop (+ (* r 8) digit) (skip-peek))
+	    (maybe:no) -> (if neg? (- 0 r) r)))))
 
     (define (read-include path result)
       ;; cons the forms from this file onto result, in reverse order...
@@ -338,11 +403,16 @@
   (sexp:symbol s) -> s
   x -> (error1 "sexp->symbol" x))
 
+(define sexp->int
+  (sexp:int n) -> n
+  x -> (error1 "sexp->int" x))
+
 ;; utility functions
 (define field=?
   (field:t sa va) (field:t sb vb)
   -> (and (eq? sa sb) (sexp=? va vb)))
 
+;; XXX consider eq? shortcut
 (define sexp=?
   (sexp:undef) (sexp:undef)           -> #t
   (sexp:symbol a) (sexp:symbol b)     -> (eq? a b)
@@ -362,45 +432,8 @@
   ;; build an s-expression with <sym> at the front followed by <rest>
   (sexp:list (list:cons (sexp:symbol sym) rest)))
 
-(define unread-fields
-  () -> #u
-  ((field:t name val) . tl)
-  -> (begin
-       (print name)
-       (print-string "=")
-       (unread val)
-       (print-string " ")
-       (unread-fields tl)
-       ))
-
-(define unread-list
-  ((sexp:symbol 'quote) ob) -> (begin (print-string "'") (unread ob))
-  () -> (print-string "()")
-   l -> (begin (print-string "(")
-	       (print-sep unread " " l)
-	       (print-string ")")
-	       )
-   )
-
-(define unread
-  (sexp:list l)     -> (unread-list l)
-  (sexp:symbol s)   -> (print s)
-  (sexp:string s)   -> (print s)
-  (sexp:char ch)    -> (print ch)
-  (sexp:bool #t)    -> (print-string "#t")
-  (sexp:bool #f)    -> (print-string "#f")
-  (sexp:int n)      -> (print n)
-  (sexp:undef)      -> (print #u)
-  (sexp:vector v)   -> (begin (print-string "#(") (for-each (lambda (x) (unread x) (print-string " ")) v) (print-string ")"))
-  (sexp:record fl)  -> (begin (print-string "{ ") (unread-fields fl) (print-string "}"))
-  (sexp:cons dt c)  -> (begin (if (eq? dt 'nil) #u (print dt)) (print-string ":") (print c))
-  (sexp:attr lhs a) -> (begin (unread lhs) (print-string ".") (print a))
-  )
-
-(define (unreadn x)
-  (begin (unread x) (newline)))
-
 (define repr-field
+  (field:t '... _)   -> "..."
   (field:t name val) -> (format (sym name) "=" (p repr val)))
 
 (define repr
@@ -413,7 +446,7 @@
   (sexp:int n)      -> (format (int n))
   (sexp:undef)      -> "#u"
   (sexp:vector v)   -> (format "#(" (join repr " " v) ")")
-  (sexp:record fl)  -> (format "{ " (join repr-field " " fl) "}")
+  (sexp:record fl)  -> (format "{" (join repr-field " " fl) "}")
   (sexp:cons dt c)  -> (format (if (eq? dt 'nil) "" (symbol->string dt)) ":" (sym c))
   (sexp:attr lhs a) -> (format (p repr lhs) "." (sym a))
   )
@@ -462,24 +495,10 @@
 		sys.argv[1]
 		"lib/core.scm"))))
     ;;  (printn t)
-    (for-each (lambda (x) (printn x) (unread x) (newline)) t)
+    ;;(for-each (lambda (x) (printn x) (pp 0 x) (newline)) t)
+    (printn t)
+    (for-each (lambda (x) (pp 0 x) (newline)) t)
     #u
     ))
 
-(define (test-string)
-  (for-each
-   (lambda (x) (printn x) (unread x) (newline))
-   ;;(read-string "(testing one two 0 1 #\\newline (\"string\" . xxx))")
-   (read-string "(datatype list (:cons 'a (list 'a)) (:nil))")
-   ))
-
-(define (test-sexp=?)
-  (printn (sexp=? (car (read-string "(thing (1 2 3) {a=1 b=#\\A} #t x.y)"))
-		  (car (read-string "(thing (1 2 3) {a=1 b=#\\A} #t x.y)"))))
-  (printn (sexp=? (car (read-string "(thing (1 2 3) {a=1 b=#\\A} #t x.y)"))
-		  (car (read-string "(thing (1 2 3) {a=1 b=#\\A} #t x.z)"))))
-  )
-
-;;(test-lisp-reader)
-;;(test-string)
-;;(test-sexp=?)
+;(test-file)
