@@ -4,20 +4,27 @@
 
   (define (type-error t0 t1)
     (newline)
-    (pp-node exp 0)
-    (print-string
-     (format "\nType Error:\n\t" (type-repr t0) "\n\t" (type-repr t1) "\n"))
-    (error "type error"))
+    (pp-node exp)
+    (let ((ut0 (apply-subst t0))
+	  (ut1 (apply-subst t1)))
+      (print-string
+       (format "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n"))
+      (error "type error")))
 
   (define (U t0 t1)
+    ;;(print-string (format "    ----U " (type-repr t0) " -- " (type-repr t1) "\n"))
     (let/cc return
 	(let ((u (type-find t0))
 	      (v (type-find t1)))
+	  ;;(print-string (format "    ----: " (type-repr u) " -- " (type-repr v) "\n"))
 	  (if (not (eq? u v))
 	      (begin
 		(match u v with
 		  (type:tvar _ _) _ -> #u
-		  _ (type:tvar _ _) -> #u
+		  ;; original line
+		  ;;_ (type:tvar _ _) -> #u
+		  ;; missing optimize-nvcase version:
+		  (type:pred _ _ _) (type:tvar _ _) -> #u
 		  (type:pred pu su _) (type:pred pv sv _)
 		  -> (match pu pv with
 		       'moo 'moo   -> #u
@@ -111,6 +118,10 @@
 		     (maybe:no) -> r)))))))
   (p t))
 
+(define scheme-repr
+  (:scheme gens type)
+  -> (format "forall(" (join type-repr "," gens) ")." (type-repr type)))
+
 ;; (define (apply-subst t)
 ;;   (let ((t0 (apply-subst* t)))
 ;;     (print-string (format "apply-subst: " (p type-repr t) "\n"))
@@ -173,42 +184,71 @@
     (let ((gens (set-maker '())))
       (define (find-generic-tvars t)
 	(match t with
-	  (type:tvar _ _)      -> (if (occurs-free-in-tenv t tenv) (gens::add t))
+	  (type:tvar _ _)      -> (if (not (occurs-free-in-tenv t tenv)) (gens::add t))
 	  (type:pred _ args _) -> (for-each find-generic-tvars args)))
       (let ((type (apply-subst type)))
 	(find-generic-tvars type)
+	;;(print-string (format "build-type-scheme type=" (type-repr type) " gens = " (join type-repr "," (gens::get)) "\n"))
 	(:scheme (gens::get) type))))
 
   (define (type-of* exp tenv)
     (match exp.t with
-      (node:literal lit)	-> (literal->type lit)
-      (node:cexp gens sig _)    -> (type-of-cexp gens sig exp tenv)
-      (node:if)			-> (type-of-conditional exp tenv)
-      (node:sequence)		-> (type-of-sequence exp.subs tenv)
-      (node:function _ formals) -> (type-of-function formals (car exp.subs) tenv)
-      (node:varref name)        -> (type-of-varref name tenv)
-      (node:varset name)        -> (type-of-varset name exp tenv)
-      (node:call)               -> (type-of-call exp tenv)
-      (node:fix names)          -> (type-of-fix names exp tenv)
-      (node:let names)          -> (type-of-let names exp tenv)
-      (node:primapp name parms) -> (type-of-primapp name parms exp.subs tenv)
-      (node:nvcase dt alts)     -> (type-of-nvcase dt alts exp tenv)
+      (node:literal lit)	    -> (type-of-literal lit exp tenv)
+      (node:cexp gens sig _)	    -> (type-of-cexp gens sig exp tenv)
+      (node:if)			    -> (type-of-conditional exp tenv)
+      (node:sequence)		    -> (type-of-sequence exp.subs tenv)
+      (node:function _ formals)	    -> (type-of-function formals (car exp.subs) tenv)
+      (node:varref name)	    -> (type-of-varref name tenv)
+      (node:varset name)	    -> (type-of-varset name exp tenv)
+      (node:call)		    -> (type-of-call exp tenv)
+      (node:fix names)		    -> (type-of-fix names exp tenv)
+      (node:let names)		    -> (type-of-let names exp tenv)
+      (node:primapp name parms)	    -> (type-of-primapp name parms exp.subs tenv)
+      (node:nvcase dt tags arities) -> (type-of-vcase dt tags arities exp tenv)
       _ -> (begin
-	     (pp-node exp 0)
+	     (pp-node exp)
 	     (error1 "typing NYI" exp))))
 
   (define (type-of exp tenv)
     (let ((t (type-of* exp tenv)))
+;;       (print-string "type-of ") (pp-node exp) (newline)
+;;       (print-string "  == ") (print-string (type-repr t)) (newline)
       (set! exp.type t)
       t))
 
-  (define literal->type
-    (literal:string _) -> string-type
-    (literal:int _)    -> int-type
-    (literal:char _)   -> char-type
-    (literal:bool _)   -> bool-type
-    (literal:undef)    -> undefined-type
-    )
+  (define (type-of-literal lit exp tenv)
+    (match lit with
+      (literal:string _)    -> string-type
+      (literal:int _)	    -> int-type
+      (literal:char _)	    -> char-type
+      (literal:undef)	    -> undefined-type
+      (literal:symbol _)    -> symbol-type
+      (literal:cons dt v l) -> (let ((dto (alist/get context.datatypes dt "no such datatype")))
+				 (match (dto.get-alt-scheme v) with
+				   (:scheme gens type)
+				   -> (match (instantiate-type-scheme gens type) with
+					(type:pred 'arrow (result-type . arg-types) _)
+					-> (begin
+					     (for-range
+						 i (length arg-types)
+						 (let ((tx (type-of-literal (nth l i) exp tenv)))
+						   (unify exp tx (nth arg-types i))))
+					     result-type)
+					x -> (error1 "strange constructor scheme" x))))
+      (literal:vector l)    -> (let ((tv (new-tvar)))
+				 (for-each
+				  (lambda (x)
+				    (let ((tx (type-of-literal x exp tenv)))
+				      (unify exp tv tx)))
+				  l)
+				 (pred 'vector (LIST tv))
+				 )
+      ))
+
+  ;; HACK: remove a raw predicate if present
+  (define unraw
+    (type:pred 'raw (arg) _) -> arg
+    t -> t)
 
   (define (type-of-cexp gens sig exp tenv)
     (let ((type (instantiate-type-scheme gens sig)))
@@ -220,7 +260,9 @@
 		 () -> (error1 "malformed arrow type" sig)
 		 (result-type . parg-types)
 		 -> (let ((arg-types (map (lambda (x) (type-of x tenv)) exp.subs)))
-		      (for-each2 (lambda (a b) (unify exp a b)) parg-types arg-types)
+		      (for-each2 (lambda (a b)
+				   (unify exp (unraw a) b))
+				 parg-types arg-types)
 		      result-type
 		      )))
 	_ -> type)))
@@ -238,7 +280,7 @@
   (define (type-of-sequence exps tenv)
     (let loop ((l exps))
       (match l with
-	()	  -> (impossible)
+	()	  -> (error "empty sequence?")
 	(one)	  -> (type-of one tenv)
 	(hd . tl) -> (begin
 		       ;; ignore all but the last
@@ -257,16 +299,25 @@
 	   (PUSH arg-types type)
 	   (alist/push tenv formal (:scheme '() type))))
        formals)
-      (arrow (type-of body tenv) arg-types)))
+      (arrow (type-of body tenv) (reverse arg-types))))
 
   (define (apply-tenv name tenv)
+;;     (print-string "apply-tenv: ") (printn name)
+;;     (print-string " tenv= {\n")
+;;     (alist/iterate
+;;      (lambda (k v)
+;;        (print-string (format " " (sym k) " " (scheme-repr v) "\n")))
+;;      tenv)
+;;     (print-string "}\n")
     (match (alist/lookup tenv name) with
       (maybe:no) -> (error1 "apply-tenv: unbound variable" name)
       (maybe:yes (:scheme gens type))
       -> (instantiate-type-scheme gens type)))
 
   (define (type-of-varref name tenv)
-    (apply-tenv name tenv))
+    (let ((t (apply-tenv name tenv)))
+      ;;(print-string (format "varref: " (sym name) " type = " (type-repr t) "\n"))
+      t))
 
   (define (type-of-varset name exp tenv)
     (let ((val (car exp.subs))
@@ -282,7 +333,7 @@
       -> (let ((result-type (new-tvar)))
 	   (unify exp rator-type (arrow result-type rand-types))
 	   result-type)
-      () -> (impossible)
+      () -> (error "empty call?")
       ))
 
   (define (type-of-fix names exp tenv)
@@ -295,6 +346,7 @@
 	       (init-tvars (list->vector (map-range i n (new-tvar))))
 	       (init-types (make-vector n no-type))
 	       )
+	   (print-string "reordered: ") (printn names0)
 	   (for-each
 	    (lambda (part)
 	      ;; build temp tenv for typing the inits
@@ -335,10 +387,15 @@
       ;; type body in the new env
       (type-of (nth inits n) tenv)))
 
-  (define (type-of-nvcase dt alts exp tenv)
+  (define (type-of-vcase dt tags arities exp tenv)
+    (if (eq? dt 'nil)
+	(type-of-pvcase tags arities exp tenv)
+	(type-of-nvcase dt tags exp tenv)))
+
+  (define (type-of-nvcase dt tags exp tenv)
     (let ((dt (alist/get context.datatypes dt "no such datatype"))
 	  (subs exp.subs)
-	  (nsubs (length subs))
+	  ;; use match for these!?
 	  (value (nth subs 0))
 	  (else-exp (nth subs 1))
 	  (alts (cdr (cdr subs)))
@@ -357,16 +414,64 @@
       (unify else-exp tv (type-of else-exp tenv))
       tv))
 
+  (define (type-of-pvcase tags arities exp tenv)
+    (match exp.subs with
+      (value else-exp . alts)
+      -> (let ((tv-exp (new-tvar))
+	       (else? (match else-exp.t with
+			(node:primapp '%match-error _) -> #f _ -> #t))
+	       (row (if else? (rdefault (rabs)) (new-tvar))))
+	   (for-range
+	       i (length tags)
+	       (let ((alt (nth alts i))
+		     (tag (nth tags i))
+		     (arity (nth arities i))
+		     (argvars (n-tvars arity)))
+		 (set! row (rlabel (make-label tag)
+				   (rpre (if (= arity 1)
+					     (car argvars)
+					     (pred 'product argvars)))
+				   row))
+		 ;; each alt must have the same type
+		 (unify alt tv-exp (type-of alt tenv))))
+	   (if else?
+	       (unify else-exp tv-exp (type-of else-exp tenv)))
+	   ;; the value must have the row type determined
+	   ;;   by the set of polyvariant alternatives
+	   (unify value (rsum row) (type-of value tenv))
+	   ;; this is the type of the entire expression
+	   tv-exp
+	   )
+      _ -> (error1 "malformed pvcase" exp)
+      ))
+
+  (define (remember-variant-label label)
+    (match (alist/lookup context.variant-labels label) with
+      (maybe:yes _) -> #u
+      (maybe:no) -> (let ((index (alist/length context.variant-labels)))
+		      (alist/push context.variant-labels label index))))
+
   (define T0 (new-tvar))
   (define T1 (new-tvar))
   (define T2 (new-tvar))
+
+  (define n-tvars
+    0 -> '()
+    n -> (list:cons (new-tvar) (n-tvars (- n 1))))
+
+  (define (prim-error name)
+    (error1 "bad parameters to primop" name))
 
   (define (lookup-primapp name params)
     (match name with
       '%fatbar	    -> (:scheme (LIST T0) (arrow T0 (LIST T0 T0)))
       '%fail	    -> (:scheme (LIST T0) (arrow T0 '()))
       '%match-error -> (:scheme (LIST T0) (arrow T0 '()))
+      '%make-vector -> (:scheme (LIST T0) (arrow (pred 'vector (LIST T0)) (LIST int-type T0)))
+      '%array-ref   -> (:scheme (LIST T0) (arrow T0 (LIST (pred 'vector (LIST T0)) int-type)))
+      '%array-set   -> (:scheme (LIST T0) (arrow undefined-type (LIST (pred 'vector (LIST T0)) int-type T0)))
       '%rmake       -> (:scheme '() (arrow (rproduct (rdefault (rabs))) '()))
+      '%ensure-heap -> (:scheme '() (arrow undefined-type (LIST int-type)))
       '%rextend     -> (match params with
 			 (sexp:symbol label)
 			 -> (let ((plabel (make-label label)))
@@ -375,7 +480,7 @@
 					      (LIST
 					       (rproduct (rlabel plabel T0 T1))
 					       T2))))
-			 _ -> (error1 "bad %rextend params" params))
+			 _ -> (prim-error name))
       '%raccess     -> (match params with
 			 (sexp:symbol label)
 			 -> (:scheme (LIST T0 T1)
@@ -383,44 +488,88 @@
 					    (LIST (rproduct (rlabel (make-label label)
 								    (rpre T0)
 								    T1)))))
-			 _ -> (error1 "bad %raccess params" params))
+			 _ -> (prim-error name))
+      '%rset        -> (match params with
+			 (sexp:symbol label)
+			 -> (:scheme (LIST T0 T1)
+				     (arrow undefined-type
+					    (LIST (rproduct (rlabel (make-label label)
+								    (rpre T0)
+								    T1))
+						  T0)))
+			 _ -> (prim-error name))
       '%dtcon       -> (match params with
 			 (sexp:cons dtname altname)
 			 -> (match (alist/lookup context.datatypes dtname) with
 			      (maybe:no) -> (error1 "lookup-primapp: no such datatype" dtname)
 			      (maybe:yes dt) ->
 			      (dt.get-alt-scheme altname))
-			 _ -> (error1 "bad %dtcon params" params))
+			 _ -> (prim-error name))
+      '%vcon        -> (match params with
+			 (sexp:list ((sexp:symbol label) (sexp:int arity)))
+			 -> (let ((plabel (make-label label)))
+			      (remember-variant-label label)
+			      (match arity with
+				;; ∀X.() → Σ(l:pre (Π());X)
+				0 -> (:scheme (LIST T0) (arrow (rsum (rlabel plabel (rpre (pred 'product '())) T0)) '()))
+				;; ∀XY.X → Σ(l:pre X;Y)
+				1 -> (:scheme (LIST T0 T1) (arrow (rsum (rlabel plabel (rpre T0) T1)) (LIST T0)))
+				;; ∀ABCD.Π(A,B,C) → Σ(l:pre (Π(A,B,C));D)
+				_ -> (let ((tdflt (new-tvar))
+					   (targs (n-tvars arity)))
+				       (:scheme (list:cons tdflt targs)
+						(arrow (rsum (rlabel plabel (rpre (pred 'product targs)) tdflt))
+						       targs)))))
+			 _ -> (prim-error name))
       '%nvget       -> (match params with
-			 (sexp:list ((sexp:cons dtname altname) (sexp:int index)))
-			 -> (match (alist/lookup context.datatypes dtname) with
-			      (maybe:no) -> (error1 "lookup-primapp: no such datatype" dtname)
-			      (maybe:yes dt)
-			      -> (let ((alt (dt.get altname))
-				       (tvars (dt.get-tvars))
-				       (dtscheme (pred dtname tvars)))
-				   (:scheme tvars (arrow (nth alt.types index) (LIST dtscheme)))))
-			 _ -> (error1 "bad %nvget params" params))
+			 (sexp:list ((sexp:cons dtname altname) (sexp:int index) (sexp:int arity)))
+			 -> (if (eq? dtname 'nil)
+				;; polymorphic variant
+				(let ((argvars (n-tvars arity))
+				      (tdflt (new-tvar))
+				      (plabel (make-label altname))
+				      (vtype (rsum (rlabel plabel
+							   (rpre (if (> arity 1)
+								     (pred 'product argvars)
+								     (car argvars)))
+							   tdflt))))
+				  (:scheme (list:cons tdflt argvars)
+					   ;; e.g., to pick the second arg:
+					   ;; ∀0123. Σ(l:pre (0,1,2);3) → 1
+					   (arrow (nth argvars index) (LIST vtype))))
+				;; normal variant
+				(match (alist/lookup context.datatypes dtname) with
+				  (maybe:no) -> (error1 "lookup-primapp: no such datatype" dtname)
+				  (maybe:yes dt)
+				  -> (let ((alt (dt.get altname))
+					   (tvars (dt.get-tvars))
+					   (dtscheme (pred dtname tvars)))
+				       (:scheme tvars (arrow (nth alt.types index) (LIST dtscheme))))))
+			 _ -> (prim-error name))
       _ -> (error1 "lookup-primapp" name)))
 
   (define (type-of-primapp name params subs tenv)
+;;     (print-string        (format "type-of-primapp, name = " (sym name) " params= " (repr params) "\n"))
+;;     (print-string        (format "type-of-primapp, scheme = " (scheme-repr (lookup-primapp name params)) "\n"))
     (match (lookup-primapp name params) with
       (:scheme gens type)
-      -> (begin
-	   (match (instantiate-type-scheme gens type) with
-	   ;; very similar to type-of-cexp
-	   (type:pred 'arrow (result-type . arg-types) _)
-	   -> (begin
-		(for-range
-		    i (length arg-types)
-		    (let ((arg (nth subs i))
-			  (ta (type-of arg tenv))
-			  (arg-type (nth arg-types i)))
-		      (unify arg ta arg-type)))
-		result-type)
-	   _ -> (error1 "type-of-primapp" name)
-	   )))
-    )
+      -> (let ((itype (instantiate-type-scheme gens type)))
+;; 	   (print-string (format "           instantiated = " (type-repr itype) "\n"))
+	   (match itype with
+	     ;; very similar to type-of-cexp
+	     (type:pred 'arrow (result-type . arg-types) _)
+	     -> (begin
+		  (if (not (= (length arg-types) (length subs)))
+		      (error1 "wrong number of args to primapp" subs))
+		  (for-range
+		      i (length arg-types)
+		      (let ((arg (nth subs i))
+			    (ta (type-of arg tenv))
+			    (arg-type (nth arg-types i)))
+			(unify arg ta arg-type)))
+		  result-type)
+	     _ -> (error1 "type-of-primapp" name)
+	     ))))
 
   (define (apply-subst-to-program n)
     (set! n.type (apply-subst n.type))
@@ -444,7 +593,7 @@
 ;; 	(_ (set! context.scc-graph strong))
 ;; 	(type0 (type-program node0 context))
 ;; 	)
-;;     (pp-node node0 0)
+;;     (pp-node node0)
 ;;     (newline)
 ;;     ))
 
