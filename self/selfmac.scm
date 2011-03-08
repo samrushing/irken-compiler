@@ -5,6 +5,7 @@
   (:nil)
   (:cons 'a (list 'a))
   )
+(datatype symbol (:t string))
 
 ;; derived expressions
 
