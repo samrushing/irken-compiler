@@ -3,7 +3,6 @@
 (include "self/lisp_reader.scm")
 (include "self/mbe.scm")
 (include "self/types.scm")
-(include "self/context.scm")
 (include "self/match.scm")
 
 ;; scan for datatypes, definitions, etc..
@@ -14,8 +13,6 @@
   (define counter 0)
 
   (define (go exp)
-    (print-string "go:")
-    (pp 0 exp) (newline)
     (let ((expanded
 	   (match exp with
 	     (sexp:list ())    -> (sexp:list '())
@@ -64,7 +61,7 @@
 	   _ -> (recur tl (list:cons hd acc))))
     (recur exps '()))
   
-  (define (find-definitions exps k)
+  (define (find-definitions exps0 k)
     (define recur
       defs exps ()	-> (k (reverse defs) (reverse exps))
       defs exps (hd . tl) -> (match hd with
@@ -72,13 +69,18 @@
 			       -> (recur (list:cons (parse-define body) defs) exps tl)
 			       exp -> (recur defs (list:cons exp exps) tl)
 			       ))
-    (recur '() '() exps))
+    (recur '() '() exps0))
 
   (define expand-field
     (field:t name exp) -> (field:t name (expand exp)))
 
+;;   (define (expand exp)
+;;     (print-string (format "expanding: " (repr exp) "\n"))
+;;     (let ((r (expand* exp)))
+;;       (print-string (format "         = " (repr r) "\n"))
+;;       r))
+
   (define (expand exp)
-    ;;(print-string "expanding... ") (unread exp) (newline)
     (match exp with
       (sexp:symbol _)	   -> exp
       (sexp:string _)	   -> exp
@@ -104,6 +106,11 @@
 		(maybe:no)	-> (match (alist/lookup context.macros sym) with
 				     (maybe:yes macro) -> (expand (macro.apply (sexp:list l)))
 				     (maybe:no)	       -> (sexp:list (list:cons rator (map expand rands)))))
+	   ;; automagically insert the <self> argument
+	   ;; (ob.o.method args0 ...) => (ob.o.method ob args0 ...)
+	   ;; XXX use something like __methods__ rather than 'o', duh.
+	   (sexp:list ((sexp:symbol '%method) (sexp:symbol name) self))
+	   -> (sexp:list (append (LIST (sexp:attr (sexp:attr self 'o) name) self) (map expand rands)))
 	   _ -> (sexp:list (map expand l)))))
 
   (define expand-if
@@ -114,11 +121,12 @@
 
   (define expand-set!
     ((sexp:attr lhs attr) val)
-    -> (sexp1 '%%record-set (LIST (sexp:symbol attr) (expand lhs) (expand val)))
-    ((sexp:list ((sexp:symbol '%%array-ref) lhs idx)) val)
-    -> (sexp1 '%%array-set (LIST (expand lhs) (expand val) (expand idx)))
-    exp
-    -> (sexp:list (list:cons (sexp:symbol 'set!) exp))
+    -> (sexp1 '%rset (LIST (sexp:symbol attr) (expand lhs) (expand val)))
+    ((sexp:list ((sexp:symbol '%array-ref) param lhs idx)) val)
+    -> (sexp1 '%array-set (LIST param (expand lhs) (expand idx) (expand val)))
+    ((sexp:symbol name) val)
+    -> (sexp1 'set! (LIST (sexp:symbol name) (expand val)))
+    x -> (error1 "malformed set!" x)
     )
 
   (define expand-begin
@@ -127,24 +135,25 @@
     l     -> (sexp1 'begin (map expand l))
     )
 
-  (define expand-quote
-    (one) -> (build-literal one #t #f)
-    x     -> (error1 "bad args to QUOTE" x))
-
-  (define expand-literal
-    (one) -> (build-literal one #f #f)
-    x     -> (error1 "bad args to LITERAL" x))
-
-  (define expand-backquote
-    (one) -> (build-literal one #t #t)
-    x     -> (error1 "bad args to BACKQUOTE" x))
+  (define expand-let-splat
+    ((sexp:list bindings) . body)
+    -> (let ((bindings0
+	      (map
+	       (lambda (pair)
+		 (match pair with
+		   (sexp:list (var val))
+		   -> (sexp var (expand val))
+		   _ -> (error1 "malformed binding in LET-SPLAT" pair)))
+	       bindings)))
+	 (sexp1 'let-splat (LIST (sexp:list bindings0) (expand-body body))))
+    x -> (error1 "malformed LET-SPLAT" x))
 
   (define expand-lambda
-    (formals . body) -> (exp-function (sexp:symbol 'lambda) formals (expand (sexp1 'begin body)))
+    (formals . body) -> (exp-function (sexp:symbol 'lambda) formals (expand-body body))
     x		     -> (error1 "malformed LAMBDA" x))
 
   (define expand-function
-    (name formals . body) -> (exp-function name formals (expand (sexp1 'begin body)))
+    (name formals . body) -> (exp-function name formals (expand-body body))
     x			  -> (error1 "malformed FUNCTION" x))
 
   (define (exp-function name formals body)
@@ -168,7 +177,7 @@
 	;; ((else body ...))
 	((sexp:list ((sexp:symbol 'else) . else-code)))
 	-> (k tags formals alts (maybe:yes (expand (sexp1 'begin else-code))))
-	_ -> (begin (unread (car pairs)) (error1 "split-alts" pairs)))))
+	_ -> (begin (pp 0 (car pairs)) (error1 "split-alts" pairs)))))
 
   ;; (nvcase type x 
   ;;    ((<select0> <formal0> <formal1> ...) <body0>)
@@ -181,55 +190,60 @@
   ;;    ((let ((f0 x.0) (f1 x.1) (f2 x.2)) <body0>) ...))
   ;;
   
-  (define (make-nvget dt label index value)
+  (define (make-nvget dt label index arity value)
     (sexp (sexp:symbol '%nvget)
-	  (sexp (sexp:cons dt label) (sexp:int index))
-	  value))
+	  (sexp (sexp:cons dt label) (sexp:int index) (sexp:int arity))
+	  (sexp:symbol value)))
 
   (define expand-vcase
-    ((sexp:symbol dt) value . alts)
-    -> (split-alts
-	alts
-	(lambda (tags formals alts ealt?)
-	  (let ((alts0
-		 (map-range
-		     i (length alts)
-		     (let ((alt-formals (nth formals i))
-			   (nformals (length alt-formals))
-			   (tag (nth tags i))
-			   (binds (let loop ((j 0)
-					     (r '()))
-				    (if (= j nformals)
-					(reverse r)
-					(match (nth alt-formals j) with
-					  (sexp:symbol '_) -> (loop (+ j 1) r)
-					  formal -> (loop (+ j 1)
-							  (list:cons
-							   (sexp formal (make-nvget dt tag j value))
-							   r)))))))
-		       (if (not (null? binds))
-			   ;; (let ((f0 (%nvget (list:cons 0) value))
-			   ;;       (f1 (%nvget (list:cons 1) value)))
-			   ;;   body)
-			   (sexp:list
-			    (append (LIST (sexp:symbol 'let) (sexp:list binds))
-				    (LIST (nth alts i))))
-			   ;; body
-			   (nth alts i))))))
-	    (for-each (lambda (x) (unread x) (newline)) alts0)
-	    (sexp (sexp:symbol '%nvcase)
-		  (sexp:symbol dt)
-		  (expand value)
-		  (sexp:list (map sexp:symbol tags))
-		  (sexp:list alts0)
-		  (match ealt? with
-		    (maybe:no) -> match-error
-		    (maybe:yes ealt) -> ealt))
-	  )))
+    ;; nvcase := (vcase <datatype> <value> . alts)
+    ;; pvcase := (vcase <value> . alts)
+    ((sexp:symbol dt) (sexp:symbol value) . alts) -> (expand-vcase* dt value alts)
+    ((sexp:symbol value) . alts)		  -> (expand-vcase* 'nil value alts)
     x -> (error1 "expand-vcase" x))
 
-  (define (build-literal ob as-list? backquote?)
-    #u)
+  (define (expand-vcase* dt value alts)
+    (split-alts
+     alts
+     (lambda (tags formals alts ealt?)
+       (let ((arities '())
+	     (alts0 '()))
+	 (for-range
+	     i (length alts)
+	     (let ((alt-formals (nth formals i))
+		   (arity (length alt-formals))
+		   (tag (nth tags i))
+		   (binds (let loop ((j 0)
+				     (r '()))
+			    (if (= j arity)
+				(reverse r)
+				(match (nth alt-formals j) with
+				  (sexp:symbol '_) -> (loop (+ j 1) r)
+				  formal -> (loop (+ j 1)
+						  (list:cons
+						   (sexp formal (make-nvget dt tag j arity value))
+						   r)))))))
+	       (PUSH arities arity)
+	       (if (not (null? binds))
+		   ;; (let ((f0 (%nvget (list:cons 0) value))
+		   ;;       (f1 (%nvget (list:cons 1) value)))
+		   ;;   body)
+		   (PUSH alts0
+			 (sexp:list
+			  (append (LIST (sexp:symbol 'let) (sexp:list binds))
+				  (LIST (nth alts i)))))
+		   ;; body
+		   (PUSH alts0 (nth alts i)))))
+	 (sexp (sexp:symbol '%nvcase)
+	       (sexp:symbol dt)
+	       (sexp:symbol value)
+	       (sexp:list (map sexp:symbol tags))
+	       (sexp:list (map sexp:int (reverse arities)))
+	       (sexp:list (map expand (reverse alts0)))
+	       (match ealt? with
+		 (maybe:no) -> match-error
+		 (maybe:yes ealt) -> (expand ealt)))
+	 ))))
 
   (define parse-defmacro
     ((sexp:symbol name) . exps)
@@ -265,16 +279,23 @@
       (define (get-nalts) nalts)
 
       (define (get-scheme)
-	(let ((tvars (tvars::values)))
+	(let ((tvars (get-tvars)))
 	  (:scheme tvars (pred name tvars))))
 
+      ;; XXXXXXX FIX ME XXXXXXXX
+      ;;   tvars are reversed!
+      ;; XXXXXXX FIX ME XXXXXXXX
       (define (get-tvars)
-	(tvars::values))
+	(reverse (tvars::values)))
 
       (define (get-alt-scheme tag)
-	(let ((alt (alt-map::get-err tag "no such alt in datatype")))
-	  (let ((dtscheme (pred name (tvars::values))))
-	    (:scheme (tvars::values) (arrow dtscheme alt.types)))))
+	(let ((alt (alt-map::get-err tag "no such alt in datatype"))
+	      (tvars (get-tvars)))
+	  ;; ok, this is a mistake: the order of the tvars *matters*!
+	  (let ((dtscheme (pred name tvars))
+		(r (:scheme tvars (arrow dtscheme alt.types))))
+;; 	    (print-string (format "get-alt-scheme dt=" (sym name) " tag=" (sym tag) " scheme=" (scheme-repr r)))
+	    r)))
 
       { name=name
 	get=get
@@ -304,7 +325,9 @@
       (sexp (sexp:symbol 'function)
 	    (sexp:symbol (string->symbol (format (sym dt) ":" (sym tag))))
 	    (sexp:list args)
-	    (sexp:list (list:cons (sexp:cons dt tag) args)))))
+	    ;;(sexp:list (list:cons (sexp:cons dt tag) args))
+	    (sexp:list (append (LIST (sexp:symbol '%dtcon) (sexp:cons dt tag)) args))
+	    )))
 
   (define (make-alt tvars tag types)
     (let ((types (map (lambda (t) (parse-type* t tvars)) types))
@@ -323,7 +346,7 @@
 	    (match sub with
 	      (sexp:list ((sexp:cons 'nil tag) . types)) -> (dt.add (make-alt tvars tag types))
 	      x						 -> (error1 "malformed alt in datatype" x)))
-	  (reverse subs)) ;; preserve user order of alts
+	  subs)
 	 (alist/push context.datatypes name dt)
 	 )
     x -> (error1 "malformed datatype" x)
@@ -343,7 +366,7 @@
     x -> (error1 "malformed <define>" x))
 
   (define (parse-pattern-matching-define name body)
-    (match (compile-pattern context expand body) with
+    (match (compile-pattern context expand '() body) with
       (:pair vars body0)
       -> (:pair name
 		   (sexp (sexp:symbol 'function)
@@ -352,7 +375,9 @@
 			 (expand body0)))))
 
   (define (parse-no-formals-define name body)
-    (:pair name (sexp:list body)))
+    (if (not (= 1 (length body)))
+	(error1 "malformed definition" name)
+	(:pair name (car body))))
 
   (define (parse-normal-definition name formals body)
     (:pair name (sexp (sexp:symbol 'function)
@@ -361,8 +386,44 @@
 		      ;; note: expand-body returns one sexp
 		      (expand-body body))))
   
+  (define (expand-match exps)
+    (let loop ((vars '())
+	       (inits '())
+	       (el exps))
+      (match el with
+	((sexp:symbol 'with) . rules)
+	-> (match (compile-pattern context expand (reverse vars) rules) with
+	     (:pair _ code)
+	     -> (expand
+		 (if (null? inits)
+		     code
+		     (sexp (sexp:symbol 'let) (sexp:list inits) code))))
+	((sexp:symbol var) . el)
+	-> (loop (list:cons var vars) inits el)
+	(value . el)
+	-> (let ((var (new-match-var)))
+	     (loop (list:cons var vars) (list:cons (sexp (sexp:symbol var) value) inits) el))
+	_ -> (error1 "malformed match expression" exps))))
+
+  (define expand-cinclude
+    ((sexp:string path))
+    -> (begin
+	 (PUSH context.cincludes path)
+	 (sexp (sexp:symbol 'begin)))
+    x -> (error1 "malformed <cinclude>" x)
+    )
+
+  (define (expand-%nvcase l)
+    ;; already expanded... investigate why this happens
+    (sexp:list (list:cons (sexp:symbol '%nvcase) l)))
+
+  (define expand-%%cexp
+    (sig template . args)
+    -> (sexp:list (append (LIST (sexp:symbol '%%cexp) sig template)
+			  (map expand args)))
+    x -> (error1 "malformed %%cexp" x))
+
   (define transform-table
-    (literal
      (alist/make
       ('if expand-if)
       ('set! expand-set!)
@@ -370,36 +431,26 @@
       ('lambda expand-lambda)
       ('function expand-function)
       ('vcase expand-vcase)
-      )))
+      ('let-splat expand-let-splat)
+      ('match expand-match)
+      ('cinclude expand-cinclude)
+      ('%nvcase expand-%nvcase)
+      ('%%cexp expand-%%cexp)
+      ))
 
   go
 
   )
 
+(define (prepend-standard-macros forms context)
+  (foldr list:cons forms (read-file context.standard-macros)))
+
 (define (print-datatype dt)
   (print-string "(datatype ")
   (printn dt.name)
+  ;; note: this prints them in reverse order. (fix?)
   (dt.iterate
    (lambda (tag alt)
      (print-string (format "  (:" (sym tag) " " (join type-repr " " alt.types) ")\n"))))
   (print-string "  )\n")
   )
-
-;; (define (test-transform)
-;;   (let ((context (make-context))
-;; 	(transform (transformer context))
-;; 	(tl (sexp:list (read-file sys.argv[1])))
-;; 	(exp0 (transform tl)))
-;;     (unread exp0)
-;;     (newline)
-;;     (print-string "repr (exp0) =>\n")
-;;     (pp 0 exp0)
-;;     (print-string (format "\npp-size=" (int (pp-size exp0)) "actual=" (int (string-length (repr exp0))) "\n"))
-;;     (alist/iterate (lambda (name dt) (print-datatype dt)) context.datatypes)
-;;     (newline)
-;;     (alist/iterate (lambda (name macro) (macro.unread)) context.macros)
-;;     (newline)
-;;     ))
-
-;; (include "lib/alist2.scm")
-;; (test-transform)
