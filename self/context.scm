@@ -6,10 +6,16 @@
     dep-graph = (alist-maker)
     scc-graph = '()
     vars = (tree:empty)
+    funs = (tree:empty)
     regalloc = (make-register-allocator)
     standard-macros = "self/selfmac.scm"
+    cincludes = '()
     records = '()
     labels = '()
+    literals = '()
+    literal-ids = (tree:empty)
+    symbols = (alist/make)
+    variant-labels = (alist/make)
     }
   )
 
@@ -17,7 +23,9 @@
 
 (define (vars-get-var context name)
   (match (tree/member context.vars symbol<? name) with
-    (maybe:no) -> (error1 "vars-get-var: no such var" name)
+    (maybe:no) -> (begin
+		    (print-vars context)
+		    (error1 "vars-get-var: no such var" name))
     (maybe:yes v) -> v))
 
 (define (vars-get-flag context name flag)
@@ -39,27 +47,37 @@
 (define VFLAG-FREE      4) ;; function that accesses free variables
 (define VFLAG-NFLAGS    5)
 
+;; urgh, needs to be an object
+(define (add-var name context)
+  (match (tree/member context.vars symbol<? name) with
+    (maybe:no) -> (set! context.vars
+			(tree/insert context.vars
+				     symbol<? name {flags=0 calls=0 refs=0 sets=0 mult=0}))
+    ;; <fix> then <function>, shows up twice, ignore.
+    (maybe:yes _) -> #u))
+
+(define (add-vars root context)
+
+
+  (define (add name)
+    (add-var name context))
+
+  (define (search exp)
+    (match exp.t with
+      ;; only these three bind names.
+      (node:fix names)		   -> (for-each add names)
+      (node:let names)		   -> (for-each add names)
+      (node:function name formals) -> (begin (for-each add formals)
+					     (add name))
+      _ -> #u)
+    (for-each search exp.subs))
+
+  (search root)
+  )
+
 (define (build-vars root context)
-  (let ((vars context.vars))
-
-    (define (add-var name)
-      (match (tree/member vars symbol<? name) with
-	(maybe:no) -> (set! vars (tree/insert vars symbol<? name {flags=0 calls=0 refs=0 sets=0 mult=0}))
-	(maybe:yes _) -> #u)) ;; fix then function, shows up twice, ignore.
-
-    (define (search exp)
-      (match exp.t with
-	;; only these three bind names.
-	(node:fix names)	     -> (for-each add-var names)
-	(node:let names)	     -> (for-each add-var names)
-	(node:function name formals) -> (begin (for-each add-var formals)
-					       (add-var name))
-	_ -> #u)
-      (for-each search exp.subs))
-
-    (search root)
-    (add-var 'top)
-    (set! context.vars vars)))
+  (add-vars root context)
+  (add-var 'top context))
 
 (define (lookup-label-code label context)
   (let loop ((pairs context.labels))
@@ -89,3 +107,4 @@
 		"\n")))
      context.vars)
     (print-string "}\n")))
+
