@@ -610,7 +610,7 @@
 	   (newline)
 	   (indent d)
 	   (if (= target -1) (print-string "-") (print target))
-	   (print-string " ") (print free)
+	   ;;(print-string " ") (print free)
 	   (print-string " ")
 	   (print-info)
 	   (print-insn k0 d)
