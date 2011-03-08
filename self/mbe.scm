@@ -29,9 +29,24 @@
   _ _ -> #f
   )
 
+;; a symbol in angle brackets indicates a literal symbol,
+;;  not a variable, which must match exactly.
+(define (angle-bracket-equal? s0 s1)
+  (let ((s0 (symbol->string s0))
+	(n (string-length s0)))
+    (if (eq? (string-ref s0 (- n 1)) #\>)
+	(string=? (substring s0 1 (- n 1)) (symbol->string s1))
+	#f)))
+
 (define matches-pattern?
-  ;; symbol pattern matches anything
-  (sexp:symbol _) _		-> #t
+  ;; symbol usually means a variable, unless surround by <brackets>
+  (sexp:symbol v0) v1
+  -> (if (eq? (string-ref (symbol->string v0) 0) #\<)
+	 (match v1 with
+	   (sexp:symbol v1)
+	   -> (angle-bracket-equal? v0 v1) ;; both literal symbols
+	   _ -> #f) ;; literal symbol matched against a non-symbol
+	 #t) ;; non-literal symbol matches anything
   ;; list pattern
   (sexp:list pl) (sexp:list el) -> (matches-list? pl el)
   ;; now what other objects should we support in patterns?
@@ -163,11 +178,10 @@
 	((:pair in-pat out-pat) . tl)
 	-> (if (matches-pattern? in-pat exp)
 	       (let ((r (expand-pattern out-pat (get-bindings in-pat exp))))
-		 (print-string "expanded => ") (unread r) (newline)
 		 r)
 	       (loop tl))
 	()
-	-> (error1 "no matching clause for macro" name))))
+	-> (error1 "no matching clause for macro" (repr exp)))))
   (define (unread-macro)
     (print-string "(macro <")
     (print name)
@@ -176,7 +190,7 @@
      (lambda (x)
        (match x with
 	 (:pair in-pat out-pat)
-	 -> (begin (unread in-pat) (print-string " ") (unread out-pat) (print-string "\n\t"))))
+	 -> (begin (pp 0 in-pat) (print-string " ") (pp 0 out-pat) (print-string "\n\t"))))
      patterns)
     (print-string ")\n"))
   { name     = name
@@ -185,23 +199,3 @@
     unread   = unread-macro
     }
   )
-       
-(define (test-mbe)
-  (let ((tests (read-file "/tmp/b.scm")))
-    (for-each
-     (lambda (x)
-       (match x with
-	 (sexp:list (inp outp e))
-	 -> (let ((macro (make-macro 'test (LIST (:pair inp outp)))))
-	      (printn macro)
-	      (unread e)
-	      (newline)
-	      (unread (macro.apply e))
-	      (newline)
-	      0)
-	 _ -> 0
-	 ))
-     tests))
-  )
-
-;;(test-mbe)
