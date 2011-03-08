@@ -9,28 +9,30 @@
 
 ;; RTL instructions
 (datatype insn
-  (:return int)						;; return register
-  (:literal literal cont)				;; <value> <k>
-  (:cexp type string (list int) cont)			;; <sig> <template> <args> <k>
-  (:test int insn insn cont)				;; <reg> <then> <else> <k>
-  (:testcexp (list int) type string insn insn cont)	;; <regs> <sig> <template> <then> <else> <k>
-  (:jump int int)					;; <reg> <target>
-  (:close symbol insn cont)				;; <name> <body> <k>
-  (:varref int int cont)				;; <depth> <index> <k>
-  (:varset int int int cont)				;; <depth> <index> <reg> <k>
-  (:new-env int cont)					;; <size> <k>
-  (:alloc tag int cont)					;; <tag> <size> <k>
-  (:store int int int int cont)				;; <offset> <arg> <tuple> <i> <k>
-  (:invoke (maybe symbol) int int cont)			;; <name> <closure> <args> <k>
-  (:tail (maybe symbol) int int)			;; <name> <closure> <args>
-  (:trcall int symbol (list int))			;; <depth> <name> <args>
-  (:push int cont)					;; <env>
-  (:pop int cont)					;; <result>
-  (:primop symbol sexp (list int) cont)			;; <name> <params> <args> <k>
-  (:move int int cont)					;; <var> <src> <k>
-  (:fatbar int insn insn cont)				;; <label> <alt0> <alt1> <k>
-  (:fail int int)					;; <label> <npop>
-  (:nvcase int symbol (list symbol) (list insn) insn cont)
+  (:return int)                                                 ;; return register
+  (:literal literal cont)                                       ;; <value> <k>
+  (:litcon int symbol cont)                                     ;; <index> <value> <k>
+  (:cexp type string (list int) cont)                           ;; <sig> <template> <args> <k>
+  (:test int insn insn cont)                                    ;; <reg> <then> <else> <k>
+  (:testcexp (list int) type string insn insn cont)             ;; <regs> <sig> <template> <then> <else> <k>
+  (:jump int int)                                               ;; <reg> <target>
+  (:close symbol insn cont)                                     ;; <name> <body> <k>
+  (:varref int int cont)                                        ;; <depth> <index> <k>
+  (:varset int int int cont)                                    ;; <depth> <index> <reg> <k>
+  (:new-env int cont)                                           ;; <size> <k>
+  (:alloc tag int cont)                                         ;; <tag> <size> <k>
+  (:store int int int int cont)                                 ;; <offset> <arg> <tuple> <i> <k>
+  (:invoke (maybe symbol) int int cont)                         ;; <name> <closure> <args> <k>
+  (:tail (maybe symbol) int int)                                ;; <name> <closure> <args>
+  (:trcall int symbol (list int))                               ;; <depth> <name> <args>
+  (:push int cont)                                              ;; <env>
+  (:pop int cont)                                               ;; <result>
+  (:primop symbol sexp (list int) cont)                         ;; <name> <params> <args> <k>
+  (:move int int cont)                                          ;; <var> <src> <k>
+  (:fatbar int insn insn cont)                                  ;; <label> <alt0> <alt1> <k>
+  (:fail int int)                                               ;; <label> <npop>
+  (:nvcase int symbol (list symbol) (list insn) (maybe insn) cont)      ;; <reg> <dt> <tags> <alts> <ealt> <k>
+  (:pvcase int (list symbol) (list int) (list insn) (maybe insn) cont)  ;; <reg> <tags> <arities> <ealt> <k>
   )
 
 ;; continuation
@@ -40,11 +42,12 @@
   (:nil)
   )
 
+;; we use several kinds of environment 'ribs' during this phase
 (datatype cpsenv
-  (:nil)
-  (:rib (list symbol) cpsenv)
-  (:reg int cpsenv)
-  (:fat int cpsenv)
+  (:nil) 				;; empty
+  (:rib (list symbol) cpsenv)		;; variables
+  (:reg symbol int cpsenv)		;; variables-in-registers
+  (:fat int cpsenv)			;; fatbar context
   )
 
 (define (make-register-allocator)
@@ -58,14 +61,18 @@
     {alloc=allocate get-max=get-max}
     ))
 
+;; perhaps name these cont/xxx could be confusing.
 (define k/free
   (cont:k _ free _)   -> free
   (cont:nil) -> (error "k/free"))
 
 (define k/target
   (cont:k target _ _) -> target
-  (cont:nil) -> (error "k/target")
-  )
+  (cont:nil) -> (error "k/target"))
+
+(define add-free-regs
+  (cont:k target free k) regs -> (cont:k target (append free regs) k)
+  (cont:nil) _		      -> (error "add-free-regs"))
 
 (define (compile exp context)
 
@@ -88,23 +95,82 @@
 	  (set! k (cont (k/free k) gen-return)))
   
       (match exp.t with
-	(node:literal lit)	      -> (c-literal lit k)
-	(node:sequence)		      -> (c-sequence tail? exp.subs lenv k)
-	(node:if)		      -> (c-conditional tail? exp lenv k)
-	(node:function name formals)  -> (c-function name formals (car exp.subs) lenv k)
-	(node:varref name)	      -> (c-varref name lenv k)
-	(node:varset name)	      -> (c-varset name (car exp.subs) lenv k)
-	(node:cexp gens sig template) -> (c-cexp sig template exp.subs lenv k)
-	(node:call)		      -> (c-call tail? exp lenv k)
-	(node:fix formals)	      -> (c-let-splat tail? formals exp.subs lenv k)
-	(node:let formals)            -> (c-let-splat tail? formals exp.subs lenv k)
-	(node:primapp name params)    -> (c-primapp tail? name params exp lenv k)
-	(node:nvcase dt alts)         -> (c-nvcase tail? dt alts exp.subs lenv k)
-	_ -> (begin (pp-node exp 0) (error1 "NYI" exp))
+	(node:literal lit)		-> (c-literal lit exp.id k)
+	(node:sequence)			-> (c-sequence tail? exp.subs lenv k)
+	(node:if)			-> (c-conditional tail? exp lenv k)
+	(node:function name formals)	-> (c-function name formals exp.id (car exp.subs) lenv k)
+	(node:varref name)		-> (c-varref name lenv k)
+	(node:varset name)		-> (c-varset name (car exp.subs) lenv k)
+	(node:cexp gens sig template)	-> (c-cexp sig template exp.subs lenv k)
+	(node:call)			-> (c-call tail? exp lenv k)
+	(node:primapp name params)	-> (c-primapp tail? name params exp lenv k)
+	(node:nvcase 'nil tags arities) -> (c-pvcase tail? tags arities exp.subs lenv k)
+	(node:nvcase dt tags arities)	-> (c-nvcase tail? dt tags exp.subs lenv k)
+	(node:fix formals)		-> (c-let-splat tail? formals exp.subs lenv k)
+	(node:let formals)		-> (if (safe-for-let-reg exp formals context)
+					       (c-let-reg tail? formals exp.subs lenv k)
+					       (c-let-splat tail? formals exp.subs lenv k))
+	(node:subst _ _)		-> (impossible)
 	)
       )
 
-    (define (c-literal val k) (insn:literal val k))
+    (define (add-literal lit)
+      (let ((index (length context.literals)))
+	(PUSH context.literals lit)
+	index))
+
+    ;; inlining often causes literals to be copied all over the place.
+    ;;   we can detect this because their node id's are the same.  So keep
+    ;;   a map from id->litindex so we can reference via litcon.
+
+    (define (get-literal-index lit id)
+      (match (tree/member context.literal-ids < id) with
+	(maybe:yes v) -> v
+	(maybe:no)
+	-> (let ((index (add-literal lit)))
+	     (set! context.literal-ids
+		   (tree/insert context.literal-ids < id index))
+	     index)))
+
+    (define (get-symbol-index sym)
+      (match (alist/lookup context.symbols sym) with
+	(maybe:yes index) -> index
+	(maybe:no)
+	-> (let ((string-index (add-literal (literal:string (symbol->string sym))))
+		 (symbol-index (add-literal (literal:symbol sym))))
+	     (alist/push context.symbols sym symbol-index)
+	     symbol-index)))
+
+    ;; scan through a literal for symbols and strings, make sure they're recorded as well.
+    (define scan-literals
+      () -> 0
+      (hd . tl) -> (begin
+		     (match hd with
+		       (literal:symbol sym)    -> (get-symbol-index sym)
+		       (literal:string s)      -> (add-literal hd)
+		       (literal:cons _ _ args) -> (scan-literals args)
+		       (literal:vector args)   -> (scan-literals args)
+		       _ -> 0)
+		     (scan-literals tl)))
+
+    (define (c-literal lit id k)
+      (match lit with
+	;; non-immediate literals are 'constructed' and referenced by index.
+	(literal:symbol s)	-> (insn:litcon (get-symbol-index s) 'symbol k)
+	(literal:string s)	-> (insn:litcon (get-literal-index lit id) 'string k)
+	(literal:vector args)	-> (begin
+				     (scan-literals args)
+				     (insn:litcon (get-literal-index lit id) 'vector k))
+	;; problem: any literal without args should be encoded as an
+	;;   immediate, and not show up in 'constructed'.  I think it
+	;;   can be done like this:
+	;; (literal:cons x y ()) -> (insn:literal lit k)
+	(literal:cons 'bool s _) -> (insn:literal lit k)
+	(literal:cons _ _ args) -> (begin
+				     (scan-literals args)
+				     (insn:litcon (get-literal-index lit id) 'constructor k))
+	;; immediate literals are done 'inline'.
+	_ -> (insn:literal lit k)))
 
     (define (c-sequence tail? nodes lenv k)
       (match nodes with
@@ -145,14 +211,14 @@
 	   (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target))))
 	   (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target))))
 	   k))
-	(collect-primargs test.subs '() lenv k finish)))
+	(collect-primargs test.subs lenv k finish)))
 
     (define extend-lenv
       () lenv -> lenv ;; don't extend with an empty rib
       fs lenv -> (cpsenv:rib fs lenv)
       )
 
-    (define (c-function name formals body lenv k)
+    (define (c-function name formals id body lenv k)
       (set-flag! VFLAG-ALLOCATES)
       (PUSH current-funs name)
       (let ((r
@@ -172,13 +238,16 @@
 				     (maybe:yes i)
 				     (search-rib name0 (+ i 1) names)))
 
+    ;; Note: only 'real' environment ribs increase lexical depth.
     (define lexical-address
-      name _ (cpsenv:nil) -> (error1 "unbound variable" name)
-      name d (cpsenv:rib names lenv) -> (match (search-rib name 0 names) with
-					  (maybe:yes i) -> (:pair d i)
-					  (maybe:no)    -> (lexical-address name (+ d 1) lenv))
-      name d (cpsenv:fat _ lenv) -> (lexical-address name d lenv)
-      name d (cpsenv:reg r lenv) -> (:reg r)
+      name _ (cpsenv:nil)	       -> (error1 "unbound variable" name)
+      name d (cpsenv:rib names lenv)   -> (match (search-rib name 0 names) with
+					    (maybe:yes i) -> (:pair d i)
+					    (maybe:no)    -> (lexical-address name (+ d 1) lenv))
+      name d (cpsenv:fat _ lenv)       -> (lexical-address name d lenv)
+      name d (cpsenv:reg name0 r lenv) -> (if (eq? name name0)
+					      (:reg r)
+					      (lexical-address name d lenv))
       )
 
     (define (c-varref name lenv k)
@@ -199,35 +268,72 @@
     (define (c-primapp tail? name params exp lenv k)
       (let ((args exp.subs))
 	(match name with
-	  '%fail   -> (c-fail tail? lenv k)
-	  '%fatbar -> (c-fatbar tail? args lenv k)
-	  '%dtcon  -> (begin (if (> (length args) 0)
+	  '%fail    -> (c-fail tail? lenv k)
+	  '%fatbar  -> (c-fatbar tail? args lenv k)
+	  '%dtcon   -> (begin (if (> (length args) 0)
 				 (set-flag! VFLAG-ALLOCATES))
 			     (c-primargs args name params lenv k))
+	  '%vcon    -> (c-vcon params args lenv k)
 	  '%rextend -> (c-record-literal exp lenv k)
 	  '%raccess -> (let ((arg0 (nth args 0))
 			     (sig (get-record-sig-sexp arg0.type)))
 			 (c-primargs args '%record-get
 				     (sexp params sig) ;; (field sig)
 				     lenv k))
+	  '%rset    -> (let ((arg0 (nth args 0))
+			     (sig (get-record-sig-sexp arg0.type)))
+			 (c-primargs args '%record-set
+				     (sexp params sig) ;; (field sig)
+				     lenv k))
 	  _ -> (c-primargs args name params lenv k))))
    
     (define (c-cexp sig template args lenv k)
-      (collect-primargs args '() lenv k
+      (collect-primargs args lenv k
 			(lambda (regs)
 			  (insn:cexp sig template regs k))))
 
-    (define (collect-primargs args regs lenv k ck)
+    ;; collect-primargs is used by primops, simple-conditional, and tr-call.
+    ;;   in order to avoid the needless consumption of registers, we re-arrange
+    ;;   the eval order of these args - by placing the complex args first.
+
+    (define (collect-primargs args lenv k ck)
+      (let ((args0 (map-range
+		       i (length args)
+		       (:pair (nth args i) i)))
+	    (args1 (sort (lambda (a b)
+			   (match a b with
+			     (:pair arg_a _) (:pair arg_b _)
+			     -> (> arg_a.size arg_b.size)))
+			 args0))
+	    (perm (map pair->second args1))
+	    (args2 (map pair->first args1)))
+	(collect-primargs* args2 '() perm lenv k ck)))
+
+    (define (collect-primargs* args regs perm lenv k ck)
       (match args with
-	()        -> (ck (reverse regs))
+	()        -> (let ((regs (reverse regs))
+			   ;; undo the permutation of the arg regs
+			   (perm-regs
+			    (map-range
+				i (length perm)
+				(nth regs (index-eq i perm)))))
+		       (ck perm-regs))
 	(hd . tl) -> (compile #f hd lenv
 			      (cont (append (k/free k) regs)
-				    (lambda (reg) (collect-primargs tl (cons reg regs) lenv k ck))))
+				    (lambda (reg) (collect-primargs* tl (cons reg regs) perm lenv k ck))))
 	))
 
     (define (c-primargs args op parm lenv k)
-      (collect-primargs args '() lenv k
+      (collect-primargs args lenv k
 			(lambda (regs) (insn:primop op parm regs k))))
+
+    (define (safe-for-let-reg exp names context)
+      (and (node-get-flag exp NFLAG-LEAF)
+	   (< (length names) 5)
+	   (not (some?
+		 (lambda (name)
+		   (vars-get-flag context name VFLAG-ESCAPES))
+		 names))))
 
     (define (safe-for-tr-call exp fun)
       (match fun with
@@ -237,7 +343,8 @@
 	_ -> #f))
 
     (define (c-trcall depth name args lenv k)
-      (collect-primargs args '() lenv k
+      ;; NOTE: this means tail-calls do not have a guaranteed argument eval order!
+      (collect-primargs args lenv k
 			(lambda (regs) (insn:trcall depth name regs))))
 
     (define (c-call tail? exp lenv k)
@@ -251,7 +358,10 @@
 		   ))
 	       (let ((gen-invoke (if tail? gen-tail gen-invoke))
 		     (name (match fun.t with
-			     (node:varref name) -> (maybe:yes name)
+			     (node:varref name)
+			     -> (if (vars-get-flag context name VFLAG-FUNCTION)
+				    (maybe:yes name)
+				    (maybe:no))
 			     _ -> (maybe:no))))
 		 (define (make-call args-reg)
 		   (compile #f fun lenv (cont (cons args-reg (k/free k))
@@ -288,6 +398,24 @@
 		     free-regs
 		     (compile-store-args (+ i 1) offset (cdr args) tuple-reg free-regs lenv k))))))))
 
+    (define (c-let-reg tail? formals subs lenv k)
+      (define (loop names inits lenv regs)
+	(if (= 0 (length names))
+	    ;; note: the last 'init' is the body
+	    ;; build a new version of the continuation with <regs> listed as free regs.
+	    (compile tail? (car inits) lenv (add-free-regs k regs))
+	    (compile #f
+		     (car inits)
+		     lenv
+		     (cont
+		      (append regs (k/free k))
+		      (lambda (reg)
+			(loop (cdr names)
+			      (cdr inits)
+			      (cpsenv:reg (car names) reg lenv)
+			      (list:cons reg regs)))))))
+      (loop formals subs lenv '()))
+
     (define (c-let-splat tail? formals subs lenv k)
       (let ((rsubs (reverse subs)) ;; subs = (init0 init1 ... body)
 	    (body (car rsubs))
@@ -297,6 +425,7 @@
 	    (k-body (dead free
 			  (compile tail? body (extend-lenv formals lenv)
 				   (cont (k/free k) (lambda (reg) (insn:pop reg k)))))))
+	(set-flag! VFLAG-ALLOCATES)
 	(insn:new-env
 	 nargs
 	 (cont free
@@ -321,14 +450,31 @@
 	       (define (finish test-reg)
 		 (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k)))))
 		       (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
-		       (ealt (compile tail? eclause lenv jump-k)))
-		   (if (not (= (dt.get-nalts) (length alts)))
-		       (match eclause.t with
-			 (node:primapp '%match-error _)
-			 -> (error1 "incomplete match" alt-formals)
-			 _ -> #u))
-		   (insn:nvcase test-reg dtname alt-formals alts ealt k)))
+		       (ealt1
+			(if (not (= (dt.get-nalts) (length alts)))
+			    (match eclause.t with
+			      (node:primapp '%match-error _)
+			      -> (error1 "incomplete match" alt-formals)
+			      ;; incomplete match with ealt
+			      _ -> (maybe:yes (compile tail? eclause lenv jump-k)))
+			    ;; complete match, no ealt
+			    (maybe:no))))
+		   (insn:nvcase test-reg dtname alt-formals alts ealt1 k)))
 	       (compile #f value lenv (cont free finish))))))
+
+    (define (c-pvcase tail? alt-formals arities subs lenv k)
+      (let ((free (k/free k)))
+	;; pvcase subs = <value>, <else-clause>, <alt0>, ...
+	 (let ((value (nth subs 0))
+	       (eclause (nth subs 1))
+	       (alts (cdr (cdr subs))))
+	   (define (finish test-reg)
+	     (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k)))))
+		   (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
+		   (else? (match eclause.t with (node:primapp '%match-error _) -> #f _ -> #t))
+		   (ealt (if else? (maybe:yes (compile tail? eclause lenv jump-k)) (maybe:no))))
+	       (insn:pvcase test-reg alt-formals arities alts ealt k)))
+	   (compile #f value lenv (cont free finish)))))
 
     (define fatbar-counter (make-counter 0))
 
@@ -347,10 +493,33 @@
       (let loop ((depth 0)
 		 (lenv lenv))
 	(match lenv with
-	  (cpsenv:nil)	   -> (error "%fail without fatbar?")
-	  (cpsenv:rib _ lenv)  -> (loop (+ depth 1) lenv)
-	  (cpsenv:reg _ lenv)  -> (loop depth lenv)
-	  (cpsenv:fat label _) -> (insn:fail depth label))))
+	  (cpsenv:nil)		-> (error "%fail without fatbar?")
+	  (cpsenv:rib _ lenv)	-> (loop (+ depth 1) lenv)
+	  (cpsenv:reg _ _ lenv) -> (loop depth lenv)
+	  (cpsenv:fat label _)	-> (insn:fail label depth))))
+
+    (define (c-vcon params args lenv k)
+      (match params with
+	(sexp:list ((sexp:symbol label) _))
+	-> (let ((tag (alist/get context.variant-labels label "unknown variant label?"))
+		 (free (k/free k))
+		 (nargs (length args)))
+	     (if (> nargs 0)
+		 (set-flag! VFLAG-ALLOCATES))
+	     ;; in python this was implemented as a %make-tuple primitive, which used
+	     ;;   compile-primargs rather than using compile-store-rands.  The generated
+	     ;;   code isn't much different, and may put less pressure on the registers.
+	     (if (> nargs 0)
+		 (insn:alloc (tag:uobj tag)
+			     nargs
+			     (cont free
+				   (lambda (reg)
+				     (compile-store-args
+				      0 0 args reg
+				      (list:cons reg free)
+				      lenv k))))
+		 (insn:alloc (tag:uobj tag) 0 k)))
+	_ -> (error1 "bad %vcon params" params)))
 
     (define (c-record-literal exp lenv k)
       (let loop ((exp exp)
@@ -363,14 +532,14 @@
 	       -> (loop exp0 (list:cons (:pair field val) fields))
 	       _ -> (error1 "malformed %rextend" exp))
 	  (node:primapp '%rmake _) ;; done - put the names in canonical order
-	  -> (let ((field0 (sort 
+	  -> (let ((fields0 (sort 
 			    (lambda (a b)
 			      (match a b with
 				(:pair f0 _) (:pair f1 _)
 				-> (symbol<? f0 f1)))
 			    fields))
-		   (sig (map pair-first fields))
-		   (args (map pair-second fields))
+		   (sig (map pair->first fields0))
+		   (args (map pair->second fields0))
 		   (tag (get-record-tag sig))
 		   (free (k/free k)))
 	       (insn:alloc (tag:uobj tag)
@@ -428,6 +597,12 @@
 
 ;;; XXX redo this with the new format macro - this function is horrible.
 (define (print-insn insn d)
+
+  (define (mprint-insn minsn d)
+    (match minsn with
+      (maybe:yes insn) -> (print-insn insn d)
+      (maybe:no) -> #u))
+
   (define (print-line print-info k)
     (match k with
       (cont:k target free k0)
@@ -435,13 +610,19 @@
 	   (newline)
 	   (indent d)
 	   (if (= target -1) (print-string "-") (print target))
-	   ;;(print-string " ") (print free)
+	   (print-string " ") (print free)
 	   (print-string " ")
 	   (print-info)
 	   (print-insn k0 d)
 	   )
-      _ -> #u
+      (cont:nil)
+      -> (begin
+	   (newline)
+	   (indent d)
+	   (print-string "- ")
+	   (print-info))
       ))
+
   (define (ps x) (print x) (print-string " "))
   (define (ps2 x) (print-string x) (print-string " "))
   (match insn with
@@ -449,9 +630,9 @@
     (insn:tail n c a)		    -> (print-line (lambda () (ps2 "tail") (ps n) (ps c) (ps a)) (cont:nil))
     (insn:trcall d n args)	    -> (print-line (lambda () (ps2 "trcall") (ps d) (ps n) (ps args)) (cont:nil))
     (insn:literal lit k)	    -> (print-line (lambda () (ps2 "lit") (ps2 (literal->string lit))) k)
+    (insn:litcon i kind k)          -> (print-line (lambda () (ps2 "litcon") (ps i) (ps kind)) k)
     (insn:cexp sig template args k) -> (print-line (lambda () (ps2 "cexp") (ps2 (type-repr sig)) (ps template) (ps args)) k)
     (insn:test reg then else k)	    -> (print-line (lambda () (ps2 "test") (print reg) (print-insn then (+ d 1)) (print-insn else (+ d 1))) k)
-    (insn:testcexp r s t k0 k1 k)   -> (print-line (lambda () (ps2 "testcexp") (ps r) (ps2 (type-repr s)) (ps t) (print-insn k0 (+ d 1)) (print-insn k1 (+ d 1))) k)
     (insn:jump reg trg)		    -> (print-line (lambda () (ps2 "jmp") (print trg)) (cont:nil))
     (insn:close name body k)	    -> (print-line (lambda () (ps2 "close") (print name) (print-insn body (+ d 1))) k)
     (insn:varref d i k)		    -> (print-line (lambda () (ps2 "ref") (ps d) (ps i)) k)
@@ -466,15 +647,35 @@
     (insn:move var src k)           -> (print-line (lambda () (ps2 "move") (ps var) (ps src)) k)
     (insn:fatbar lab k0 k1 k)       -> (print-line (lambda () (ps2 "fatbar") (ps lab) (print-insn k0 (+ d 1)) (print-insn k1 (+ d 1))) k)
     (insn:fail lab npop)            -> (print-line (lambda () (ps2 "fail") (ps lab) (ps npop)) (cont:nil))
-    (insn:nvcase tr dt formals alts ealt k)
-    -> (print-line (lambda () (ps2 "nvcase")
-			   (ps tr) (ps dt) (ps formals)
-			   (for-each (lambda (insn) (print-insn insn (+ d 1))) alts)
-			   (print-insn ealt (+ d 1)))
-		   k)
+    (insn:testcexp r s t k0 k1 k)
+    -> (print-line
+	(lambda ()
+	  (ps2 "testcexp") (ps r) (ps2 (type-repr s)) (ps t)
+	  (print-insn k0 (+ d 1)) (print-insn k1 (+ d 1)))
+	k)
+    (insn:nvcase tr dt labels alts ealt k)
+    -> (print-line
+	(lambda () (ps2 "nvcase")
+		(ps tr) (ps dt) (ps labels)
+		(for-each (lambda (insn) (print-insn insn (+ d 1))) alts)
+		(mprint-insn ealt (+ d 1)))
+	k)
+    (insn:pvcase tr labels arities alts ealt k)
+    -> (print-line
+	(lambda () (ps2 "pvcase")
+		(ps tr) (ps labels) (ps arities)
+		(for-each (lambda (insn) (print-insn insn (+ d 1))) alts)
+		(mprint-insn ealt (+ d 1)))
+	k)
     ))
 
 (define (walk-insns p insn)
+
+  (define (mwalk minsn d)
+    (match minsn with
+      (maybe:yes insn) -> (walk insn d)
+      (maybe:no) -> #u))
+
   (define (walk insn d)
     (p insn d)
     (let ((k
@@ -491,9 +692,12 @@
 	     (insn:test _ then else k)	     -> (begin (walk then (+ d 1)) (walk else (+ d 1)) k)
 	     (insn:testcexp _ _ _ k0 k1 k)   -> (begin (walk k0 (+ d 1)) (walk k1 (+ d 1)) k)
 	     (insn:nvcase _ _ _ alts ealt k) -> (begin (for-each (lambda (x) (walk x (+ d 1))) alts)
-						       (walk ealt (+ d 1)) k)
+						       (mwalk ealt (+ d 1)) k)
+	     (insn:pvcase _ _ _ alts ealt k) -> (begin (for-each (lambda (x) (walk x (+ d 1))) alts)
+						       (mwalk ealt (+ d 1)) k)
 	     ;; ... the rest just have one continuation
 	     (insn:literal _ k)	    -> k
+	     (insn:litcon _ _ k)    -> k
 	     (insn:cexp _ _ _ k)    -> k
 	     (insn:varref _ _ k)    -> k
 	     (insn:varset _ _ _ k)  -> k
@@ -530,6 +734,3 @@
 	  -> (begin (indent depth)
 		    (printn (%%cexp ('a -> int) "get_case(%0)" insn)))))
     ))
-     
-     
-      
