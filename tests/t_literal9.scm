@@ -1,6 +1,6 @@
 
-(include "lib/core.scm")
-(include "lib/pair.scm")
+;(include "lib/core.scm")
+;(include "lib/pair.scm")
 
 (define (thing1 a b) a)
 (define (thing2 a b) b)
