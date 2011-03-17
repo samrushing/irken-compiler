@@ -52,6 +52,10 @@
   (alist:nil) -> (list:nil)
   (alist:entry _ v tl) -> (list:cons v (alist->keys tl)))
 
+(define alist/length
+  (alist:nil) -> 0
+  (alist:entry _ _ tl) -> (+ 1 (alist/length tl)))
+
 ;; imperative alist object
 ;;
 ;; XXX: when I originally wrote this, these 'methods' merely used
