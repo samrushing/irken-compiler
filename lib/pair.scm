@@ -147,7 +147,7 @@
 (define map2
   p () ()		    -> '()
   p (hd0 . tl0) (hd1 . tl1) -> (list:cons (p hd0 hd1) (map2 p tl0 tl1))
-  p _ _			    -> (error "map2: unequal-length lists")
+  p a b			    -> (error1 "map2: unequal-length lists" (:pair a b))
   )
 
 (defmacro map-range
@@ -209,13 +209,14 @@
 
 ;; collect lists of duplicate runs
 ;; http://www.christiankissig.de/cms/files/ocaml99/problem09.ml
+;; I put in the '(reverse s)' call to make the algorithm 'stable'.
 (define (pack l =)
   (define (pack2 l s e)
     (match l with
-      ()      -> (LIST s)
+      ()      -> (LIST (reverse s))
       (h . t) -> (if (= h e)
 		     (pack2 t (list:cons h s) e)
-		     (list:cons s (pack2 t (LIST h) h)))))
+		     (list:cons (reverse s) (pack2 t (LIST h) h)))))
   (match l with
     ()	    -> '()
     (h . t) -> (pack2 t (LIST h) h)))
@@ -233,20 +234,20 @@
   (match l with
     ()       -> #()  ;; special-case test for empty list
     (x . _)  -> (let ((n (length l))
-		      (v (%make-vector n x)))
+		      (v (make-vector n x)))
 		  (recur v 0 l))))
 
-;; using %vec16-set because the type system keeps <recur>
-;;   generic, thus skipping the vec16 detection.  gotta figure this out.
-(define (list->vec16 l)
-  (define recur
-    v _ ()      -> v
-    v n (x . y) -> (begin (%vec16-set v n x) (recur v (+ n 1) y)))
-  (match l with
-    ()       -> #()  ;; special-case test for empty list
-    (_ . _)  -> (let ((n (length l))
-		      (v (%make-vec16 n)))
-		  (recur v 0 l))))
+;; ;; using %vec16-set because the type system keeps <recur>
+;; ;;   generic, thus skipping the vec16 detection.  gotta figure this out.
+;; (define (list->vec16 l)
+;;   (define recur
+;;     v _ ()      -> v
+;;     v n (x . y) -> (begin (%vec16-set v n x) (recur v (+ n 1) y)))
+;;   (match l with
+;;     ()       -> #()  ;; special-case test for empty list
+;;     (_ . _)  -> (let ((n (length l))
+;; 		      (v (%make-vec16 n)))
+;; 		  (recur v 0 l))))
 
 ;; http://www.codecodex.com/wiki/Merge_sort#OCaml
 
@@ -256,7 +257,9 @@
     (let loop ((la la) (lb lb))
       (match la lb with
 	() lb -> lb
-	la () -> la
+	;; implement optimize-nvcase to put this back
+	;;la () -> la
+	(_ . _) () -> la
 	(ha . ta) (hb . tb)
 	-> (if (< ha hb)
 	       (list:cons ha (loop ta (list:cons hb tb)))
@@ -278,7 +281,7 @@
       (x)  -> l
       list -> (match (halve l) with
 		(:pair l0 l1) -> (merge (merge-sort l0) (merge-sort l1)))))
-  
+
   (merge-sort l)
 
   )
