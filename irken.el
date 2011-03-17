@@ -2,6 +2,10 @@
 
 (require 'scheme)
 
+;; Note: the default scheme mode will work just fine, but there are
+;;   some additional features here that are pretty handy, including
+;;   the highlighting of '->', M-x align, and some indentation tweaks.
+
 ;; my first attempt at writing a derived mode.
 
 (defconst irken-font-lock-keywords
