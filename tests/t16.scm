@@ -1,3 +1,4 @@
+;; -*- Mode: Irken -*-
 
 (include "lib/core.scm")
 (include "lib/pair.scm")
@@ -5,33 +6,26 @@
 (include "lib/random.scm")
 (include "lib/frb.scm")
 
-(define (n-random n)
-  (let loop ((n n)
-	     (t (tree:empty)))
-    (if (= n 0)
-	t
-	(loop (- n 1) (tree/insert t < (random) (random))))))
+(define n-random
+  t 0 -> t
+  t n -> (n-random (tree/insert t < (random) (random)) (- n 1)))
 
-(define (print-spaces n)
-  (let loop ((n n))
-    (cond ((> n 0)
-	   (print-string "  ")
-	   (loop (- n 1))))))
+(define indent
+  0 -> #u
+  n -> (begin (print-string "  ") (indent (- n 1))))
 
 (define (print-item k v d)
-  (print-spaces d)
+  (indent d)
   (print k)
   (print-string ":")
   (print v)
   (print-string "\n"))
 
-(define (tree/print n)
-  (let p ((n n) (d 0))
-    (vcase tree n
-      ((:empty) #u)
-      ((:red    l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1)))
-      ((:purple l r k v) (p l (+ d 1)) (print-item k v d) (p r (+ d 1))))
-    ))
+(define tree/print
+  d (tree:empty)	  -> #u
+  d (tree:red l r k v)    -> (begin (tree/print (+ d 1) l) (print-item k v d) (tree/print (+ d 1) r))
+  d (tree:purple l r k v) -> (begin (tree/print (+ d 1) l) (print-item k v d) (tree/print (+ d 1) r))
+  )
 
 (define (print-kv k v)
   (print k)
@@ -41,7 +35,7 @@
 
 (srandom 314159)
 
-(let ((t (n-random 20))
+(let ((t (n-random (tree:empty) 20))
       (t2 (tree:empty))
       )
   (print-string "inorder:\n")
@@ -51,10 +45,11 @@
   (set! t (tree/insert t < 1234 5000))
   (printn (tree/member t < 1234))
   (printn (tree/member t < 9999))
-  (tree/print t)
+  (printn t)
+  (tree/print 0 t)
   (set! t2 (tree/insert t2 string<? "howdy" 0))
   (set! t2 (tree/insert t2 string<? "there" 2))
-  (tree/print t2)
+  (tree/print 0 t2)
   (let ((probe (tree/member t2 string<? "there")))
     (vcase maybe probe
       ((:no) (printn "nope") #t)
