@@ -206,6 +206,11 @@ dump_object (object * ob, int depth)
       case TC_STRING:
 	print_string (ob, 1);
 	break;
+      case TC_BUFFER: {
+	pxll_int n = get_tuple_size (ob);
+	fprintf (stdout, "<buffer %" PRIuPTR " words %" PRIuPTR " bytes>", n, n * (sizeof(pxll_int)));
+	break;
+      }
       case TC_SYMBOL:
 	print_string (ob[1], 0);
 	break;
@@ -343,7 +348,7 @@ inline
 range_check (unsigned int length, unsigned int index)
 {
   if (index >= length) {
-    fprintf (stderr, "array reference out of range: %d[%d]\n", length, index);
+    fprintf (stderr, "array/string reference out of range: %d[%d]\n", length, index);
     abort();
   }
 }
@@ -431,6 +436,16 @@ vm (int argc, char * argv[])
     }
   }
 
+  void ensure_heap (int nfree, pxll_int size) {
+    if (freep + size + 1 >= limit) {
+      uint64_t t0, t1;
+      t0 = rdtsc();
+      gc_flip (nfree);
+      t1 = rdtsc();
+      gc_ticks += t1 - t0;
+    }
+  }
+
   object * allocate (pxll_int tc, pxll_int size) {
     object * save = freep;
     *freep = (object*) (size<<8 | (tc & 0xff));
@@ -458,6 +473,8 @@ vm (int argc, char * argv[])
   }
 
   // gcc inlines/unrolls these nicely, they allow more compact code
+  // Note: I'm not using these any longer, because there's a huge
+  //   impact on compile times - 11m vs 50m when I tested it.
   inline object * varref (pxll_int depth, pxll_int index)
   {
     object * walk = lenv;
