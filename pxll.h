@@ -12,7 +12,7 @@
 typedef intptr_t pxll_int;
 typedef void * object;
 
-const size_t heap_size = 100000;
+const size_t heap_size = 25000000; // about 200MB on 64-bit machine
 // update backend.py if you change this
 const size_t head_room = 1024;
 
@@ -40,7 +40,8 @@ object * heap1 = NULL;
 #define TC_PAIR                 (6<<2) // 00011000  18
 #define TC_SYMBOL               (7<<2) // 00011100  1c
 #define TC_VEC16                (8<<2) // 00100000  20
-#define TC_USEROBJ              (9<<2) // 00100100  24
+#define TC_BUFFER               (9<<2) // 00100100  24
+#define TC_USEROBJ             (10<<2) // 00101000  28
 
 // alias
 #define TC_CONTINUATION TC_SAVE
@@ -82,6 +83,7 @@ object * heap1 = NULL;
 #define STRING_TUPLE_LENGTH(n)  HOW_MANY (n + sizeof(int32_t), sizeof(object))
 #define STRING_HEADER(n)        STRING_TUPLE_LENGTH(n)<<8|TC_STRING
 #define SYMBOL_HEADER           ((1<<8)|TC_SYMBOL)
+#define CONS_HEADER             ((2<<8)|TC_PAIR)
 #define VEC16_TUPLE_LENGTH(n)   HOW_MANY ((n*2) + sizeof(int32_t), sizeof(object))
 
 // these make the C output more compact & readable
@@ -96,8 +98,8 @@ object * heap1 = NULL;
 #define UITAG(n)                (TC_USERIMM+(n<<8))
 #define UPTR(n,o)               ((pxll_int)(constructed_##n+o))
 #define UPTR0(n)                ((pxll_int)(&constructed_##n))
-
 #define UOHEAD(l,n)             ((l<<8)|UOTAG(n))
+#define INTCON(p)		((pxll_int)BOX_INTEGER(p))
 
 // here we want something that looks like a pointer, but is unlikely,
 // i.e. ...111111100
@@ -114,6 +116,10 @@ inline object *   box (pxll_int n) {return (object *) ((n << 1) | 1);}
 
 // integer/pointer [no length indicator?]
 typedef uintptr_t header;
+
+// XXX future path: eventually we'd like to be able to model C types in the
+//   Irken type system - in which case we could model these guys directly in
+//   irken.  Might make things like vec16 less of a disgusting hack.
 
 // environment tuple - 'rib'
 typedef struct _tuple
