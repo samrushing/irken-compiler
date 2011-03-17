@@ -36,7 +36,7 @@
 	(n (string-length s0)))
     (if (eq? (string-ref s0 (- n 1)) #\>)
 	(string=? (substring s0 1 (- n 1)) (symbol->string s1))
-	#f)))
+	#t)))
 
 (define matches-pattern?
   ;; symbol usually means a variable, unless surround by <brackets>
