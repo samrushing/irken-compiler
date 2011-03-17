@@ -546,6 +546,13 @@
 					   (dtscheme (pred dtname tvars)))
 				       (:scheme tvars (arrow (nth alt.types index) (LIST dtscheme))))))
 			 _ -> (prim-error name))
+      '%callocate  -> (let ((type (parse-type params)))
+			;; int -> (buffer <type>)
+			(:scheme '() (arrow (pred 'buffer (LIST type)) (LIST int-type))))
+      '%exit       -> (:scheme (LIST T0 T1) (arrow T0 (LIST T1)))
+      '%cget       -> (:scheme (LIST T0) (arrow T0 (LIST (pred 'buffer (LIST T0)) int-type)))
+      ;; not sure we can catch 'uncastable' type errors here, maybe only in the back end...
+      '%cset       -> (:scheme (LIST T0 T1) (arrow undefined-type (LIST (pred 'buffer (LIST T0)) int-type T1)))
       _ -> (error1 "lookup-primapp" name)))
 
   (define (type-of-primapp name params subs tenv)
