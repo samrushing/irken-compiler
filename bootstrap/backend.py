@@ -86,7 +86,7 @@ class c_backend:
                 return t
             else:
                 # these values will break as soon as the TC_XXX numbers get changed.
-                return {'TC_PAIR':-3, 'TC_BOOL':-4, 'TC_SYMBOL':-2}[t]
+                return {'TC_PAIR':-4, 'TC_BOOL':-4, 'TC_SYMBOL':-2}[t]
         
         # now we walk the bitch, appending to a list of pxll_ints.
         def walk (exp):
@@ -147,7 +147,6 @@ class c_backend:
                 raise ValueError ("unsupported type in constructed literal: %r" % (exp,))
 
         # synthesize an extra constant, a vector of all the symbols.
-
         # go through the list of top-level constructed literals, and emit them.
         lengths = []
         for i in range (len (self.context.constructed)):
@@ -341,10 +340,15 @@ class c_backend:
                         result.append ('((pxll_string*)(%s))' % (args[i],))
                     else:
                         raise ValueError ("unknown 'raw' type: %r" % (t,))
+                elif itypes.is_pred (t, 'cstring'):
+                    result.append ('(char*)%s' % args[i])
+                elif itypes.is_pred (t, 'buffer'):
+                    result.append ('(((pxll_vector*)%s)+1)' % args[i])
                 elif itypes.is_pred (t, 'arrow', 'vector', 'symbol', 'continuation'):
                     result.append (args[i])
                 else:
-                    raise ValueError ("unexpected predicate in cexp type sig: %r" % (t,))
+                    print "unexpected predicate in cexp type sig: %r" % (t,)
+                    result.append (args[i])
             elif is_a (t, itypes.t_var):
                 # tvars in cexp types
                 result.append (args[i])
@@ -352,7 +356,8 @@ class c_backend:
                 # some other base type, untouched
                 result.append (args[i])
             else:
-                raise ValueError ("unknown element in cexp type sig: %r" % (t,))
+                print "unknown element in cexp type sig: %r" % (t,)
+                result.append (args[i])
         return tuple (result)
 
     def wrap_out (self, type, exp):
@@ -362,6 +367,8 @@ class c_backend:
             # hmm... this is more like a cast, and should probably be
             # expressed as such.
             return 'PXLL_TEST(%s)' % (exp,)
+        elif itypes.is_pred (type, 'cstring'):
+            return '(object*)%s' % (exp,)
         else:
             return exp
 
@@ -548,6 +555,11 @@ class c_backend:
             [vreg, ireg, areg] = insn.regs
             self.write ('range_check (((pxll_vec16*)r%d)->len, unbox(r%d));' % (vreg, ireg))
             self.write ('((pxll_vec16*)r%d)->data[unbox(r%d)] = unbox(r%d);' % (vreg, ireg, areg))
+        elif name == '%ensure-heap':
+            free = insn.free_regs
+            self.check_free_regs (free)
+            [size_reg] = insn.regs
+            self.write ('ensure_heap (%d, unbox(r%d));' % (len(free), size_reg))
         else:
             raise ValueError ("unknown primop: %s" % name)
 
@@ -573,13 +585,8 @@ class c_backend:
         self.write ('}')
 
     def insn_pvcase (self, insn):
-        # this version uses get_pvariant_tag() to avoid segregating into
-        #   immediate/pointer cases... note that each unique label is given
-        #   a unique tag, regardless of its arity (which can vary!)
         [test_reg] = insn.regs
         alt_formals, alts = insn.params
-        units = []
-        tuples = []
         self.write ('switch (get_case_noint (r%d)) {' % test_reg)
         for i in range (len (alts)):
             if i < len(alt_formals):
@@ -796,8 +803,9 @@ class c_backend:
                 self.write ('r%d = top[%d];' % (insn.target, index+2))
             else:
                 # gcc generates identical code for these, and the latter is cleaner.
-                #self.write ('r%d = ((object *%s) lenv) %s[%d];' % (insn.target, '*' * depth, '[1]' * depth, index+2)) 
-               self.write ('r%d = varref (%d,%d);' % (insn.target, depth, index))
+                # HOWEVER, large files are taking 5X longer to compile with -O, so let's not.
+                self.write ('r%d = ((object *%s) lenv) %s[%d];' % (insn.target, '*' * depth, '[1]' * depth, index+2)) 
+                #self.write ('r%d = varref (%d,%d);' % (insn.target, depth, index))
 
     def insn_varset (self, insn):
         val_reg = insn.regs[0]
@@ -809,8 +817,8 @@ class c_backend:
             self.write ('top[%d] = r%d;' % (index+2, val_reg))
         else:
             # gcc generates identical code for these, and the latter is cleaner.
-            #self.write ('((object *%s)lenv)%s[%d] = r%d;' % ('*' * depth, '[1]' * depth, index+2, val_reg))
-            self.write ('varset (%d, %d, r%d);' % (depth, index, val_reg))
+            self.write ('((object *%s)lenv)%s[%d] = r%d;' % ('*' * depth, '[1]' * depth, index+2, val_reg))
+            #self.write ('varset (%d, %d, r%d);' % (depth, index, val_reg))
 
     def insn_close (self, insn):
         fun, body, free = insn.params

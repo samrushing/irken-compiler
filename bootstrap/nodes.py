@@ -408,6 +408,10 @@ class walker:
                     tags = [x[0] for x in alts]
                     alts = [x[1] for x in alts]
                     return nvcase (vtype, WALK(value), tags, [WALK (x) for x in alts], WALK(ealt))
+                elif rator in ('%ensure-heap', '%make-vector'):
+                    # XXX transitional hack - self-hosted irken requires param, as we add
+                    #   prims to the runtime I have to add them here.
+                    return primapp (rator, [WALK (x) for x in exp[2:]], exp[1])                    
                 elif rator.startswith ('%'):
                     return primapp (rator, [WALK (x) for x in exp[1:]])
                 elif rator.startswith ('&'):

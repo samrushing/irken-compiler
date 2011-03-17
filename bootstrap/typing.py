@@ -570,6 +570,8 @@ class typer:
             return forall ((0,0), arrow (0, 0, 0))
         elif name == '%%fail':
             return forall ((0,), arrow (0))
+        elif name == '%ensure-heap':
+            return forall ((), arrow (t_undefined(), t_int()))
         # -------
         elif name.count (':') == 1:
             # a constructor used in a 'constructed literal'
@@ -582,7 +584,6 @@ class typer:
     def remember_variant_label (self, label):
         vl = self.context.variant_labels
         if not vl.has_key (label):
-            # adjust for the hacked pre-installed labels like 'cons' and 'nil'.
             vl[label] = len (vl)
 
     def type_of_fix (self, exp, tenv):

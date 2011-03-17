@@ -41,7 +41,7 @@ class analyzer:
         # find aliases
         self.find_aliases (root)
         # perform simple transformations
-        root = self.optimize_nvcase (root)
+        #root = self.optimize_nvcase (root)
         root = self.transform (root, 0)
         root = self.transform (root, 1)
         self.find_recursion (root)
@@ -364,6 +364,7 @@ class analyzer:
         # this is used by the inliner to decide whether to inline a small
         #   function - rather than computing the full transitive closure,
         #   we'll check only candidate functions...
+
         class FoundIt:
             pass
 
@@ -510,6 +511,9 @@ class analyzer:
                     if (not name.startswith ('^')
                         and calls > 0
                         and ((fun.size <= self.inline_threshold or ((calls == 1) and not fun.escapes))
+                             # I think the following line is correct (and certainly simpler!),
+                             #  but for some reason it breaks typing... look at later if I care.
+                             #and not node.params)
                              and not self.is_recursive (name))
                         ):
                         if calls > 1:
@@ -589,8 +593,10 @@ class analyzer:
         for i in range (len (rands)):
             arg = rands[i]
             formal = formals[i]
-            if arg.is_a ('varref'):
-                if self.assigned (arg) or self.assigned (formal):
+            if self.assigned (formal):
+                complex.append (i)
+            elif arg.is_a ('varref'):
+                if self.assigned (arg):
                     complex.append (i)
                 else:
                     simple.append (i)

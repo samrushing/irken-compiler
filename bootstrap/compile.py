@@ -51,6 +51,7 @@ def compile_file (f, name, c):
     # find strongly connected components
     print 'call graph...'
     c.dep_graph = graph.build_dependency_graph (exp3)
+    #pp (c.dep_graph)
     c.scc_graph, c.scc_map = graph.strongly (c.dep_graph)
 
     if c.verbose:

@@ -348,6 +348,8 @@ class compiler:
             return self.compile_fatbar (tail_pos, exp.args, lenv, k)
         elif exp.name == '%%fail':
             return self.compile_fail (tail_pos, lenv, k)
+        elif exp.name == '%ensure-heap':
+            return self.compile_primargs (exp.args, ('%ensure-heap',), lenv, k)
         else:
             raise ValueError ("Unknown primop: %r" % (exp.name,))
 
@@ -484,7 +486,6 @@ class compiler:
             if len(inits) == 0:
                 return self.compile_exp (tail_pos, exp.body, lenv, (k[0], k[1] + regs, k[2]))
             else:
-                lenv0 = (register_rib ([names[0]], [inits[0]]), lenv)
                 return self.compile_exp (
                     False, inits[0], lenv, self.cont (
                         regs + k[1],
@@ -660,7 +661,7 @@ class INSN:
         elif self.name == 'fatbar':
             return '%s %r %r' % (self.name, self.params[0], self.regs)
         else:
-            return '%s %r %r' % (self.name, self.regs, self.params)
+            return '%s %r %r %r' % (self.name, self.free_regs, self.regs, self.params)
 
     def __repr__ (self):
         return '<INSN %s>' % (self.print_info())
@@ -814,7 +815,7 @@ W = sys.stdout.write
 
 def pretty_print (insns, depth=0): 
    for insn in insns:
-        W ('%s' % ('    ' * depth))
+        W ('%s' % ('  ' * depth))
         if insn.target == 'dead':
             W ('   -   ')
         elif insn.target is None:

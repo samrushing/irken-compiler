@@ -135,7 +135,19 @@ class compiler:
         else:
             return True
 
+    thingum = 0
     def match (self, vars, rules, default):
+        #count = self.thingum
+        #self.thingum += 1
+        #print 'compile-match %d' % count
+        #pp (rules)
+        r = self.match2 (vars, rules, default)
+        #print 'result %d' % count
+        #pp (r)
+        #print
+        return r
+
+    def match2 (self, vars, rules, default):
         #print '-------- match -------------'
         #print vars
         #pp (rules)
@@ -150,16 +162,21 @@ class compiler:
         # if every rule begins with a variable
         # apply if every rule begins with a variable
         if self.first_pats_are (rules, variable):
+            #print 'variable'
             return self.variable_rule (vars, rules, default)
         # if every rule is a constructor (i.e., no variables)
         if self.first_pats_are (rules, constructor):
+            #print 'constructor'
             return self.constructor_rule (vars, rules, default)
         if self.first_pats_are (rules, record):
+            #print 'record'
             return self.record_rule (vars, rules, default)
         # if every rule is a constant
         if self.first_pats_are (rules, literal):
+            #print 'constant'
             return self.constant_rule (vars, rules, default)
         # we have a mixture of variables and constructors..
+        #print 'mixture'
         return self.mixture_rule (vars, rules, default)
 
     def subst (self, var0, var1, code):
@@ -334,6 +351,8 @@ class compiler:
         parts = parts[1:]
         while parts:
             part = parts.pop()
+            #print 'mixture rule, default='
+            #pp (default)
             default = self.match (vars, part, default)
         return default
 

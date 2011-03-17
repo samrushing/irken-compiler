@@ -157,6 +157,7 @@ class transformer:
 
     ZERO = lisp_reader.atom ('int', 0)
     def cheat_check (self, exp):
+        return exp
         if exp[0] == '>':
             if exp[2] == self.ZERO:
                 return ['>0', exp[1]]
@@ -485,8 +486,11 @@ class transformer:
         #    ((:kind1 var0) <body1>)
         #    (else <body>))
         val = exp[1]
-        # for now, only allow a varref for <exp>... later we'll automatically
-        #    wrap this thing in a let if it's not.
+        # for now, only allow a varref for <exp>... later we'll
+        #    automatically wrap this thing in a let if it's
+        #    not. [actually, we can't change that because it's how
+        #    nvcase/pvcase are distinguished - unless we disambiguate
+        #    vcase]
         assert is_a (val, str)
         alts = exp[2:]
         r = None
