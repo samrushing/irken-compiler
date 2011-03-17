@@ -71,32 +71,58 @@
   (literal:cons 'bool 'false _) -> #x006
   x -> (error1 "expected immediate literal " x))
 
-(define (wrap-in types args)
-  (define (wrap type arg)
-    (match type with
-      (type:tvar id _) -> arg
-      (type:pred name predargs _)
-      -> (match name with
-	   'int	    -> (format "unbox(" arg ")")
-	   'string  -> (format "((pxll_string*)(" arg "))->data")
-	   'cstring -> (format "(char*)" arg)
-	   'buffer  -> (format "(((pxll_vector*)" arg ")+1)")
-	   'arrow   -> arg
-	   'vector  -> arg
-	   'symbol  -> arg
-	   'char    -> arg
-	   'continuation -> arg
-	   'raw	    -> (match predargs with
-			 ((type:pred 'string _ _)) -> (format "((pxll_string*)(" arg "))")
-			 _ -> (error1 "unknown raw type in %cexp" type))
-	   _ -> (error1 "unexpected predicate in cexp type sig" type))))
-  (map2 wrap types args))
+(define (wrap-in type arg)
+  (match type with
+    (type:tvar id _) -> arg
+    (type:pred name predargs _)
+    -> (match name with
+	 'int	       -> (format "unbox(" arg ")")
+	 'string       -> (format "((pxll_string*)(" arg "))->data")
+	 'cstring      -> (format "(char*)" arg)
+	 'buffer       -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
+	 'ptr	       -> arg
+	 'arrow	       -> arg
+	 'vector       -> arg
+	 'symbol       -> arg
+	 'char	       -> arg
+	 'continuation -> arg
+	 'raw	       -> (match predargs with
+			    ((type:pred 'string _ _)) -> (format "((pxll_string*)(" arg "))")
+			    _ -> (error1 "unknown raw type in %cexp" type))
+	 kind          -> (if (member-eq? kind c-int-types)
+			      (format "unbox(" arg ")")
+			      (error1 "wrap-in:" type))
+	 )))
+
+;; (buffer (struct sockaddr_t)) => (struct sockaddr_t *)
+(define (irken-type->c-type t)
+  (match t with
+    (type:pred 'buffer (arg) _)	-> (format "(" (irken-type->c-type arg) "*)")
+    (type:pred 'struct (arg) _) -> (format "struct " (irken-type->c-type arg))
+    (type:pred name () _)	-> (format (sym name))
+    _ -> (error1 "malformed ctype" (type-repr t))))
+
+;;
+;; ok, for *now*, I don't really want subtyping.  but I *do* want
+;;  automatic casting/conversion... what's the cleanest way to get that?
+;; We have to deal with both typing and code generation.
+;;
+
+(define c-int-types
+  ;; XXX distinguish between signed and unsigned!
+  ;; XXX also need to handle 64-bit types on a 32-bit platform.
+  '(uint8_t uint16_t uint32_t uint64_t
+    int8_t int16_t int32_t int64_t))
 
 (define (wrap-out type exp)
   (match type with
-    (type:pred 'int _ _)     -> (format "box(" exp ")")
+    (type:pred 'int _ _)     -> (format "box((pxll_int)" exp ")")
     (type:pred 'bool _ _)    -> (format "PXLL_TEST(" exp ")")
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
+    (type:pred 'ptr _ _)     -> (format "(object*)" exp)
+    (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
+				    (format "box((pxll_int)" exp ")")
+				    exp)
     _			     -> exp
     ))
 
@@ -117,6 +143,8 @@
 							  r)
 						 tl))))))
 
+(define first-env #t)
+
 (define (emit o insns context)
 
   (define emitk
@@ -132,7 +160,7 @@
        (insn:test reg k0 k1 k)			 -> (begin (emit-test reg k0 k1) k)
        (insn:testcexp regs sig tmpl k0 k1 k)	 -> (begin (emit-testcexp regs sig tmpl k0 k1) k)
        (insn:jump reg target)			 -> (begin (emit-jump reg target) (cont:nil))
-       (insn:cexp sig template args k)		 -> (begin (emit-cexp sig template args (k/target k)) k)
+       (insn:cexp sig type template args k)      -> (begin (emit-cexp sig type template args (k/target k)) k)
        (insn:close name body k)			 -> (begin (emit-close name body (k/target k)) k)
        (insn:varref d i k)			 -> (begin (emit-varref d i (k/target k)) k)
        (insn:varset d i v k)			 -> (begin (emit-varset d i v) k)
@@ -144,7 +172,7 @@
        (insn:trcall d n args)			 -> (begin (emit-trcall d n args) (cont:nil))
        (insn:push r k)				 -> (begin (emit-push r) k)
        (insn:pop r k)				 -> (begin (emit-pop r (k/target k)) k)
-       (insn:primop name parm args k)		 -> (begin (emit-primop name parm args k) k)
+       (insn:primop name parm t args k)		 -> (begin (emit-primop name parm t args k) k)
        (insn:move dst var k)			 -> (begin (emit-move dst var (k/target k)) k)
        (insn:fatbar lab k0 k1 k)		 -> (begin (emit-fatbar lab k0 k1) k)
        (insn:fail label npop)			 -> (begin (emit-fail label npop) (cont:nil))
@@ -183,7 +211,7 @@
     (match sig with
       (type:pred 'arrow (result-type . arg-types) _)
       -> (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
-	       (args1 (wrap-in arg-types args0))
+	       (args1 (map2 wrap-in arg-types args0))
 	       (exp (wrap-out result-type (cexp-subst template args1))))
 	   (o.write (format "if PXLL_IS_TRUE(" exp ") {"))
 	   (o.indent)
@@ -202,13 +230,17 @@
 
   ;; XXX consider this: giving access to the set of free registers.
   ;;   would make it possible to do %ensure-heap in a %%cexp.
-  (define (emit-cexp sig template args target)
+  (define (emit-cexp sig type template args target)
     (let ((exp
 	   (match sig with
 	     (type:pred 'arrow (result-type . arg-types) _)
 	     -> (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
-		      (args1 (wrap-in arg-types args0)))
-		  (wrap-out result-type (cexp-subst template args1)))
+		      (args1 (map2 wrap-in arg-types args0)))
+		  ;; from the sig
+		  ;;(wrap-out result-type (cexp-subst template args1))
+		  ;; the solved type
+		  (wrap-out type (cexp-subst template args1))
+		  )
 	     ;; some constant type
 	     _ -> (wrap-out sig template))))
       (if (= target -1)
@@ -242,13 +274,26 @@
 
   (define (emit-varref d i target)
     (if (>= target 0)
-	(o.write (format "r" (int target) " = varref (" (int d) ", " (int i) ");"))))
+	(let ((src 
+	       (if (= d -1)
+		   (format "top[" (int (+ 2 i)) "];") ;; the +2 is to skip the header and next ptr
+		   ;;(format "varref (" (int d) "," (int i) ");")
+		   (format "((object*" (repeat d "*") ") lenv) " (repeat d "[1]") "[" (int (+ i 2)) "];")
+		   )))
+	  (o.write (format "r" (int target) " = " src)))))
 
   (define (emit-varset d i v)
-    (o.write (format "varset (" (int d) ", " (int i) ", r" (int v) ");")))
+    (if (= d -1)
+	(o.write (format "top[" (int (+ 2 i)) "] = r" (int v) ";"))
+	;;(o.write (format "varset (" (int d) ", " (int i) ", r" (int v) ");"))
+	(o.write (format "((object*" (repeat d "*") ") lenv) " (repeat d "[1]") "[" (int (+ i 2)) "] = r" (int v) ";"))
+	))
 
   (define (emit-new-env size target)
-    (o.write (format "r" (int target) " = allocate (TC_TUPLE, " (int (+ size 1)) ");")))
+    (o.write (format "r" (int target) " = allocate (TC_TUPLE, " (int (+ size 1)) ");"))
+    (cond (first-env
+	   (set! first-env #f)
+	   (o.write (format "top = r" (int target) ";")))))
 
   (define (emit-alloc tag size target)
     (let ((tag-string
@@ -365,13 +410,14 @@
       'bool 'false -> "(pxll_int)PXLL_FALSE"
       _ _ -> (format "UITAG(" (int index) ")")))
   
-  (define (emit-primop name parm args k)
+  (define (emit-primop name parm type args k)
 
     (define (primop-error)
       (error1 "primop" name))
 
     (let ((target (k/target k))
 	  (nargs (length args)))
+      ;; these need to be broken up into separate functions...
       (match name with
 	'%dtcon  -> (match parm with
 		      (sexp:cons dtname altname)
@@ -448,13 +494,41 @@
 						     ")] = r" (int arg-reg) ";"))))
 			  _ _ -> (primop-error))
 	'%ensure-heap -> (o.write (format "ensure_heap (" (int (length (k/free k))) ", unbox(r" (int (car args)) "));"))
+	'%callocate -> (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
+			 ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
+			 (if (>= target 0)
+			     (o.write (format "r" (int target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
+					      ") * unbox(r" (int (car args)) "), sizeof (object)));"))
+			     (error1 "%callocate: dead target?" type)))
+	'%exit -> (o.write (format "PXLL_UNDEFINED; result=r" (int (car args)) "; goto Lreturn;"))
+	'%cget -> (match args with
+		    (rbase rindex)
+		    ;; XXX range-check (probably need to add a length param to TC_BUFFER)
+		    -> (let ((cexp (format "(((" (type-repr type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
+			 (o.write (format "r" (int target) " = " (wrap-out type cexp) ";")))
+		    _ -> (primop-error))
+	'%cset -> (match args type with
+		    (rbase rindex rval) (type:pred 'arrow (to-type from-type) _)
+		    ;; XXX range-check (probably need to add a length param to TC_BUFFER)
+		    -> (let ((rval-exp (lookup-cast to-type from-type (format "r" (int rval))))
+			     (lval (format "(((" (type-repr to-type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
+			 (o.write (format lval " = " rval-exp ";")))
+		    _ _ -> (primop-error))
 	_ -> (primop-error))))
 
+  (define (lookup-cast to-type from-type exp)
+    (match to-type from-type with
+      (type:pred tout _ _) (type:pred 'int _ _)
+      -> (if (member-eq? tout c-int-types)
+	     (format "((" (sym tout) ")unbox(" exp "))")
+	     (error1 "lookup-cast: can't cast from int to: " tout))
+      _ _ -> (error1 "lookup-cast: unable to cast between types: " (:pair to-type from-type))))
+
   (define (emit-move var src target)
-    (cond ((>= src 0)
+    (cond ((and (>= src 0) (not (= src var)))
 	   ;; from varset
 	   (o.write (format "r" (int var) " = r" (int src) ";")))
-	  ((>= target 0)
+	  ((and (>= target 0) (not (= target var)))
 	   ;; from varref
 	   (o.write (format "r" (int target) " = r" (int var) ";")))))
 
@@ -597,6 +671,7 @@
 	(strings (alist/make))
 	(output '())
 	(current-index 0)
+	(symbol-counter 0)
 	)
 
     ;; emit UOHEAD and UITAG macros, special-casing the builtin datatypes
@@ -662,7 +737,12 @@
 	    (literal:symbol s)
 	    -> (begin
 		 (o.write (format "// symbol " (sym s)))
-		 (o.write (format "pxll_int constructed_" (int i) "[] = {UPTR(" (int i) ",1), SYMBOL_HEADER, UPTR0(" (int (- current-index 1)) ")};")))
+		 (o.write (format "pxll_int constructed_" (int i)
+				  "[] = {UPTR(" (int i)
+				  ",1), SYMBOL_HEADER, UPTR0(" (int (- current-index 1))
+				  "), INTCON(" (int symbol-counter) ")};"))
+		 (set! symbol-counter (+ 1 symbol-counter))
+		 )
 	    _ -> (let ((val (walk (nth lits i)))
 		       (rout (list:cons val (reverse output))))
 		   (o.write (format "pxll_int constructed_" (int i) "[] = {" (join id "," rout) "};")))
