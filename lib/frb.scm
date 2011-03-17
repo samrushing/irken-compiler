@@ -77,24 +77,40 @@
       )))
 
 (define tree/inorder
-  _ (tree:empty) -> #f
-  p (tree:red l r k v)    -> (begin (tree/inorder p l) (p k v) (tree/inorder p r) #f)
-  p (tree:purple l r k v) -> (begin (tree/inorder p l) (p k v) (tree/inorder p r) #f)
+  _ (tree:empty) -> #u
+  p (tree:red l r k v)    -> (begin (tree/inorder p l) (p k v) (tree/inorder p r) #u)
+  p (tree:purple l r k v) -> (begin (tree/inorder p l) (p k v) (tree/inorder p r) #u)
   )
 
 (define tree/reverse
-  _ (tree:empty) -> #f
-  p (tree:red l r k v)    -> (begin (tree/reverse p r) (p k v) (tree/reverse p l) #f)
-  p (tree:purple l r k v) -> (begin (tree/reverse p r) (p k v) (tree/reverse p l) #f)
+  _ (tree:empty) -> #u
+  p (tree:red l r k v)    -> (begin (tree/reverse p r) (p k v) (tree/reverse p l) #u)
+  p (tree:purple l r k v) -> (begin (tree/reverse p r) (p k v) (tree/reverse p l) #u)
   )
 
+(define tree/size
+  (tree:empty)		-> 0
+  (tree:red l r _ _)	-> (+ 1 (+ (tree/size l) (tree/size r)))
+  (tree:purple l r _ _) -> (+ 1 (+ (tree/size l) (tree/size r))))
+
 (defmacro tree/make
-  (tree/make <)    -> (tree:empty)
+  (tree/make <)			    -> (tree:empty)
   (tree/make < (k0 v0) (k1 v1) ...) -> (tree/insert (tree/make < (k1 v1) ...) < k0 v0)
   )
 
 (defmacro tree/insert!
   (tree/insert! root < k v) -> (set! root (tree/insert root < k v)))
+
+;; some way to do these using foldr?
+(define (tree/keys t)
+  (let ((r '()))
+    (tree/reverse (lambda (k v) (PUSH r k)) t)
+    r))
+
+(define (tree/values t)
+  (let ((r '()))
+    (tree/reverse (lambda (k v) (PUSH r v)) t)
+    r))
 
 ;; the defn of make-generator, call/cc, etc... makes it pretty hard
 ;;  to pass more than one arg through a continuation.  so instead we'll
