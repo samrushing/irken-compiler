@@ -293,6 +293,7 @@
 		   (match ch with
 		     #\x -> (loop (peek) (list:cons (read-hex-code) result))
 		     #\X -> (loop (peek) (list:cons (read-hex-code) result))
+		     #\r -> (loop (peek) (list:cons #\return result))
 		     #\n -> (loop (peek) (list:cons #\newline result))
 		     #\t -> (loop (peek) (list:cons #\tab result))
 		     #\" -> (loop (peek) (list:cons #\" result))
