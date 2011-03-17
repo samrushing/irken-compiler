@@ -5,7 +5,7 @@
   (:nil)
   (:cons 'a (list 'a))
   )
-(datatype symbol (:t string))
+(datatype symbol (:t string int)) ;; string unique-id
 
 ;; derived expressions
 
