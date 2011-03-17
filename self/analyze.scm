@@ -137,6 +137,8 @@
 		      -> (let ((var (vars-get-var context name))
 			       (escapes (bit-get var.flags VFLAG-ESCAPES))
 			       (recursive (bit-get var.flags VFLAG-RECURSIVE))
+			       ;; this will spin unwanted extra copies
+			       ;;(recursive (node-get-flag node NFLAG-RECURSIVE))
 			       (calls (get-fun-calls name var.calls)))
 ;;                            (print-string (format "testing " (sym name) " calls " (int calls)
 ;;                                                  " escapes " (bool escapes) " recursive " (bool recursive) "\n"))
@@ -148,17 +150,17 @@
 					    (not recursive)))
 				  (if (> calls 1)
 				      (set-multiplier name calls))
-				  ;;(print-string (format "inline: " (sym name) " calls " (int calls)" escapes " (bool escapes) " recursive " (bool recursive) "\n"))
-				  ;;(return (inline (inline-application fun rands) fenv))
+;; 				  (print-string (format "inline: " (sym name) " calls " (int calls)" escapes " (bool escapes) " recursive " (bool recursive) "\n"))
 				  (let ((r (inline-application fun rands)))
 				    ;; record the new variables...
 				    (add-vars r context)
-				    ;;(print-string "inlined, looks like this:")
-				    ;;(pp-node r)
-				    (return (inline r fenv))))
-				 (else #u))))
-		 ;;({t=(node:function name formals) ...})
-		 ;; _ -> node))
+				    (return (inline r fenv)))))))
+		 ;; always inline ((lambda (x) ...) ...)
+		 ({t=(node:function name formals) ...} . rands)
+		 -> (let ((r (inline-application (car node.subs) rands)))
+;; 		      (print-string (format "inlined lambda: final size = " (int r.size) "\n"))
+		      (add-vars r context)
+		      (return (inline r fenv)))
 		 _ -> #u)
 	    _ -> #u)
     
@@ -482,7 +484,7 @@
 
 (define (do-trim top context)
   (let ((g context.dep-graph)
-	(seen (set-maker '())))
+	(seen (symbol-set-maker '())))
 
     ;;(print-string "do-trim:\n")
     ;;(print-graph g)
