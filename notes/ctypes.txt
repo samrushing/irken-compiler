@@ -1,0 +1,73 @@
+Mar 10, 2011
+
+Can we extend the type system to support C types?
+If so, which elements of the type system?
+Pretty much impossible to do without pointers.
+
+Need some kind of barrier/wrapper, similar to rproduct/rsum (i.e. a 'kinding').
+
+ctype(int)
+ctype(ptr(int))
+
+Polymorphism shouldn't be an issue - all types are monomorphic.
+
+Now, how about ref and set?  Well, ref/sef on ctype(int) is pointless,
+but ref/set on ctype(ptr(int)) is not.
+
+What about GC?  Will we ever have one of these pointers in a register?
+Or will we always guard them via an opaque type?
+
+We'll need some way to describe structures to Irken.  And can we have
+'opaque' structures?  I.e, things we know nothing about other than we
+have a ptr to them?
+
+Once again, let's start small and try to grow things.
+
+Let's try: ctype(ptr(int)).  At first, treat it as a single object.
+Then think about things like pointer arithmetic.
+
+Can we write a function that takes this type as an argument?
+
+Maybe we provide these options via primapps?
+How about %cget and %cset?  Let's say they take a type arg like %%cexp.
+
+(define (incf pi)
+  (%cget (ctype (ptr int)) pi))
+
+Would this lead to a whole mess of primapps?  Like %c++, %c-- ...?
+What features will we really need?
+
+And how about this: what would this do?
+
+  (%cget (ctype (ptr (ptr int))) ppi)
+
+Clearly it would follow only the first pointer, returning for us
+
+(ctype (ptr int))
+
+I wonder if this could be done purely with %%cexp?
+
+  %cget == (%%cexp ((ctype (ptr 'a)) -> (ctype 'a)) "*(%0)" x)
+
+Of course that's polymorphic.  Oy vey.
+
+--------------------------
+Mar 17 2011
+
+Ok, been getting some strange segfaults, and I think I see a problem
+with the way I've built things so far.  The issue is that we *cannot*
+have non-object pointers in registers, at all.  For example, the
+os.uname stuff uses a bunch of %%cexp's to get at the string pointers
+in the utsname struct... I wasn't thinking clearly when I did that.
+The problem is that those char* pointers point *inside* the heap, so
+the gc will just assume they can be followed.
+
+How to fix this?  Can't just make them opaque (buffer (ptr char))
+objects, because the gc can move them and won't adjust the pointer.
+Another answer is to use malloc(), this would make the gc leave them
+alone, but introduces the problem of how/when to free.
+
+Maybe we need a representation for pointers into buffers, a
+representation that handles movement.  The combination of
+(buffer,offset) will be enough to retrieve the pointer we want, and
+won't be bothered by gc movement.

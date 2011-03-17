@@ -18,6 +18,10 @@ if os.uname()[0] == 'Darwin' and gcc == 'gcc':
     # stock xcode gcc has nested functions disabled by default
     cflags += ' -fnested-functions'
 
+print 'protecting bootstrap compiler'
+cmd = 'cp self/compile.c self/compile.backup.c'
+os.system (cmd)
+
 print 'compiling stage0 binary:'
 cmd = '%s %s self/compile.c -o self/compile' % (gcc, cflags)
 print cmd
