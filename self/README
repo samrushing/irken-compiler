@@ -1,25 +1,21 @@
-Two possible approaches to self-hosting.
+This is the initial release of the self-hosted compiler.
 
-1) depth-first: write and debug each phase of the compiler completely.
-2) breadth-first: write a simple version of the entire compiler (e.g.,
-   just the lambda calculus), add in the features one by one.
+It's still in a very unpolished state, but you can use it to bootstrap itself.
 
-I've started on #1, but it's a little tedious and I worry about
-finding 'design bombs' too far down the line and having to redo
-everything.  Might make more sense to do #2 (which is how the original
-compiler was written!) in order to find any glaring issues earlier.
+Here's how.
 
-Theoretically no big issues will show up, since we are merely
-translating from one language to the other.  However, I've already run
-into some data structure difficulties.
+1) compile self/compile.c with gcc.
+  on OSX you'll need to add the '-fnested-functions' arg if you are using the stock gcc
 
-Also, #2 is more fun, more motivating, because you have something
-working quicker.
+  $ gcc -I. -m64 self/compile.c -o self/compile
 
-For example, I'm currently working on the transform phase.  I have
-macros working, but I haven't yet attacked pattern matching.  Should I
-leave pattern matching out for now?  Why not?  [by that argument, I
-should probably have left macros out as well...]
+2) compile it with itself
 
------------------
-TODO: define a datatype for all the various kinds of errors
+  $ self/compile self/compile.scm
+
+3) and again, for fun.
+
+  $ self/compile self/compile.scm
+
+Enjoy.
+
