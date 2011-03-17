@@ -14,7 +14,11 @@
 	     (set! l tl)
 	     result)))
     (define (get) l)
+    (define (top)
+      (match l with
+	() -> (error "stack underflow")
+	(hd . _) -> hd))
     (define (stack-length) (length l))
-    {push=push pop=pop get=get length=stack-length}
+    {push=push pop=pop top=top get=get length=stack-length}
     ))
 
