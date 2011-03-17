@@ -2,13 +2,55 @@
 
 (include "lib/set2.scm")
 (include "lib/alist2.scm")
+(include "lib/map.scm")
+
+(define (symbol-set-class)
+
+  (define (in self sym)
+    (match (tree/member self.t < (symbol->index sym)) with
+      (maybe:yes _) -> #t
+      (maybe:no)    -> #f
+      ))
+
+  (define (add self sym)
+    (if (in self sym)
+	#u
+	;; bug in mbe for <literal-symbols>?
+	;;(tree/insert! self.t < (symbol->index sym) sym)
+	(set! self.t (tree/insert self.t < (symbol->index sym) sym))
+	))
+  
+  (define (get self)
+    (tree/values self.t))
+
+  (define (iterate self p)
+    (tree/inorder
+     (lambda (k v) (p v))
+     self.t))
+
+  (let ((methods {in=in add=add get=get iterate=iterate}))
+    (define (new)
+      {o=methods t=(tree:empty)})
+    new)
+  )
+
+;(define symbol-set-maker (set-class))
+;; this can also be built into <new>
+(define symbol-set-maker0 (symbol-set-class))
+(define (symbol-set-maker l)
+  (let ((s (symbol-set-maker0)))
+    (for-each (lambda (x) (s::add x)) l)
+    s))
 
 (define (build-dependency-graph root context)
-  (let ((g (alist-maker)))
+  ;;(let ((g (alist-maker)))
+  (let ((g (map-maker symbol-index<?)))
     (define (search exp current-fun)
       (match exp.t with
 	(node:varref name)
-	-> (current-fun::add name)
+	-> (begin
+	     (current-fun::add name)
+	     )
 	(node:varset name)
 	-> (begin (current-fun::add name)
 		  (search (car exp.subs) current-fun))
@@ -18,27 +60,28 @@
 		 i (length names)
 		 (let ((name (nth names i))
 		       (init (nth exp.subs i))
-		       (fun (set-maker '())))
+		       (fun (symbol-set-maker '())))
 		   (g::add name fun)
 		   (search init fun)))
 	     (search (nth exp.subs (length names)) current-fun))
 	_ -> (for-each (lambda (sub) (search sub current-fun)) exp.subs)))
-    (let ((top (set-maker '())))
+    (let ((top (symbol-set-maker '())))
       (g::add 'top top)
       (search root top))
     (set! context.dep-graph g)))
 
 (define (transpose g)
-  (let ((gt (alist-maker)))
+  ;;(let ((gt (alist-maker)))
+  (let ((gt (map-maker symbol-index<?)))
     (g::iterate
      (lambda (k _)
-       (gt::add k (set-maker '()))))
+       (gt::add k (symbol-set-maker '()))))
     (g::iterate
      (lambda (k vl)
        (for-each
 	(lambda (v)
 	  (match (gt::get v) with
-	    (maybe:no) -> (gt::add v (set-maker (LIST k)))
+	    (maybe:no) -> (gt::add v (symbol-set-maker (LIST k)))
 	    (maybe:yes s) -> (s::add k)))
 	(vl::get))))
     gt))
@@ -67,7 +110,7 @@
 
 (define (strongly g)
   (let ((s '())
-	(visited (set-maker '())))
+	(visited (symbol-set-maker '())))
     (define (visit0 u)
       (visited::add u)
       (match (g::get u) with
@@ -83,9 +126,9 @@
        (if (not (visited::in u))
 	   (visit0 u))))
     (let ((gt (transpose g))
-	  (visited (set-maker '()))
+	  (visited (symbol-set-maker '()))
 	  (r0 '())
-	  (r1 (set-maker '())))
+	  (r1 (symbol-set-maker '())))
       (define (visit1 u)
 	(visited::add u)
 	(match (gt::get u) with
@@ -101,7 +144,7 @@
        (let ((u (pop s)))
 	 (if (not (visited::in u))
 	     (begin
-	       (set! r1 (set-maker '()))
+	       (set! r1 (symbol-set-maker '()))
 	       (visit1 u)
 	       (PUSH r0 (r1::get))))))
       ;; the subcomponents are in topological order
@@ -110,7 +153,8 @@
 (define (partition-fix names scc-graph)
   ;; partition the functions of this fix into sets of mutually-recursive functions
   (let ((n (length names))
-	(name-map (alist-maker))
+	;(name-map (alist-maker))
+	(name-map (map-maker symbol-index<?))
 	(leftover (range n))
 	(parts '())
 	(part '()))
