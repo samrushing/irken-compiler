@@ -1,2 +1,2 @@
-(include "lib/core.scm")
+;(include "lib/core.scm")
 '#(one two three)
