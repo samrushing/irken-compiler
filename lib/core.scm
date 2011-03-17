@@ -107,10 +107,12 @@
   (%%cexp ((raw string) -> int) "%0->len" s))
 
 (define (make-vector n val)
-  (%make-vector n val))
+  (%ensure-heap #f n)
+  (%make-vector #f n val))
 
-(define (make-vec16 n)
-  (%make-vec16 n))
+;; (define (make-vec16 n)
+;;   ;; XXX ensure-heap here
+;;   (%make-vec16 #f n))
 
 (define (vector-length v)
   (%%cexp
@@ -125,7 +127,7 @@
 (define (error x)
   (print-string "\n***\nRuntime Error, halting: ")
   (printn x)
-  (%%cexp ('a -> 'b) "PXLL_UNDEFINED; result = %0; goto Lreturn" x)
+  (%exit #f x)
   )
 
 (define (error1 msg ob)
@@ -142,7 +144,7 @@
   (print-string "\n\t")
   (print ob1)
   (print-string "\n")
-  (%%cexp (-> 'a) "PXLL_UNDEFINED; goto Lreturn")
+  (%exit #f #u)
   )
 
 (define (impossible)
@@ -199,13 +201,18 @@
 ;; haskell maybe /ml option
 (datatype maybe (:yes 'a) (:no))
 (datatype bool (:true) (:false))
-(datatype symbol (:t string))
+;;(datatype symbol (:t string int))
 
 ;; useful for polyvariant pairs
-(define pair-first
+(define pair->first
   (:pair a _) -> a)
-(define pair-second
+(define pair->second
   (:pair _ b) -> b)
+
+(define maybe?
+  (maybe:yes _) -> #t
+  (maybe:no)    -> #f
+  )
 
 ;; world save/load
 ;; is this is a big restriction - requiring that the thunk return an int?
@@ -257,6 +264,7 @@
 ;;     entry-point
 ;;     ))
 
+;; this simpler version uses getcc and putcc directly.
 (define (make-generator producer)
   (let ((ready #f)
         ;; holding useless continuations
