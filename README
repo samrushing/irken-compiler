@@ -2,20 +2,26 @@ This is the initial release of the self-hosted compiler.
 
 It's still in a very unpolished state, but you can use it to bootstrap itself.
 
-Here's how.
+Just run the script "util/bootstrap.py":
 
-1) compile self/compile.c with gcc.
-  on OSX you'll need to add the '-fnested-functions' arg if you are using the stock gcc
+$ python util/bootstrap.py
 
-  $ gcc -I. -m64 self/compile.c -o self/compile
+Which does the following:
+1) run gcc on the distributed version of self/compile.c
+2) this binary will be used to recompile the compiler.
+3) that binary will recompile the compiler again.
+4) the output from steps 2 and 3 are compared, they should be identical.
 
-2) compile it with itself
+If you're happy with the resulting compiler, you can compile an optimized
+version of self/compile.c, but be warned - you'll need a lot of memory and
+a lot of time.
 
-  $ self/compile self/compile.scm
+I am using dragonegg for optimized builds, and that seems to take about a GB
+of memory, and 18 minutes to build.  It's important to use '-O2', not '-O',
+because '-O' takes 53GB of memory and hours to compile.
 
-3) and again, for fun.
+Very little documentation exists yet, try 'lang.html' for a brief tutorial.
+The best way to get familiar with the language is to read the source code in
+the 'self' directory, and browse over the files in "tests".
 
-  $ self/compile self/compile.scm
-
-Enjoy.
-
+-Sam
