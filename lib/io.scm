@@ -22,8 +22,8 @@
 	(error1 "open() failed" (zero-terminate path)))))
 
 (define (read fd size)
-  (let* ((buffer (make-string size))
-	 (r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
+  (let ((buffer (make-string size))
+	(r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
     (if (= r size)
 	buffer
 	(if (< r size)
@@ -31,9 +31,9 @@
 	    (error "read() failed")))))
 
 (define (read-into-buffer fd buffer)
-  (let* ((size (string-length buffer))
-	 ;; XXX range check
-	 (r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
+  (let ((size (string-length buffer))
+	;; XXX range check
+	(r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
     r))
 
 (define (write fd s)
