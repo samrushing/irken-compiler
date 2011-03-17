@@ -1,9 +1,16 @@
 ;; -*- Mode: Irken -*-
 
+(define (make-options)
+  {verbose=#f
+   nocompile=#f
+   extra-cflags=""
+   optimize=#f
+   })
+
 (define (make-context)
   {datatypes = (alist/make)
     macros = (alist/make)
-    dep-graph = (alist-maker)
+    dep-graph = (map-maker symbol-index<?)
     scc-graph = '()
     vars = (tree:empty)
     funs = (tree:empty)
@@ -16,6 +23,7 @@
     literal-ids = (tree:empty)
     symbols = (alist/make)
     variant-labels = (alist/make)
+    options = (make-options)
     }
   )
 
