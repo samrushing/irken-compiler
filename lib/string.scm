@@ -1,6 +1,10 @@
 ;; -*- Mode: Irken -*-
 
+(define (string-tuple-length n)
+  (%%cexp (int -> int) "string_tuple_length (%0)" n))
+
 (define (make-string n)
+  (%ensure-heap #f (string-tuple-length n))
   (%%cexp
    (int -> string)
    "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((pxll_string*)(t))->len = %0, t)"
@@ -12,14 +16,15 @@
     s2))
 
 (define (buffer-copy src src-start n dst dst-start)
+  ;; XXX range check
   (%%cexp
    (string int string int int -> undefined)
    "(memcpy (%0+%1, %2+%3, %4), PXLL_UNDEFINED)" dst dst-start src src-start n))
 
 (define (substring src start end)
   ;; XXX range check
-  (let* ((n (- end start))
-	 (r (make-string n)))
+  (let ((n (- end start))
+	(r (make-string n)))
     (buffer-copy src start n r 0)
     r))
 
@@ -86,9 +91,9 @@
 	   (loop (+ i 1) j acc)))))
 
 (define (string-compare a b)
-  (let* ((alen (string-length a))
-	 (blen (string-length b))
-	 (cmp (%%cexp (string string int -> int) "memcmp (%0, %1, %2)" a b (min alen blen))))
+  (let ((alen (string-length a))
+	(blen (string-length b))
+	(cmp (%%cexp (string string int -> int) "memcmp (%0, %1, %2)" a b (min alen blen))))
     (cond ((= cmp 0)
 	   (if (= alen blen)
 	       0
@@ -172,6 +177,15 @@
 	(loop (>> x 4)
 	      (list:cons hex-table[(logand x 15)] r)))))
 
+(define (int->oct-string n)
+  (let loop ((x (abs n)) (r '()))
+    (if (= 0 x)
+	(list->string
+	 (if (< n 0)
+	     (list:cons #\- r) r))
+	(loop (>> x 3)
+	      (list:cons hex-table[(logand x 7)] r)))))
+
 (define (pad width s left?)
   (let ((n (string-length s)))
     (if (> n width)
@@ -188,19 +202,21 @@
     (rpad w (lpad lp s))))
 
 (defmacro fitem
-  (fitem (<int> n))	      -> (int->string n)
-  (fitem (<char> ch))	      -> (char->string ch)
-  (fitem (<bool> b))	      -> (bool->string b)
-  (fitem (<hex> n))	      -> (int->hex-string n)
-  (fitem (<sym> s))	      -> (symbol->string s)
-  (fitem (<joins> l))	      -> (string-concat l)
-  (fitem (<join> p sep l))    -> (string-join (map p l) sep) ;; map <p> over list <l>, separate each with <sep>
-  (fitem (<string> s))	      -> s
-  (fitem (<p> p x))	      -> (p x) ;; fun <p> converts <x> to a string
-  (fitem (<lpad> n item ...)) -> (lpad n (format item ...)) ;; left-pad
-  (fitem (<rpad> n item ...)) -> (rpad n (format item ...)) ;; right-pad
-  (fitem (<cpad> n item ...)) -> (cpad n (format item ...)) ;; right-pad
-  (fitem x)		      -> x	;; anything else must already be a string
+  (fitem (<int> n))		-> (int->string n)
+  (fitem (<char> ch))		-> (char->string ch)
+  (fitem (<bool> b))		-> (bool->string b)
+  (fitem (<hex> n))		-> (int->hex-string n)
+  (fitem (<oct> n))		-> (int->oct-string n)
+  (fitem (<sym> s))		-> (symbol->string s)
+  (fitem (<joins> l))		-> (string-concat l)
+  (fitem (<join> p sep l))	-> (string-join (map p l) sep) ;; map <p> over list <l>, separate each with <sep>
+  (fitem (<string> s))		-> s
+  (fitem (<p> p x))		-> (p x) ;; fun <p> converts <x> to a string
+  (fitem (<lpad> n item ...))	-> (lpad n (format item ...)) ;; left-pad
+  (fitem (<rpad> n item ...))	-> (rpad n (format item ...)) ;; right-pad
+  (fitem (<cpad> n item ...))	-> (cpad n (format item ...)) ;; right-pad
+  (fitem (<repeat> n item ...)) -> (string-concat (n-of n (format item ...)))
+  (fitem x)			-> x	;; anything else must already be a string
   )
 
 (defmacro formatl
@@ -217,19 +233,13 @@
   (format-join sep item ...) -> (string-join (formatl item ...) sep)
   )
 
-(define sys
-  (let ((argc (%%cexp (-> int) "argc"))
-	(argv 
-	 (let ((v (%make-vector argc "")))
-	   (define (get-arg n)
-	     (let ((len (%%cexp (int -> int) "strlen(argv[%0])" n))
-		   (r (make-string len)))
-	       (%%cexp (string int int -> undefined) "(memcpy (%0, argv[%1], %2), PXLL_UNDEFINED)" r n len)
-	       r))
-	   (let loop ((n argc))
-	     (cond ((zero? n) v)
-		   (else
-		    (set! v[(- n 1)] (get-arg (- n 1)))
-		    (loop (- n 1))))))))
-  { argc=argc argv=argv }
-  ))
+(define (strlen s)
+  (%%cexp (cstring -> int) "strlen(%0)" s))
+
+(define (copy-cstring s)
+  (let ((len (strlen s))
+	(result (make-string len)))
+    (%%cexp (string cstring int -> undefined)
+	    "(memcpy (%0, %1, %2), PXLL_UNDEFINED)"
+	    result s len)
+    result))
