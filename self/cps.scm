@@ -7,12 +7,17 @@
   (:uobj int)
   )
 
+;; ================================================================================
+;; here's an interesting idea: why not attach the solved type to *every* insn?
+;; actually, we pretty much *have* to do that in order to get a working C interface.
+;; ================================================================================
+
 ;; RTL instructions
 (datatype insn
   (:return int)                                                 ;; return register
   (:literal literal cont)                                       ;; <value> <k>
   (:litcon int symbol cont)                                     ;; <index> <value> <k>
-  (:cexp type string (list int) cont)                           ;; <sig> <template> <args> <k>
+  (:cexp type type string (list int) cont)                      ;; <sig> <solved-type> <template> <args> <k>
   (:test int insn insn cont)                                    ;; <reg> <then> <else> <k>
   (:testcexp (list int) type string insn insn cont)             ;; <regs> <sig> <template> <then> <else> <k>
   (:jump int int)                                               ;; <reg> <target>
@@ -27,7 +32,7 @@
   (:trcall int symbol (list int))                               ;; <depth> <name> <args>
   (:push int cont)                                              ;; <env>
   (:pop int cont)                                               ;; <result>
-  (:primop symbol sexp (list int) cont)                         ;; <name> <params> <args> <k>
+  (:primop symbol sexp type (list int) cont)                    ;; <name> <params> <args> <k>
   (:move int int cont)                                          ;; <var> <src> <k>
   (:fatbar int insn insn cont)                                  ;; <label> <alt0> <alt1> <k>
   (:fail int int)                                               ;; <label> <npop>
@@ -101,7 +106,7 @@
 	(node:function name formals)	-> (c-function name formals exp.id (car exp.subs) lenv k)
 	(node:varref name)		-> (c-varref name lenv k)
 	(node:varset name)		-> (c-varset name (car exp.subs) lenv k)
-	(node:cexp gens sig template)	-> (c-cexp sig template exp.subs lenv k)
+	(node:cexp gens sig template)	-> (c-cexp sig template exp lenv k)
 	(node:call)			-> (c-call tail? exp lenv k)
 	(node:primapp name params)	-> (c-primapp tail? name params exp lenv k)
 	(node:nvcase 'nil tags arities) -> (c-pvcase tail? tags arities exp.subs lenv k)
@@ -242,7 +247,9 @@
     (define lexical-address
       name _ (cpsenv:nil)	       -> (error1 "unbound variable" name)
       name d (cpsenv:rib names lenv)   -> (match (search-rib name 0 names) with
-					    (maybe:yes i) -> (:pair d i)
+					    (maybe:yes i) -> (if (eq? lenv (cpsenv:nil))
+								 (:top i)
+								 (:pair d i))
 					    (maybe:no)    -> (lexical-address name (+ d 1) lenv))
       name d (cpsenv:fat _ lenv)       -> (lexical-address name d lenv)
       name d (cpsenv:reg name0 r lenv) -> (if (eq? name name0)
@@ -254,6 +261,7 @@
       (match (lexical-address name 0 lenv) with
 	(:reg r) -> (insn:move r -1 k)
 	(:pair depth index) -> (insn:varref depth index k)
+	(:top index) -> (insn:varref -1 index k)
 	))
 
     (define (c-varset name exp lenv k)
@@ -261,8 +269,11 @@
 	     (match (lexical-address name 0 lenv) with
 	       (:pair depth index)
 	       -> (lambda (reg) (insn:varset depth index reg k))
+	       (:top index)
+	       -> (lambda (reg) (insn:varset -1 index reg k))
 	       (:reg index)
-	       -> (lambda (reg) (insn:move reg index k)))))
+	       -> (lambda (reg) (insn:move reg index k))
+	       )))
 	(compile #f exp lenv (cont (k/free k) kfun))))
 
     (define (c-primapp tail? name params exp lenv k)
@@ -272,25 +283,37 @@
 	  '%fatbar  -> (c-fatbar tail? args lenv k)
 	  '%dtcon   -> (begin (if (> (length args) 0)
 				 (set-flag! VFLAG-ALLOCATES))
-			     (c-primargs args name params lenv k))
+			     (c-primargs args name params exp.type lenv k))
 	  '%vcon    -> (c-vcon params args lenv k)
 	  '%rextend -> (c-record-literal exp lenv k)
 	  '%raccess -> (let ((arg0 (nth args 0))
 			     (sig (get-record-sig-sexp arg0.type)))
 			 (c-primargs args '%record-get
 				     (sexp params sig) ;; (field sig)
+				     exp.type
 				     lenv k))
 	  '%rset    -> (let ((arg0 (nth args 0))
 			     (sig (get-record-sig-sexp arg0.type)))
 			 (c-primargs args '%record-set
 				     (sexp params sig) ;; (field sig)
+				     exp.type
 				     lenv k))
-	  _ -> (c-primargs args name params lenv k))))
+	  '%cset    -> (let ((val (nth args 2))
+			     (tval val.type)
+			     (buffer (nth args 0)))
+			 (match buffer.type with
+			   (type:pred 'buffer (tbase) _)
+			   -> (let ((cast-type (arrow tbase (LIST tval))))
+				;; we need both types in order to cast correctly
+				(c-primargs args name params cast-type lenv k))
+			   _ -> (impossible)))
+	  _ -> (c-primargs args name params exp.type lenv k))))
    
-    (define (c-cexp sig template args lenv k)
-      (collect-primargs args lenv k
+    (define (c-cexp sig template exp lenv k)
+      ;;(print-string (format "c-cexp: sig = " (type-repr sig) " solved type = " (type-repr exp.type) "\n"))
+      (collect-primargs exp.subs lenv k
 			(lambda (regs)
-			  (insn:cexp sig template regs k))))
+			  (insn:cexp sig exp.type template regs k))))
 
     ;; collect-primargs is used by primops, simple-conditional, and tr-call.
     ;;   in order to avoid the needless consumption of registers, we re-arrange
@@ -323,9 +346,9 @@
 				    (lambda (reg) (collect-primargs* tl (cons reg regs) perm lenv k ck))))
 	))
 
-    (define (c-primargs args op parm lenv k)
+    (define (c-primargs args op parm type lenv k)
       (collect-primargs args lenv k
-			(lambda (regs) (insn:primop op parm regs k))))
+			(lambda (regs) (insn:primop op parm type regs k))))
 
     (define (safe-for-let-reg exp names context)
       (and (node-get-flag exp NFLAG-LEAF)
@@ -355,6 +378,7 @@
 		 (match (lexical-address name 0 lenv) with
 		   (:reg _) -> (error "c-call function in register?")
 		   (:pair depth index) -> (c-trcall depth name args lenv k)
+		   (:top index) -> (c-trcall -1 name args lenv k)
 		   ))
 	       (let ((gen-invoke (if tail? gen-tail gen-invoke))
 		     (name (match fun.t with
@@ -631,7 +655,7 @@
     (insn:trcall d n args)	    -> (print-line (lambda () (ps2 "trcall") (ps d) (ps n) (ps args)) (cont:nil))
     (insn:literal lit k)	    -> (print-line (lambda () (ps2 "lit") (ps2 (literal->string lit))) k)
     (insn:litcon i kind k)          -> (print-line (lambda () (ps2 "litcon") (ps i) (ps kind)) k)
-    (insn:cexp sig template args k) -> (print-line (lambda () (ps2 "cexp") (ps2 (type-repr sig)) (ps template) (ps args)) k)
+    (insn:cexp sig typ tem args k)  -> (print-line (lambda () (ps2 "cexp") (ps2 (type-repr sig)) (ps2 (type-repr typ)) (ps tem) (ps args)) k)
     (insn:test reg then else k)	    -> (print-line (lambda () (ps2 "test") (print reg) (print-insn then (+ d 1)) (print-insn else (+ d 1))) k)
     (insn:jump reg trg)		    -> (print-line (lambda () (ps2 "jmp") (print trg)) (cont:nil))
     (insn:close name body k)	    -> (print-line (lambda () (ps2 "close") (print name) (print-insn body (+ d 1))) k)
@@ -643,7 +667,7 @@
     (insn:alloc tag size k)         -> (print-line (lambda () (ps2 "alloc") (ps tag) (ps size)) k)
     (insn:push r k)                 -> (print-line (lambda () (ps2 "push") (ps r)) k)
     (insn:pop r k)                  -> (print-line (lambda () (ps2 "pop") (ps r)) k)
-    (insn:primop name p args k)     -> (print-line (lambda () (ps2 "primop") (ps name) (ps2 (repr p)) (ps args)) k)
+    (insn:primop name p t args k)   -> (print-line (lambda () (ps2 "primop") (ps name) (ps2 (repr p)) (ps2 (type-repr t)) (ps args)) k)
     (insn:move var src k)           -> (print-line (lambda () (ps2 "move") (ps var) (ps src)) k)
     (insn:fatbar lab k0 k1 k)       -> (print-line (lambda () (ps2 "fatbar") (ps lab) (print-insn k0 (+ d 1)) (print-insn k1 (+ d 1))) k)
     (insn:fail lab npop)            -> (print-line (lambda () (ps2 "fail") (ps lab) (ps npop)) (cont:nil))
@@ -696,19 +720,19 @@
 	     (insn:pvcase _ _ _ alts ealt k) -> (begin (for-each (lambda (x) (walk x (+ d 1))) alts)
 						       (mwalk ealt (+ d 1)) k)
 	     ;; ... the rest just have one continuation
-	     (insn:literal _ k)	    -> k
-	     (insn:litcon _ _ k)    -> k
-	     (insn:cexp _ _ _ k)    -> k
-	     (insn:varref _ _ k)    -> k
-	     (insn:varset _ _ _ k)  -> k
-	     (insn:store _ _ _ _ k) -> k
-	     (insn:invoke _ _ _ k)  -> k
-	     (insn:new-env _ k)	    -> k
-	     (insn:alloc _ _ k)	    -> k
-	     (insn:push _ k)        -> k
-	     (insn:pop _ k)         -> k
-	     (insn:primop _ _ _ k)  -> k
-	     (insn:move _ _ k)      -> k
+	     (insn:literal _ k)	     -> k
+	     (insn:litcon _ _ k)     -> k
+	     (insn:cexp _ _ _ _ k)   -> k
+	     (insn:varref _ _ k)     -> k
+	     (insn:varset _ _ _ k)   -> k
+	     (insn:store _ _ _ _ k)  -> k
+	     (insn:invoke _ _ _ k)   -> k
+	     (insn:new-env _ k)	     -> k
+	     (insn:alloc _ _ k)	     -> k
+	     (insn:push _ k)	     -> k
+	     (insn:pop _ k)	     -> k
+	     (insn:primop _ _ _ _ k) -> k
+	     (insn:move _ _ k)	     -> k
 	     )))
       (match k with
 	(cont:k target free insn) -> (walk insn d)
