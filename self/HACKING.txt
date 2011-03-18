@@ -142,7 +142,7 @@ other sub-nodes, and a continuation.
 A continutation is either empty (for an insn like 'return'), or
 contains the target register for the insn and a list of registers that
 are 'free' at that point in the code.  ['free' here means something
-totally non-obvious if you're not a function language person. see
+totally non-obvious if you're not a functional language person. see
 http://en.wikipedia.org/wiki/Free_variables_and_bound_variables for
 more info].
 
