@@ -302,7 +302,8 @@ mistaken for immediates.  All pointer types must contain a header at
 the front of their allocation.  The lowest *byte* of this header
 contains a type code that identifies it as either a builtin pointer
 type (one understood by the runtime, TC_CONS or TC_SYMBOL for
-example), or a user datatype.
+example), or a user datatype.  The remaining bytes give the size (in
+words) of the allocation.
 
 The garbage collector is currently a simple two-space copying Cheney
 collector.  There is one departure/optimization that I use to speed up
