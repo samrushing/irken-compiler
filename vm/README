@@ -1,0 +1,3 @@
+As of March 2011, the VM code will not work because of the loss of the vec16 datatype.
+Once this capability is returned to the self-hosted compiler, this should work again.
+Sorry for the inconvenience.
