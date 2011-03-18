@@ -9,15 +9,16 @@ def clean_c (path, precious):
             for name in files:
                 os.remove (os.path.join (root, name))
             os.rmdir (root)
-        for name in files:
-            jp = os.path.join (root, name)
-            if name.endswith ('.c') and name not in precious:
-                os.remove (jp)
-            else:
-                stat = os.stat (jp)
-                if stat.st_mode & 1:
-                    # an executable
+        else:
+            for name in files:
+                jp = os.path.join (root, name)
+                if name.endswith ('.c') and name not in precious:
                     os.remove (jp)
+                else:
+                    stat = os.stat (jp)
+                    if stat.st_mode & 1:
+                        # an executable
+                        os.remove (jp)
 
 for path in ('tests vm self demo'.split()):
     clean_c (path, ['compile.c'])
