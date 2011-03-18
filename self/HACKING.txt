@@ -12,6 +12,7 @@ The phases of the compiler - and how each source file is named.
   2.2) match
 3) nodes
 4) analyze
+  4.1) graph
 5) typing
 6) cps
 7) backend
@@ -145,6 +146,10 @@ totally non-obvious if you're not a function language person. see
 http://en.wikipedia.org/wiki/Free_variables_and_bound_variables for
 more info].
 
+This phase keeps track of the 'tail' status of each node as it
+compiles, which makes it possible to implement proper tail recursion
+and thus high-performance looping.
+
 This phase is also responsible for collecting lists of literal
 constants, including things like symbols and pre-initialized data
 structures.
@@ -187,22 +192,23 @@ At this point you can see we're getting closer to an actual
 The back end walks over the cps insn tree, translating it into C code
 that will implement the insns for the runtime.  Most of it is
 straightforward.  The 'constructed literals' bit may seem mysterious,
-but all it's doing is pre-constructing complex literals (like say a
-parser table) into a form that can be readily used by the runtime.
-The alternative approach would involve emitting a bunch of *code* to
-build these data structures, code that would needlessly bloat the
-executable and would run only once.
+but all it's doing is pre-constructing complex literals (e.g. a parser
+table) into a form that can be readily used by the runtime.  The
+alternative approach would involve emitting a bunch of *code* to build
+these data structures, code that would needlessly bloat the executable
+and would run only once.
 
 ================================================================================
 
 Design/Runtime
 
 The code emitted by the compiler does not use the C stack.  The entire
-program is put into one function - called 'vm' for historical
-purposes.  Lexical environments and closures are implemented with
-run-time links.  In a sense, the program's execution stack lives on
-the heap. Continuations are fully supported, and are invoking one is
-as cheap as any other function call.
+program is put into one function - called 'vm' for historical reasons.
+Lexical environments and closures are implemented with run-time links.
+The execution stack lives on the heap. Continuations are fully
+supported, and invoking one is as cheap as any other function
+call.  Function calls and returns are implemented via the gcc 'address
+of label' extension and 'goto'.
 
 [see header.c]
 
@@ -262,7 +268,7 @@ Each element on the stack (a 'pxll_save' struct) consists of a pointer
 to the next frame, a pointer to the lexical environment for that
 frame, a program counter, and a set of saved registers.  When a
 continuation is restored/invoked, all these values are restored and
-the <pc> address is jumped to.
+the <pc> address is jumped to.  (Most languages would call this a 'return')
 
 Users can capture the value of <k> with the "getcc" macro in
 lib/core.scm, and can invoke a saved continuation with "putcc".
@@ -309,13 +315,4 @@ the forwarded pointer after the sentinel). So, for example, a vector
 of length zero is represented by a special immediate,
 TC_EMPTY_VECTOR. This is actually a good idea regardless, since we
 don't use heap space to represent it.
-
-
-
-
-
-
-
-
-
 
