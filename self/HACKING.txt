@@ -1,0 +1,321 @@
+# -*- Mode: Text -*-
+
+This file is a quick description of the compiler.
+
+================================================================================
+
+The phases of the compiler - and how each source file is named.
+
+1) lisp_reader
+2) transform
+  2.1) mbe
+  2.2) match
+3) nodes
+4) analyze
+5) typing
+6) cps
+7) backend
+
+
+1) lisp_reader:
+
+Reads from a file or string a sequence of s-expressions.  There are
+some slight differences here from a 'classical' Scheme/Lisp
+s-expression, but the basics are the same.
+
+(datatype field
+  (:t symbol sexp)
+  )
+
+(datatype sexp
+  (:list (list sexp))
+  (:symbol symbol)
+  (:string string)
+  (:char char)
+  (:bool bool)
+  (:int int)
+  (:undef)
+  (:vector (list sexp))
+  (:record (list field))
+  (:cons symbol symbol) ;; constructor ':' syntax
+  (:attr sexp symbol)	;; attribute '.' syntax
+  )
+
+2) transform:
+
+This performs source-level transformations on the input code, 
+including the handling of some of the core forms like <let>,
+<begin>, <set!>, etc...
+
+Bodies of forms like <let> and <define> are searched for definitions,
+datatypes, and macros here.
+
+During the pass over the source, the operator position of each
+application is checked for either hard-coded transforms, or for user
+macros, and then expanded as appropriate.
+
+2.1) mbe: macro by example
+This expands macros when they are matched.  The macro language used
+differs somewhat from Scheme's syntax-rules... I hope it is somewhat
+simpler.
+
+2.2) match: match compiler
+This expands pattern-matching expressions into series of nvcase,
+pvcase, or conditional expressions.
+
+3) nodes: AST/node conversion
+The source tree of s-expressions is now converted to a node tree.
+Each node consists of a record (holding mutable fields) with a 't'
+field holding the object of the node datatype.
+
+Each node is a record:
+ { t     : the type of the node
+   subs  : a list of all the sub-nodes of this node
+   size  : integer - the size of this node including all sub-nodes.
+   id    : integer - uniquely identifies each node
+   type  : the type of the node - initially an empty type.
+   flags : integer - flags/properties of the node
+  }
+
+The 't' field is the following datatype:
+
+(datatype node
+  (:varref symbol)
+  (:varset symbol)
+  (:literal literal)
+  (:cexp (list type) type string) ;; generic-tvars type template
+  (:nvcase symbol (list symbol) (list int))  ;; datatype alts arities
+  (:sequence)
+  (:if)
+  (:function symbol (list symbol)) ;; name formals
+  (:call)
+  (:let (list symbol))
+  (:fix (list symbol))
+  (:subst symbol symbol)
+  (:primapp symbol sexp) ;; name params
+  )
+
+4) analyze: optimizations, tree-shaking, etc...
+This repeatedly walks over the node tree, making decisions about
+inlining and various other optimizations.  It also removes any dead
+code, and sets flags on both variables and nodes that are needed by
+later phases.
+
+4.1) graph: builds a dependency graph, and also computes the
+strongly-connected-components of the call graph, which is needed by
+the typing phase.
+
+5) typing: this does 'type reconstruction' (or 'type inference') on
+the resulting node tree, using a union-find algorithm along with
+Huet's unification algorithm.  If the program passes this phase, then
+the final solved type is attacked to each node.
+
+[See also types.scm]
+
+Here's the 'type' datatype:
+
+(datatype type
+  (:tvar int                {parent=(maybe type) pending=bool moo=(maybe type)})
+  (:pred symbol (list type) {parent=(maybe type) pending=bool moo=(maybe type)})
+  )
+
+Each type has a record inside to it to hold mutable data.  The
+parent field is used by the union-find algorithm.  The 'pending' and
+'moo' fields are used in the management of recursive types.
+
+Types are either predicates or type variables.  'Base' types are
+implemented as simple empty predicates: for exampe the 'int' type is
+(pred 'int '() _).
+
+6) cps
+The node tree is now translated into yet another language, a
+continuation-passing-style register transfer language.  Each 'insn'
+contains meta-data about the instruction itself, possibly contains
+other sub-nodes, and a continuation.
+
+(datatype cont
+  (:k int (list int) insn) ;; <target-register> <free-registers> <code>
+  (:nil)
+  )
+
+A continutation is either empty (for an insn like 'return'), or
+contains the target register for the insn and a list of registers that
+are 'free' at that point in the code.  ['free' here means something
+totally non-obvious if you're not a function language person. see
+http://en.wikipedia.org/wiki/Free_variables_and_bound_variables for
+more info].
+
+This phase is also responsible for collecting lists of literal
+constants, including things like symbols and pre-initialized data
+structures.
+
+Some insns (conditionals of various types) contain sub-trees of other
+insns.
+
+(datatype insn
+  (:return int)                                                 ;; return register
+  (:literal literal cont)                                       ;; <value> <k>
+  (:litcon int symbol cont)                                     ;; <index> <value> <k>
+  (:cexp type type string (list int) cont)                      ;; <sig> <solved-type> <template> <args> <k>
+  (:test int insn insn cont)                                    ;; <reg> <then> <else> <k>
+  (:testcexp (list int) type string insn insn cont)             ;; <regs> <sig> <template> <then> <else> <k>
+  (:jump int int)                                               ;; <reg> <target>
+  (:close symbol insn cont)                                     ;; <name> <body> <k>
+  (:varref int int cont)                                        ;; <depth> <index> <k>
+  (:varset int int int cont)                                    ;; <depth> <index> <reg> <k>
+  (:new-env int cont)                                           ;; <size> <k>
+  (:alloc tag int cont)                                         ;; <tag> <size> <k>
+  (:store int int int int cont)                                 ;; <offset> <arg> <tuple> <i> <k>
+  (:invoke (maybe symbol) int int cont)                         ;; <name> <closure> <args> <k>
+  (:tail (maybe symbol) int int)                                ;; <name> <closure> <args>
+  (:trcall int symbol (list int))                               ;; <depth> <name> <args>
+  (:push int cont)                                              ;; <env>
+  (:pop int cont)                                               ;; <result>
+  (:primop symbol sexp type (list int) cont)                    ;; <name> <params> <args> <k>
+  (:move int int cont)                                          ;; <var> <src> <k>
+  (:fatbar int insn insn cont)                                  ;; <label> <alt0> <alt1> <k>
+  (:fail int int)                                               ;; <label> <npop>
+  (:nvcase int symbol (list symbol) (list insn) (maybe insn) cont)      ;; <reg> <dt> <tags> <alts> <ealt> <k>
+  (:pvcase int (list symbol) (list int) (list insn) (maybe insn) cont)  ;; <reg> <tags> <arities> <ealt> <k>
+  )
+
+At this point you can see we're getting closer to an actual
+'machine-like' language.  So, it's time for the...
+
+7) backend: emits C code from the cps insn tree.
+
+The back end walks over the cps insn tree, translating it into C code
+that will implement the insns for the runtime.  Most of it is
+straightforward.  The 'constructed literals' bit may seem mysterious,
+but all it's doing is pre-constructing complex literals (like say a
+parser table) into a form that can be readily used by the runtime.
+The alternative approach would involve emitting a bunch of *code* to
+build these data structures, code that would needlessly bloat the
+executable and would run only once.
+
+================================================================================
+
+Design/Runtime
+
+The code emitted by the compiler does not use the C stack.  The entire
+program is put into one function - called 'vm' for historical
+purposes.  Lexical environments and closures are implemented with
+run-time links.  In a sense, the program's execution stack lives on
+the heap. Continuations are fully supported, and are invoking one is
+as cheap as any other function call.
+
+[see header.c]
+
+There are a few 'registers' declared at the top of vm() that control
+the runtime:
+
+pxll_int
+vm (int argc, char * argv[])
+{
+  register object * lenv = PXLL_NIL;
+  register object * k = PXLL_NIL;
+  register object * r0;
+  register object * r1;
+  register object * r2;
+  register object * r3;
+  register object * r4;
+  // ...
+  object * top = PXLL_NIL; // top-level (i.e. 'global') environment
+  object * t = 0; // temp - for swaps & building tuples
+  object * result;
+  object * limit = heap0 + (heap_size - head_room);
+  object * freep = heap0;
+  int i; // loop counter
+...
+}
+
+<lenv>: the current lexical environment.  It's how variables are
+referenced and set.  Think of it as a 'variable stack'.  For example,
+lenv[0][3] would refer to the fourth defined variable in the
+local/current function, and lenv[1][2] would refer to the third
+variable one level of scope up.  e.g.,
+
+(let ((x 0) (y 1) (z 2))
+  (let ((a 0) (b 1) (c 2) (d 3))
+     ...))
+
+Here, lenv[0][3] would refer to <d>, and lenv[1][2] would refer to <z>.
+
+As each new lexical environment is pushed on, the path to reach
+variables higher up the 'stack' is longer - except for the special
+case of the top-most environment.  The compiler emits direct
+references to variables at the very top.
+
+<k>: the current continuation.
+You can think of this as the 'execution stack':
+
+// full continuation
+typedef struct _save {
+  header tc;
+  struct _save * next;
+  pxll_tuple * lenv;
+  void * pc;
+  object *regs[0];
+} pxll_save;
+
+Each element on the stack (a 'pxll_save' struct) consists of a pointer
+to the next frame, a pointer to the lexical environment for that
+frame, a program counter, and a set of saved registers.  When a
+continuation is restored/invoked, all these values are restored and
+the <pc> address is jumped to.
+
+Users can capture the value of <k> with the "getcc" macro in
+lib/core.scm, and can invoke a saved continuation with "putcc".
+Though I recommend that you stick with the call/cc and generator
+interfaces if you value your sanity.
+
+<r0>, <r1>, ...: register variables
+These are declared as C 'register' variables, and that is indeed their
+purpose.  On an architecture with enough real registers some of them
+will actually *be* in machine registers.
+
+<top>: points to the top-most lexical environment.
+<t>: temporary object pointer
+<result>: return value for functions (think %eax)
+<limit>: end of the current heap
+<freep>: free pointer
+
+================================================================================
+
+The garbage collector, and runtime objects.
+
+Any object that is stored into a register or variable must follow the
+'runtime rules'.  The gc must be able to examine any value and
+distinguish if it is an immediate or a pointer.  Immediates have one
+of the two lowest bits set.  Integers have the lowest/lsb set.  Other
+immediates (like nil, #t, characters, and user enum/datatypes) leave
+the lowest bit clear, but the second bit set.
+
+Pointers must always be aligned to a 4-byte boundary so they are not
+mistaken for immediates.  All pointer types must contain a header at
+the front of their allocation.  The lowest *byte* of this header
+contains a type code that identifies it as either a builtin pointer
+type (one understood by the runtime, TC_CONS or TC_SYMBOL for
+example), or a user datatype.
+
+The garbage collector is currently a simple two-space copying Cheney
+collector.  There is one departure/optimization that I use to speed up
+the gc: in order to avoid range checks on forwarded pointers, I
+replace the header for each forwarded pointer with a sentinel, which
+indicates that the word immediately following contains the forwarded
+pointer.  A side-effect of this hack is that allocated heap structures
+cannot have a length of zero (otherwise there would be nowhere to put
+the forwarded pointer after the sentinel). So, for example, a vector
+of length zero is represented by a special immediate,
+TC_EMPTY_VECTOR. This is actually a good idea regardless, since we
+don't use heap space to represent it.
+
+
+
+
+
+
+
+
+
+
