@@ -45,5 +45,13 @@ if status != 0:
 else:
     print 'stage1 and stage2 identical, party on wayne!'
 
+def unlink (p):
+    try:
+        os.unlink (p)
+    except:
+        pass
 
+unlink ('self/compile.1.c')
+os.system ('mv self/compile.2.c self/compile.c')
+unlink ('self/compile.backup.c')
 
