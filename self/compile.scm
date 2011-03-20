@@ -39,14 +39,11 @@
 	default
 	val)))
 
+(include "self/flags.scm")
+
 (define (gcc base options)
-  (let ((plat (uname))
-	(cc (getenv-or "CC" "gcc"))
-	(cflags (getenv-or "CFLAGS" "-I. -g "))
-	(cflags (if (and (string=? cc "gcc")
-			 (string=? plat.sysname "Darwin"))
-		    (format cflags " -fnested-functions")
-		    cflags))
+  (let ((cc (getenv-or "CC" CC))
+	(cflags (getenv-or "CFLAGS" CFLAGS))
 	(cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
 	(cmd (format cc " " cflags " " base ".c -o " base)))
     (print-string (format "system: " cmd "\n"))
@@ -83,12 +80,18 @@
 	;;(_ (begin (pp 0 exp1) (newline)))
 	(node0 (walk exp1))
 	(node0 (apply-substs node0))
+	;; clear some memory usage
+	(_ (set! exp0 (sexp:int 0)))
+	(_ (set! exp1 (sexp:int 0)))
+	(_ (set! forms0 '()))
+	(_ (set! forms1 '()))
 	;;(_ (begin (print-string "after subst:\n") (pp-node node0)))
 	(_ (rename-variables node0))
 	;;(_ (begin (pp-node node0) (newline)))
 	(node1 (do-one-round node0 context))
 	;;(_ (begin (print-string "after first round:\n") (pp-node node1)))
 	(noden (do-one-round node1 context))
+	(_ (set! node1 (node/sequence '()))) ;; go easier on memory
 	(_ (find-leaves noden))
 	(_ (verbose (print-string "after second round:\n") (pp-node noden)))
 	;; rebuild the graph yet again, so strongly will work.
@@ -103,6 +106,7 @@
 	(type0 (type-program noden context))
 	(_ (verbose (print-string "\n-- after typing --\n") (pp-node noden) (newline)))
 	(cps (compile noden context))
+	(_ (set! noden (node/sequence '()))) ;; go easier on memory
 	(ofile (file/open-write opath #t #o644))
 	(o (make-writer ofile)))
     (verbose
@@ -132,10 +136,10 @@
       context.variant-labels))
     (print-string "\n-- C output --\n")
     (print-string " : ") (print-string opath) (newline)
-    (for-each
-     (lambda (path)
-       (o.write (format "#include <" path ">")))
-     context.cincludes)
+    (for-each (lambda (path)
+		(o.write (format "#include <" path ">")))
+	      (reverse context.cincludes))
+    (for-each o.write (reverse context.cverbatim))
     (match (get-header-parts) with
       (:header part0 part1 part2)
       -> (begin (o.copy part0)
