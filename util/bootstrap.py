@@ -14,9 +14,40 @@ def getenv_or (name, default):
 gcc = getenv_or ('CC', 'gcc')
 cflags = getenv_or ('CFLAGS', '-g -I.')
 
-if os.uname()[0] == 'Darwin' and gcc == 'gcc':
-    # stock xcode gcc has nested functions disabled by default
-    cflags += ' -fnested-functions'
+try:
+    if os.uname()[0] == 'Darwin' and gcc == 'gcc':
+        # stock xcode gcc has nested functions disabled by default
+        cflags += ' -fnested-functions'
+    windows = False
+except:
+    # probably on windows
+    windows = True
+
+# this is frustrating, I could have sworn win32 would take either
+# forward or backslash...
+def tweak (s):
+    if windows:
+        return s.replace ('/', '\\')
+    else:
+        return s
+
+def system (cmd):
+    if windows:
+        cmd = tweak (cmd)
+    print cmd
+    os.system (cmd)
+
+def move (p0, p1):
+    if windows:
+        system ('move %s %s' % (p0, p1))
+    else:
+        system ('mv %s %s' % (p0, p1))
+
+def copy (p0, p1):
+    if windows:
+        system ('copy %s %s' % (p0, p1))
+    else:
+        system ('cp %s %s' % (p0, p1))
 
 open ('self/flags.scm', 'wb').write (
 """
@@ -25,39 +56,47 @@ open ('self/flags.scm', 'wb').write (
 """ % (gcc, cflags))
 
 print 'protecting bootstrap compiler'
-cmd = 'cp self/compile.c self/compile.backup.c'
-os.system (cmd)
+copy ('self/compile.c', 'self/compile.backup.c')
 
 print 'compiling stage0 binary:'
-cmd = '%s %s self/compile.c -o self/compile' % (gcc, cflags)
-print cmd
-os.system (cmd)
+system ('%s %s self/compile.c -o self/compile' % (gcc, cflags))
 
 print 'compiling stage1 binary:'
-cmd = 'self/compile self/compile.scm'
-print cmd
-os.system (cmd)
-os.system ('mv self/compile.c self/compile.1.c')
+system ('self/compile self/compile.scm')
+move ('self/compile.c', 'self/compile.1.c')
 
 print 'compiling stage2 binary:'
-cmd = 'self/compile self/compile.scm'
-print cmd
-os.system (cmd)
-os.system ('mv self/compile.c self/compile.2.c')
+system ('self/compile self/compile.scm')
+move ('self/compile.c', 'self/compile.2.c')
 
-status = os.system ('diff self/compile.1.c self/compile.2.c')
-if status != 0:
-    print 'stage1 and stage2 output differs'
-else:
+def diff (p0, p1):
+    import os
+    p0, p1 = tweak (p0), tweak (p1)
+    if os.stat(p0).st_size == os.stat(p1).st_size:
+        f0 = open (p0, 'rb')
+        f1 = open (p1, 'rb')
+        while 1:
+            b0 = f0.read (32700)
+            b1 = f1.read (32700)
+            if b0 != b1:
+                return False
+            if not b0:
+                break
+        return True
+            
+# file comparison on windows?  duh, should just do it in python.
+samesame = diff ('self/compile.1.c', 'self/compile.2.c')
+if samesame:
     print 'stage1 and stage2 identical, party on wayne!'
+else:
+    print 'stage1 and stage2 output differs'
 
 def unlink (p):
     try:
-        os.unlink (p)
+        os.unlink (tweak (p))
     except:
         pass
 
 unlink ('self/compile.1.c')
-os.system ('mv self/compile.2.c self/compile.c')
+move ('self/compile.2.c', 'self/compile.c')
 unlink ('self/compile.backup.c')
-
