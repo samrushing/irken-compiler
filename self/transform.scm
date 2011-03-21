@@ -413,6 +413,14 @@
     x -> (error1 "malformed <cinclude>" x)
     )
 
+  (define expand-cverbatim
+    ((sexp:string path))
+    -> (begin
+	 (PUSH context.cverbatim path)
+	 (sexp (sexp:symbol 'begin)))
+    x -> (error1 "malformed <cverbatim>" x)
+    )
+
   (define (expand-%nvcase l)
     ;; already expanded... investigate why this happens
     (sexp:list (list:cons (sexp:symbol '%nvcase) l)))
@@ -434,6 +442,7 @@
       ('let-splat expand-let-splat)
       ('match expand-match)
       ('cinclude expand-cinclude)
+      ('cverbatim expand-cverbatim)
       ('%nvcase expand-%nvcase)
       ('%%cexp expand-%%cexp)
       ))
