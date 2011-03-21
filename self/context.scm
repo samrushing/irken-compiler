@@ -17,6 +17,7 @@
     regalloc = (make-register-allocator)
     standard-macros = "self/selfmac.scm"
     cincludes = '()
+    cverbatim = '()
     records = '()
     labels = '()
     literals = '()
@@ -30,7 +31,7 @@
 ;; XXX a builtin flags object would be nice...
 
 (define (vars-get-var context name)
-  (match (tree/member context.vars symbol<? name) with
+  (match (tree/member context.vars symbol-index<? name) with
     (maybe:no) -> (begin
 		    (print-vars context)
 		    (error1 "vars-get-var: no such var" name))
@@ -57,10 +58,10 @@
 
 ;; urgh, needs to be an object
 (define (add-var name context)
-  (match (tree/member context.vars symbol<? name) with
+  (match (tree/member context.vars symbol-index<? name) with
     (maybe:no) -> (set! context.vars
 			(tree/insert context.vars
-				     symbol<? name {flags=0 calls=0 refs=0 sets=0 mult=0}))
+				     symbol-index<? name {flags=0 calls=0 refs=0 sets=0 mult=0}))
     ;; <fix> then <function>, shows up twice, ignore.
     (maybe:yes _) -> #u))
 
