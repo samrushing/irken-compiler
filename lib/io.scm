@@ -24,11 +24,9 @@
 (define (read fd size)
   (let ((buffer (make-string size))
 	(r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
-    (if (= r size)
-	buffer
-	(if (< r size)
-	    (copy-string buffer r)
-	    (error "read() failed")))))
+    (cond ((< r 0) (error "read() failed"))
+	  ((= r size) buffer)
+	  (else (copy-string buffer r)))))
 
 (define (read-into-buffer fd buffer)
   (let ((size (string-length buffer))
