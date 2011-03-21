@@ -37,7 +37,7 @@
       (node:function name _)
       -> (begin
 	   (PUSH fenv name)
-	   (set! context.funs (tree/insert context.funs symbol<? name exp))
+	   (set! context.funs (tree/insert context.funs symbol-index<? name exp))
 	   (vars-set-flag! context name VFLAG-FUNCTION))
       _ -> #u)
     (for-each (lambda (x) (walk x fenv)) exp.subs))
@@ -360,7 +360,7 @@
     (for-each
      (lambda (name)
        ;;(print-string (format "searching escaping fun " (sym name) "\n"))
-       (let ((fun (match (tree/member context.funs symbol<? name) with
+       (let ((fun (match (tree/member context.funs symbol-index<? name) with
 		    (maybe:yes fun) -> fun
 		    (maybe:no) -> (error1 "find-escaping-funs: failed lookup" name))))
        (find-escaping-variables fun '())))
