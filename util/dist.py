@@ -5,10 +5,6 @@ import time
 
 execfile ('util/clean.py')
 os.system ('../svn2cl-0.12/svn2cl.sh')
-# actually, the output from this is worse than plain text.
-#os.system ('../svn2cl-0.12/svn2cl.sh --html')
-#os.system ('scp ChangeLog.html dark:public_html/irken/')
-#os.unlink ('ChangeLog.html')
 os.chdir ('..')
 tarball = 'irken.%s.tar.gz' % (time.strftime ('%y%m%d'),)
 # COPYFILE_DISABLE is a hack to turn off storing resource forks in Leopard.
