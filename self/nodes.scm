@@ -359,10 +359,10 @@
 	(counter (make-counter 0)))
     (define (add sym)
       (let ((vd (make-vardef sym (counter.inc))))
-	(set! map (tree/insert map symbol<? sym vd))
+	(set! map (tree/insert map symbol-index<? sym vd))
 	vd))
     (define (lookup sym)
-      (tree/member map symbol<? sym))
+      (tree/member map symbol-index<? sym))
     (define (get) map)
     {add=add lookup=lookup get=get}
     ))
