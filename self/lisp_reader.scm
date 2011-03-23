@@ -331,7 +331,7 @@
 		      (else
 		       (skip-whitespace)
 		       (if (not (eq? (peek) #\=))
-			   (error1 "expected '=' in record literal" name)
+			   (error1 "expected '=' in record literal" result)
 			   (begin
 			     (next)
 			     (let ((val (read)))
