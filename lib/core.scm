@@ -214,6 +214,10 @@
   (maybe:no)    -> #f
   )
 
+;; ocaml's Obj.magic
+(define (magic x)
+  (%%cexp ('a -> 'b) "%0" x))
+
 ;; world save/load
 ;; is this is a big restriction - requiring that the thunk return an int?
 ;; Note: <thunk> isn't really a thunk because there's no way to cast away the
