@@ -70,3 +70,7 @@
 	     #u
 	     (begin body ...
 		    ($loop (+ vname 1)))))))
+
+(defmacro forever
+  (forever body ...)
+  -> (let $loop () body ... ($loop)))
