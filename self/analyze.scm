@@ -108,7 +108,7 @@
 	-> (match fun.t with
 	     (node:varref name0)
 	     -> (follow-aliases fenv name0)
-	     _ -> (maybe:yes fun))))
+	     _ -> (maybe:yes (:pair name fun)))))
 
     (define (get-fun-calls name calls)
       (match (alist/lookup multiplier name) with
@@ -133,7 +133,7 @@
 		 ({t=(node:varref name) ...} . rands)
 		 -> (match (follow-aliases fenv name) with
 		      (maybe:no) -> #u
-		      (maybe:yes fun)
+		      (maybe:yes (:pair name fun))
 		      -> (let ((var (vars-get-var context name))
 			       (escapes (bit-get var.flags VFLAG-ESCAPES))
 			       (recursive (bit-get var.flags VFLAG-RECURSIVE))
