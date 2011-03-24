@@ -45,7 +45,6 @@
   (set! t (tree/insert t < 1234 5000))
   (printn (tree/member t < 1234))
   (printn (tree/member t < 9999))
-  (printn t)
   (tree/print 0 t)
   (set! t2 (tree/insert t2 string<? "howdy" 0))
   (set! t2 (tree/insert t2 string<? "there" 2))
