@@ -4,16 +4,17 @@
 
 (define (thing n)
   (let/cc exit
-	 (let loop ((i 0))
-	   (printn i)
-	   (cond ((= i n) (exit i));; (throw exit i))
-		 ((> i 10) 3141)
-		 (else (loop (+ i 1))))
-	   #t)))
+      (for-range
+	  i 1000
+	  (printn i)
+	  (if (= i n)
+	      (exit i))
+	  )
+    1001))
 
 (define (test)
   (printn "before")
-  (thing 20)
+  (printn (thing 20))
   (printn "after"))
 
 (test)
