@@ -180,6 +180,10 @@
        (insn:pvcase tr tags arities alts ealt k) -> (begin (emit-pvcase tr tags arities alts ealt) k)
        )))
 
+  (define (move src dst)
+    (if (and (>= dst 0) (not (= src dst)))
+	(o.write (format "r" (int dst) " = r" (int src) ";"))))
+
   (define (emit-literal lit target)
     (let ((val (encode-immediate lit))
 	  (prefix (if (= target -1)
@@ -225,8 +229,7 @@
       _ -> (impossible)))
 
   (define (emit-jump reg target)
-    (if (and (>= target 0) (not (= target reg)))
-	(o.write (format "r" (int target) "=r" (int reg) ";"))))
+    (move reg target))
 
   ;; XXX consider this: giving access to the set of free registers.
   ;;   would make it possible to do %ensure-heap in a %%cexp.
@@ -369,8 +372,7 @@
 
   (define (emit-pop src target)
     (o.write (format "lenv = lenv[1];"))
-    (if (and (>= target 0) (not (= target src)))
-	(o.write (format "r" (int target) " = r" (int src) ";"))))
+    (move src target))
 
   (define (subset? a b)
     (every? (lambda (x) (member-eq? x b)) a))
@@ -514,6 +516,14 @@
 			     (lval (format "(((" (type-repr to-type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
 			 (o.write (format lval " = " rval-exp ";")))
 		    _ _ -> (primop-error))
+	'%getcc -> (match args with
+		     () -> (o.write (format "r" (int target) " = k; // %getcc"))
+		     _	-> (primop-error))
+	'%putcc -> (match args with
+		     (rk rv) -> (begin
+				  (o.write (format "k = r" (int rk) "; // %putcc"))
+				  (move rv target))
+		     _ -> (primop-error))
 	_ -> (primop-error))))
 
   (define (lookup-cast to-type from-type exp)
