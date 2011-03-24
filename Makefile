@@ -9,5 +9,8 @@ test:
 clean:
 	python util/clean.py
 
+semi:
+	python util/clean.py -s
+
 dist:
 	python util/dist.py
