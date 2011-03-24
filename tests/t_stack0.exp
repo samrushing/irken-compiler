@@ -3,5 +3,7 @@
 #\B
 #\A
 (#f #t)
+
+***
+Runtime Error, halting: "stack underflow"
 "stack underflow"
-#u
