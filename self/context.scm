@@ -54,7 +54,8 @@
 (define VFLAG-FUNCTION  2) ;; variable is a function
 (define VFLAG-ALLOCATES 3) ;; function that allocates
 (define VFLAG-FREE      4) ;; function that accesses free variables
-(define VFLAG-NFLAGS    5)
+(define VFLAG-GETCC     5) ;; function uses getcc or putcc (consider calling this NOINLINE)
+(define VFLAG-NFLAGS    6)
 
 ;; urgh, needs to be an object
 (define (add-var name context)
