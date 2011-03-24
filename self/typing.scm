@@ -551,8 +551,11 @@
 			(:scheme '() (arrow (pred 'buffer (LIST type)) (LIST int-type))))
       '%exit       -> (:scheme (LIST T0 T1) (arrow T0 (LIST T1)))
       '%cget       -> (:scheme (LIST T0) (arrow T0 (LIST (pred 'buffer (LIST T0)) int-type)))
-      ;; not sure we can catch 'uncastable' type errors here, maybe only in the back end...
       '%cset       -> (:scheme (LIST T0 T1) (arrow undefined-type (LIST (pred 'buffer (LIST T0)) int-type T1)))
+      ;; these both can be done with %%cexp, but we need to be able to detect their usage in order to
+      ;;   disable inlining of functions that use them.
+      '%getcc      -> (:scheme (LIST T0) (arrow (pred 'continuation (LIST T0)) (LIST)))
+      '%putcc      -> (:scheme (LIST T0 T1) (arrow T1 (LIST (pred 'continuation (LIST T0)) T0)))
       _ -> (error1 "lookup-primapp" name)))
 
   (define (type-of-primapp name params subs tenv)
