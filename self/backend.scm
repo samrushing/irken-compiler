@@ -225,7 +225,7 @@
       _ -> (impossible)))
 
   (define (emit-jump reg target)
-    (if (>= target 0)
+    (if (and (>= target 0) (not (= target reg)))
 	(o.write (format "r" (int target) "=r" (int reg) ";"))))
 
   ;; XXX consider this: giving access to the set of free registers.
@@ -369,7 +369,7 @@
 
   (define (emit-pop src target)
     (o.write (format "lenv = lenv[1];"))
-    (if (>= target 0)
+    (if (and (>= target 0) (not (= target src)))
 	(o.write (format "r" (int target) " = r" (int src) ";"))))
 
   (define (subset? a b)
