@@ -8,15 +8,6 @@
 ;;;   to the function/variable, not to a particular node - although you could
 ;;;   fake it by attaching it to the definition of the function/variable.
 ;;;
-;;; The cost of accessing these flags could be fairly high, since
-;;;   we've chosen to use a red-black tree to store them, and that
-;;;   involves symbol (and thus string) comparisons. In an old-style
-;;;   lisp, we could throw things onto the property list of each
-;;;   symbol.  We don't have or want that, but maybe it might make
-;;;   sense to reproduce it in some way?  Rather than using 'symbols'
-;;;   to hold names, we make a new symbol-like object to which we can
-;;;   attach data?
-
 ;; XXX consider combining these passes
 
 (define (find-recursion exp context)
@@ -39,6 +30,10 @@
 	   (PUSH fenv name)
 	   (set! context.funs (tree/insert context.funs symbol-index<? name exp))
 	   (vars-set-flag! context name VFLAG-FUNCTION))
+      ;; a convenient place to detect this.
+      (node:primapp name _)
+      -> (if (or (eq? name '%getcc) (eq? name '%putcc))
+	     (vars-set-flag! context (car fenv) VFLAG-GETCC))
       _ -> #u)
     (for-each (lambda (x) (walk x fenv)) exp.subs))
   
@@ -137,6 +132,7 @@
 		      -> (let ((var (vars-get-var context name))
 			       (escapes (bit-get var.flags VFLAG-ESCAPES))
 			       (recursive (bit-get var.flags VFLAG-RECURSIVE))
+			       (getputcc (bit-get var.flags VFLAG-GETCC))
 			       ;; this will spin unwanted extra copies
 			       ;;(recursive (node-get-flag node NFLAG-RECURSIVE))
 			       (calls (get-fun-calls name var.calls)))
@@ -144,6 +140,7 @@
 ;;                                                  " escapes " (bool escapes) " recursive " (bool recursive) "\n"))
 			   (cond ((and (function? fun)
 				       (not (eq? (string-ref (symbol->string name) 0) #\^))
+				       (not getputcc) ;; don't inline functions that use getcc/putcc
 				       (> calls 0)
 				       (and (or (<= fun.size inline-threshold)
 						(and (= calls 1) (not escapes)))
