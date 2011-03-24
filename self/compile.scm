@@ -105,6 +105,7 @@
 	(_ (print-string "typing...\n"))
 	(type0 (type-program noden context))
 	(_ (verbose (print-string "\n-- after typing --\n") (pp-node noden) (newline)))
+	(_ (print-string "cps...\n"))
 	(cps (compile noden context))
 	(_ (set! noden (node/sequence '()))) ;; go easier on memory
 	(ofile (file/open-write opath #t #o644))
