@@ -152,51 +152,41 @@
 
 (define (id x) x)
 
-;; these must be macros (rather than functions) so that call/cc etc
-;;   will still work if inlining is turned off.
+;; these must be macros (rather than functions) in order to inline them.
 (defmacro getcc
-  (getcc) -> (%%cexp (-> (continuation 'a)) "k"))
+  (getcc) -> (%getcc #f))
+
 (defmacro putcc
-  (putcc k r) -> (%%cexp ((continuation 'a) 'a -> 'b) "(k=%0, %1)" k r))
+  (putcc k r) -> (%putcc #f k r))
 
-;; the '^' prefix tells the compiler to never inline this
-;;  function - which would not work correctly otherwise
-;;  (i.e., it can capture the wrong continuation...)
-;;  [this will be Done Better Later]
-
-(define (^call/cc p)
+(define (call/cc p)
   (let ((k (getcc)))
     (p (lambda (r) (putcc k r)))
     ))
 
 ;; sml-nj version
-(define (^callcc p)
+(define (callcc p)
   (p (getcc)))
-
-(define callcc ^callcc)
 
 (define (throw k v)
   (putcc k v))
 
-;; this won't work because it captures the wrong continuation
-;; (defmacro let/cc
-;;   (let/cc name body ...)
-;;   -> (let ((k (getcc))
-;; 	   (name (lambda (r) (putcc k r))))
-;;        body ...))
-
 (defmacro let/cc
   (let/cc name body ...)
-  -> (^call/cc (lambda (name) body ...)))
+  -> (let ((k (getcc))
+	   (name (lambda (r) (putcc k r))))
+       body ...))
+
+;; (defmacro let/cc
+;;   (let/cc name body ...)
+;;   -> (call/cc (lambda (name) body ...)))
 
 ;; using smlnj callcc
 (defmacro letcc
-  (let/cc name body ...)
+  (letcc name body ...)
   -> (callcc (lambda (name) body ...)))
 
-;; avoid forcing the user to use the funky name
-(define call/cc ^call/cc)
-(define call-with-current-continuation ^call/cc)
+(define call-with-current-continuation call/cc)
 
 ;; haskell maybe /ml option
 (datatype maybe (:yes 'a) (:no))
