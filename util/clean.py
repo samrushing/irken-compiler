@@ -1,6 +1,9 @@
 # -*- Mode: Python -*-
 
 import os
+import sys
+
+semi = '-s' in sys.argv
 
 def clean_c (path, precious):
     for root, dirs, files in os.walk (path, topdown=False):
@@ -18,7 +21,10 @@ def clean_c (path, precious):
                     stat = os.stat (jp)
                     if stat.st_mode & 1:
                         # an executable
-                        os.remove (jp)
+                        if semi and name == 'compile':
+                            pass
+                        else:
+                            os.remove (jp)
 
 for path in ('tests vm self demo'.split()):
     clean_c (path, ['compile.c'])
