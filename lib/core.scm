@@ -236,6 +236,9 @@
 ;;   borken.
 ;; I suppose I could build such a thing into make-generator? Maybe force
 ;;   the user to pass in an end-of-stream object?
+;; Better idea: use a "maybe" object.  That way we don't have to
+;;   invent a value to act as a sentinel, which won't work for some
+;;   types - e.g. bools.
 ;; *********************************************************************
 
 ;; based on:
