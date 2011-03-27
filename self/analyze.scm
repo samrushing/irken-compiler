@@ -535,8 +535,8 @@
 
 (define (analyze exp context)
   ;; clear the variable table
-  (set! context.vars (tree:empty))
-  (set! context.funs (tree:empty))
+  (set! context.vars (tree/empty))
+  (set! context.funs (tree/empty))
   ;; rebuild it
   (build-vars exp context)
   (find-recursion exp context)
