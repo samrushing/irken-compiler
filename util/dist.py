@@ -3,6 +3,9 @@
 import os
 import time
 
+# XXX need to have this do a bootstrap build, then clean up, in order
+#   to get a legit copy of self/compile.c in place.
+
 execfile ('util/clean.py')
 os.system ('../svn2cl-0.12/svn2cl.sh')
 os.chdir ('..')
