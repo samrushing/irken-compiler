@@ -6,7 +6,7 @@
 (include "lib/io.scm")
 (include "lib/os.scm")
 (include "lib/alist.scm")
-(include "lib/frb.scm")
+(include "lib/aa_map.scm")
 (include "lib/symbol.scm")
 
 ;; XXX consider rewriting with more experience
