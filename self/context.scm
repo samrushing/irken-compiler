@@ -5,26 +5,27 @@
    nocompile=#f
    extra-cflags=""
    optimize=#f
+   trace=#f
    })
 
 (define (make-context)
-  {datatypes = (alist/make)
-    macros = (alist/make)
-    dep-graph = (map-maker symbol-index<?)
-    scc-graph = '()
-    vars = (tree:empty)
-    funs = (tree:empty)
-    regalloc = (make-register-allocator)
-    standard-macros = "self/selfmac.scm"
-    cincludes = '()
-    cverbatim = '()
-    records = '()
-    labels = '()
-    literals = '()
-    literal-ids = (tree:empty)
-    symbols = (alist/make)
-    variant-labels = (alist/make)
-    options = (make-options)
+  {datatypes            = (alist/make)
+    macros              = (alist/make)
+    dep-graph           = (map-maker symbol-index<?)
+    scc-graph           = '()
+    vars                = (tree/empty)
+    funs                = (tree/empty)
+    regalloc            = (make-register-allocator)
+    standard-macros     = "self/selfmac.scm"
+    cincludes           = '()
+    cverbatim           = '()
+    records             = '()
+    labels              = '()
+    literals            = '()
+    literal-ids         = (tree/empty)
+    symbols             = (alist/make)
+    variant-labels      = (alist/make)
+    options             = (make-options)
     }
   )
 
@@ -32,9 +33,7 @@
 
 (define (vars-get-var context name)
   (match (tree/member context.vars symbol-index<? name) with
-    (maybe:no) -> (begin
-		    (print-vars context)
-		    (error1 "vars-get-var: no such var" name))
+    (maybe:no) -> (error1 "vars-get-var: no such var" name)
     (maybe:yes v) -> v))
 
 (define (vars-get-flag context name flag)
@@ -67,7 +66,6 @@
     (maybe:yes _) -> #u))
 
 (define (add-vars root context)
-
 
   (define (add name)
     (add-var name context))
