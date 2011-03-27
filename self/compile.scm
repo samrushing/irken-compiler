@@ -55,6 +55,7 @@
       (match sys.argv[i] with
 	"-c" -> (set! options.nocompile #t)
 	"-v" -> (set! options.verbose #t)
+	"-t" -> (set! options.trace #t)
 	"-f" -> (begin (set! i (+ i 1))
 		       (set! options.extra-cflags argv[i]))
 	;; this option only applies to the C compilation phase.
