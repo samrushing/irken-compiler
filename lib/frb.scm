@@ -16,6 +16,8 @@
   (:empty)
   )
 
+(define (tree/empty) (tree:empty))
+
 (define (tree/insert root < k v)
 
   ;; you can't have a red node directly underneath another red node.
@@ -112,6 +114,12 @@
     (tree/reverse (lambda (k v) (PUSH r v)) t)
     r))
 
+(define tree/dump
+  d p (tree:empty)	    -> #u
+  d p (tree:red l r k v)    -> (begin (tree/dump (+ d 1) p l) (p k v d) (tree/dump (+ d 1) p r))
+  d p (tree:purple l r k v) -> (begin (tree/dump (+ d 1) p l) (p k v d) (tree/dump (+ d 1) p r))
+  )
+
 ;; the defn of make-generator, call/cc, etc... makes it pretty hard
 ;;  to pass more than one arg through a continuation.  so instead we'll
 ;;  use a 'pair' constructor to iterate through the tree...
@@ -125,3 +133,5 @@
        (loop))
      )
    ))
+
+
