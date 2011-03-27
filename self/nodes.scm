@@ -355,7 +355,7 @@
     ))
 
 (define (make-var-map)
-  (let ((map (tree:empty))
+  (let ((map (tree/empty))
 	(counter (make-counter 0)))
     (define (add sym)
       (let ((vd (make-vardef sym (counter.inc))))
