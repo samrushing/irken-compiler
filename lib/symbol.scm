@@ -9,7 +9,7 @@
   )
 
 (define symbol-table-size 0)
-(define the-symbol-table (tree:empty))
+(define the-symbol-table (tree/empty))
 
 (define (intern-symbol sym)
   (set! the-symbol-table
