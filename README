@@ -24,4 +24,8 @@ Very little documentation exists yet, try 'lang.html' for a brief tutorial.
 The best way to get familiar with the language is to read the source code in
 the 'self' directory, and browse over the files in "tests".
 
--Sam
+110326 Release Note: there is currently something very wrong with the
+combination of recursive types and rows, which shows up when using the
+new 'OO-like' feature (the '::' syntax).  It seems to be completely
+destroying all type safety.  So for now just stay away from that stuff
+until I can figure out what's going wrong.
