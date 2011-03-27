@@ -265,7 +265,8 @@
       (o.write (format proc-label ":"))
       (o.indent)
       ;; XXX context flag for this...
-      ;;(o.write (format "stack_depth_indent(k); fprintf (stderr, \">> [%d] " proc-label "\\n\", __LINE__);"))
+      (if context.options.trace
+	  (o.write (format "stack_depth_indent(k); fprintf (stderr, \">> [%d] " proc-label "\\n\", __LINE__);")))
       (if (vars-get-flag context name VFLAG-ALLOCATES)
 	  (o.write "check_heap (0);"))
       (emit body)
