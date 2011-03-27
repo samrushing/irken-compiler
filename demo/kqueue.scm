@@ -5,6 +5,25 @@
 (cinclude "sys/types.h")
 (cinclude "sys/event.h")
 
+(define run-queue (queue/make))
+
+(define (enqueue k)
+  (queue/add run-queue k))
+
+(define (dispatch)
+  (match (queue/pop run-queue) with
+    (maybe:yes k) -> (putcc k #u)
+    (maybe:no) -> #u))
+
+(define (fork f)
+  (enqueue (getcc))
+  (f)
+  (dispatch))
+
+(define (yield)
+  (enqueue (getcc))
+  (dispatch))
+
 ;; better than trying to muck about with the variadic (and evil) fcntl.
 (cverbatim "
 void
@@ -41,6 +60,8 @@ set_nonblocking (int fd)
 (define EV_CLEAR	(%%cexp int "EV_CLEAR"))
 (define EV_EOF		(%%cexp int "EV_EOF"))
 (define EV_ERROR	(%%cexp int "EV_ERROR"))
+
+(define EV_ADDONE       (%%cexp int "EV_ADD|EV_ONESHOT"))
 
 (define (make-changelist n)
   {size=n
@@ -142,6 +163,30 @@ set_nonblocking (int fd)
   (if (< retval 0)
       (error1 "system error" (copy-cstring (%%cexp (-> cstring) "strerror(errno)" )))
       retval))
+
+;; we need a vector of read-fds, and a vector of write-fds
+;; *or* we can use a map to hold (ident,filter) pairs.   The
+;; latter can handle lots of other kinds of events.
+
+;; different idea: except for EVFILT_AIO, ident is always a small number (like an fd).
+;; so let's do this: a map of ident->list(filter).  That will allow multiple filters
+;; to fire off the same ident - (e.g., separate read and write threads on a socket).
+
+(define (make-poller)
+  { map = (tree:empty)
+    ievents = (make-changelist 1000)
+    oevents = (make-changelist 1000)
+    })
+
+;; (define (poller/set-wait-for p ident filter)
+;;   (add-kevent p.ivents ident filter EV_ADDONE)
+;;   (match (tree/member p.map < ident) with
+;;     (maybe:no) -> 
+;;   (tree/insert p.map < ident 
+
+;; (define (poller/wait-for ident filter)
+;;   (
+    
 
 (let ((kqfd (kqueue))
       (cl-in (make-changelist 10))
