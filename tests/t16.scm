@@ -21,12 +21,6 @@
   (print v)
   (print-string "\n"))
 
-(define tree/print
-  d (tree:empty)	  -> #u
-  d (tree:red l r k v)    -> (begin (tree/print (+ d 1) l) (print-item k v d) (tree/print (+ d 1) r))
-  d (tree:purple l r k v) -> (begin (tree/print (+ d 1) l) (print-item k v d) (tree/print (+ d 1) r))
-  )
-
 (define (print-kv k v)
   (print k)
   (print-string " ")
@@ -35,8 +29,8 @@
 
 (srandom 314159)
 
-(let ((t (n-random (tree:empty) 20))
-      (t2 (tree:empty))
+(let ((t (n-random (tree/empty) 20))
+      (t2 (tree/empty))
       )
   (print-string "inorder:\n")
   (tree/inorder print-kv t)
@@ -45,10 +39,10 @@
   (set! t (tree/insert t < 1234 5000))
   (printn (tree/member t < 1234))
   (printn (tree/member t < 9999))
-  (tree/print 0 t)
+  (tree/dump 0 print-item t)
   (set! t2 (tree/insert t2 string<? "howdy" 0))
   (set! t2 (tree/insert t2 string<? "there" 2))
-  (tree/print 0 t2)
+  (tree/dump 0 print-item t2)
   (let ((probe (tree/member t2 string<? "there")))
     (vcase maybe probe
       ((:no) (printn "nope") #t)
