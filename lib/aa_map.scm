@@ -13,8 +13,8 @@
   {level = 0
    left  = tree/nil
    right = tree/nil
-   key = (magic #\A)
-   val = (magic #\A)
+   key = (magic #u)
+   val = (magic #u)
    })
 
 ;; shame that doesn't just work.
