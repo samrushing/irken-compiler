@@ -153,40 +153,32 @@
 (define (id x) x)
 
 ;; these must be macros (rather than functions) in order to inline them.
+;; Note that outside of callcc and throw, these are not necessarily type-safe.
 (defmacro getcc
   (getcc) -> (%getcc #f))
 
 (defmacro putcc
   (putcc k r) -> (%putcc #f k r))
 
-(define (call/cc p)
-  (let ((k (getcc)))
-    (p (lambda (r) (putcc k r)))
-    ))
-
-;; sml-nj version
-(define (callcc p)
+;; type-safe callcc & throw from sml/nj. See "Typing First-Class Continuations in ML", Duba, Harper & McQueen.
+;; http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.22.1725
+(define (callcc p) : (((continuation 'a) -> 'a) -> 'a)
   (p (getcc)))
 
 (define (throw k v)
   (putcc k v))
 
-(defmacro let/cc
-  (let/cc name body ...)
-  -> (let ((k (getcc))
-	   (name (lambda (r) (putcc k r))))
-       body ...))
-
-;; (defmacro let/cc
-;;   (let/cc name body ...)
-;;   -> (call/cc (lambda (name) body ...)))
-
-;; using smlnj callcc
 (defmacro letcc
   (letcc name body ...)
   -> (callcc (lambda (name) body ...)))
 
-(define call-with-current-continuation call/cc)
+(defmacro let/cc
+  (let/cc name body ...)
+  -> (callcc
+      (lambda ($k)
+	(let ((name (lambda ($val)
+		      (throw $k $val))))
+	  body ...))))
 
 ;; haskell maybe /ml option
 (datatype maybe (:yes 'a) (:no))
@@ -238,29 +230,6 @@
 ;;  this might be the original message:
 ;;  http://list.cs.brown.edu/pipermail/plt-scheme/2006-April/012456.html
 
-;; (define (make-generator producer)
-;;   (let ((ready #f)
-;;         ;; just holding useless continuations
-;;         (caller (call/cc id))
-;;         (saved-point (call/cc id)))
-
-;;     (define (entry-point)
-;;       (call/cc
-;;        (lambda (k)
-;;          (set! caller k)
-;;          (if ready
-;;              (saved-point #f)
-;;              (producer yield)))))
-
-;;     (define (yield v)
-;;       (call/cc
-;;        (lambda (k)
-;;          (set! ready #t)
-;;          (set! saved-point k)
-;;          (caller v))))
-;;     entry-point
-;;     ))
-
 ;; this simpler version uses getcc and putcc directly.
 (define (make-generator producer)
   (let ((ready #f)
@@ -279,3 +248,55 @@
       (putcc caller v))
     entry-point
     ))
+
+;; We use polymorphic variants for exceptions.
+;; Since we're a whole-program compiler there's no need to declare
+;; them - though I might could be convinced it's still a good idea.
+;;
+;; Exception data must be monomorphic to preserve type safety.
+;;
+;; <try> and <raise> are implemented as macros, with one extra hitch:
+;;  two special compiler primitives are used to check that exception
+;;  types are consistent: %exn-raise and %exn-handle
+
+;; consider catching OSError here and printing strerror(errno):
+;; (copy-cstring (%%cexp (-> cstring) "strerror (errno)"))))
+
+(define (base-exception-handler exn) : ((rsum 'a) -> 'b)
+  (error1 "uncaught exception" exn))
+
+(define *the-exception-handler* base-exception-handler)
+
+(defmacro raise
+  (raise exn) -> (*the-exception-handler* (%exn-raise #f exn))
+  )
+
+;; TODO:
+;; * might be nice to have exceptions automatically capture __LINE__ and __FILE__
+;; * have the compiler keep a map of the names of exceptions so that uncaught
+;;   ones are reported in a useful way.  [another approach might be to auto-generate
+;;   the base exception handler to catch and print the names of all known exceptions]
+
+(defmacro try
+  ;; done accumulating body parts, finish up.
+  (try (begin body0 ...) <except> exn-match ...)
+  -> (callcc
+      (lambda ($exn-k0)
+        (let (($old-hand *the-exception-handler*))
+          (set!
+           *the-exception-handler*
+           (lambda ($exn-val)
+             (set! *the-exception-handler* $old-hand)
+             (throw $exn-k0
+              (%exn-handle #f $exn-val
+               (match $exn-val with
+                 exn-match ...
+                 _ -> (raise $exn-val))))))
+          (let (($result (begin body0 ...)))
+            (set! *the-exception-handler* $old-hand)
+            $result))))
+  ;; accumulating body parts...
+  (try (begin body0 ...) body1 body2 ...) -> (try (begin body0 ... body1) body2 ...)
+  ;; begin to accumulate...
+  (try body0 body1 ...)                   -> (try (begin body0) body1 ...)
+  )
