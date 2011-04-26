@@ -85,8 +85,11 @@
   (let ((nodes (LIST test then else)))
     (make-node (node:if) nodes)))
 
-(define (node/function name formals body)
-  (make-node (node:function name formals) (LIST body)))
+(define (node/function name formals type body)
+  (let ((node (make-node (node:function name formals) (LIST body))))
+    (match type with
+      (sexp:bool #f) -> node
+      type-exp -> (begin (set! node.type (parse-type type)) node))))
 
 (define (function? node)
   (match node.t with
@@ -281,8 +284,8 @@
 	      -> (node/cexp gens type template (map walk args))))
        ((sexp:symbol '%nvcase) (sexp:symbol dt) val-exp (sexp:list tags) (sexp:list arities) (sexp:list alts) ealt)
        -> (node/nvcase dt (map sexp->symbol tags) (map sexp->int arities) (walk val-exp) (map walk alts) (walk ealt))
-       ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) . body)
-       -> (node/function name (get-formals formals) (node/sequence (map walk body)))
+       ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) type . body)
+       -> (node/function name (get-formals formals) type (node/sequence (map walk body)))
        ;; ----------------------------------------------------------
        ;; HUGE typing problem here, when I accidentally did this:
        ;; ((sexp:symbol 'fix) (sexp:list names) (sexp:list inits) . body)
