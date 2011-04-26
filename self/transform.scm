@@ -104,7 +104,7 @@
 	   -> (match (alist/lookup transform-table sym) with
 		(maybe:yes fun) -> (fun rands)
 		(maybe:no)	-> (match (alist/lookup context.macros sym) with
-				     (maybe:yes macro) -> (expand (macro.apply (sexp:list l)))
+				     (maybe:yes macro) -> (expand (macro.apply (sexp:list l) context.options.debugmacroexpansion))
 				     (maybe:no)	       -> (sexp:list (list:cons rator (map expand rands)))))
 	   ;; automagically insert the <self> argument
 	   ;; (ob.o.method args0 ...) => (ob.o.method ob args0 ...)
@@ -149,15 +149,15 @@
     x -> (error1 "malformed LET-SPLAT" x))
 
   (define expand-lambda
-    (formals . body) -> (exp-function (sexp:symbol 'lambda) formals (expand-body body))
+    (formals . body) -> (exp-function (sexp:symbol 'lambda) formals (sexp:bool #f) (expand-body body))
     x		     -> (error1 "malformed LAMBDA" x))
 
   (define expand-function
-    (name formals . body) -> (exp-function name formals (expand-body body))
+    (name formals type . body) -> (exp-function name formals type (expand-body body))
     x			  -> (error1 "malformed FUNCTION" x))
 
-  (define (exp-function name formals body)
-    (sexp1 'function (LIST name formals body)))
+  (define (exp-function name formals type body)
+    (sexp1 'function (LIST name formals type body)))
 
   ;; collect tag/alt pairs from vcase
   (define (split-alts pairs k)
@@ -325,7 +325,7 @@
       (sexp (sexp:symbol 'function)
 	    (sexp:symbol (string->symbol (format (sym dt) ":" (sym tag))))
 	    (sexp:list args)
-	    ;;(sexp:list (list:cons (sexp:cons dt tag) args))
+	    (sexp:bool #f)
 	    (sexp:list (append (LIST (sexp:symbol '%dtcon) (sexp:cons dt tag)) args))
 	    )))
 
@@ -360,9 +360,12 @@
 	   (parse-pattern-matching-define name body)
 	   ;; normal definition
 	   (parse-no-formals-define name body))
+    ;; (define (%typed (name arg ...) type) ...)
+    ((sexp:list ((sexp:symbol '%typed) (sexp:list ((sexp:symbol name) . formals)) type)) . body)
+    -> (parse-normal-definition name formals body type)
     ;; (define (name arg ...) ...)
     ((sexp:list ((sexp:symbol name) . formals)) . body)
-    -> (parse-normal-definition name formals body)
+    -> (parse-normal-definition name formals body (sexp:bool #f))
     x -> (error1 "malformed <define>" x))
 
   (define (parse-pattern-matching-define name body)
@@ -372,6 +375,7 @@
 		   (sexp (sexp:symbol 'function)
 			 (sexp:symbol name)
 			 (sexp:list (map sexp:symbol vars))
+			 (sexp:bool #f)
 			 (expand body0)))))
 
   (define (parse-no-formals-define name body)
@@ -379,10 +383,16 @@
 	(error1 "malformed definition" name)
 	(:pair name (car body))))
 
-  (define (parse-normal-definition name formals body)
+  (define (parse-normal-definition name formals body type)
+    (match type with
+      (sexp:bool _) -> #u
+      _ -> (begin
+	     (print-string (format "user type in define: " (p repr type) "\n"))
+	     (print-string (format "  parsed: " (p type-repr (parse-type type)) "\n"))))
     (:pair name (sexp (sexp:symbol 'function)
 		      (sexp:symbol name)
 		      (sexp:list formals)
+		      type
 		      ;; note: expand-body returns one sexp
 		      (expand-body body))))
   
