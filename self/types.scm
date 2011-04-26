@@ -52,7 +52,7 @@
 
 (define type-repr
   (type:tvar id _)                    -> (format "t" (int id))
-  (type:pred 'arrow (rtype atype) _)  -> (format (type-repr atype) "->" (type-repr rtype))
+  (type:pred 'arrow (rtype atype) _)  -> (format "(" (type-repr atype) "->" (type-repr rtype) ")")
   (type:pred 'arrow (rtype . args) _) -> (format "(" (join type-repr ", " args) ")->" (type-repr rtype))
   (type:pred pred () _)               -> (format (sym pred))
   (type:pred pred args _)             -> (format (sym pred) "(" (join type-repr ", " args) ")")
@@ -177,6 +177,7 @@
 	(t1 (parse-type (car (read-string "(thing 'a 'b (list 'a) (list 'b))"))))
 	(t2 (parse-type (car (read-string "'a"))))
 	(t3 (parse-type (car (read-string "{x=int ...}"))))
+	(t4 (parse-type (car (read-string "(((continuation 'a) -> 'a) -> 'a)"))))
 	)
     
     (printn t0)
@@ -187,6 +188,8 @@
     (print-string (type-repr t2))
     (newline)
     (print-string (type-repr t3))
+    (newline)
+    (print-string (type-repr t4))
     (newline)
     (printn (get-tvars t1))
     ))
