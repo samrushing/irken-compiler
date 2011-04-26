@@ -197,7 +197,7 @@
       (node:cexp gens sig _)	    -> (type-of-cexp gens sig exp tenv)
       (node:if)			    -> (type-of-conditional exp tenv)
       (node:sequence)		    -> (type-of-sequence exp.subs tenv)
-      (node:function _ formals)	    -> (type-of-function formals (car exp.subs) tenv)
+      (node:function _ formals)	    -> (type-of-function formals (car exp.subs) exp.type tenv)
       (node:varref name)	    -> (type-of-varref name tenv)
       (node:varset name)	    -> (type-of-varset name exp tenv)
       (node:call)		    -> (type-of-call exp tenv)
@@ -287,19 +287,22 @@
 		       (type-of hd tenv)
 		       (loop tl)))))
 
-  ;; XXX TODO - handle user-supplied types
+  ;; XXX TODO - handle user-supplied types (on formals?)
   (define (optional-type formal tenv)
     (new-tvar))
 
-  (define (type-of-function formals body tenv)
-    (let ((arg-types '()))
-      (for-each
-       (lambda (formal)
-	 (let ((type (optional-type formal tenv)))
-	   (PUSH arg-types type)
-	   (alist/push tenv formal (:scheme '() type))))
-       formals)
-      (arrow (type-of body tenv) (reverse arg-types))))
+  (define (type-of-function formals body sig tenv)
+    (if (no-type? sig)
+	(let ((arg-types '()))
+	  (for-each
+	   (lambda (formal)
+	     (let ((type (optional-type formal tenv)))
+	       (PUSH arg-types type)
+	       (alist/push tenv formal (:scheme '() type))))
+	   formals)
+	  (arrow (type-of body tenv) (reverse arg-types)))
+	;; user-supplied type (do we need to instantiate?)
+	sig))
 
   (define (apply-tenv name tenv)
 ;;     (print-string "apply-tenv: ") (printn name)
@@ -419,7 +422,9 @@
       (value else-exp . alts)
       -> (let ((tv-exp (new-tvar))
 	       (else? (match else-exp.t with
-			(node:primapp '%match-error _) -> #f _ -> #t))
+			(node:primapp '%fail _) -> #f
+			(node:primapp '%match-error _) -> #f
+			_ -> #t))
 	       (row (if else? (rdefault (rabs)) (new-tvar))))
 	   (for-range
 	       i (length tags)
@@ -461,6 +466,12 @@
 
   (define (prim-error name)
     (error1 "bad parameters to primop" name))
+
+  ;; this function acts like a lookup table for the type signatures of primitives.
+  ;; it is a function because some of the prims have parameters that affect their
+  ;;   type signatures in a way that requires them to be generated on the fly -
+  ;;   for example accessing a record field requires a row type containing a label
+  ;;   for the field.
 
   (define (lookup-primapp name params)
     (match name with
@@ -558,28 +569,95 @@
       '%putcc      -> (:scheme (LIST T0 T1) (arrow T1 (LIST (pred 'continuation (LIST T0)) T0)))
       _ -> (error1 "lookup-primapp" name)))
 
+  ;; each exception is stored in a global table along with a tvar
+  ;;  that will unify with each use.
+  (define (get-exn-type name)
+    (match (alist/lookup context.exceptions name) with
+      (maybe:yes tvar) -> tvar
+      (maybe:no)
+      -> (let ((tvar (new-tvar)))
+	   (alist/push context.exceptions name tvar)
+	   tvar)))
+
+  ;; given an exception row type for <exp> look up its name in the global
+  ;;   table and unify each element of the sum.
+  (define (unify-exception-types exp row tenv)
+    (let loop ((row row))
+      (match row with
+	(type:pred 'rlabel ((type:pred exn-name _ _) exn-type rest) _)
+	-> (let ((global-type (get-exn-type exn-name)))
+	     (print-string (format "global type of " (sym exn-name) " is " (type-repr global-type) "\n"))
+	     (print-string (format "  unifying with " (type-repr exn-type) "\n"))
+	     (unify exp global-type exn-type)
+	     (loop rest))
+	(type:tvar _ _) -> #u
+	_ -> (error1 "unify-exception-types: bad type" (type-repr row))
+	)))
+
+  ;; unify the label from this row with the global table
+  (define (type-of-raise val tenv)
+    (let ((val-type (apply-subst (type-of val tenv))))
+      (match val-type with
+	(type:pred 'rsum (row) _)
+	-> (begin
+	     (unify-exception-types val row tenv)
+	     val-type)
+	_ -> (begin
+	       (print-string "bad exception type:\n")
+	       (pp-node val) (newline)
+	       (error1 "bad exception type:" val)))))
+
+  ;; unify each label from this row with the global table
+  (define (type-of-handle exn-val exn-match tenv)
+    (let ((match-type (type-of exn-match tenv))
+	  (val-type (apply-subst (type-of exn-val tenv))))
+      (print-string (format "type-of-handle: " (type-repr (apply-subst val-type)) "\n"))
+      (match val-type with
+	(type:pred 'rsum (row) _)
+	-> (begin
+	     (unify-exception-types exn-match row tenv)
+	     match-type)
+	_ -> (error1 "unify-handlers: expected row sum type" (type-repr val-type)))))
+
   (define (type-of-primapp name params subs tenv)
 ;;     (print-string        (format "type-of-primapp, name = " (sym name) " params= " (repr params) "\n"))
 ;;     (print-string        (format "type-of-primapp, scheme = " (scheme-repr (lookup-primapp name params)) "\n"))
-    (match (lookup-primapp name params) with
-      (:scheme gens type)
-      -> (let ((itype (instantiate-type-scheme gens type)))
-;; 	   (print-string (format "           instantiated = " (type-repr itype) "\n"))
-	   (match itype with
-	     ;; very similar to type-of-cexp
-	     (type:pred 'arrow (result-type . arg-types) _)
-	     -> (begin
-		  (if (not (= (length arg-types) (length subs)))
-		      (error1 "wrong number of args to primapp" subs))
-		  (for-range
-		      i (length arg-types)
-		      (let ((arg (nth subs i))
-			    (ta (type-of arg tenv))
-			    (arg-type (nth arg-types i)))
-			(unify arg ta arg-type)))
-		  result-type)
-	     _ -> (error1 "type-of-primapp" name)
-	     ))))
+
+    ;; special primapps
+    (match name with
+      ;; we need a map of exception => tvar, then cross-verify with each handle expression.
+      '%exn-raise
+      -> (match subs with
+	   (exn-val)
+	   -> (type-of-raise exn-val tenv)
+	   _ -> (error1 "%exn-raise: bad arity" subs))
+      '%exn-handle
+      ;; %exn-handle is wrapped around the match expression of the exception handler
+      -> (match subs with
+	   (exn-val exn-match)
+	   -> (type-of-handle exn-val exn-match tenv)
+	   _ -> (error1 "%exn-handle: bad arity" subs))
+
+      ;; normal primapps
+      _ -> (match (lookup-primapp name params) with
+	     (:scheme gens type)
+	     -> (let ((itype (instantiate-type-scheme gens type)))
+		  ;; 	   (print-string (format "           instantiated = " (type-repr itype) "\n"))
+		  (match itype with
+		    ;; very similar to type-of-cexp
+		    (type:pred 'arrow (result-type . arg-types) _)
+		    -> (begin
+			 (if (not (= (length arg-types) (length subs)))
+			     (error1 "wrong number of args to primapp" subs))
+			 (for-range
+			     i (length arg-types)
+			     (let ((arg (nth subs i))
+				   (ta (type-of arg tenv))
+				   (arg-type (nth arg-types i)))
+			       (unify arg ta arg-type)))
+			 result-type)
+		    _ -> (error1 "type-of-primapp" name)
+		    )))))
 
   (define (apply-subst-to-program n)
     (set! n.type (apply-subst n.type))
