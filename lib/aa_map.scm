@@ -9,24 +9,28 @@
 ;;   them work from the bottom up rather than top down.  [another approach would be
 ;;   to just adapt Julienne's non-recursive code].
 
-(define tree/nil
-  {level = 0
-   left  = tree/nil
-   right = tree/nil
-   key = (magic #u)
-   val = (magic #u)
-   })
-
-;; shame that doesn't just work.
-(set! tree/nil.left tree/nil)
-(set! tree/nil.right tree/nil)
-
 (define (node/make level key val left right)
   { level = level
     key   = key
     val   = val
     left  = left
     right = right })
+
+;; Ok, this is interesting.  If I use the following definition of tree/nil:
+;;
+;; (define tree/nil
+;;   {level = 0
+;;    left  = tree/nil
+;;    right = tree/nil
+;;    key = (magic #u)
+;;    val = (magic #u)
+;;    })
+;;
+;; The typer will let me get away with this: (tree/nil).  Why?
+
+(define tree/nil (node/make 0 (magic #u) (magic #u) (magic #u) (magic #u)))
+(set! tree/nil.left tree/nil)
+(set! tree/nil.right tree/nil)
 
 (define (tree/empty) tree/nil)
 
