@@ -2,39 +2,12 @@
 
 (include "lib/basis.scm")
 
+;; kqueue demo.
+;; should work on modern BSD's, including OS X.
+;; see the 'doom' subdirectory for followon.
+
 (cinclude "sys/types.h")
 (cinclude "sys/event.h")
-
-(define run-queue (queue/make))
-
-(define (enqueue k)
-  (queue/add run-queue k))
-
-(define (dispatch)
-  (match (queue/pop run-queue) with
-    (maybe:yes k) -> (putcc k #u)
-    (maybe:no) -> #u))
-
-(define (fork f)
-  (enqueue (getcc))
-  (f)
-  (dispatch))
-
-(define (yield)
-  (enqueue (getcc))
-  (dispatch))
-
-;; better than trying to muck about with the variadic (and evil) fcntl.
-(cverbatim "
-void
-set_nonblocking (int fd)
-{
-  int flag;
-  flag = fcntl (fd, F_GETFL, 0);
-  flag |= (O_NDELAY);
-  fcntl (fd, F_SETFL, flag);
-}
-")
 
 (define (kqueue)
   (%%cexp (-> int) "kqueue()"))
@@ -49,6 +22,7 @@ set_nonblocking (int fd)
 (define EVFILT_MACHPORT (%%cexp int "EVFILT_MACHPORT"))
 (define EVFILT_TIMER	(%%cexp int "EVFILT_TIMER"))
 (define EVFILT_SESSION	(%%cexp int "EVFILT_SESSION"))
+(define EVFILT_SYSCOUNT (%%cexp int "EVFILT_SYSCOUNT"))
 
 ;; flags
 (define EV_ADD		(%%cexp int "EV_ADD"))
@@ -78,6 +52,13 @@ set_nonblocking (int fd)
 	(set! changes.index (+ 1 changes.index)))
       (error1 "changes overflowed" changes.index)))
 
+(define (get-kevent changes i)
+  (:kev
+   (%%cexp ((buffer (struct kevent)) int -> int) "%0[%1].ident"  changes.buffer i)
+   (%%cexp ((buffer (struct kevent)) int -> int) "%0[%1].filter" changes.buffer i)
+   ;; eventually fill in with flags/data/udata
+   ))
+
 (define (kevent kqfd changes-in changes-out)
   (%%cexp (int (buffer (struct kevent)) int (buffer (struct kevent)) int -> int)
 	  "kevent (%0, %1, %2, %3, %4, NULL)"
@@ -90,6 +71,18 @@ set_nonblocking (int fd)
 (cinclude "sys/socket.h")
 (cinclude "netinet/in.h")
 (cinclude "arpa/inet.h")
+
+;; better than trying to muck about with the variadic (and evil) fcntl.
+(cverbatim "
+void
+set_nonblocking (int fd)
+{
+  int flag;
+  flag = fcntl (fd, F_GETFL, 0);
+  flag |= (O_NDELAY);
+  fcntl (fd, F_SETFL, flag);
+}
+")
 
 (define SOCK_STREAM	(%%cexp int "SOCK_STREAM"))
 (define AF_INET         (%%cexp int "AF_INET"))
@@ -145,18 +138,6 @@ set_nonblocking (int fd)
 
 (define EAGAIN (%%cexp int "EAGAIN"))
 
-;; XXX this is in progress XXX
-;; ok, to get further we'll need the basic coro stuff working:
-;;  scheduler, suspend/resume, wait-on-kevent, etc...
-
-;; (define (nb-read fd size)
-;;   (let ((buffer (make-string size))
-;; 	(r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
-;;     (cond ((= r EAGAIN) do-nonblocking-stuff-here)
-;; 	  ((< r 0) (error "read() failed"))
-;; 	  ((= r size) buffer)
-;; 	  (else (copy-string buffer r)))))
-
 (cinclude "sys/errno.h")
 
 (define (trysys retval)
@@ -164,41 +145,115 @@ set_nonblocking (int fd)
       (error1 "system error" (copy-cstring (%%cexp (-> cstring) "strerror(errno)" )))
       retval))
 
-;; we need a vector of read-fds, and a vector of write-fds
-;; *or* we can use a map to hold (ident,filter) pairs.   The
-;; latter can handle lots of other kinds of events.
+(define run-queue (queue/make))
 
-;; different idea: except for EVFILT_AIO, ident is always a small number (like an fd).
-;; so let's do this: a map of ident->list(filter).  That will allow multiple filters
-;; to fire off the same ident - (e.g., separate read and write threads on a socket).
+(define (enqueue k)
+  (queue/add run-queue k))
+
+(define (dispatch)
+  (match (queue/pop run-queue) with
+    (maybe:yes k) -> (putcc k #u)
+    (maybe:no) -> #u))
+
+(define (fork f)
+  (enqueue (getcc))
+  (f)
+  (dispatch))
+
+(define (yield)
+  (enqueue (getcc))
+  (dispatch))
+
+(define (dispatch-kevent p)
+  (match (queue/pop run-queue) with
+    (maybe:yes k) -> (putcc k #u)
+    (maybe:no)	  -> (poller/wait-and-schedule p)))
 
 (define (make-poller)
-  { map = (tree:empty)
+  { kqfd    = (kqueue)
+    nwait   = 0 ;; how many events are waiting?
+    filters = (make-vector EVFILT_SYSCOUNT (tree/empty))
     ievents = (make-changelist 1000)
     oevents = (make-changelist 1000)
     })
 
-;; (define (poller/set-wait-for p ident filter)
-;;   (add-kevent p.ivents ident filter EV_ADDONE)
-;;   (match (tree/member p.map < ident) with
-;;     (maybe:no) -> 
-;;   (tree/insert p.map < ident 
+;; these funs know that EVFILT values are consecutive small negative ints
+(define (poller/lookup-event p ident filter)
+  (tree/member p.filters[(- 0 filter)] < ident))
 
-;; (define (poller/wait-for ident filter)
-;;   (
-    
+(define (poller/add-event p ident filter k)
+  (set! p.nwait (+ 1 p.nwait))
+  (set! p.filters[(- 0 filter)]
+	(tree/insert p.filters[(- 0 filter)]
+		     < ident k)))
 
-(let ((kqfd (kqueue))
-      (cl-in (make-changelist 10))
-      (cl-out (make-changelist 10))
-      ;;(sfd (socket AF_INET SOCK_STREAM 0))
-      ;;(addr (make-in-addr "72.52.84.226" 80))
-      )
-  ;;(printn (connect sfd addr))
-  ;;(set-nonblocking sfd)
-  ;;(printn (read sfd 256))
-  ;;(printn (write sfd "Howdy, Dude!\r\n"))
-  (print-string "hit return, sucka!\n")
-  (add-kevent cl-in STDIN_FILENO EVFILT_READ EV_ADD)
-  (kevent kqfd cl-in cl-out)
+(define (poller/delete-event p ident filter)
+  (set! p.filters[(- 0 filter)]
+	(tree/delete p.filters[(- 0 filter)] ident < =))
+  (set! p.nwait (- p.nwait 1)))
+
+(define (poller/wait-for p ident filter)
+  (let ((k (getcc)))
+    (match (poller/lookup-event p ident filter) with
+      (maybe:no)
+      -> (begin
+	   (print-string (format "adding kevent: ident=" (int ident) " filter=" (int filter) "\n"))
+	   (add-kevent p.ievents ident filter EV_ADDONE)
+	   (poller/add-event p ident filter k)
+	   (dispatch-kevent p))
+      (maybe:yes _) -> (error "poller/wait-for: event already present")
+      )))
+
+(define (poller/wait-for-read p fd)
+  (poller/wait-for p fd EVFILT_READ))
+
+(define (poller/wait-for-write p fd)
+  (poller/wait-for p fd EVFILT_WRITE))
+
+(define poller/enqueue-waiting-thread
+  p (:kev ident filter)
+  -> (match (poller/lookup-event p ident filter) with
+	 (maybe:yes k) -> (begin
+			    (poller/delete-event p ident filter)
+			    (enqueue k))
+	 (maybe:no)    -> (error "poller/get-waiting-thread: no thread")))
+
+(define (poller/wait-and-schedule p)
+  ;; all the runnable threads have done their bit, now
+  ;; throw it to kevent().
+  (if (= p.nwait 0)
+      (print-string "no events, will wait forever!\n"))
+  (let ((n (kevent p.kqfd p.ievents p.oevents)))
+    (if (< n 0)
+	(error "kevent() failed")
+	(begin
+	  (print-string (format "poller/wait-and-schedule: got " (int n) " events\n"))
+	  (set! p.ievents.index 0)
+	  (for-range
+	      i n
+	      (poller/enqueue-waiting-thread
+	       p (get-kevent p.oevents i)))
+	  (dispatch-kevent p)
+	  ))))
+
+(define (fetch-head p ip)
+  (let ((sfd (socket AF_INET SOCK_STREAM 0))
+	(addr (make-in-addr ip 80)))
+    (set-nonblocking sfd)
+    (connect sfd addr)
+    (poller/wait-for-write p sfd)
+    (printn (write sfd "HEAD / HTTP/1.0\r\n\r\n"))
+    (print-string "sent request, waiting for read...\n")
+    (poller/wait-for-read p sfd)
+    (print-string (read sfd 1024))
+    (print-string "done!\n")
+    (close sfd)
+    ))
+
+(let ((p (make-poller))
+      (ip "72.52.84.226"))
+  (fork (lambda () (fetch-head p ip)))
+  (fork (lambda () (fetch-head p ip)))
+  (fork (lambda () (fetch-head p ip)))
+  (fetch-head p ip)
   )
