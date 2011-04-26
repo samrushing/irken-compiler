@@ -34,9 +34,9 @@
   ;;   -> ((letrec ((tag (lambda (name ...) body1 body2 ...)))
   ;; 	tag) val ...)
 
-  ;; not-strict version
+  ;; not-strict version (using (function $tag ...) names the lambda)
   (let $tag ((name val) ...) body1 body2 ...)
-  -> (letrec (($tag (function $tag (name ...) body1 body2 ...)))
+  -> (letrec (($tag (function $tag (name ...) #f body1 body2 ...)))
        ($tag val ...))
 
   ;; normal <let> here, we just rename it to our core
@@ -61,6 +61,10 @@
        (if test
 	   (begin body ... ($loop))
 	   #u)))
+
+(defmacro when
+  (when test body ...)
+  -> (if test (begin body ...)))
 
 (defmacro for-range
   (for-range vname num body ...)
