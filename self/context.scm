@@ -6,6 +6,7 @@
    extra-cflags=""
    optimize=#f
    trace=#f
+   debugmacroexpansion=#f
    })
 
 (define (make-context)
@@ -26,6 +27,7 @@
     symbols             = (alist/make)
     variant-labels      = (alist/make)
     options             = (make-options)
+    exceptions          = (alist/make)
     }
   )
 
