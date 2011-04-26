@@ -172,13 +172,16 @@
   )
 
 (define (make-macro name patterns)
-  (define (apply exp)
+  (define (apply exp debug?)
     (let loop ((l patterns))
       (match l with
 	((:pair in-pat out-pat) . tl)
 	-> (if (matches-pattern? in-pat exp)
-	       (let ((r (expand-pattern out-pat (get-bindings in-pat exp))))
-		 r)
+	       (begin
+		 (if debug? (print-string (format "expanding macro " (sym name) " in " (repr exp) "\n")))
+		 (let ((r (expand-pattern out-pat (get-bindings in-pat exp))))
+		   (if debug? (print-string (format "  -> " (repr r) "\n")) )
+		   r))
 	       (loop tl))
 	()
 	-> (error1 "no matching clause for macro" (repr exp)))))
