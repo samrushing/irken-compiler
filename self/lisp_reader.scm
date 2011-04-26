@@ -252,7 +252,9 @@
 		       ;; not forcing (sexp:symbol) on <ob> might allow 'builtin method calls'...
 		       ;;ob (sexp:cons 'nil method) -> (sexp:attr (sexp:attr ob 'o) method)
 		       ob (sexp:cons 'nil method) -> (sexp (sexp:symbol '%method) (sexp:symbol method) ob)
-		       x y -> (error1 "colon syntax" (:pair x y))))
+		       ;; object : type syntax
+		       ob type -> (sexp (sexp:symbol '%typed) ob type)))
+		       ;;x y -> (error1 "colon syntax" (:pair x y))))
 	    ;; infix 'get' syntax (i.e., attribute access)
 	    ;; XXX this is disabled because it breaks symbols like '...
 	    ;;   so we'll probably need to do the same hack as the python version
@@ -438,6 +440,7 @@
   (field:t name val) -> (format (sym name) "=" (p repr val)))
 
 (define repr
+  (sexp:list ((sexp:symbol 'quote) x)) -> (format "'" (repr x))
   (sexp:list l)     -> (format "(" (join repr " " l) ")")
   (sexp:symbol s)   -> (format (sym s))
   (sexp:string s)   -> (format "\"" s "\"") ;; XXX escape backslashes...
