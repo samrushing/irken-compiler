@@ -214,7 +214,7 @@
 	    (n (length rands)))
 	(match fun.t with
 	  (node:function name formals)
-	  -> (cond ((not (= n (length formals))) (error1 "inline: bad arity" fun))
+	  -> (cond ((not (= n (length formals))) (error1 "inline: bad arity" name))
 		   (else
 		    ;;(print-string (format "inlining function " (sym name) " has " (int n) " formals\n"))
 		    (for-range
