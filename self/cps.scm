@@ -307,6 +307,10 @@
 				;; we need both types in order to cast correctly
 				(c-primargs args name params cast-type lenv k))
 			   _ -> (impossible)))
+	  ;; do-nothing prim used to verify exception types
+	  '%exn-raise  -> (compile tail? (first args) lenv k)
+	  ;; note: discards first argument...
+	  '%exn-handle -> (compile tail? (second args) lenv k)
 	  _ -> (c-primargs args name params exp.type lenv k))))
    
     (define (c-cexp sig template exp lenv k)
