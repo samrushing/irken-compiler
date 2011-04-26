@@ -25,6 +25,17 @@
     (maybe:no) -> (maybe:no)
     (maybe:yes {content=x next=_}) -> (maybe:yes x)))
 
+(define (queue/iterate p q)
+  (match q.tail with
+    (maybe:no) -> #u
+    (maybe:yes tail)
+    -> (let loop ((node tail.next))
+	 (p node.content)
+	 (if (eq? node tail)
+	     #u
+	     (loop node.next)))
+    ))
+
 (define (queue/pop q)
   (match q.tail with
     (maybe:no) -> (maybe:no)
@@ -35,4 +46,3 @@
 	     (set! q.tail (maybe:no))
 	     (set! tail.next head.next))
 	 (maybe:yes head.content))))
-      
