@@ -604,16 +604,10 @@
 		   _ -> #u)
 		 (o.write "}"))))))
 		      
-  ;; the match compiler will never generate an else clause for pvcase,
-  ;;  so the only reason to support it here is for user-written code,
-  ;;  and I'm too lazy to do it correctly right now.
-  
   (define (emit-pvcase test-reg tags arities alts ealt)
-    (match ealt with
-      (maybe:yes _) -> (error "pvcase else-clause NYI")
-      (maybe:no) -> #u)
     (o.write (format "switch (get_case_noint (r" (int test-reg) ")) {"))
-    (let ((n (length alts)))
+    (let ((else? (maybe? ealt))
+	  (n (length alts)))
       (for-range
 	  i n
 	  (let ((label (nth tags i))
@@ -624,7 +618,7 @@
 			(maybe:no) -> (error1 "variant constructor never called" label)))
 		(tag1 (format (if (= arity 0) "UITAG(" "UOTAG(") (int tag0) ")"))
 		(case0 (format "case (" tag1 "): {"))
-		(case1 (if (= i (- n 1)) "default: {" case0)))
+		(case1 (if (and (not else?) (= i (- n 1))) "default: {" case0)))
 	    (o.indent)
 	    (o.write case1)
 	    (o.indent)
@@ -632,6 +626,17 @@
 	    (o.dedent)
 	    (o.write "} break;")
 	    (o.dedent)))
+      (match ealt with
+	(maybe:yes ealt)
+	-> (begin
+	     (o.indent)
+	     (o.write (format "default: {"))
+	     (o.indent)
+	     (emit ealt)
+	     (o.dedent)
+	     (o.write "};")
+	     (o.dedent))
+	(maybe:no) -> #u)
       (o.write "}")))
 
   ;; body of emit
