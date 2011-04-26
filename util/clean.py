@@ -26,7 +26,7 @@ def clean_c (path, precious):
                         else:
                             os.remove (jp)
 
-for path in ('tests vm self demo'.split()):
+for path in ('tests vm self demo doom'.split()):
     clean_c (path, ['compile.c'])
 
 def unlink (p):
