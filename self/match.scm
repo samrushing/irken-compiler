@@ -3,6 +3,16 @@
 (include "lib/counter.scm")
 (include "lib/stack.scm")
 
+;; See "The Implementation of Functional Programming Languages",
+;; Chapter 5: "Efficient Compilation of Pattern-Matching".
+;; http://research.microsoft.com/en-us/um/people/simonpj/papers/slpj-book-1987/
+;;
+;; Thanks for the hint, OCaml people! (Xavier Leroy?) They were kind
+;;   enough to put this reference in their source code
+;;   (ocaml/bytecomp/matching.ml), otherwise I may have never found
+;;   out about this book.  And thanks to Simon Peyton-Jones for
+;;   putting his book online.
+
 (datatype fieldpair
   (:t symbol pattern)
   )
@@ -354,8 +364,10 @@
 			 (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol dt.name) (sexp:symbol (car vars)))
 					    (reverse cases))))
 	       (maybe:no)
-	       -> (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol (car vars)))
-				     (reverse cases))))
+	       -> (begin (if (not (eq? default match-error))
+			     (PUSH cases (sexp (sexp:symbol 'else) match-fail)))
+			 (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol (car vars)))
+					    (reverse cases)))))
 	     ))
 	(if (not (eq? default match-error))
 	    (fatbar result default)
@@ -376,13 +388,15 @@
     n p -> (list:cons (p) (nthunk (- n 1) p)))
 
   (let ((rules (parse-match expander exp)))
-    ;;(for-each dump-rule rules)
+;;     (print-string "compiling match:\n")
+;;     (for-each dump-rule rules) (newline)
     (let ((npats (length (rule->pats (car rules))))
 	  (vars (if (null? vars)
 		    (nthunk npats new-match-var)
 		    vars))
 	  (result (compile-match vars rules match-error)))
 ;;       (print-string "match compiler result:\n")
-;;       (pp 0 result)
+;;       (pp 0 result) (newline)
+;;       (print-string " ---\n")
       (:pair vars result)))
   )
