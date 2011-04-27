@@ -97,17 +97,22 @@ set_nonblocking (int fd)
 		       (raise (:OSError e)))
    ))
 
+(define (recv-buffer fd buf)
+  (let loop ()
+    (try
+     (syscall
+      (%%cexp (int string int -> int)
+	      "recv (%0, %1, %2, 0)"
+	      fd buf (string-length buf)))
+     except
+     (:OSError e) -> (if (eq? e EWOULDBLOCK)
+			 (begin (poller/wait-for-read fd) (loop))
+			 (raise (:OSError e)))
+     )))
+
 (define (recv fd size)
   (let ((buffer (make-string size))
-	(r (let loop ()
-	     (try
-	      (syscall
-	       (%%cexp (int string int -> int) "recv (%0, %1, %2, 0)" fd buffer size))
-	      except
-	      (:OSError e) -> (if (eq? e EWOULDBLOCK)
-				  (begin (poller/wait-for-read fd) (loop))
-				  (raise (:OSError e)))
-	      ))))
+	(r (recv-buffer fd buffer)))
     (if (= r size)
 	buffer
 	(copy-string buffer r))))
@@ -116,16 +121,12 @@ set_nonblocking (int fd)
   (let loop ()
     (try
      (syscall
-      (%%cexp (int string int -> int) "send (%0, %1, %2, 0)" fd s (string-length s)))
+      (%%cexp (int string int -> int)
+	      "send (%0, %1, %2, 0)"
+	      fd s (string-length s)))
      except
      (:OSError e) -> (if (eq? e EWOULDBLOCK)
 			 (begin (poller/wait-for-write fd) (loop))
 			 (raise (:OSError e)))
      )))
 
-(cinclude "sys/errno.h")
-
-(define (syscall retval)
-  (if (< retval 0)
-      (raise (:OSError (%%cexp (-> int) "errno")))
-      retval))
