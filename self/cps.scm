@@ -24,7 +24,7 @@
   (:close symbol insn cont)                                     ;; <name> <body> <k>
   (:varref int int cont)                                        ;; <depth> <index> <k>
   (:varset int int int cont)                                    ;; <depth> <index> <reg> <k>
-  (:new-env int cont)                                           ;; <size> <k>
+  (:new-env int bool cont)	                                ;; <size> <top?> <k>
   (:alloc tag int cont)                                         ;; <tag> <size> <k>
   (:store int int int int cont)                                 ;; <offset> <arg> <tuple> <i> <k>
   (:invoke (maybe symbol) int int cont)                         ;; <name> <closure> <args> <k>
@@ -53,6 +53,11 @@
   (:rib (list symbol) cpsenv)		;; variables
   (:reg symbol int cpsenv)		;; variables-in-registers
   (:fat int cpsenv)			;; fatbar context
+  )
+
+(define lenv-top?
+  (cpsenv:nil) -> #t
+  _ -> #f
   )
 
 (define (make-register-allocator)
@@ -403,10 +408,11 @@
     (define (compile-args args lenv k)
       (set-flag! VFLAG-ALLOCATES)
       (match args with
-	() -> (insn:new-env 0 k)
+	() -> (insn:new-env 0 (lenv-top? lenv) k)
 	_  -> (let ((nargs (length args)))
 		(insn:new-env
 		 nargs
+		 (lenv-top? lenv)
 		 (cont (k/free k)
 		       (lambda (tuple-reg)
 			 (compile-store-args 0 1 args tuple-reg
@@ -456,6 +462,7 @@
 	(set-flag! VFLAG-ALLOCATES)
 	(insn:new-env
 	 nargs
+	 (lenv-top? lenv)
 	 (cont free
 	       (lambda (tuple-reg)
 		 (insn:push
@@ -667,7 +674,7 @@
     (insn:varset d i v k)	    -> (print-line (lambda () (ps2 "set") (ps d) (ps i) (ps v)) k)
     (insn:store o a t i k)	    -> (print-line (lambda () (ps2 "stor") (ps o) (ps a) (ps t) (ps i)) k)
     (insn:invoke n c a k)	    -> (print-line (lambda () (ps2 "invoke") (ps n) (ps c) (ps a)) k)
-    (insn:new-env n k)		    -> (print-line (lambda () (ps2 "env") (ps n)) k)
+    (insn:new-env n top? k)	    -> (print-line (lambda () (ps2 "env") (ps n) (ps top?)) k)
     (insn:alloc tag size k)         -> (print-line (lambda () (ps2 "alloc") (ps tag) (ps size)) k)
     (insn:push r k)                 -> (print-line (lambda () (ps2 "push") (ps r)) k)
     (insn:pop r k)                  -> (print-line (lambda () (ps2 "pop") (ps r)) k)
@@ -731,7 +738,7 @@
 	     (insn:varset _ _ _ k)   -> k
 	     (insn:store _ _ _ _ k)  -> k
 	     (insn:invoke _ _ _ k)   -> k
-	     (insn:new-env _ k)	     -> k
+	     (insn:new-env _ _ k)    -> k
 	     (insn:alloc _ _ k)	     -> k
 	     (insn:push _ k)	     -> k
 	     (insn:pop _ k)	     -> k
