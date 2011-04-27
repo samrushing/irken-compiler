@@ -300,3 +300,10 @@
   ;; begin to accumulate...
   (try body0 body1 ...)                   -> (try (begin body0) body1 ...)
   )
+
+(cinclude "sys/errno.h")
+
+(define (syscall retval)
+  (if (< retval 0)
+      (raise (:OSError (%%cexp (-> int) "errno")))
+      retval))
