@@ -143,8 +143,6 @@
 							  r)
 						 tl))))))
 
-(define first-env #t)
-
 (define (emit o insns context)
 
   (define emitk
@@ -164,7 +162,7 @@
        (insn:close name body k)			 -> (begin (emit-close name body (k/target k)) k)
        (insn:varref d i k)			 -> (begin (emit-varref d i (k/target k)) k)
        (insn:varset d i v k)			 -> (begin (emit-varset d i v) k)
-       (insn:new-env size k)			 -> (begin (emit-new-env size (k/target k)) k)
+       (insn:new-env size top? k)		 -> (begin (emit-new-env size top? (k/target k)) k)
        (insn:alloc tag size k)			 -> (begin (emit-alloc tag size (k/target k)) k)
        (insn:store off arg tup i k)		 -> (begin (emit-store off arg tup i) k)
        (insn:invoke name fun args k)		 -> (begin (emit-call name fun args k) k)
@@ -293,11 +291,10 @@
 	(o.write (format "((object*" (repeat d "*") ") lenv) " (repeat d "[1]") "[" (int (+ i 2)) "] = r" (int v) ";"))
 	))
 
-  (define (emit-new-env size target)
+  (define (emit-new-env size top? target)
     (o.write (format "r" (int target) " = allocate (TC_TUPLE, " (int (+ size 1)) ");"))
-    (cond (first-env
-	   (set! first-env #f)
-	   (o.write (format "top = r" (int target) ";")))))
+    (if top?
+	(o.write (format "top = r" (int target) ";"))))
 
   (define (emit-alloc tag size target)
     (let ((tag-string
