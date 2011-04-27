@@ -120,14 +120,19 @@
     )
 
   (define expand-set!
-    ((sexp:attr lhs attr) val)
-    -> (sexp1 '%rset (LIST (sexp:symbol attr) (expand lhs) (expand val)))
-    ((sexp:list ((sexp:symbol '%array-ref) param lhs idx)) val)
-    -> (sexp1 '%array-set (LIST param (expand lhs) (expand idx) (expand val)))
-    ((sexp:symbol name) val)
-    -> (sexp1 'set! (LIST (sexp:symbol name) (expand val)))
-    x -> (error1 "malformed set!" x)
-    )
+    (lhs0 rhs0)
+    -> (let ((lhs (expand lhs0)) ;; early expansion of lhs allows macros to expand to <attr> and <array-ref>
+	     (rhs (expand rhs0)))
+	 (match lhs with
+	   (sexp:attr lhs attr)
+	   -> (sexp1 '%rset (LIST (sexp:symbol attr) lhs rhs))
+	   (sexp:list ((sexp:symbol '%array-ref) param lhs idx))
+	   -> (sexp1 '%array-set (LIST param lhs idx rhs))
+	   (sexp:symbol name)
+	   -> (sexp1 'set! (LIST (sexp:symbol name) rhs))
+	   x -> (error1 "malformed set!" x)
+	   ))
+    x -> (error1 "malformed set!" x))
 
   (define expand-begin
     ()	  -> (error "empty BEGIN")
