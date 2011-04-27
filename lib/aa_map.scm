@@ -64,6 +64,14 @@
 	      (node/make n.level n.key n.val n.left (loop n.right)))
 	  )))))
 
+(defmacro tree/insert!
+  (tree/insert! root < key val)
+  -> (set! root (tree/insert root < key val)))
+
+(defmacro tree/delete!
+  (tree/delete! root < key val)
+  -> (set! root (tree/delete root < key val)))
+
 ;; XXX make this pure.
 
 (define (tree/delete root key key-less? key-equal?)
