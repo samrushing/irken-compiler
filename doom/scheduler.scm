@@ -1,6 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-;; Consider making the poller a top-level global, which would really simplify the API.
+;; for each EVFILT, we have separate map of ident=>continuation
 
 (define (make-poller)
   { kqfd	= (kqueue)
@@ -15,6 +15,10 @@
 
 (define (poller/enqueue k)
   (queue/add the-poller.runnable k))
+
+;; TODO: since this code is using getcc/putcc directly, it's possible
+;; that it's not type-safe around coro switch boundaries. look into
+;; this.
 
 (define (poller/fork f)
   (poller/enqueue (getcc))
@@ -31,20 +35,24 @@
     (maybe:no)	  -> (poller/wait-and-schedule)))
 
 ;; these funs know that EVFILT values are consecutive small negative ints
+
+;; here's a question: is this an abuse of macros?  Does it make the code
+;;   harder or easier to read?  I think this is related to 'setf' in CL -
+;;   since the target of set! can't be a funcall.
+(defmacro kfilt (kfilt f) -> the-poller.filters[(- 0 f)])
+
 (define (poller/lookup-event ident filter)
-  (tree/member the-poller.filters[(- 0 filter)] < ident))
+  (tree/member (kfilt filter) < ident))
 
 (define (poller/add-event ident filter k)
   (set! the-poller.nwait (+ 1 the-poller.nwait))
-  (set! the-poller.filters[(- 0 filter)]
-	(tree/insert the-poller.filters[(- 0 filter)]
-		     < ident k)))
+  (tree/insert! (kfilt filter) < ident k))
 
 (define (poller/delete-event ident filter)
-  (set! the-poller.filters[(- 0 filter)]
-	(tree/delete the-poller.filters[(- 0 filter)] ident < =))
-  (set! the-poller.nwait (- the-poller.nwait 1)))
+  (tree/delete! (kfilt filter) ident < =))
+  (set! the-poller.nwait (- the-poller.nwait 1))
 
+;; put the current thread to sleep while waiting for the kevent (ident, filter).
 (define (poller/wait-for ident filter)
   (let ((k (getcc)))
     (match (poller/lookup-event ident filter) with
@@ -55,7 +63,7 @@
 	   (poller/dispatch)
 	   #u
 	   )
-      (maybe:yes _) -> (error "poller/wait-for: event already present")
+      (maybe:yes _) -> (raise (:PollerEventAlreadyPresent))
       )))
 
 (define (poller/wait-for-read fd)
@@ -70,23 +78,19 @@
 	 (maybe:yes k) -> (begin
 			    (poller/delete-event ident filter)
 			    (poller/enqueue k))
-	 (maybe:no)    -> (error "poller/get-waiting-thread: no thread")))
+	 (maybe:no)    -> (raise (:PollerNoSuchEvent ident filter))))
 
 (define (poller/wait-and-schedule)
-  ;; all the runnable threads have done their bit, now
-  ;; throw it to kevent().
+  ;; all the runnable threads have done their bit, now throw it to kevent().
   (if (= the-poller.nwait 0)
       (print-string "no events, will wait forever!\n"))
-  (let ((n (kevent the-poller.kqfd the-poller.ievents the-poller.oevents)))
-    (if (< n 0)
-	(error "kevent() failed")
-	(begin
-	  (print-string (format "poller/wait-and-schedule: got " (int n) " events\n"))
-	  (set! the-poller.ievents.index 0)
-	  (for-range
-	      i n
-	      (poller/enqueue-waiting-thread
-	       (get-kevent the-poller.oevents i)))
-	  (poller/dispatch)
-	  ))))
+  (let ((n (syscall (kevent the-poller.kqfd the-poller.ievents the-poller.oevents))))
+    ;;(print-string (format "poller/wait-and-schedule: got " (int n) " events\n"))
+    (set! the-poller.ievents.index 0)
+    (for-range
+	i n
+	(poller/enqueue-waiting-thread
+	 (get-kevent the-poller.oevents i)))
+    (poller/dispatch)
+    ))
 
