@@ -145,6 +145,16 @@
 (define (parse-type exp)
   (parse-type* exp (alist-maker)))
 
+;; I think this is a bug: the moo() in there should be inside the pre(),
+;;  otherwise it's a malformed row! [hey, maybe this is where 'kinding' comes in. 8^)]
+;;
+;; moo(t20093, rproduct(rlabel(level, pre(int), 
+;;                      rlabel(key, pre(t908),
+;;                      rlabel(val, pre(t909),
+;;                      rlabel(left, moo(t20068, pre(t20092)),
+;;                      rlabel(right, moo(t20073, pre(t20093)),
+;;                      rdefault(abs))))))))
+
 ;; rproduct(rlabel(x, pre(bool), rlabel(y, pre(int), rdefault(abs))))
 ;; => '(x y)
 (define get-record-sig
@@ -155,9 +165,13 @@
 	    (let loop ((row row)
 		       (labels '()))
 	      (match row with
-		(type:pred 'rlabel ((type:pred label _ _) (type:pred 'pre _ _) rest) _)
+;; 		(type:pred 'rlabel ((type:pred label _ _) (type:pred 'pre _ _) rest) _)
+;; 		-> (loop rest (list:cons label labels))
+;; 		(type:pred 'moo (tv arg) _) -> (loop arg labels)
+		(type:pred 'rlabel ((type:pred label _ _) (type:pred 'abs _ _) rest) _)
+		-> (loop rest labels)
+		(type:pred 'rlabel ((type:pred label _ _) _ rest) _)
 		-> (loop rest (list:cons label labels))
-		(type:pred 'moo (tv arg) _) -> (loop arg labels)
 		(type:pred 'rdefault _ _)   -> labels
 		(type:tvar _ _)		    -> (list:cons '... labels)
 		_			    -> '()))))
