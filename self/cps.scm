@@ -253,7 +253,7 @@
       name _ (cpsenv:nil)	       -> (error1 "unbound variable" name)
       name d (cpsenv:rib names lenv)   -> (match (search-rib name 0 names) with
 					    (maybe:yes i) -> (if (eq? lenv (cpsenv:nil))
-								 (:top i)
+								 (:top d i)
 								 (:pair d i))
 					    (maybe:no)    -> (lexical-address name (+ d 1) lenv))
       name d (cpsenv:fat _ lenv)       -> (lexical-address name d lenv)
@@ -266,7 +266,7 @@
       (match (lexical-address name 0 lenv) with
 	(:reg r) -> (insn:move r -1 k)
 	(:pair depth index) -> (insn:varref depth index k)
-	(:top index) -> (insn:varref -1 index k)
+	(:top _ index) -> (insn:varref -1 index k)
 	))
 
     (define (c-varset name exp lenv k)
@@ -274,7 +274,7 @@
 	     (match (lexical-address name 0 lenv) with
 	       (:pair depth index)
 	       -> (lambda (reg) (insn:varset depth index reg k))
-	       (:top index)
+	       (:top _ index)
 	       -> (lambda (reg) (insn:varset -1 index reg k))
 	       (:reg index)
 	       -> (lambda (reg) (insn:move reg index k))
@@ -386,8 +386,8 @@
 	       (let ((name (varref->name fun.t)))
 		 (match (lexical-address name 0 lenv) with
 		   (:reg _) -> (error "c-call function in register?")
-		   (:pair depth index) -> (c-trcall depth name args lenv k)
-		   (:top index) -> (c-trcall -1 name args lenv k)
+		   (:pair depth _) -> (c-trcall depth name args lenv k)
+		   (:top depth _) -> (c-trcall depth name args lenv k)
 		   ))
 	       (let ((gen-invoke (if tail? gen-tail gen-invoke))
 		     (name (match fun.t with
