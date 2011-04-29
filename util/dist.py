@@ -29,6 +29,7 @@ os.system ('COPYFILE_DISABLE=true tar --exclude .svn -zcvf %s irken' % (tarball,
 # push it
 os.system ('scp %s dark:public_html/irken/' % (tarball,))
 os.system ("ssh dark '(cd public_html/irken; tar -zxvf %s)'" % (tarball,))
+os.system ("ssh dark '(cd public_html/irken/irken; util/pygment.py)'")
 os.system ('rm -fr irken-staging')
 os.chdir ('irken')
 
