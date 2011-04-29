@@ -1,3 +1,6 @@
+;; -*- Mode: Irken -*-
+
+;; Tak, the Hideous New Girl!
 
 (define (>= a b)
   (%%cexp (int int -> bool) "%0>=%1" a b))
