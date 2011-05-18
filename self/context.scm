@@ -7,6 +7,7 @@
    optimize=#f
    trace=#f
    debugmacroexpansion=#f
+   profile=#f
    })
 
 (define (make-context)
@@ -28,6 +29,7 @@
     variant-labels      = (alist/make)
     options             = (make-options)
     exceptions          = (alist/make)
+    profile-funs        = '()
     }
   )
 
