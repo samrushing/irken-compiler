@@ -595,8 +595,8 @@
       (match row with
 	(type:pred 'rlabel ((type:pred exn-name _ _) exn-type rest) _)
 	-> (let ((global-type (get-exn-type exn-name)))
-	     (print-string (format "global type of " (sym exn-name) " is " (type-repr global-type) "\n"))
-	     (print-string (format "  unifying with " (type-repr exn-type) "\n"))
+;; 	     (print-string (format "global type of " (sym exn-name) " is " (type-repr global-type) "\n"))
+;; 	     (print-string (format "  unifying with " (type-repr exn-type) "\n"))
 	     (unify exp global-type exn-type)
 	     (loop rest))
 	(type:tvar _ _) -> #u
