@@ -36,6 +36,7 @@
 
 (define (initialize-symbol-table)
   (let ((v (%%cexp (vector symbol) "(object *) pxll_internal_symbols")))
+    (set! the-symbol-table (tree/empty)) ;; necessary because of problems with topological sort
     (let loop ((i 0))
       (if (= i (vector-length v))
 	  #u
