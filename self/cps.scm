@@ -7,11 +7,6 @@
   (:uobj int)
   )
 
-;; ================================================================================
-;; here's an interesting idea: why not attach the solved type to *every* insn?
-;; actually, we pretty much *have* to do that in order to get a working C interface.
-;; ================================================================================
-
 ;; RTL instructions
 (datatype insn
   (:return int)                                                 ;; return register
@@ -237,8 +232,10 @@
 	      (compile #t
 		       body
 		       (extend-lenv formals lenv)
-		       (cont '() gen-return))
+		       (cont '() gen-return)
+		       )
 	      k)))
+	(PUSH context.profile-funs current-funs)
 	(pop current-funs)
 	r))
 
@@ -750,22 +747,23 @@
 	(cont:nil) -> #u)))
   (walk insn 0))
 
-(define done-insn (:pair (insn:return -1) -1))
-
 (define (make-insn-generator insn)
   (make-generator
    (lambda (consumer)
-     (walk-insns (lambda (insn depth) (consumer (:pair insn depth))) insn)
+     (walk-insns
+      (lambda (insn depth)
+	(consumer (maybe:yes (:pair insn depth))))
+      insn)
      (let loop ()
-       (consumer done-insn)
+       (consumer (maybe:no))
        (loop)))))
-   
-(define (iterate-insns insn)
-  (let ((g (make-insn-generator insn)))
-    (for-range
-	i 10
-	(match (g) with
-	  (:pair insn depth)
-	  -> (begin (indent depth)
-		    (printn (%%cexp ('a -> int) "get_case(%0)" insn)))))
-    ))
+
+;; could be for any generator?
+(defmacro for-insns
+  (for-insns vname insns body ...)
+  -> (let (($ig (make-insn-generator insns)))
+       (let loop ()
+	 (match ($ig) with
+	   (maybe:yes vname)
+	   -> (begin body ... (loop))
+	   (maybe:no) -> #u))))
