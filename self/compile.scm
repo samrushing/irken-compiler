@@ -61,14 +61,28 @@
 	"-m" -> (set! options.debugmacroexpansion #t)
 	;; this option only applies to the C compilation phase.
 	"-O" -> (set! options.optimize #t)
+	"-p" -> (set! options.profile #t)
 	_ -> #u)))
+
+(define (usage)
+  (print-string "
+Usage: compile <irken-src-file> [options]
+ -c : don't compile .c file
+ -v : verbose (very!) output
+ -t : generate trace-printing code
+ -f : set CFLAGS for C compiler
+ -m : debug macro expansion
+ -O : tell gcc to optimize
+ -p : generate profile-printing code
+"))
 
 (defmacro verbose
   (verbose item ...) -> (if context.options.verbose (begin item ... #u)))
 
 (define (main)
-  (if (< sys.argc 2)
-      (error "Usage: compile <irken-src-file>"))
+  (when (< sys.argc 2)
+	(usage)
+	(raise (:args)))
   (let ((context (make-context))
 	(_ (get-options sys.argv context.options))
 	(transform (transformer context))
@@ -82,19 +96,23 @@
 	(exp1 (transform exp0))
 	(_ (verbose (pp 0 exp1) (newline)))
 	(node0 (walk exp1))
-	(node0 (apply-substs node0))
+	(node1 (apply-substs node0))
 	;; clear some memory usage
 	(_ (set! exp0 (sexp:int 0)))
 	(_ (set! exp1 (sexp:int 0)))
 	(_ (set! forms0 '()))
 	(_ (set! forms1 '()))
 	;;(_ (begin (print-string "after subst:\n") (pp-node node0)))
-	(_ (rename-variables node0))
+	(_ (rename-variables node1))
 	;;(_ (begin (pp-node node0) (newline)))
-	(node1 (do-one-round node0 context))
+	(node2 (do-one-round node1 context))
 	;;(_ (begin (print-string "after first round:\n") (pp-node node1)))
-	(noden (do-one-round node1 context))
-	(_ (set! node1 (node/sequence '()))) ;; go easier on memory
+	(noden (do-one-round node2 context))
+	;; try to free up some memory
+	(_ (set! node0 (node/sequence '())))
+	(_ (set! node1 (node/sequence '())))
+	(_ (set! node2 (node/sequence '())))	
+	(_ (set! context.funs (tree/empty)))
 	(_ (find-leaves noden))
 	(_ (verbose (print-string "after second round:\n") (pp-node noden)))
 	;; rebuild the graph yet again, so strongly will work.
@@ -154,11 +172,13 @@
       (:header part0 part1 part2)
       -> (begin (o.copy part0)
 		(emit-constructed o context)
+		(if context.options.profile (emit-profile-0 o context))
 		(o.copy part1)
 		(emit-registers o context)
 		(o.copy part2)
 		(emit o cps context)))
     (emit-lookup-field o context)
+    (if context.options.profile (emit-profile-1 o context))
     (print-string "done.\n")
     (o.close)
     (cond ((not context.options.nocompile)
