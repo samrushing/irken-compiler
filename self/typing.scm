@@ -209,8 +209,17 @@
 	     (pp-node exp)
 	     (error1 "typing NYI" exp))))
 
+  (define (dump-tenv tenv)
+    (print-string "tenv {\n")
+    (tree/inorder
+     (lambda (name scheme)
+       (print-string (format "  " (sym name) " = " (scheme-repr scheme) "\n")))
+     tenv)
+    (print-string "}\n"))
+
   (define (type-of exp tenv)
     (let ((t (type-of* exp tenv)))
+;;       (dump-tenv tenv)
 ;;       (print-string "type-of ") (pp-node exp) (newline)
 ;;       (print-string "  == ") (print-string (type-repr t)) (newline)
       (set! exp.type t)
