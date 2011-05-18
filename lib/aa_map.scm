@@ -9,6 +9,15 @@
 ;;   them work from the bottom up rather than top down.  [another approach would be
 ;;   to just adapt Julienne's non-recursive code].
 
+;; I'm bothered by the fact that this uses an entire extra word to hold the
+;;   level data.  *theoretically*, it should be possible to write these
+;;   algorithms without it (i.e., one bit per node for color), yet I wonder
+;;   if they could be kept as simple.
+
+;; Note: as it stands, this code is pure as long as you don't use delete.
+;;   however it is rare that one needs both deletion and purity, so feel free
+;;   to use the 'pure' subset of this data structure thus.
+
 (define (node/make level key val left right)
   { level = level
     key   = key
@@ -28,9 +37,11 @@
 ;;
 ;; The typer will let me get away with this: (tree/nil).  Why?
 
-(define tree/nil (node/make 0 (magic #u) (magic #u) (magic #u) (magic #u)))
-(set! tree/nil.left tree/nil)
-(set! tree/nil.right tree/nil)
+(define tree/nil
+  (let ((node (node/make 0 (magic #u) (magic #u) (magic #u) (magic #u))))
+    (set! node.left node)
+    (set! node.right node)
+    node))
 
 (define (tree/empty) tree/nil)
 
@@ -53,6 +64,7 @@
        (tree/split b.right.right))
       b))
        
+;; urghhh, probably should have put '<' as the last arg.
 (define (tree/insert root < key val)
   (let loop ((n root))
     (if (= n.level 0)
@@ -69,8 +81,8 @@
   -> (set! root (tree/insert root < key val)))
 
 (defmacro tree/delete!
-  (tree/delete! root < key val)
-  -> (set! root (tree/delete root < key val)))
+  (tree/delete! root key < =)
+  -> (set! root (tree/delete root key < =)))
 
 ;; XXX make this pure.
 
