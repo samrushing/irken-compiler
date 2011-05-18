@@ -41,16 +41,19 @@
 
 (define (find-leaves node)
   (define (search exp)
-    (if (every? search exp.subs)
-	(let ((leaf?
-	       (match exp.t with
-		 (node:call) -> (node-get-flag exp NFLAG-RECURSIVE)
-		 _ -> #t)))
-	  (if leaf?
-	      (node-set-flag! exp NFLAG-LEAF))
-	  leaf?)
-	#f))
-  (search node))
+    (let ((leaf?
+	   (match exp.t with
+	     (node:call) -> (node-get-flag exp NFLAG-RECURSIVE)
+	     _ -> #t)))
+      (for-each
+       (lambda (sub)
+	 (let ((sub-leaf? (search sub)))
+	   (if sub-leaf? (node-set-flag! sub NFLAG-LEAF))
+	   (set! leaf? (and leaf? sub-leaf?))))
+       exp.subs)
+      leaf?))
+  (if (search node)
+      (node-set-flag! node NFLAG-LEAF)))
 
 (define (find-refs node context)
 
@@ -80,7 +83,8 @@
 
   (let ((inline-counter (make-counter 0))
 	(rename-counter (make-counter 0))
-	(multiplier (alist:nil)))
+	(multiplier (tree/empty))
+	)
 
     (define (set-multiplier name calls)
       ;; when we inline <name>, each function that it calls must have its call-count
@@ -90,14 +94,15 @@
 	  (maybe:yes deps)
 	  -> (deps::iterate
 	      (lambda (dep)
-		(match (alist/lookup multiplier dep) with
-		  (maybe:no) -> (alist/push multiplier dep calls)
+		(match (tree/member multiplier symbol-index<? dep) with
+		  (maybe:no) -> (tree/insert! multiplier symbol-index<? dep calls)
 		  (maybe:yes _) -> #u)))
 	  (maybe:no) -> #u)))
 
     ;; XXX no protection against infinite aliases
+
     (define (follow-aliases fenv name)
-      (match (alist/lookup fenv name) with
+      (match (tree/member fenv symbol-index<? name) with
 	(maybe:no) -> (maybe:no)
 	(maybe:yes fun)
 	-> (match fun.t with
@@ -106,7 +111,7 @@
 	     _ -> (maybe:yes (:pair name fun)))))
 
     (define (get-fun-calls name calls)
-      (match (alist/lookup multiplier name) with
+      (match (tree/member multiplier symbol-index<? name) with
 	(maybe:yes num) -> (* num calls)
 	(maybe:no) -> calls))
 
@@ -118,9 +123,7 @@
 	    (node:fix names)
 	    -> (for-range
 		   i (length names)
-		   (set! fenv (alist:entry (nth names i)
-					   (nth node.subs i)
-					   fenv)))
+		   (tree/insert! fenv symbol-index<? (nth names i) (nth node.subs i)))
 
 	    (node:call)
 	    -> (match node.subs with
@@ -295,7 +298,7 @@
       (walk body))
 
     ;; body of do-inlining
-    (inline root (alist:nil))
+    (inline root (tree/empty))
     ))
 
 (define (escape-analysis root context)
