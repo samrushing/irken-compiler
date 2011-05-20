@@ -575,6 +575,23 @@
 	  (o.write (format "lenv = ((object " (joins (n-of npop "*")) ")lenv)" (joins (n-of npop "[1]")) ";")))
       (o.write (format "goto fatbar_" (int label) ";")))
 
+    ;;
+    ;; thinking about get_case():
+    ;;
+    ;;  We can avoid even more branching and checking of pointers by choosing the test function
+    ;;  *after* deciding on where to put the 'default' fall-through.  For example, if we are testing
+    ;;  a list, then the switch usually looks like this:
+    ;;
+    ;;  switch () {
+    ;;  case TC_NIL:
+    ;;     ...
+    ;;  default:
+    ;;     ...
+    ;;  }
+    ;;
+    ;; So in this particular case we need only check for immediate TC_NIL.
+    ;; XXX Before implementing, see if the C compiler isn't already doing this for us.
+    ;;
     (define (which-typecode-fun dt) "get_case") ;; XXX
 
     (define (emit-nvcase test dtname tags subs ealt)

@@ -107,9 +107,9 @@ strongly-connected-components of the call graph, which is needed by
 the typing phase.
 
 5) typing: this does 'type reconstruction' (or 'type inference') on
-the resulting node tree, using a union-find algorithm along with
-Huet's unification algorithm.  If the program passes this phase, then
-the final solved type is attacked to each node.
+the resulting node tree, using a union-find algorithm with Huet's
+unification algorithm.  If the program passes this phase, then the
+final solved type is attached to each node.
 
 [See also types.scm]
 
