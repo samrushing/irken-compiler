@@ -380,6 +380,14 @@ clear_space (object * p, pxll_int n)
   }
 }
 
+static object * lenv = PXLL_NIL;
+static object * k = PXLL_NIL;
+static object * top = PXLL_NIL; // top-level (i.e. 'global') environment
+static object * t = 0; // temp - for swaps & building tuples
+static object * result;
+static object * limit; // = heap0 + (heap_size - head_room);
+static object * freep; // = heap0;
+
 int
 main (int argc, char * argv[])
 {
@@ -404,142 +412,78 @@ main (int argc, char * argv[])
   }
 }
 
+// REGISTER_DECLARATIONS //
+
 // CONSTRUCTED LITERALS //
+
+#include "gc.c"
+
+// check heap is called at the top of each allocating function.
+//  [by locating the check at the top, we avoid considering any
+//   registers as roots of the gc...]
+static void
+check_heap (int nfree)
+{
+  if (freep >= limit) {
+    uint64_t t0, t1;
+    t0 = rdtsc();
+    gc_flip (nfree);
+    t1 = rdtsc();
+    gc_ticks += t1 - t0;
+  }
+}
+
+static void
+ensure_heap (int nfree, pxll_int size)
+{
+  if (freep + size + 1 >= limit) {
+    uint64_t t0, t1;
+    t0 = rdtsc();
+    gc_flip (nfree);
+    t1 = rdtsc();
+    gc_ticks += t1 - t0;
+  }
+}
+
+static object *
+allocate (pxll_int tc, pxll_int size)
+{
+  object * save = freep;
+  *freep = (object*) (size<<8 | (tc & 0xff));
+#if 1
+  // at least on the g5, this technique is considerably faster than using memset
+  //   in gc_flip() to 'pre-clear' the heap... probably a cache effect...
+  while (size--) {
+    // this keeps gc from being confused by partially-filled objects.
+    *(++freep) = PXLL_NIL;
+  }
+  ++freep;
+#else
+  // if you use this version, be sure to set <clear_tospace>!
+  freep += size + 1;
+#endif
+  return save;  
+}
+
+  // this is emitted by the backend for %make-tuple
+static object *
+alloc_no_clear (pxll_int tc, pxll_int size)
+{
+  object * save = freep;
+  *freep = (object*) (size<<8 | (tc & 0xff));
+  freep += size + 1;
+  return save;  
+}
 
 pxll_int
 vm (int argc, char * argv[])
 {
-  register object * lenv = PXLL_NIL;
-  register object * k = PXLL_NIL;
-// REGISTER_DECLARATIONS //
-  object * top = PXLL_NIL; // top-level (i.e. 'global') environment
-  object * t = 0; // temp - for swaps & building tuples
-  object * result;
-  object * limit = heap0 + (heap_size - head_room);
-  object * freep = heap0;
   int i; // loop counter
   
+  limit = heap0 + (heap_size - head_room);
+  freep = heap0;  
+
 #define PXLL_RETURN(d)	result = r##d; goto *k[3]
-
-#include "gc.c"
-
-  // check heap is called at the top of each allocating function.
-  //  [by locating the check at the top, we avoid considering any
-  //   registers as roots of the gc...]
-  void check_heap (int nfree) {
-    if (freep >= limit) {
-      uint64_t t0, t1;
-      t0 = rdtsc();
-      gc_flip (nfree);
-      t1 = rdtsc();
-      gc_ticks += t1 - t0;
-    }
-  }
-
-  void ensure_heap (int nfree, pxll_int size) {
-    if (freep + size + 1 >= limit) {
-      uint64_t t0, t1;
-      t0 = rdtsc();
-      gc_flip (nfree);
-      t1 = rdtsc();
-      gc_ticks += t1 - t0;
-    }
-  }
-
-  object * allocate (pxll_int tc, pxll_int size) {
-    object * save = freep;
-    *freep = (object*) (size<<8 | (tc & 0xff));
-#if 1
-    // at least on the g5, this technique is considerably faster than using memset
-    //   in gc_flip() to 'pre-clear' the heap... probably a cache effect...
-    while (size--) {
-      // this keeps gc from being confused by partially-filled objects.
-      *(++freep) = PXLL_NIL;
-    }
-    ++freep;
-#else
-    // if you use this version, be sure to set <clear_tospace>!
-    freep += size + 1;
-#endif
-    return save;  
-  }
-
-  // this is emitted by the backend for %make-tuple
-  object * alloc_no_clear (pxll_int tc, pxll_int size) {
-    object * save = freep;
-    *freep = (object*) (size<<8 | (tc & 0xff));
-    freep += size + 1;
-    return save;  
-  }
-
-  // gcc inlines/unrolls these nicely, they allow more compact code
-  // Note: I'm not using these any longer, because there's a huge
-  //   impact on compile times - 11m vs 50m when I tested it.
-  inline object * varref (pxll_int depth, pxll_int index)
-  {
-    object * walk = lenv;
-    while (depth--) {
-      walk = walk[1];
-    }
-    return walk[index+2];
-  }
-
-  inline void varset (pxll_int depth, pxll_int index, object * val)
-  {
-    object * walk = lenv;
-    while (depth--) {
-      walk = walk[1];
-    }
-    walk[index+2] = val;
-  }
-
-  
-  // these could probably be written in irken...
-  pxll_int dump_image (char * filename, object * closure) {
-    FILE * dump_file = fopen (filename, "wb");
-    pxll_int offset;
-    pxll_int size;
-    object * start;
-    // do a gc for a compact dump
-    closure = gc_dump (closure);
-    // for now, start at the front of the heap
-    start = heap0;
-    size = freep - start;
-    offset = (pxll_int) heap0;
-    // XXX add endian indicator...
-    fprintf (dump_file, "(pxll image %" PRIuPTR " %p)\n", sizeof (pxll_int), start);
-    fwrite (&offset, sizeof(pxll_int), 1, dump_file);
-    fwrite (&size, sizeof(pxll_int), 1, dump_file);
-    fwrite (start, sizeof(pxll_int), size, dump_file);
-    fclose (dump_file);
-    return size;
-  }
-
-  object * load_image (char * filename) {
-    FILE * load_file = fopen (filename, "rb");
-    if (!load_file) {
-      abort();
-    } else {
-      object * start, * thunk;
-      pxll_int size;
-      read_header (load_file);	// XXX verify header...
-      fread (&start, sizeof(pxll_int), 1, load_file);
-      fread (&size, sizeof(pxll_int), 1, load_file);
-      fread (heap1, sizeof(pxll_int), size, load_file);
-      fprintf (stderr, "size=%d\n", (int) size);
-      // relocate heap0
-      gc_relocate (4, heap1, heap1 + size, start - heap1);
-      // replace roots
-      lenv  = (object *) heap1[0];
-      k     = (object *) heap1[1];
-      top   = (object *) heap1[2];
-      thunk = (object *) heap1[3];
-      freep = heap1 + size;
-      // swap heaps
-      { object * temp = heap0; heap0 = heap1; heap1 = temp; }
-      return thunk;
-    }
-  }
 
   k = allocate (TC_SAVE, 3);
   k[1] = (object *) PXLL_NIL; // top of stack

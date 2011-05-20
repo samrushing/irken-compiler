@@ -520,7 +520,7 @@
 			       (o.write (format "r" (int target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
 						") * unbox(r" (int (car args)) "), sizeof (object)));"))
 			       (error1 "%callocate: dead target?" type)))
-	  '%exit -> (o.write (format "PXLL_UNDEFINED; result=r" (int (car args)) "; goto Lreturn;"))
+	  '%exit -> (o.write (format "result=r" (int (car args)) "; goto Lreturn;"))
 	  '%cget -> (match args with
 		      (rbase rindex)
 		      ;; XXX range-check (probably need to add a length param to TC_BUFFER)
@@ -673,7 +673,7 @@
   (let ((nreg (+ 1 (context.regalloc.get-max))))
     (for-range
 	i nreg
-	(o.write (format "register object * r" (int i) ";")))
+	(o.write (format "static object * r" (int i) ";")))
     (o.write "void gc_regs_in (int n) {")
     (o.write "  switch (n) {")
     (for-each
@@ -878,5 +878,5 @@ static prof_dump (void)
 					     ": return " (int i) "; break;")))
 			(o.write "  } break;"))))
 	  context.records)
-	 (o.write "}}"))))
+	 (o.write "} return 0; }"))))
 	 

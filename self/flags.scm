@@ -1,3 +1,3 @@
 
 (define CC "gcc")
-(define CFLAGS "-I.")
+(define CFLAGS "-fnested-functions -I.  -fnested-functions")

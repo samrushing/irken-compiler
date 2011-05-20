@@ -7,7 +7,9 @@
   (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
 
 (define (print-string s)
-  (%%cexp (string int -> undefined) "(fwrite (%0, 1, %1, stdout), PXLL_UNDEFINED)" s (string-length s)))
+  (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s))
+  #u
+  )
 
 ;; original version returns how many chars were written...
 (define (print-string* s)
