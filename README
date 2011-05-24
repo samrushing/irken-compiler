@@ -1,6 +1,17 @@
-This is the initial release of the self-hosted compiler.
+Irken is a statically-typed, simplified variant of Scheme.  Or, a lisp-like variant of ML.
 
-It's still in a very unpolished state, but you can use it to bootstrap itself.
+Why: to host massively scalable systems scriptable via a python-like language.
+How: use continuation-passing style to avoid using the C stack.
+
+Blog:         http://alien.nightmare.com/
+GitHub:       https://github.com/samrushing/irken-compiler/
+Older Source: http://nightmare.com/rushing/irken/
+
+--------------------------------------------------------------------------------
+
+Irken is now written in itself, so you need to bootstrap it.  You can do this
+via the python script, or manually.
+[see https://github.com/samrushing/irken-compiler/wiki/bootstrapping-manually]
 
 Just run the script "util/bootstrap.py":
 
@@ -24,8 +35,13 @@ Very little documentation exists yet, try 'lang.html' for a brief tutorial.
 The best way to get familiar with the language is to read the source code in
 the 'self' directory, and browse over the files in "tests".
 
+110523: you may now build with clang, highly recommended.  First,
+  switch to the 'no-nested-funs' branch.  Clang can build -O2 in 8m,
+  and -O3 in 10m, with less than 1G of memory.  [see the 'manual
+  bootstrapping link above]
+
 110326 Release Note: there is currently something very wrong with the
-combination of recursive types and rows, which shows up when using the
-new 'OO-like' feature (the '::' syntax).  It seems to be completely
-destroying all type safety.  So for now just stay away from that stuff
-until I can figure out what's going wrong.
+  combination of recursive types and rows, which shows up when using
+  the new 'OO-like' feature (the '::' syntax).  It seems to be
+  completely destroying all type safety.  So for now just stay away
+  from that stuff until I can figure out what's going wrong.
