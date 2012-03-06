@@ -3,44 +3,49 @@
 // cheney copying garbage collector
 // --------------------------------------------------
 
+int
+sitting_duck (object * p)
+{
+  return (p >= heap0) && (p < (heap0 + heap_size));
+}
+
+static object * scan;
+
+object *
+copy (object * p)
+{
+  object * pp = (object *) *p;
+  if (is_immediate (pp)) {
+    return pp;
+  } else if (sitting_duck (pp)) {
+    if (*pp == (object) GC_SENTINEL) {
+      // pp points into to_space, return the forwarding address
+      return (object *) (*(pp+1));
+    } else {
+      // p points at an object in from_space, copy it
+      object * addr = freep;
+      pxll_int length = GET_TUPLE_LENGTH (*pp);
+      pxll_int k;
+      // copy tag, children
+      for (k=0; k < length+1; k++) {
+	*freep++ = *pp++;
+      }
+      // leave a sentinel where the tag was, followed by the forwarding address.
+      *(object*)(*p) = (object) GC_SENTINEL;
+      *((object*)(*p)+1) = (object) addr;
+      return addr;
+    }
+  } else {
+    // pp points outside of the heap
+    //fprintf (stderr, "?");
+    return pp;
+  }
+}
+
 object
 do_gc (int nroots)
 {
-  object * scan;
   int i = 0;
-
-  inline int sitting_duck (object * p) {
-    return (p >= heap0) && (p < (heap0 + heap_size));
-  }
-
-  object * copy (object * p) {
-    object * pp = (object *) *p;
-    if (is_immediate (pp)) {
-      return pp;
-    } else if (sitting_duck (pp)) {
-      if (*pp == (object) GC_SENTINEL) {
-        // pp points into to_space, return the forwarding address
-        return (object *) (*(pp+1));
-      } else {
-	// p points at an object in from_space, copy it
-	object * addr = freep;
-	pxll_int length = GET_TUPLE_LENGTH (*pp);
-	pxll_int k;
-	// copy tag, children
-	for (k=0; k < length+1; k++) {
-	  *freep++ = *pp++;
-	}
-	// leave a sentinel where the tag was, followed by the forwarding address.
-	*(object*)(*p) = (object) GC_SENTINEL;
-	*((object*)(*p)+1) = (object) addr;
-	return addr;
-      }
-    } else {
-      // pp points outside of the heap
-      //fprintf (stderr, "?");
-      return pp;
-    }
-  }
 
   if (verbose_gc) {
     fprintf (stderr, "[gc...");
@@ -168,16 +173,18 @@ gc_dump (object * thunk)
 }
 
 
+void adjust (object * q, pxll_int delta)
+{
+  if ((*q) && (!IMMEDIATE(*(q)))) {
+    // get the pointer arith right
+    object ** qq = (object **) q;
+    *(qq) -= delta;
+  }
+}
+
 void
 gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
 {
-  void adjust (object * q) {
-    if ((*q) && (!IMMEDIATE(*(q)))) {
-      // get the pointer arith right
-      object ** qq = (object **) q;
-      *(qq) -= delta;
-    }
-  }
   object * scan = start;
   int i;
 
@@ -185,7 +192,7 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
   // (map adjust roots)
 
   for (i=0; i < nroots; i++, scan++) {
-    adjust (scan);
+    adjust (scan, delta);
   }
 
   while (scan < finish) {
@@ -201,13 +208,13 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
     case TC_CLOSURE:
       // { tag, pc, lenv }
       p++; // skip pc (XXX: actually, pc will have its own adjustment)
-      adjust (p);
+      adjust (p, delta);
       scan += length+1;
       break;
     case TC_SAVE:
       // { tag, next, lenv, pc, regs[...] }
-      adjust (p); p++;
-      adjust (p); p++;
+      adjust (p, delta); p++;
+      adjust (p, delta); p++;
       p++; // skip pc (XXX: ...)
       scan += length+1;
       break;
@@ -220,7 +227,7 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
     default:
       // adjust everything
       for (i=0; i < length; i++, p++) {
-        adjust (p);
+        adjust (p, delta);
       }
       scan += length+1;
       break;

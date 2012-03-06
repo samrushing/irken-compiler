@@ -1,3 +1,3 @@
 
-(define CC "gcc")
+(define CC "clang")
 (define CFLAGS "-I.")

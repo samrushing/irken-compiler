@@ -17,8 +17,8 @@
 	    (else (loop (file/read-buffer ifile)
 			(list:cons buf l)))))))
 
-(define sentinel0 "// CONSTRUCTED LITERALS //\n")
-(define sentinel1 "// REGISTER_DECLARATIONS //\n")
+(define sentinel0 "// REGISTER_DECLARATIONS //\n")
+(define sentinel1 "// CONSTRUCTED LITERALS //\n")
 
 (define (get-header-parts)
   (let ((header (read-template))
@@ -140,6 +140,11 @@ Usage: compile <irken-src-file> [options]
       (lambda (name dt)
 	(print-datatype dt))
       context.datatypes)
+     (print-string "\n-- typealiases --\n")
+     (alist/iterate
+      (lambda (name alias)
+	(print-string (format "  " (sym name) " : " (sym alias) "\n")))
+      context.aliases)
      ;;(print-string "\n-- variables --\n")
      ;;(print-vars context)
      (print-string "\n-- labels --\n")
@@ -173,8 +178,8 @@ Usage: compile <irken-src-file> [options]
       -> (begin (o.copy part0)
 		(emit-constructed o context)
 		(if context.options.profile (emit-profile-0 o context))
-		(o.copy part1)
 		(emit-registers o context)
+		(o.copy part1)
 		(o.copy part2)
 		(emit o cps context)))
     (emit-lookup-field o context)

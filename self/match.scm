@@ -113,7 +113,7 @@
 
   (define first-pattern-kind
     (rule:t (pat0 . pats) _) -> (pattern->kind pat0)
-    _ -> (error "empty pattern list?"))
+    x -> (error1 "empty pattern list?" x))
   
   (define (compare-first-patterns a b)
     (eq? (first-pattern-kind a)

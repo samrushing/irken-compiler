@@ -106,8 +106,8 @@ object * heap1 = NULL;
 #define GC_SENTINEL		(-4)
 
 // XXX technically this is 'tagging' rather than boxing.  think about renaming them.
-inline pxll_int unbox (object * n) {return (pxll_int)n >> 1;}
-inline object *   box (pxll_int n) {return (object *) ((n << 1) | 1);}
+static pxll_int unbox (object * n) {return (pxll_int)n >> 1;}
+static object *   box (pxll_int n) {return (object *) ((n << 1) | 1);}
 
 // Here's an interesting idea.  Can we store the first item of a multi-item tuple
 //   in with the typecode?  Can we avoid storing lengths?  Maybe if the most important
@@ -183,15 +183,13 @@ typedef struct _pair {
 
 #define GET_TYPECODE(p) (((pxll_int)(p))&0xff)
 
-inline
-int
+static int
 is_int (object * ob)
 {
   return (pxll_int) ob & 1;
 }
 
-inline
-pxll_int
+static pxll_int
 is_immediate (object * ob)
 {
   pxll_int tc = ((pxll_int) ob) & 0xff;
@@ -202,8 +200,7 @@ is_immediate (object * ob)
   }
 }
 
-inline
-pxll_int
+static pxll_int
 string_tuple_length (pxll_int n)
 {
   pxll_int word_size = sizeof (object);
@@ -212,8 +209,7 @@ string_tuple_length (pxll_int n)
   return nwords;
 }
 
-inline
-pxll_int
+static pxll_int
 get_safe_typecode (object * ob)
 {
   if (is_immediate (ob)) {

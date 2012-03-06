@@ -54,6 +54,8 @@
       ()        acc -> (reverse acc)
       (hd . tl) acc
       -> (match hd with
+	   (sexp:list ((sexp:symbol 'typealias) . dtl))
+	   -> (begin (parse-typealias dtl) (recur tl acc))
 	   (sexp:list ((sexp:symbol 'datatype) . dtl))
 	   -> (begin (parse-datatype dtl) (recur tl acc))
 	   (sexp:list ((sexp:symbol 'defmacro) . dtl))
@@ -356,6 +358,15 @@
 	 )
     x -> (error1 "malformed datatype" x)
     )
+
+  (define parse-typealias
+    ;; for now, allow only predicate -> predicate mapping
+    ((sexp:symbol name) (sexp:symbol alias))
+    ;; -> (let ((tvars (alist-maker))
+    ;; 	        (type (parse-type* alias tvars)))
+    ;;      (alist/push context.aliases name (:scheme (reverse (tvars::values)) type)))
+    -> (alist/push context.aliases name alias)
+    x -> (error1 "malformed typealias" x))
 
   (define parse-define
     ;; (define name ...)

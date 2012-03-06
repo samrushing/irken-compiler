@@ -12,14 +12,14 @@
 
 (define (copy-string s1 n)
   (let ((s2 (make-string n)))
-    (%%cexp (string string int -> undefined) "(memcpy (%0, %1, %2), PXLL_UNDEFINED)" s2 s1 n)
+    (%%cexp (string string int -> undefined) "memcpy (%0, %1, %2)" s2 s1 n)
     s2))
 
 (define (buffer-copy src src-start n dst dst-start)
   ;; XXX range check
   (%%cexp
    (string int string int int -> undefined)
-   "(memcpy (%0+%1, %2+%3, %4), PXLL_UNDEFINED)" dst dst-start src src-start n))
+   "memcpy (%0+%1, %2+%3, %4)" dst dst-start src src-start n))
 
 (define (substring src start end)
   ;; XXX range check
@@ -48,7 +48,7 @@
 
 (define (string-set! s n c)
   (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
-  (%%cexp (string int char -> undefined) "(%0[%1] = GET_CHAR (%2), PXLL_UNDEFINED)" s n c))
+  (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c))
 
 (define (string-concat l)
   ;; merge a list of strings into one string
@@ -240,6 +240,6 @@
   (let ((len (strlen s))
 	(result (make-string len)))
     (%%cexp (string cstring int -> undefined)
-	    "(memcpy (%0, %1, %2), PXLL_UNDEFINED)"
+	    "memcpy (%0, %1, %2)"
 	    result s len)
     result))

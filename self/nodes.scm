@@ -162,36 +162,86 @@
   0 -> #t
   n -> (begin (print-string " ") (indent (- n 1))))
 
-(define (pp-node n)
-  (define (PPL l d)
-    (for-each (lambda (n) (PP n d)) l))
-  (define (PP n d)
-    (define PS print-string)
-    (let ((tr (type-repr (apply-subst n.type))) ;; temporary apply-subst
-	  (head (format (lpad 6 (int n.id)) (lpad 5 (int n.size)) (lpad (+ 2 NFLAG-NFLAGS) (flags-repr n.flags)))))
-      (newline)
-      (PS head)
-      (indent1 d)
-      (match n.t with
-	(node:varref name)	       -> (PS (format "varref " (sym name) " : " tr))
-	(node:varset name)	       -> (PS (format "varset " (sym name) " : " tr))
-	(node:literal lit)	       -> (PS (format "literal " (p literal->string lit) " : " tr))
-	(node:cexp gens type template) -> (PS (format "cexp " (p type-repr type) " " template " : " tr))
-	(node:sequence)		       -> (PS (format "sequence : " tr))
-	(node:if)		       -> (PS (format "conditional : " tr))
-	(node:call)		       -> (PS (format "call : " tr))
-	(node:function name formals)   -> (PS (format "function " (sym name) " (" (join symbol->string " " formals) ") : " tr))
-	(node:fix formals)	       -> (PS (format "fix (" (join symbol->string " " formals) ") : " tr))
-	(node:nvcase dt tags arities)  -> (PS (format "nvcase " (sym dt) "(" (join symbol->string " " tags) ") (" (join int->string " " arities) ") : " tr))
-	(node:subst from to)	       -> (PS (format "subst " (sym from) "->" (sym to)))
-	(node:primapp name params)     -> (PS (format "primapp " (sym name) " " (p repr params) " : " tr))
-	(node:let formals)	       -> (PS (format "let (" (join symbol->string " " formals) ") : " tr))
-	)
-      (PPL n.subs (+ 1 d))
-      ))
-  (PP n 0)
-  (newline)
+(define format-node-type
+  (node:varref name)             -> (format "varref " (sym name))
+  (node:varset name)             -> (format "varset " (sym name))
+  (node:literal lit)             -> (format "literal " (p literal->string lit))
+  (node:cexp gens type template) -> (format "cexp " (p type-repr type) " " template)
+  (node:sequence)                -> (format "sequence")
+  (node:if)                      -> (format "conditional")
+  (node:call)                    -> (format "call")
+  (node:function name formals)   -> (format "function " (sym name) " (" (join symbol->string " " formals) ") ")
+  (node:fix formals)             -> (format "fix (" (join symbol->string " " formals) ") ")
+  (node:subst from to)           -> (format "subst " (sym from) "->" (sym to))
+  (node:primapp name params)     -> (format "primapp " (sym name) " " (p repr params))
+  (node:let formals)             -> (format "let (" (join symbol->string " " formals) ")")
+  (node:nvcase dt tags arities)  -> (format "nvcase " (sym dt)
+                                            "(" (join symbol->string " " tags) ")"
+                                            "(" (join int->string " " arities) ")")
   )
+
+(define (format-node n d)
+  (format (lpad 6 (int n.id))
+          (lpad 5 (int n.size))
+          (lpad (+ 2 NFLAG-NFLAGS) (flags-repr n.flags) " ")
+          (repeat d "  ")
+          (format-node-type n.t)
+          " : " (type-repr (apply-subst n.type))
+          ))
+
+(define (walk-node-tree p n d)
+  (p n d)
+  (for-each
+   (lambda (sub)
+     (walk-node-tree p sub (+ d 1)))
+   n.subs
+   ))
+
+(define (make-node-generator n)
+  (make-generator
+   (lambda (consumer)
+     (walk-node-tree
+      (lambda (n d)
+	(consumer (maybe:yes (:pair n d))))
+      n 0)
+     (forever (consumer (maybe:no)))
+     )))
+
+(define (pp-node root)
+  (let ((ng (make-node-generator root)))
+    (let loop ()
+      (match (ng) with
+	(maybe:yes (:pair n d))
+	-> (begin (print-string (format-node n d)) (newline)
+                  (loop))
+        (maybe:no)
+        -> #u))))
+
+;; render the node tree, looking for a window of <count> lines
+;;   around the node with <id>.  for printing errors.
+(define (get-node-context root id count)
+  (let ((context (make-vector count ""))
+        (collected 0) ;; #lines collected after <id>
+        (ng (make-node-generator root)))
+    (define (result i)
+      (let ((r (list:nil)))
+	(for-range
+	    j count
+	    (PUSH r context[(remainder (+ i j) count)]))
+	(reverse r)))
+    (let loop ((i 0))
+      (match (ng) with
+        (maybe:yes (:pair n d))
+        -> (begin (set! context[i] (format-node n d))
+                  ;; state machine
+                  (cond ((= collected (/ count 2)) (result (+ i 1)))
+			((or (> collected 0) (= n.id id))
+			 (set! collected (+ collected 1))
+			 (loop (remainder (+ i 1) count)))
+			(else
+			 (loop (remainder (+ i 1) count)))))
+        (maybe:no) -> (result i)
+        ))))
 
 (define (get-formals l)
   (define p
@@ -214,6 +264,20 @@
   (let ((generic-tvars (alist-maker))
 	(result (parse-type* sig generic-tvars)))
     (:scheme (generic-tvars::values) result)))
+
+(define join-cexp-template
+  (sexp:string result) -> result
+  (sexp:list parts) -> (string-join
+			(map
+			 (lambda (x)
+			   (match x with
+			     (sexp:string part) -> part
+			     _ -> (error1 "cexp template must be a list of strings" x)))
+			 parts)
+			;;"\n  "
+			", "
+			)
+  x -> (error1 "malformed cexp template" x))
 
 ;; sort the inits so that all function definitions come first.
 (define (sort-fix-inits names inits)
@@ -277,11 +341,11 @@
        ((sexp:symbol 'quote) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'literal) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'if) test then else)	    -> (node/if (walk test) (walk then) (walk else))
-       ((sexp:symbol '%%cexp) sig (sexp:string template) . args)
+       ((sexp:symbol '%%cexp) sig template . args)
        -> (let ((scheme (parse-cexp-sig sig)))
 	    (match scheme with
 	      (:scheme gens type)
-	      -> (node/cexp gens type template (map walk args))))
+	      -> (node/cexp gens type (join-cexp-template template) (map walk args))))
        ((sexp:symbol '%nvcase) (sexp:symbol dt) val-exp (sexp:list tags) (sexp:list arities) (sexp:list alts) ealt)
        -> (node/nvcase dt (map sexp->symbol tags) (map sexp->int arities) (walk val-exp) (map walk alts) (walk ealt))
        ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) type . body)
