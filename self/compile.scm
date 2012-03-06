@@ -140,6 +140,11 @@ Usage: compile <irken-src-file> [options]
       (lambda (name dt)
 	(print-datatype dt))
       context.datatypes)
+     (print-string "\n-- typealiases --\n")
+     (alist/iterate
+      (lambda (name alias)
+	(print-string (format "  " (sym name) " : " (sym alias) "\n")))
+      context.aliases)
      ;;(print-string "\n-- variables --\n")
      ;;(print-vars context)
      (print-string "\n-- labels --\n")
