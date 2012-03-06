@@ -8,10 +8,12 @@
    trace=#f
    debugmacroexpansion=#f
    profile=#f
+   noinline=#f
    })
 
 (define (make-context)
   {datatypes            = (alist/make)
+    aliases             = (alist/make)
     macros              = (alist/make)
     dep-graph           = (map-maker symbol-index<?)
     scc-graph           = '()
