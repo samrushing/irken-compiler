@@ -20,6 +20,7 @@
 	      "let" "let*" "letrec"
 	      "define" "set!"
 	      "include"
+	      "typealias"
 	      ) t)
        "\\>") 1)
      ;; named let
