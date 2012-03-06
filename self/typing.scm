@@ -1,102 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(define (unify exp t0 t1)
-
-  (define (type-error t0 t1)
-    (newline)
-    (pp-node exp)
-    (let ((ut0 (apply-subst t0))
-	  (ut1 (apply-subst t1)))
-      (print-string
-       (format "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n"))
-      (error "type error")))
-
-  (define (U t0 t1)
-    ;;(print-string (format "    ----U " (type-repr t0) " -- " (type-repr t1) "\n"))
-    (let/cc return
-	(let ((u (type-find t0))
-	      (v (type-find t1)))
-	  ;;(print-string (format "    ----: " (type-repr u) " -- " (type-repr v) "\n"))
-	  (if (not (eq? u v))
-	      (begin
-		(match u v with
-		  (type:tvar _ _) _ -> #u
-		  ;; original line
-		  ;;_ (type:tvar _ _) -> #u
-		  ;; missing optimize-nvcase version:
-		  (type:pred _ _ _) (type:tvar _ _) -> #u
-		  (type:pred pu su _) (type:pred pv sv _)
-		  -> (match pu pv with
-		       'moo 'moo   -> #u
-		       ;; row and moo vars - early exit to avoid union
-		       'moo _	   -> (return (U (car su) v))
-		       _ 'moo	   -> (return (U (car sv) u))
-		       'rlabel _   -> (return (U-row u v))
-		       _ 'rlabel   -> (return (U-row v u))
-		       'rdefault _ -> (return (U-row u v))
-		       _ 'rdefault -> (return (U-row v u))
-		       _ _ -> (if (or (not (eq? pu pv))
-				      (not (= (length su) (length sv))))
-				  (type-error t0 t1)
-				  #u)))
-		(type-union u v)
-		(match u v with
-		  (type:pred _ su _) (type:pred _ sv _) -> (for-each2 U su sv)
-		  _ _ -> #u))
-	      ))))
-
-  (define label=?
-    ;; labels are represented with nullary predicates, compare via symbol
-    (type:pred na _ _) (type:pred nb _ _) -> (eq? na nb)
-    _ _ -> #f)
-
-  (define (U-row u v)
-    (match u v with
-      ;; u and v are both rlabel
-      (type:pred 'rlabel (l0 t0 d0) _) (type:pred 'rlabel (l1 t1 d1) _)
-      -> (cond ((label=? l0 l1)
-		;; identical head labels, normal unify
-		(U t0 t1)
-		(U d0 d1))
-	       (else
-		;; distinct head labels, C-MUTATE-LL
-		(let ((x (new-tvar)))
-		  (U d0 (rlabel l1 t1 x))
-		  (U d1 (rlabel l0 t0 x)))))
-      ;; u is rlabel, v is not
-      (type:pred 'rlabel (l0 t0 d0) _) (type:pred p1 s1 _)
-      -> (cond ((eq? p1 'rdefault)
-		;; C-MUTATE-DL
-		(U (car s1) t0)
-		(U v d0))
-	       (else
-		;; some other predicate
-		;; C-MUTATE-GL
-		(let ((n (length s1))
-		      (tvars0 (map-range i n (new-tvar)))
-		      (tvars1 (map-range i n (new-tvar))))
-		  (U (pred p1 tvars0) t0)
-		  (U (pred p1 tvars1) d0)
-		  (for-range i n
-		     (U (nth s1 i) (rlabel l0 (nth tvars0 i) (nth tvars1 i)))
-		     ))))
-      ;; both are rdefault
-      (type:pred 'rdefault (t0) _) (type:pred 'rdefault (t1) _)
-      -> (U t0 t1)
-      ;; u is rdefault, v is some other predicate
-      (type:pred 'rdefault (t0) _) (type:pred p1 s1 _)
-      -> (let ((n (length s1))
-	       (tvars (map-range i n (new-tvar))))
-	   (U t0 (pred p1 tvars))
-	   (for-range i n
-	      (U (nth s1 i) (rdefault (nth tvars i)))))
-      ;; anything else is an error
-      _ _ -> (type-error u v)
-      ))
-
-  (U t0 t1)
-  )
-
 (define (apply-subst t)
   (define (p t)
     (let ((t (type-find t))
@@ -122,14 +25,120 @@
   (:scheme gens type)
   -> (format "forall(" (join type-repr "," gens) ")." (type-repr type)))
 
-;; (define (apply-subst t)
-;;   (let ((t0 (apply-subst* t)))
-;;     (print-string (format "apply-subst: " (p type-repr t) "\n"))
-;;     (print-string (format " = " (p type-repr t0) "\n"))
-;;     t0))
-
 (define (type-program node context)
 
+  (define (unify exp t0 t1)
+
+    (define (type-error t0 t1)
+      (print-string (format (join id "\n" (get-node-context node exp.id 30)) "\n"))
+      (print-string (format "node id=" (int exp.id) "\n"))
+      (let ((ut0 (apply-subst t0))
+	    (ut1 (apply-subst t1)))
+	(print-string
+	 (format "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n"))
+	(error "type error")))
+
+    (define (U t0 t1)
+      ;;(print-string (format "    ----U " (type-repr t0) " -- " (type-repr t1) "\n"))
+      (let/cc return
+	  (let ((u (type-find t0))
+		(v (type-find t1)))
+	    ;;(print-string (format "    ----: " (type-repr u) " -- " (type-repr v) "\n"))
+	    (if (not (eq? u v))
+		(begin
+		  (match u v with
+		    (type:tvar _ _) _ -> #u
+		    ;; original line
+		    ;;_ (type:tvar _ _) -> #u
+		    ;; missing optimize-nvcase version:
+		    (type:pred _ _ _) (type:tvar _ _) -> #u
+		    (type:pred pu su _) (type:pred pv sv _)
+		    -> (match pu pv with
+			 'moo 'moo   -> #u
+			 ;; row and moo vars - early exit to avoid union
+			 'moo _	   -> (return (U (car su) v))
+			 _ 'moo	   -> (return (U (car sv) u))
+			 'rlabel _   -> (return (U-row u v))
+			 _ 'rlabel   -> (return (U-row v u))
+			 'rdefault _ -> (return (U-row u v))
+			 _ 'rdefault -> (return (U-row v u))
+			 _ _ -> (if (or (not (pred=? pu pv))
+					(not (= (length su) (length sv))))
+				    (type-error t0 t1)
+				    #u)))
+		  (type-union u v)
+		  (match u v with
+		    (type:pred _ su _) (type:pred _ sv _) -> (for-each2 U su sv)
+		    _ _ -> #u))
+		))))
+
+    (define (maybe-alias pred)
+      (match (alist/lookup context.aliases pred) with
+	(maybe:yes other) -> other
+	(maybe:no) -> pred))
+
+    (define (pred=? sym0 sym1)
+      (or (eq? sym0 sym1)
+	  (eq? (maybe-alias sym0) (maybe-alias sym1))))
+
+    (define label=?
+      ;; labels are represented with nullary predicates, compare via symbol
+      (type:pred na _ _) (type:pred nb _ _) -> (eq? na nb)
+      _ _ -> #f)
+
+    (define (U-row u v)
+      (match u v with
+	;; u and v are both rlabel
+	(type:pred 'rlabel (l0 t0 d0) _) (type:pred 'rlabel (l1 t1 d1) _)
+	-> (cond ((label=? l0 l1)
+		  ;; identical head labels, normal unify
+		  (U t0 t1)
+		  (U d0 d1))
+		 (else
+		  ;; distinct head labels, C-MUTATE-LL
+		  (let ((x (new-tvar)))
+		    (U d0 (rlabel l1 t1 x))
+		    (U d1 (rlabel l0 t0 x)))))
+	;; u is rlabel, v is not
+	(type:pred 'rlabel (l0 t0 d0) _) (type:pred p1 s1 _)
+	-> (cond ((eq? p1 'rdefault)
+		  ;; C-MUTATE-DL
+		  (U (car s1) t0)
+		  (U v d0))
+		 (else
+		  ;; some other predicate
+		  ;; C-MUTATE-GL
+		  (let ((n (length s1))
+			(tvars0 (map-range i n (new-tvar)))
+			(tvars1 (map-range i n (new-tvar))))
+		    (U (pred p1 tvars0) t0)
+		    (U (pred p1 tvars1) d0)
+		    (for-range i n
+			       (U (nth s1 i) (rlabel l0 (nth tvars0 i) (nth tvars1 i)))
+			       ))))
+	;; both are rdefault
+	(type:pred 'rdefault (t0) _) (type:pred 'rdefault (t1) _)
+	-> (U t0 t1)
+	;; u is rdefault, v is some other predicate
+	(type:pred 'rdefault (t0) _) (type:pred p1 s1 _)
+	-> (let ((n (length s1))
+		 (tvars (map-range i n (new-tvar))))
+	     (U t0 (pred p1 tvars))
+	     (for-range i n
+			(U (nth s1 i) (rdefault (nth tvars i)))))
+	;; anything else is an error
+	_ _ -> (type-error u v)
+	))
+
+    (U t0 t1)
+    )
+
+  ;; (define (apply-subst t)
+  ;;   (let ((t0 (apply-subst* t)))
+  ;;     (print-string (format "apply-subst: " (p type-repr t) "\n"))
+  ;;     (print-string (format " = " (p type-repr t0) "\n"))
+  ;;     t0))
+  
   (define (instantiate-type-scheme gens type)
     ;; map from gens->fresh
     ;;(print-string "gens= ") (printn gens)
