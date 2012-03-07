@@ -1,12 +1,21 @@
 Irken is a statically-typed, simplified variant of Scheme.  Or, a lisp-like variant of ML.
 
 Why: to host massively scalable systems scriptable via a python-like language.
-How: use continuation-passing style to avoid using the C stack.
+How: compile a vm using continuation-passing style to avoid using the C stack.
 
 Blog:         http://alien.nightmare.com/
 GitHub:       https://github.com/samrushing/irken-compiler/
 Older Source: http://nightmare.com/rushing/irken/
 
+Introduction/Tutorial:
+--------------------------------------------------------------------------------
+
+  http://dark.nightmare.com/rushing/public_html/irken/irken/lang.html
+
+The best way to get familiar with the language is to read the source code in
+the 'self' directory, and browse over the files in "tests".
+
+Installation:
 --------------------------------------------------------------------------------
 
 Irken is now written in itself, so you need to bootstrap it.  You can do this
@@ -16,29 +25,23 @@ via the python script, or manually.
 Just run the script "util/bootstrap.py":
 
 $ python util/bootstrap.py
+[to use clang:
+  $ CC=clang python util/bootstrap.py ]
 
 Which does the following:
-1) run gcc on the distributed version of self/compile.c
+1) compile the distributed version of self/compile.c
 2) this binary will be used to recompile the compiler.
 3) that binary will recompile the compiler again.
 4) the output from steps 2 and 3 are compared, they should be identical.
 
-If you're happy with the resulting compiler, you can compile an optimized
-version of self/compile.c, but be warned - you'll need a lot of memory and
-a lot of time.
+If you're happy with the resulting compiler, you can compile an
+optimized version of self/compile.c, but be warned - you may need a
+lot of time and memory.  At this time (early 2012), clang builds -O2
+in about 8 minutes, and -O0 in about 4 seconds.
 
-I am using dragonegg for optimized builds, and that seems to take about a GB
-of memory, and 18 minutes to build.  It's important to use '-O2', not '-O',
-because '-O' takes 53GB of memory and hours to compile.
-
-Very little documentation exists yet, try 'lang.html' for a brief tutorial.
-The best way to get familiar with the language is to read the source code in
-the 'self' directory, and browse over the files in "tests".
-
-110523: you may now build with clang, highly recommended.  First,
-  switch to the 'no-nested-funs' branch.  Clang can build -O2 in 8m,
-  and -O3 in 10m, with less than 1G of memory.  [see the 'manual
-  bootstrapping link above]
+120306: The 'no-nested-funs' branch has been merged into main.  I recommend
+  the use of 'clang' to build irken.  [I'm also looking closely at writing a
+  direct-to-llvm backend].
 
 110326 Release Note: there is currently something very wrong with the
   combination of recursive types and rows, which shows up when using
