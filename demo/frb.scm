@@ -12,6 +12,8 @@
 ;; Instead, we save space by encoding the color into the header of
 ;;   each node.
 
+;; Note: for delete see http://matt.might.net/articles/red-black-delete/
+
 (datatype tree
   (:red    (tree 'a 'b) (tree 'a 'b) 'a 'b)
   (:purple (tree 'a 'b) (tree 'a 'b) 'a 'b)
