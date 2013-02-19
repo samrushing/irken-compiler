@@ -1,3 +1,25 @@
-As of March 2011, the VM code will not work because of the loss of the vec16 datatype.
-Once this capability is returned to the self-hosted compiler, this should work again.
-Sorry for the inconvenience.
+This is a demonstration VM.
+The main goal was to show that an efficient VM could be written in Irken,
+and that the output resembled a hand-written 'threaded' VM.
+
+In order to test the VM, a simple byte-code compiler was written that reused
+much of the Irken implementation - but back when it was written in Python.
+Since Irken is now written in itself either a new byte-code compiler should be
+written, or the old python one should be separately available.
+
+In the meanwhile, I have updated the VM's code to match Irken's final syntax,
+and included some of the original byte-code files.  You can run the VM against
+these byte-code files in order to test it.
+
+For example:
+
+  $ irken vm/vm.scm
+  $ vm/vm vm/tests/t0.byc 
+  #(<closure pc=0x10de6591f lenv=0x10dea9020> <closure pc=0x10de65d02 lenv=0x10dea9020> <closure pc=0x10de6619d lenv=0x10dea9020> <closure pc=0x10de668c2 lenv=0x10dea9020> <closure pc=0x10de66fe7 lenv=0x10dea9020> <closure pc=0x10de68169 lenv=0x10dea9020> <closure pc=0x10de686f1 lenv=0x10dea9020> <closure pc=0x10de68912 lenv=0x10dea9020> <closure pc=0x10de68e4a lenv=0x10dea9020> <closure pc=0x10de69469 lenv=0x10dea9020> <closure pc=0x10de6991a lenv=0x10dea9020> <closure pc=0x10de69e3d lenv=0x10dea9020> <closure pc=0x10de6a424 lenv=0x10dea9020> <closure pc=0x10de6b1c1 lenv=0x10dea9020> <closure pc=0x10de6b5a7 lenv=0x10dea9020> <closure pc=0x10de6b93b lenv=0x10dea9020> <closure pc=0x10de6ac69 lenv=0x10dea9020> <closure pc=0x10de6c96d lenv=0x10dea9020> <closure pc=0x10de6d75c lenv=0x10dea9020> <closure pc=0x10de67721 lenv=0x10dea9020> <closure pc=0x10de67e5b lenv=0x10dea9020>)
+  #(0 0 0 1 0)
+  #({u0 42})
+  {u0 42}
+  #u
+  {total ticks: 361469 gc ticks: 0}
+
+-Sam
