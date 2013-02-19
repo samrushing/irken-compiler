@@ -233,6 +233,10 @@
   (format-join sep item ...) -> (string-join (formatl item ...) sep)
   )
 
+(defmacro printf
+  (printf item ...) -> (print-string (format item ...))
+  )
+
 (define (strlen s)
   (%%cexp (cstring -> int) "strlen(%0)" s))
 
