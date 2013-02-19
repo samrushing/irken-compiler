@@ -110,6 +110,9 @@ for size, file in files:
                         failed.append ((base, 'assertion failed'))
                     else:
                         succeeded += 1
+        else:
+            if not fail:
+                failed.append ((base, 'did not compile'))
 
 print '%d tests passed' % succeeded
 if len(failed):
