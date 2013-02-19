@@ -1,5 +1,11 @@
 ;; -*- Mode: Irken -*-
 
+(include "lib/core.scm")
+(include "lib/string.scm")
+(include "lib/pair.scm")
+(include "lib/io.scm")
+(include "lib/os.scm")
+
 (datatype object
   (:int int)
   (:char char)
@@ -34,7 +40,7 @@
 (define (CONS a b) (list:cons a b))
 (define (NIL) (list:nil))
 
-(define (load path)
+(define (load-machine path)
 
   (let ((f (file/open-read path))
 	(code (file/read-buffer f))
@@ -80,15 +86,15 @@
 ;; performance hacks - these could definitely go away with a little
 ;;   more smarts in analyze.py.
 (define (+1 a)
-  (%%cexp (int -> int) "%s+1" a))
+  (%%cexp (int -> int) "%0+1" a))
 (define (+2 a)
-  (%%cexp (int -> int) "%s+2" a))
+  (%%cexp (int -> int) "%0+2" a))
 (define (+3 a)
-  (%%cexp (int -> int) "%s+3" a))
+  (%%cexp (int -> int) "%0+3" a))
 (define (+4 a)
-  (%%cexp (int -> int) "%s+4" a))
+  (%%cexp (int -> int) "%0+4" a))
 (define (sub1 a)
-  (%%cexp (int -> int) "%s-1" a))
+  (%%cexp (int -> int) "%0-1" a))
 
 (define print-object
   (object:int n) -> (print n)
@@ -125,8 +131,7 @@
   )
 
 ;; VM registers
-(define ZED (object:int 0))
-(define REGS #(ZED ZED ZED ZED ZED ZED ZED ZED ZED ZED))
+(define REGS (make-vector 10 (object:int 0)))
 
 (define pc 0)
 
@@ -294,7 +299,7 @@
 
 (define (insn-env)
   ;; ENV <target> <size>
-  (set! REGS[CODE[(+1 pc)]] (object:tuple (%make-vector CODE[(+2 pc)] (object:int 0))))
+  (set! REGS[CODE[(+1 pc)]] (object:tuple (make-vector CODE[(+2 pc)] (object:int 0))))
   (set! pc (+3 pc))
   (next-insn)
   )
@@ -417,12 +422,15 @@
     ))
 
 ;; insn data
-(define CODE (list->vec16 '(0)))
+;(define CODE (list->vec16 '(0)))
+(define CODE (list->vector '(0)))
 ;; literals
 (define LITS #((object:int 0)))
 ;; opcodes
 (define OPS
-  #(insn-lit
+  (list->vector
+   (LIST
+    insn-lit
     insn-ret
     insn-add
     insn-sub
@@ -443,10 +451,13 @@
     insn-pop
     insn-ge
     insn-print
-    ))
+    )))
 
-(define (OI name nargs)
-  (opcode:t name nargs))
+(defmacro OI
+  (OI s n) -> (opcode:t s n)
+  )
+;;(define (OI name nargs)
+;;  (opcode:t name nargs))
 
 (define opcode-info
   #((OI "lit" 2)
@@ -480,8 +491,9 @@
 (define RETVAL (object:int 0))
 
 (define (test)
-  (let ((code (load sys.argv[1])))
-    (set! CODE (list->vec16 code.code))
+  (let ((code (load-machine sys.argv[1])))
+    ;;(set! CODE (list->vec16 code.code))
+    (set! CODE (list->vector code.code))
     (set! LITS (list->vector code.lits))
     (set! STACK (vmcont:nil))
     (printn OPS)
@@ -491,3 +503,5 @@
     (next-insn)
     (printn RETVAL)
     ))
+
+(test)
