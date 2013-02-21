@@ -16,7 +16,7 @@
   (:test int insn insn cont)                                    ;; <reg> <then> <else> <k>
   (:testcexp (list int) type string insn insn cont)             ;; <regs> <sig> <template> <then> <else> <k>
   (:jump int int)                                               ;; <reg> <target>
-  (:close symbol insn cont)                                     ;; <name> <body> <k>
+  (:close symbol int insn cont)                                 ;; <name> <nfree> <body> <k>
   (:varref int int cont)                                        ;; <depth> <index> <k>
   (:varset int int int cont)                                    ;; <depth> <index> <reg> <k>
   (:new-env int bool cont)	                                ;; <size> <top?> <k>
@@ -48,6 +48,13 @@
   (:rib (list symbol) cpsenv)		;; variables
   (:reg symbol int cpsenv)		;; variables-in-registers
   (:fat int cpsenv)			;; fatbar context
+  )
+
+(define get-register-variables
+  acc (cpsenv:nil)            -> acc
+  acc (cpsenv:reg _ reg next) -> (get-register-variables (list:cons reg acc) next)
+  acc (cpsenv:rib _ next)     -> (get-register-variables acc next)
+  acc (cpsenv:fat _ next)     -> (get-register-variables acc next)
   )
 
 (define lenv-top?
@@ -226,15 +233,18 @@
     (define (c-function name formals id body lenv k)
       (set-flag! VFLAG-ALLOCATES)
       (PUSH current-funs name)
-      (let ((r
+      (let ((regvars (get-register-variables '() lenv))
+	    (r
 	     (insn:close
 	      name
+	      (length regvars)
 	      (compile #t
 		       body
 		       (extend-lenv formals lenv)
-		       (cont '() gen-return)
+		       (cont regvars gen-return)
 		       )
 	      k)))
+	;; XXX consider asserting that regvars is of the form (0 1 2 3 ...)
 	(PUSH context.profile-funs current-funs)
 	(pop current-funs)
 	r))
@@ -274,7 +284,7 @@
 	       (:top _ index)
 	       -> (lambda (reg) (insn:varset -1 index reg k))
 	       (:reg index)
-	       -> (lambda (reg) (insn:move reg index k))
+	       -> (lambda (reg) (insn:move index reg k))
 	       )))
 	(compile #f exp lenv (cont (k/free k) kfun))))
 
@@ -357,11 +367,13 @@
 			(lambda (regs) (insn:primop op parm type regs k))))
 
     (define (safe-for-let-reg exp names context)
-      (and (node-get-flag exp NFLAG-LEAF)
+      (and (not context.options.noletreg)
+	   (node-get-flag exp NFLAG-LEAF)
 	   (< (length names) 5)
 	   (not (some?
 		 (lambda (name)
-		   (vars-get-flag context name VFLAG-ESCAPES))
+		   (vars-get-flag context name VFLAG-FREEREF)
+		   )
 		 names))))
 
     (define (safe-for-tr-call exp fun)
@@ -430,6 +442,7 @@
 		     (compile-store-args (+ i 1) offset (cdr args) tuple-reg free-regs lenv k))))))))
 
     (define (c-let-reg tail? formals subs lenv k)
+      (for-each (lambda (f) (vars-set-flag! context f VFLAG-REG)) formals)
       (define (loop names inits lenv regs)
 	(if (= 0 (length names))
 	    ;; note: the last 'init' is the body
@@ -666,7 +679,7 @@
     (insn:cexp sig typ tem args k)  -> (print-line (lambda () (ps2 "cexp") (ps2 (type-repr sig)) (ps2 (type-repr typ)) (ps tem) (ps args)) k)
     (insn:test reg then else k)	    -> (print-line (lambda () (ps2 "test") (print reg) (print-insn then (+ d 1)) (print-insn else (+ d 1))) k)
     (insn:jump reg trg)		    -> (print-line (lambda () (ps2 "jmp") (print trg)) (cont:nil))
-    (insn:close name body k)	    -> (print-line (lambda () (ps2 "close") (print name) (print-insn body (+ d 1))) k)
+    (insn:close name nreg body k)   -> (print-line (lambda () (ps2 "close") (print name) (ps nreg) (print-insn body (+ d 1))) k)
     (insn:varref d i k)		    -> (print-line (lambda () (ps2 "ref") (ps d) (ps i)) k)
     (insn:varset d i v k)	    -> (print-line (lambda () (ps2 "set") (ps d) (ps i) (ps v)) k)
     (insn:store o a t i k)	    -> (print-line (lambda () (ps2 "stor") (ps o) (ps a) (ps t) (ps i)) k)
@@ -720,7 +733,7 @@
 	     (insn:fail _ _)      -> (cont:nil)
 	     ;; these insns contain sub-bodies...
 	     (insn:fatbar _ k0 k1 k)	     -> (begin (walk k0 (+ d 1)) (walk k1 (+ d 1)) k)
-	     (insn:close _ body k)	     -> (begin (walk body (+ d 1)) k)
+	     (insn:close _ nreg body k)      -> (begin (walk body (+ d 1)) k)
 	     (insn:test _ then else k)	     -> (begin (walk then (+ d 1)) (walk else (+ d 1)) k)
 	     (insn:testcexp _ _ _ k0 k1 k)   -> (begin (walk k0 (+ d 1)) (walk k1 (+ d 1)) k)
 	     (insn:nvcase _ _ _ alts ealt k) -> (begin (for-each (lambda (x) (walk x (+ d 1))) alts)
