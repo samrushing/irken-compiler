@@ -161,7 +161,7 @@
 	 (insn:testcexp regs sig tmpl k0 k1 k)	   -> (begin (emit-testcexp regs sig tmpl k0 k1) k)
 	 (insn:jump reg target)			   -> (begin (emit-jump reg target) (cont:nil))
 	 (insn:cexp sig type template args k)      -> (begin (emit-cexp sig type template args (k/target k)) k)
-	 (insn:close name body k)		   -> (begin (emit-close name body (k/target k)) k)
+	 (insn:close name nreg body k)             -> (begin (emit-close name nreg body (k/target k)) k)
 	 (insn:varref d i k)			   -> (begin (emit-varref d i (k/target k)) k)
 	 (insn:varset d i v k)			   -> (begin (emit-varset d i v) k)
 	 (insn:new-env size top? k)		   -> (begin (emit-new-env size top? (k/target k)) k)
@@ -253,7 +253,7 @@
     (define (current-fun-index)
       (nth fun-stack 0))
 
-    (define (emit-close name body target)
+    (define (emit-close name nreg body target)
       (let ((proc-label (gen-function-label name))
 	    (jump-label (label-maker)))
 	(PUSH fun-stack fun-counter)
@@ -276,7 +276,7 @@
 	      (o.write (format "prof_current_fun = " (int (car fun-stack)) ";"))
 	      (o.write "prof_funs[prof_current_fun].calls++;"))
 	(if (vars-get-flag context name VFLAG-ALLOCATES)
-	    (o.write "check_heap (0);"))
+	    (o.write (format "check_heap (" (int nreg) ");")))
 	(when context.options.profile
 	      ;; this avoids charging gc to this fun
 	      (o.write "prof_mark0 = rdtsc();"))
@@ -555,10 +555,10 @@
     (define (emit-move var src target)
       (cond ((and (>= src 0) (not (= src var)))
 	     ;; from varset
-	     (o.write (format "r" (int var) " = r" (int src) ";")))
+	     (o.write (format "r" (int var) " = r" (int src) "; // reg varset")))
 	    ((and (>= target 0) (not (= target var)))
 	     ;; from varref
-	     (o.write (format "r" (int target) " = r" (int var) ";")))))
+	     (o.write (format "r" (int target) " = r" (int var) "; // reg varref")))))
 
     (define (emit-fatbar label k0 k1)
       (emit k0)
@@ -721,6 +721,7 @@ static int prof_num_funs;
 static prof_dump (void)
 {
  int i=0;
+ fprintf (stderr, \"%20s\t%20s\t%s\n\", \"calls\", \"ticks\", \"name\");
  for (i=0; prof_funs[i].name; i++) {
    fprintf (stderr, \"%20d\\t%20\" PRIu64 \"\\t%s\\n\", prof_funs[i].calls, prof_funs[i].ticks, prof_funs[i].name);
  }
