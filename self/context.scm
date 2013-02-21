@@ -9,6 +9,7 @@
    debugmacroexpansion=#f
    profile=#f
    noinline=#f
+   noletreg=#f
    })
 
 (define (make-context)
@@ -60,7 +61,9 @@
 (define VFLAG-ALLOCATES 3) ;; function that allocates
 (define VFLAG-FREE      4) ;; function that accesses free variables
 (define VFLAG-GETCC     5) ;; function uses getcc or putcc (consider calling this NOINLINE)
-(define VFLAG-NFLAGS    6)
+(define VFLAG-REG       6) ;; variable was put into a register
+(define VFLAG-FREEREF   7) ;; variable is referenced free
+(define VFLAG-NFLAGS    8)
 
 ;; urgh, needs to be an object
 (define (add-var name context)
@@ -106,7 +109,8 @@
   (let ((flagpad (+ 2 VFLAG-NFLAGS)))
     (print-string "vars = {\n")
     (print-string
-     (format "  " (cpad  6 "refs") (cpad  6 "sets") (cpad 6 "calls") (cpad 6 "mult") (lpad flagpad "flags") "  " (rpad 30 "name") "\n"))
+     (format "  " (cpad  6 "refs") (cpad  6 "sets") (cpad 6 "calls")
+	     (cpad 6 "mult") (lpad flagpad "flags") "  " (rpad 30 "name") "\n"))
     (tree/inorder
      (lambda (k v)
        (print-string
