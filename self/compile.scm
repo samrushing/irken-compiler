@@ -62,6 +62,7 @@
 	;; this option only applies to the C compilation phase.
 	"-O" -> (set! options.optimize #t)
 	"-p" -> (set! options.profile #t)
+	"-n" -> (set! options.noletreg #t)
 	_ -> #u)))
 
 (define (usage)
@@ -74,6 +75,7 @@ Usage: compile <irken-src-file> [options]
  -m : debug macro expansion
  -O : tell gcc to optimize
  -p : generate profile-printing code
+ -n : disable letreg optimization
 "))
 
 (defmacro verbose
@@ -113,7 +115,9 @@ Usage: compile <irken-src-file> [options]
 	(_ (set! node1 (node/sequence '())))
 	(_ (set! node2 (node/sequence '())))	
 	(_ (set! context.funs (tree/empty)))
+	(_ (find-tail noden))
 	(_ (find-leaves noden))
+	(_ (find-free-refs noden context))
 	(_ (verbose (print-string "after second round:\n") (pp-node noden)))
 	;; rebuild the graph yet again, so strongly will work.
 	(_ (build-dependency-graph noden context))
@@ -145,8 +149,8 @@ Usage: compile <irken-src-file> [options]
       (lambda (name alias)
 	(print-string (format "  " (sym name) " : " (sym alias) "\n")))
       context.aliases)
-     ;;(print-string "\n-- variables --\n")
-     ;;(print-vars context)
+     (print-string "\n-- variables --\n")
+     (print-vars context)
      (print-string "\n-- labels --\n")
      (printn context.labels)
      (print-string "\n-- records --\n")
