@@ -1,9 +1,10 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/core.scm")
-(include "lib/pair.scm")
 (include "lib/string.scm")
+(include "lib/pair.scm")
 (include "lib/io.scm")
+(include "lib/os.scm")
 
 (datatype object
   (:int int)
@@ -39,7 +40,7 @@
 (define (CONS a b) (list:cons a b))
 (define (NIL) (list:nil))
 
-(define (load path)
+(define (load-machine path)
 
   (let ((f (file/open-read path))
 	(code (file/read-buffer f))
@@ -130,8 +131,7 @@
   )
 
 ;; VM registers
-(define ZED (object:int 0))
-(define REGS #(ZED ZED ZED ZED ZED ZED ZED ZED ZED ZED))
+(define REGS (make-vector 10 (object:int 0)))
 
 (define pc 0)
 
@@ -299,7 +299,7 @@
 
 (define (insn-env)
   ;; ENV <target> <size>
-  (set! REGS[CODE[(+1 pc)]] (object:tuple (%make-vector CODE[(+2 pc)] (object:int 0))))
+  (set! REGS[CODE[(+1 pc)]] (object:tuple (make-vector CODE[(+2 pc)] (object:int 0))))
   (set! pc (+3 pc))
   (next-insn)
   )
@@ -312,6 +312,7 @@
     -> (begin
 	 (set! args[CODE[(+3 pc)]] REGS[CODE[(+2 pc)]])
 	 (set! pc (+4 pc))
+;	 (printn args)
 	 (next-insn))
     _ -> (vm-error)
     ))
@@ -421,12 +422,15 @@
     ))
 
 ;; insn data
-(define CODE (list->vec16 '(0)))
+;(define CODE (list->vec16 '(0)))
+(define CODE (list->vector '(0)))
 ;; literals
 (define LITS #((object:int 0)))
 ;; opcodes
 (define OPS
-  #(insn-lit
+  (list->vector
+   (LIST
+    insn-lit
     insn-ret
     insn-add
     insn-sub
@@ -447,10 +451,13 @@
     insn-pop
     insn-ge
     insn-print
-    ))
+    )))
 
-(define (OI name nargs)
-  (opcode:t name nargs))
+(defmacro OI
+  (OI s n) -> (opcode:t s n)
+  )
+;;(define (OI name nargs)
+;;  (opcode:t name nargs))
 
 (define opcode-info
   #((OI "lit" 2)
@@ -483,14 +490,18 @@
 ;; return value from functions
 (define RETVAL (object:int 0))
 
-(let ((code (load sys.argv[1])))
-  (set! CODE (list->vec16 code.code))
-  (set! LITS (list->vector code.lits))
-  (set! STACK (vmcont:nil))
-  (printn OPS)
-  (printn CODE)
-  (printn LITS)
-  (set! pc 0)
-  (next-insn)
-  (printn RETVAL)
-  )
+(define (test)
+  (let ((code (load-machine sys.argv[1])))
+    ;;(set! CODE (list->vec16 code.code))
+    (set! CODE (list->vector code.code))
+    (set! LITS (list->vector code.lits))
+    (set! STACK (vmcont:nil))
+    (printn OPS)
+    (printn CODE)
+    (printn LITS)
+    (set! pc 0)
+    (next-insn)
+    (printn RETVAL)
+    ))
+
+(test)
