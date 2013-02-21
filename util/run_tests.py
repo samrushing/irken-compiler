@@ -56,7 +56,7 @@ def test_t_lex():
 
 def test_t_vm():
     out = run_test ('t_vm', 'vm/tests/t11.byc')
-    assert (out.split()[-2:] == ['7', '#u'])
+    assert (out.split('\n')[-3:] == ['{u0 7}', '#u', ''])
 
 PJ = os.path.join
 
