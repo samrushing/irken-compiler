@@ -56,7 +56,8 @@
 (define NFLAG-RECURSIVE 0)
 (define NFLAG-ESCAPES   1)
 (define NFLAG-LEAF      2)
-(define NFLAG-NFLAGS    3)
+(define NFLAG-TAIL      3)
+(define NFLAG-NFLAGS    4)
 
 (define (make-node t subs)
   {t=t subs=subs size=(sum-size subs) id=(node-counter.inc) type=no-type flags=0}
