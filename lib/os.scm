@@ -5,6 +5,10 @@
 	  "system (%0)"
 	  (zero-terminate cmd)))
 
+(define (abort)
+  (%%cexp (-> undefined)
+	  "(object)3; abort()"))
+
 (define (cnull? val)
   (%%cexp (cstring -> bool) "%0==NULL" val))
 
