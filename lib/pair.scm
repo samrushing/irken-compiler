@@ -130,14 +130,14 @@
 	     (l (list:nil)))
     (if (< n 0)
 	l
-	(loop (- n 1) (cons n l)))))
+	(loop (- n 1) (list:cons n l)))))
 
 (define (n-of n x)
   (let loop ((n n)
 	     (l (list:nil)))
     (if (<= n 0)
 	l
-	(loop (- n 1) (cons x l)))))
+	(loop (- n 1) (list:cons x l)))))
 
 (define map
   p () -> '()
