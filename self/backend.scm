@@ -293,7 +293,7 @@
 	  (let ((src 
 		 (if (= d -1)
 		     (format "top[" (int (+ 2 i)) "];") ;; the +2 is to skip the header and next ptr
-		     ;;(format "varref (" (int d) "," (int i) ");")
+		     ;;(format "varref (lenv, " (int d) ", " (int i) ");")
 		     (format "((object*" (repeat d "*") ") lenv) " (repeat d "[1]") "[" (int (+ i 2)) "];")
 		     )))
 	    (o.write (format "r" (int target) " = " src)))))
@@ -301,7 +301,7 @@
     (define (emit-varset d i v)
       (if (= d -1)
 	  (o.write (format "top[" (int (+ 2 i)) "] = r" (int v) ";"))
-	  ;;(o.write (format "varset (" (int d) ", " (int i) ", r" (int v) ");"))
+	  ;;(o.write (format "varset (lenv, " (int d) ", " (int i) ", r" (int v) ");"))
 	  (o.write (format "((object*" (repeat d "*") ") lenv) " (repeat d "[1]") "[" (int (+ i 2)) "] = r" (int v) ";"))
 	  ))
 
@@ -326,7 +326,7 @@
     (define (emit-tail name fun args)
       (let ((goto
 	     (match name with
-	       (maybe:no)	      -> (format "goto *r" (int fun) "[1];")
+	       (maybe:no)	-> (format "goto *r" (int fun) "[1];")
 	       (maybe:yes name) -> (format "goto " (gen-function-label name) ";"))))
 	(if (>= args 0)
 	    (o.write (format "r" (int args) "[1] = r" (int fun) "[2]; lenv = r" (int args) "; " goto))
@@ -721,7 +721,7 @@ static int prof_num_funs;
 static prof_dump (void)
 {
  int i=0;
- fprintf (stderr, \"%20s\t%20s\t%s\n\", \"calls\", \"ticks\", \"name\");
+ fprintf (stderr, \"%20s\\t%20s\\t%s\\n\", \"calls\", \"ticks\", \"name\");
  for (i=0; prof_funs[i].name; i++) {
    fprintf (stderr, \"%20d\\t%20\" PRIu64 \"\\t%s\\n\", prof_funs[i].calls, prof_funs[i].ticks, prof_funs[i].name);
  }
