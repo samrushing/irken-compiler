@@ -380,6 +380,22 @@ clear_space (object * p, pxll_int n)
   }
 }
 
+static object *
+varref (object * lenv, pxll_int depth, pxll_int index) {
+  while (depth--) {
+    lenv = lenv[1];
+  }
+  return lenv[index+2];
+}
+
+static void
+varset (object * lenv, pxll_int depth, pxll_int index, object * val) {
+  while (depth--) {
+    lenv = lenv[1];
+  }
+  lenv[index+2] = val;
+}
+
 static object * lenv = PXLL_NIL;
 static object * k = PXLL_NIL;
 static object * top = PXLL_NIL; // top-level (i.e. 'global') environment
