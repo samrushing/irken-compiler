@@ -10,7 +10,7 @@
 	(string-join (reverse (cdr rparts)) "."))))
 
 (define (read-template)
-  (let ((ifile (file/open-read "header.c")))
+  (let ((ifile (file/open-read "header1.c")))
     (let loop ((buf (file/read-buffer ifile))
 	       (l '()))
       (cond ((= (string-length buf) 0) (string-concat (reverse l)))
