@@ -35,6 +35,7 @@ object * heap1 = NULL;
 #define TC_SAVE                 (1<<2) // 00000100  04
 #define TC_CLOSURE              (2<<2) // 00001000  08
 #define TC_TUPLE                (3<<2) // 00001100  0c
+#define TC_ENV                  (3<<2) // 00001100  0c alias
 #define TC_STRING		(4<<2) // 00010000  10
 #define TC_VECTOR               (5<<2) // 00010100  14
 #define TC_PAIR                 (6<<2) // 00011000  18
@@ -62,6 +63,8 @@ object * heap1 = NULL;
 #define GET_PAYLOAD(p)		(((pxll_int)(p))>>8)
 #define GET_TUPLE_LENGTH(p)	(((pxll_int)(p))>>8)
 #define GET_TUPLE_SIZE(p)	((GET_TUPLE_LENGTH(p)+1)<<2)
+#define GET_ENV_LENGTH(p)	(((pxll_int)(p))>>8)
+#define GET_ENV_SIZE(p)	        ((GET_ENV_LENGTH(p)+1)<<2)
 #define TAG_VALUE(tag,value)	((object)((tag&0xff)|(value<<8)))
 #define GET_STRING_POINTER(s)   (((pxll_string *)(s))->data)
 
