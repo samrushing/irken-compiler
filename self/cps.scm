@@ -13,9 +13,9 @@
   (:literal literal cont)                                       ;; <value> <k>
   (:litcon int symbol cont)                                     ;; <index> <value> <k>
   (:cexp type type string (list int) cont)                      ;; <sig> <solved-type> <template> <args> <k>
-  (:test int insn insn cont)                                    ;; <reg> <then> <else> <k>
-  (:testcexp (list int) type string insn insn cont)             ;; <regs> <sig> <template> <then> <else> <k>
-  (:jump int int)                                               ;; <reg> <target>
+  (:test int int insn insn cont)                                ;; <reg> <jump-number> <then> <else> <k>
+  (:testcexp (list int) type string int insn insn cont)         ;; <regs> <sig> <template> <jump-number> <then> <else> <k>
+  (:jump int int int)                                           ;; <reg> <target> <jump-number>
   (:close symbol int insn cont)                                 ;; <name> <nfree> <body> <k>
   (:varref int int cont)                                        ;; <depth> <index> <k>
   (:varset int int int cont)                                    ;; <depth> <index> <reg> <k>
@@ -29,10 +29,10 @@
   (:pop int cont)                                               ;; <result>
   (:primop symbol sexp type (list int) cont)                    ;; <name> <params> <args> <k>
   (:move int int cont)                                          ;; <var> <src> <k>
-  (:fatbar int insn insn cont)                                  ;; <label> <alt0> <alt1> <k>
+  (:fatbar int int insn insn cont)                              ;; <label> <jump-num> <alt0> <alt1> <k>
   (:fail int int)                                               ;; <label> <npop>
-  (:nvcase int symbol (list symbol) (list insn) (maybe insn) cont)      ;; <reg> <dt> <tags> <alts> <ealt> <k>
-  (:pvcase int (list symbol) (list int) (list insn) (maybe insn) cont)  ;; <reg> <tags> <arities> <ealt> <k>
+  (:nvcase int symbol (list symbol) int (list insn) (maybe insn) cont)      ;; <reg> <dt> <tags> <jump-num> <alts> <ealt> <k>
+  (:pvcase int (list symbol) (list int) int (list insn) (maybe insn) cont)  ;; <reg> <tags> <arities> <jump-num> <alts> <ealt> <k>
   )
 
 ;; continuation
@@ -76,7 +76,7 @@
 ;; perhaps name these cont/xxx could be confusing.
 (define k/free
   (cont:k _ free _)   -> free
-  (cont:nil) -> (error "k/free"))
+  (cont:nil) -> (list:nil))
 
 (define k/target
   (cont:k target _ _) -> target
@@ -191,10 +191,13 @@
 	(exp . exps) -> (compile #f exp lenv (dead (k/free k) (c-sequence tail? exps lenv k)))
 	))
 
+    (define jump-counter (make-counter 0))
+
     ;; XXX consider redoing with fatbar?
     (define (c-conditional tail? exp lenv k)
       (let ((target (k/target k))
-	    (free (k/free k)))
+	    (free (k/free k))
+	    (jump-num (jump-counter.inc)))
 	(match exp.subs with
 	  (test then else)
 	  -> (match test.t with
@@ -206,8 +209,9 @@
 			   (lambda (reg)
 			     (insn:test
 			      reg
-			      (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target))))
-			      (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target))))
+			      jump-num
+			      (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target jump-num))))
+			      (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target jump-num))))
 			      k))
 			   )))
 	  _ -> (error1 "c-conditional" exp)
@@ -215,13 +219,15 @@
 
     (define (c-simple-conditional tail? test then else sig template lenv k)
       (let ((free (k/free k))
-	    (target (k/target k)))
+	    (target (k/target k))
+	    (jump-num (jump-counter.inc)))
 	(define (finish regs)
 	  ;; <regs> <sig> <template> <then> <else> <k>
 	  (insn:testcexp
 	   regs sig template
-	   (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target))))
-	   (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target))))
+	   jump-num
+	   (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target jump-num))))
+	   (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target jump-num))))
 	   k))
 	(collect-primargs test.subs lenv k finish)))
 
@@ -484,7 +490,8 @@
 					    k-body))))))))
 
     (define (c-nvcase tail? dtname alt-formals subs lenv k)
-      (let ((free (k/free k)))
+      (let ((free (k/free k))
+	    (jump-num (jump-counter.inc)))
 	;; nvcase subs = <value>, <else-clause>, <alt0>, ...
 	(match (alist/lookup context.datatypes dtname) with
 	  (maybe:no) -> (error1 "no such datatype" dtname)
@@ -493,7 +500,7 @@
 		   (eclause (nth subs 1))
 		   (alts (cdr (cdr subs))))
 	       (define (finish test-reg)
-		 (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k)))))
+		 (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num))))
 		       (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
 		       (ealt1
 			(if (not (= (dt.get-nalts) (length alts)))
@@ -504,21 +511,22 @@
 			      _ -> (maybe:yes (compile tail? eclause lenv jump-k)))
 			    ;; complete match, no ealt
 			    (maybe:no))))
-		   (insn:nvcase test-reg dtname alt-formals alts ealt1 k)))
+		   (insn:nvcase test-reg dtname alt-formals jump-num alts ealt1 k)))
 	       (compile #f value lenv (cont free finish))))))
 
     (define (c-pvcase tail? alt-formals arities subs lenv k)
-      (let ((free (k/free k)))
+      (let ((free (k/free k))
+	    (jump-num (jump-counter.inc)))
 	;; pvcase subs = <value>, <else-clause>, <alt0>, ...
 	 (let ((value (nth subs 0))
 	       (eclause (nth subs 1))
 	       (alts (cdr (cdr subs))))
 	   (define (finish test-reg)
-	     (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k)))))
+	     (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num))))
 		   (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
 		   (else? (match eclause.t with (node:primapp '%match-error _) -> #f _ -> #t))
 		   (ealt (if else? (maybe:yes (compile tail? eclause lenv jump-k)) (maybe:no))))
-	       (insn:pvcase test-reg alt-formals arities alts ealt k)))
+	       (insn:pvcase test-reg alt-formals arities jump-num alts ealt k)))
 	   (compile #f value lenv (cont free finish)))))
 
     (define fatbar-counter (make-counter 0))
@@ -527,11 +535,14 @@
       (let ((label (fatbar-counter.inc))
 	    (lenv0 (cpsenv:fat label lenv))
 	    (free (k/free k))
-	    (target (k/target k)))
-	(insn:fatbar label
-		     (compile tail? (nth subs 0) lenv0 (cont free (lambda (reg) (insn:jump reg target))))
-		     (compile tail? (nth subs 1) lenv  (cont free (lambda (reg) (insn:jump reg target))))
-		     k)))
+	    (target (k/target k))
+	    (jump-num (jump-counter.inc)))
+	(insn:fatbar
+	 label
+	 jump-num
+	 (compile tail? (nth subs 0) lenv0 (cont free (lambda (reg) (insn:jump reg target jump-num))))
+	 (compile tail? (nth subs 1) lenv  (cont free (lambda (reg) (insn:jump reg target jump-num))))
+	 k)))
 
     (define (c-fail tail? lenv k)
       ;; lookup the closest surrounding fatbar label
@@ -637,7 +648,7 @@
     (define (gen-tail name closure-reg args-reg k)
       (insn:tail name closure-reg args-reg))
 
-    (compile #t exp (cpsenv:nil) (cont '() gen-return))
+    (compile #t exp (cpsenv:nil) (cont:nil))
     ))
 
 ;;; XXX redo this with the new format macro - this function is horrible.
@@ -677,9 +688,9 @@
     (insn:literal lit k)	    -> (print-line (lambda () (ps2 "lit") (ps2 (literal->string lit))) k)
     (insn:litcon i kind k)          -> (print-line (lambda () (ps2 "litcon") (ps i) (ps kind)) k)
     (insn:cexp sig typ tem args k)  -> (print-line (lambda () (ps2 "cexp") (ps2 (type-repr sig)) (ps2 (type-repr typ)) (ps tem) (ps args)) k)
-    (insn:test reg then else k)	    -> (print-line (lambda () (ps2 "test") (print reg) (print-insn then (+ d 1)) (print-insn else (+ d 1))) k)
-    (insn:jump reg trg)		    -> (print-line (lambda () (ps2 "jmp") (print trg)) (cont:nil))
-    (insn:close name nreg body k)   -> (print-line (lambda () (ps2 "close") (print name) (ps nreg) (print-insn body (+ d 1))) k)
+    (insn:test reg jn then else k)  -> (print-line (lambda () (ps2 "test") (ps reg) (ps jn) (print-insn then (+ d 1)) (print-insn else (+ d 1))) k)
+    (insn:jump reg trg jn)	    -> (print-line (lambda () (ps2 "jmp") (ps trg) (ps jn)) (cont:nil))
+    (insn:close name nreg body k)   -> (print-line (lambda () (ps2 "close") (ps name) (ps nreg) (print-insn body (+ d 1))) k)
     (insn:varref d i k)		    -> (print-line (lambda () (ps2 "ref") (ps d) (ps i)) k)
     (insn:varset d i v k)	    -> (print-line (lambda () (ps2 "set") (ps d) (ps i) (ps v)) k)
     (insn:store o a t i k)	    -> (print-line (lambda () (ps2 "stor") (ps o) (ps a) (ps t) (ps i)) k)
@@ -690,25 +701,25 @@
     (insn:pop r k)                  -> (print-line (lambda () (ps2 "pop") (ps r)) k)
     (insn:primop name p t args k)   -> (print-line (lambda () (ps2 "primop") (ps name) (ps2 (repr p)) (ps2 (type-repr t)) (ps args)) k)
     (insn:move var src k)           -> (print-line (lambda () (ps2 "move") (ps var) (ps src)) k)
-    (insn:fatbar lab k0 k1 k)       -> (print-line (lambda () (ps2 "fatbar") (ps lab) (print-insn k0 (+ d 1)) (print-insn k1 (+ d 1))) k)
+    (insn:fatbar lab jn k0 k1 k)    -> (print-line (lambda () (ps2 "fatbar") (ps lab) (ps jn) (print-insn k0 (+ d 1)) (print-insn k1 (+ d 1))) k)
     (insn:fail lab npop)            -> (print-line (lambda () (ps2 "fail") (ps lab) (ps npop)) (cont:nil))
-    (insn:testcexp r s t k0 k1 k)
+    (insn:testcexp r s t jn k0 k1 k)
     -> (print-line
 	(lambda ()
-	  (ps2 "testcexp") (ps r) (ps2 (type-repr s)) (ps t)
+	  (ps2 "testcexp") (ps r) (ps2 (type-repr s)) (ps t) (ps jn) (ps jn)
 	  (print-insn k0 (+ d 1)) (print-insn k1 (+ d 1)))
 	k)
-    (insn:nvcase tr dt labels alts ealt k)
+    (insn:nvcase tr dt labels jn alts ealt k)
     -> (print-line
 	(lambda () (ps2 "nvcase")
-		(ps tr) (ps dt) (ps labels)
+		(ps tr) (ps dt) (ps labels) (ps jn)
 		(for-each (lambda (insn) (print-insn insn (+ d 1))) alts)
 		(mprint-insn ealt (+ d 1)))
 	k)
-    (insn:pvcase tr labels arities alts ealt k)
+    (insn:pvcase tr labels arities jn alts ealt k)
     -> (print-line
 	(lambda () (ps2 "pvcase")
-		(ps tr) (ps labels) (ps arities)
+		(ps tr) (ps labels) (ps arities) (ps jn)
 		(for-each (lambda (insn) (print-insn insn (+ d 1))) alts)
 		(mprint-insn ealt (+ d 1)))
 	k)
@@ -729,17 +740,17 @@
 	     (insn:return target) -> (cont:nil)
 	     (insn:tail _ _ _)	  -> (cont:nil)
 	     (insn:trcall _ _ _)  -> (cont:nil)
-	     (insn:jump _ _)	  -> (cont:nil)
+	     (insn:jump _ _ _)	  -> (cont:nil)
 	     (insn:fail _ _)      -> (cont:nil)
 	     ;; these insns contain sub-bodies...
-	     (insn:fatbar _ k0 k1 k)	     -> (begin (walk k0 (+ d 1)) (walk k1 (+ d 1)) k)
-	     (insn:close _ nreg body k)      -> (begin (walk body (+ d 1)) k)
-	     (insn:test _ then else k)	     -> (begin (walk then (+ d 1)) (walk else (+ d 1)) k)
-	     (insn:testcexp _ _ _ k0 k1 k)   -> (begin (walk k0 (+ d 1)) (walk k1 (+ d 1)) k)
-	     (insn:nvcase _ _ _ alts ealt k) -> (begin (for-each (lambda (x) (walk x (+ d 1))) alts)
-						       (mwalk ealt (+ d 1)) k)
-	     (insn:pvcase _ _ _ alts ealt k) -> (begin (for-each (lambda (x) (walk x (+ d 1))) alts)
-						       (mwalk ealt (+ d 1)) k)
+	     (insn:fatbar _ _ k0 k1 k)	       -> (begin (walk k0 (+ d 1)) (walk k1 (+ d 1)) k)
+	     (insn:close _ nreg body k)	       -> (begin (walk body (+ d 1)) k)
+	     (insn:test _ _ then else k)       -> (begin (walk then (+ d 1)) (walk else (+ d 1)) k)
+	     (insn:testcexp _ _ _ _ k0 k1 k)   -> (begin (walk k0 (+ d 1)) (walk k1 (+ d 1)) k)
+	     (insn:nvcase _ _ _ _ alts ealt k) -> (begin (for-each (lambda (x) (walk x (+ d 1))) alts)
+							 (mwalk ealt (+ d 1)) k)
+	     (insn:pvcase _ _ _ _ alts ealt k) -> (begin (for-each (lambda (x) (walk x (+ d 1))) alts)
+							 (mwalk ealt (+ d 1)) k)
 	     ;; ... the rest just have one continuation
 	     (insn:literal _ k)	     -> k
 	     (insn:litcon _ _ k)     -> k
