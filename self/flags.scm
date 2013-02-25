@@ -1,3 +1,3 @@
 
-(define CC "cc")
-(define CFLAGS "-I.")
+(define CC "/usr/local/bin/clang")
+(define CFLAGS "-I. -O3")
