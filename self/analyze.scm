@@ -155,7 +155,7 @@
   )
 
 (define (symbol-add-suffix sym suffix)
-  (string->symbol (format (symbol->string sym) suffix)))
+  (string->symbol (format (sym sym) suffix)))
 
 (define inline-threshold 13)
 
