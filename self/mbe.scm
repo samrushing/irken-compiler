@@ -178,9 +178,9 @@
 	((:pair in-pat out-pat) . tl)
 	-> (if (matches-pattern? in-pat exp)
 	       (begin
-		 (if debug? (print-string (format "expanding macro " (sym name) " in " (repr exp) "\n")))
+		 (if debug? (printf "expanding macro " (sym name) " in " (repr exp) "\n"))
 		 (let ((r (expand-pattern out-pat (get-bindings in-pat exp))))
-		   (if debug? (print-string (format "  -> " (repr r) "\n")) )
+		   (if debug? (printf "  -> " (repr r) "\n"))
 		   r))
 	       (loop tl))
 	()
