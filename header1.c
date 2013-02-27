@@ -417,7 +417,7 @@ static object * freep; // = heap0;
 
 // CONSTRUCTED LITERALS //
 
-#include "gc.c"
+#include "gc1.c"
 
 // check heap is called at the top of each allocating function.
 //  [by locating the check at the top, we avoid considering any
@@ -517,4 +517,4 @@ main (int _argc, char * _argv[])
 
 
 #define PXLL_RETURN(d) result = r##d; ((kfun)(k[3]))();
-
+#define O object *
