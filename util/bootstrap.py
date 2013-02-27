@@ -3,6 +3,7 @@
 # bootstrap the compiler.
 
 import os
+import platform
 
 def getenv_or (name, default):
     v = os.getenv (name)
@@ -11,17 +12,10 @@ def getenv_or (name, default):
     else:
         return default
 
-gcc = getenv_or ('CC', 'gcc')
-cflags = getenv_or ('CFLAGS', '-g -I.')
+gcc = getenv_or ('CC', 'clang')
+cflags = getenv_or ('CFLAGS', '-O3 -g -I.')
 
-try:
-    if os.uname()[0] == 'Darwin' and gcc == 'gcc':
-        # stock xcode gcc has nested functions disabled by default
-        cflags += ' -fnested-functions'
-    windows = False
-except:
-    # probably on windows
-    windows = True
+windows = platform.uname()[0] == 'Windows'
 
 # this is frustrating, I could have sworn win32 would take either
 # forward or backslash...
