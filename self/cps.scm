@@ -82,6 +82,10 @@
   (cont:k target _ _) -> target
   (cont:nil) -> (error "k/target"))
 
+(define k/insn
+  (cont:k _ _ insn) -> insn
+  (cont:nil) -> (error "k/insn"))
+
 (define add-free-regs
   (cont:k target free k) regs -> (cont:k target (append free regs) k)
   (cont:nil) _		      -> (error "add-free-regs"))
