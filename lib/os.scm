@@ -9,6 +9,9 @@
   (%%cexp (-> undefined)
 	  "(object)3; abort()"))
 
+(define (tmpnam)
+  (copy-cstring (%%cexp (-> cstring) "tmpnam(NULL)")))
+
 (define (cnull? val)
   (%%cexp (cstring -> bool) "%0==NULL" val))
 
@@ -19,6 +22,11 @@
     (if (cnull? val)
 	""
 	(copy-cstring val))))
+
+(define (unlink name)
+  (%%cexp (string -> int)
+	  "unlink (%0)"
+	  (zero-terminate name)))
 
 (define sys
   (let ((argc (%%cexp (-> int) "argc"))

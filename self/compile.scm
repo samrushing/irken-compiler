@@ -9,8 +9,8 @@
 	(error1 "find-base" path)
 	(string-join (reverse (cdr rparts)) "."))))
 
-(define (read-template)
-  (let ((ifile (file/open-read "header1.c")))
+(define (read-file-contents path)
+  (let ((ifile (file/open-read path)))
     (let loop ((buf (file/read-buffer ifile))
 	       (l '()))
       (cond ((= (string-length buf) 0) (string-concat (reverse l)))
@@ -21,7 +21,7 @@
 (define sentinel1 "// CONSTRUCTED LITERALS //\n")
 
 (define (get-header-parts)
-  (let ((header (read-template))
+  (let ((header (read-file-contents "header1.c"))
 	(pos0 (string-find sentinel0 header))
 	(pos1 (string-find sentinel1 header)))
     (if (or (= pos0 -1) (= pos1 -1))
@@ -41,7 +41,7 @@
 
 (include "self/flags.scm")
 
-(define (gcc base options)
+(define (invoke-cc base options)
   (let ((cc (getenv-or "CC" CC))
 	(cflags (getenv-or "CFLAGS" CFLAGS))
 	(cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
@@ -73,7 +73,7 @@ Usage: compile <irken-src-file> [options]
  -t : generate trace-printing code
  -f : set CFLAGS for C compiler
  -m : debug macro expansion
- -O : tell gcc to optimize
+ -O : tell CC to optimize
  -p : generate profile-printing code
  -n : disable letreg optimization
 "))
@@ -134,7 +134,11 @@ Usage: compile <irken-src-file> [options]
 	(cps (compile noden context))
 	(_ (set! noden (node/sequence '()))) ;; go easier on memory
 	(ofile (file/open-write opath #t #o644))
-	(o (make-writer ofile)))
+	(o (make-writer ofile))
+	(tmp-path (tmpnam))
+	(tfile (file/open-write tmp-path #t #o644))
+	(o0 (make-writer tfile))
+	)
     (verbose
      (print-string "\n-- RTL --\n")
      (print-insn cps 0)
@@ -185,16 +189,19 @@ Usage: compile <irken-src-file> [options]
 		(emit-registers o context)
 		(o.copy part1)
 		(o.copy part2)
-		(emit o cps context)))
+		(emit o0 o cps context)))
     (emit-lookup-field o context)
     (if context.options.profile (emit-profile-1 o context))
     (print-string "done.\n")
+    (o0.close)
+    ;; copy code after declarations
+    (o.copy (read-file-contents tmp-path))
     (o.close)
-    (cond ((not context.options.nocompile)
-	   (print-string "compiling...\n")
-	   (gcc base context.options)
-	   #u
-	   )
+    (unlink tmp-path)
+    (when (not context.options.nocompile)
+	  (print-string "compiling...\n")
+	  (invoke-cc base context.options)
+	  #u
 	  )
     )
   )

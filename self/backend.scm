@@ -173,7 +173,7 @@
 							  r)
 						 tl))))))
 
-(define (emit o insns context)
+(define (emit o decls insns context)
 
   (let ((fun-stack '())
 	(current-function-cname "")
@@ -214,6 +214,12 @@
 	 (insn:nvcase tr dt tags jn alts ealt k)      -> (begin (emit-nvcase tr dt tags jn alts ealt k) (cont:nil))
 	 (insn:pvcase tr tags arities jn alts ealt k) -> (begin (emit-pvcase tr tags arities jn alts ealt k) (cont:nil))
 	 )))
+
+    (define (declare-static name)
+      (decls.write (format "static void " name "(void);")))
+
+    (define (declare  name)
+      (decls.write (format "void " name "(void);")))
 
     (define (move src dst)
       (if (and (>= dst 0) (not (= src dst)))
@@ -269,7 +275,8 @@
     (define (emit-jump reg target jump-num)
       (move reg target)
       (let ((jname (format "JUMP_CONT_" (int jump-num))))
-	(o.write (format "void " jname " (void); " jname "();"))
+	(declare-static jname)
+	(o.write (format jname "();"))
 	))
 
     ;; XXX consider this: giving access to the set of free registers.
@@ -301,7 +308,7 @@
 		 (cname (gen-function-cname name 0)))
 	     (PUSH fun-stack (:function cname insn))
 	     ;; emit a last-minute forward declaration
-	     (o.write (format "void " cname " (void);"))
+	     (declare-static cname)
 	     (o.write (format "r" (int target) " = allocate (TC_CLOSURE, 2);"))
 	     (o.write (format "r" (int target) "[1] = " cname "; r" (int target) "[2] = lenv;"))
 	     )
@@ -365,7 +372,9 @@
       (if (no-cont? insn)
 	  (emit insn)
 	  (let ((kname (push-c-continuation insn)))
-	    (o.write (format "void " kname " (void); " kname "();")))))
+	    (declare-static kname)
+	    (o.write (format kname "();"))
+	    )))
 
     (define (emit-varref d i target)
       (if (>= target 0)
@@ -405,9 +414,10 @@
     (define (emit-tail name fun args)
       (let ((funcall
 	     (match name with
-	       (maybe:no)	  -> (format "((kfun)(r" (int fun) "[1]))();")
+	       (maybe:no)       -> (format "((kfun)(r" (int fun) "[1]))();")
 	       (maybe:yes name) -> (let ((cname (gen-function-cname name 0)))
-				     (format "void " cname "(void); " cname "();")))))
+				     (declare-static cname)
+				     (format cname "();")))))
 	(if (>= args 0)
 	    (o.write (format "r" (int args) "[1] = r" (int fun) "[2]; lenv = r" (int args) "; " funcall))
 	    (o.write (format "lenv = r" (int fun) "[2]; " funcall))
@@ -439,7 +449,7 @@
 	       (map-range
 		   i nregs
 		   (format "t[" (int (+ i 4)) "] = r" (int (nth free i))))))
-	  (o.write (format "void " kfun " (void);"))
+	  (declare-static kfun)
 	  (o.write (format "t[1] = k; t[2] = lenv; t[3] = " kfun "; " (string-join saves "; ") "; k = t;")))
 	;; call
 	(let ((funcall
@@ -447,7 +457,9 @@
 		 (maybe:no)	  -> (format "((kfun)(r" (int fun) "[1]))();")
 		 (maybe:yes name) -> (let ((cfun (gen-function-cname name 0)))
 				       ;; include last-minute forward declaration
-				       (format "void " cfun " (void); " cfun "();")))))
+				       (declare-static cfun)
+				       (format cfun "();")
+				       ))))
 	  (if (>= args 0)
 	      (o.write (format "r" (int args) "[1] = r" (int fun) "[2]; lenv = r" (int args) "; " funcall))
 	      (o.write (format "lenv = r" (int fun) "[2]; " funcall))))
@@ -477,7 +489,8 @@
 	(for-range
 	    i nargs
 	    (o.write (format "lenv[" (int (+ 2 i)) "] = r" (int (nth regs i)) ";")))
-	(o.write (format "void " cname " (void); " cname "();"))
+	(declare-static cname)
+	(o.write (format cname "();"))
       ))
 
     (define (emit-push args)
@@ -666,7 +679,8 @@
       (if (> npop 0)
 	  (o.write (format "lenv = ((object " (joins (n-of npop "*")) ")lenv)" (joins (n-of npop "[1]")) ";")))
       (let ((jname (format "FAIL_CONT_" (int label))))
-	(o.write (format "void " jname " (void); " jname "();"))
+	(declare-static jname)
+	(o.write (format jname "();"))
 	))
 
     ;;
