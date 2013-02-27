@@ -65,12 +65,11 @@
 (define (make-register-allocator)
   (let ((max-reg -1))
     (define (allocate free)
-      (let loop ((i 0))
-	(if (member? i free =)
-	    (loop (+ i 1))
-	    (begin (set! max-reg (max i max-reg)) i))))
+      (set! max-reg (+ max-reg 1))
+      max-reg)
     (define (get-max) max-reg)
-    {alloc=allocate get-max=get-max}
+    (define (reset) (set! max-reg -1))
+    {alloc=allocate get-max=get-max reset=reset}
     ))
 
 ;; perhaps name these cont/xxx could be confusing.
@@ -243,6 +242,7 @@
     (define (c-function name formals id body lenv k)
       (set-flag! VFLAG-ALLOCATES)
       (PUSH current-funs name)
+      (context.regalloc.reset)
       (let ((regvars (get-register-variables '() lenv))
 	    (r
 	     (insn:close
@@ -377,7 +377,8 @@
 			(lambda (regs) (insn:primop op parm type regs k))))
 
     (define (safe-for-let-reg exp names context)
-      (and (not context.options.noletreg)
+      (and #f
+	   (not context.options.noletreg)
 	   (node-get-flag exp NFLAG-LEAF)
 	   (< (length names) 5)
 	   (not (some?
