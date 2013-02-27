@@ -223,22 +223,22 @@
 
     (define (move src dst)
       (if (and (>= dst 0) (not (= src dst)))
-	  (o.write (format "r" (int dst) " = r" (int src) ";"))))
+	  (o.write (format "O r" (int dst) " = r" (int src) ";"))))
 
     (define (emit-literal lit target)
       (let ((val (encode-immediate lit))
 	    (prefix (if (= target -1)
 			"// dead " ;; why bother with a dead literal?
-			(format "r" (int target)))))
+			(format "O r" (int target)))))
 	(o.write (format prefix " = (object *) " (int val) ";"))
 	))
 
     (define (emit-litcon index kind target)
       (if (>= target 0)
 	  (cond ((eq? kind 'string)
-		 (o.write (format "r" (int target) " = (object*) &constructed_" (int index) ";")))
+		 (o.write (format "O r" (int target) " = (object*) &constructed_" (int index) ";")))
 		(else
-		 (o.write (format "r" (int target) " = (object *) constructed_" (int index) "[0];"))))))
+		 (o.write (format "O r" (int target) " = (object *) constructed_" (int index) "[0];"))))))
 
     (define (emit-test reg jn k0 k1 k)
       (push-jump-continuation k jn)
@@ -296,7 +296,7 @@
 	       _ -> (wrap-out sig template))))
 	(if (= target -1)
 	    (o.write (format exp ";"))
-	    (o.write (format "r" (int target) " = " exp ";")))))
+	    (o.write (format "O r" (int target) " = " exp ";")))))
 
     (define (emit-close name nreg body target)
       (let ((cname (gen-function-cname name 0)))
@@ -312,7 +312,7 @@
 		(emit body)
 		(o.dedent)
 		(o.write "}")))
-	(o.write (format "r" (int target) " = allocate (TC_CLOSURE, 2);"))
+	(o.write (format "O r" (int target) " = allocate (TC_CLOSURE, 2);"))
 	(o.write (format "r" (int target) "[1] = " cname "; r" (int target) "[2] = lenv;"))
 	))
 
@@ -340,7 +340,7 @@
 		     ;;(format "varref (lenv, " (int d) ", " (int i) ");")
 		     (format "((object*" (repeat d "*") ") lenv) " (repeat d "[1]") "[" (int (+ i 2)) "];")
 		     )))
-	    (o.write (format "r" (int target) " = " src)))))
+	    (o.write (format "O r" (int target) " = " src)))))
 
     (define (emit-varset d i v)
       (if (= d -1)
@@ -350,7 +350,7 @@
 	  ))
 
     (define (emit-new-env size top? target)
-      (o.write (format "r" (int target) " = allocate (TC_ENV, " (int (+ size 1)) ");"))
+      (o.write (format "O r" (int target) " = allocate (TC_ENV, " (int (+ size 1)) ");"))
       (if top?
 	  (o.write (format "top = r" (int target) ";"))))
 
@@ -361,8 +361,8 @@
 	       (tag:uobj v) -> (format (if (= size 0) "UITAG(" "UOTAG(") (int v) ")"))))
 	(if (= size 0)
 	    ;; unit type - use an immediate
-	    (o.write (format "r" (int target) " = (object*)" tag-string ";"))
-	    (o.write (format "r" (int target) " = allocate (" tag-string ", " (int size) ");")))))
+	    (o.write (format "O r" (int target) " = (object*)" tag-string ";"))
+	    (o.write (format "O r" (int target) " = allocate (" tag-string ", " (int size) ");")))))
 
     (define (emit-store off arg tup i)
       (o.write (format "r" (int tup) "[" (int (+ 1 (+ i off))) "] = r" (int arg) ";")))
@@ -415,10 +415,10 @@
 		(let ((restores
 		       (map-range
 			   i nregs
-			   (format "r" (int (nth free i)) " = k[" (int (+ i 4)) "]"))))
+			   (format "O r" (int (nth free i)) " = k[" (int (+ i 4)) "]"))))
 		  (o.write (format (string-join restores "; ") "; lenv = k[2]; k = k[1];")))
 		(if (>= target 0)
-		    (o.write (format "r" (int target) " = result;")))
+		    (o.write (format "O r" (int target) " = result;")))
 		(emitk k)
 		(o.dedent)
 		(o.write (format "}"))
@@ -503,18 +503,18 @@
 			     (maybe:yes dt)
 			     -> (let ((alt (dt.get altname)))
 				  (cond ((= nargs 0)
-					 (o.write (format "r" (int target) " = (object*)" (get-uitag dtname altname alt.index) ";")))
+					 (o.write (format "O r" (int target) " = (object*)" (get-uitag dtname altname alt.index) ";")))
 					(else
-					 (o.write (format "t = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
+					 (o.write (format "O t = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
 					 (for-range
 					     i nargs
 					     (o.write (format "t[" (int (+ i 1)) "] = r" (int (nth args i)) ";")))
-					 (o.write (format "r" (int target) " = t;"))))))
+					 (o.write (format "O r" (int target) " = t;"))))))
 			_ -> (primop-error)
 			)
 	  '%nvget   -> (match parm args with
 			 (sexp:list (_ (sexp:int index) _)) (reg)
-			 -> (o.write (format "r" (int target) " = UOBJ_GET(r" (int reg) "," (int index) ");"))
+			 -> (o.write (format "O r" (int target) " = UOBJ_GET(r" (int reg) "," (int index) ");"))
 			 _ _ -> (primop-error))
 	  '%make-vector -> (match args with
 			     (vlen vval)
@@ -531,7 +531,7 @@
 			   (vec index)
 			   -> (begin
 				(o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-				(o.write (format "r" (int target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
+				(o.write (format "O r" (int target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
 			   _ -> (primop-error))
 	  '%array-set -> (match args with
 			   (vec index val)
@@ -544,12 +544,12 @@
 			    -> (let ((label-code (lookup-label-code label context)))
 				 (match (guess-record-type sig) with
 				   (maybe:yes sig0)
-				   -> (o.write (format "r" (int target) ;; compile-time lookup
+				   -> (o.write (format "O r" (int target) ;; compile-time lookup
 						       " = ((pxll_vector*)r" (int rec-reg)
 						       ")->val[" (int (index-eq label sig0))
 						       "];"))
 				   (maybe:no)
-				   -> (o.write (format "r" (int target) ;; run-time lookup
+				   -> (o.write (format "O r" (int target) ;; run-time lookup
 						       " = ((pxll_vector*)r" (int rec-reg)
 						       ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
 						       ")-TC_USEROBJ)>>2," (int label-code)
@@ -574,7 +574,7 @@
 	  '%callocate -> (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
 			   ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
 			   (if (>= target 0)
-			       (o.write (format "r" (int target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
+			       (o.write (format "O r" (int target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
 						") * unbox(r" (int (car args)) "), sizeof (object)));"))
 			       (error1 "%callocate: dead target?" type)))
 	  '%exit -> (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
@@ -582,7 +582,7 @@
 		      (rbase rindex)
 		      ;; XXX range-check (probably need to add a length param to TC_BUFFER)
 		      -> (let ((cexp (format "(((" (type-repr type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
-			   (o.write (format "r" (int target) " = " (wrap-out type cexp) ";")))
+			   (o.write (format "O r" (int target) " = " (wrap-out type cexp) ";")))
 		      _ -> (primop-error))
 	  '%cset -> (match args type with
 		      (rbase rindex rval) (type:pred 'arrow (to-type from-type) _)
@@ -592,7 +592,7 @@
 			   (o.write (format lval " = " rval-exp ";")))
 		      _ _ -> (primop-error))
 	  '%getcc -> (match args with
-		       () -> (o.write (format "r" (int target) " = k; // %getcc"))
+		       () -> (o.write (format "O r" (int target) " = k; // %getcc"))
 		       _	-> (primop-error))
 	  '%putcc -> (match args with
 		       (rk rv) -> (begin
@@ -615,7 +615,7 @@
 	     (o.write (format "r" (int var) " = r" (int src) "; // reg varset")))
 	    ((and (>= target 0) (not (= target var)))
 	     ;; from varref
-	     (o.write (format "r" (int target) " = r" (int var) "; // reg varref")))))
+	     (o.write (format "O r" (int target) " = r" (int var) "; // reg varref")))))
 
     ;; we emit insns for k0, which may or may not jump to fail continuation in k1
     (define (emit-fatbar label jn k0 k1 k)
@@ -752,22 +752,22 @@
 
 (define (emit-registers o context)
   (let ((nreg (+ 1 (context.regalloc.get-max))))
-    (for-range
-	i nreg
-	(o.write (format "static object * r" (int i) ";")))
+    ;; (for-range
+    ;; 	i nreg
+    ;; 	(o.write (format "static object * r" (int i) ";")))
     (o.write "static void gc_regs_in (int n) {")
     (o.write "  switch (n) {")
-    (for-each
-     (lambda (i)
-       (o.write (format "  case " (int (+ i 1)) ": heap1[" (int (+ i 3)) "] = r" (int i) ";")))
-     (reverse (range nreg)))
+    ;; (for-each
+    ;;  (lambda (i)
+    ;;    (o.write (format "  case " (int (+ i 1)) ": heap1[" (int (+ i 3)) "] = r" (int i) ";")))
+    ;;  (reverse (range nreg)))
     (o.write "}}")
     (o.write "static void gc_regs_out (int n) {")
     (o.write "  switch (n) {")
-    (for-each
-     (lambda (i)
-       (o.write (format "  case " (int (+ i 1)) ": r" (int i) " = heap0[" (int (+ i 3)) "];")))
-     (reverse (range nreg)))
+    ;; (for-each
+    ;;  (lambda (i)
+    ;;    (o.write (format "  case " (int (+ i 1)) ": r" (int i) " = heap0[" (int (+ i 3)) "];")))
+    ;;  (reverse (range nreg)))
     (o.write "}}")))
 
 (define (emit-profile-0 o context)
