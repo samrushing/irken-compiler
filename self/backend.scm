@@ -178,8 +178,7 @@
   (let ((fun-stack '())
 	(current-function-cname "")
 	(current-function-name 'toplevel)
-	(current-function-part 0)
-	(c-cont-counter (make-counter 0))
+	(current-function-part (make-counter 0))
 	)
 
     (define emitk
@@ -196,13 +195,13 @@
 	 (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
 	 (insn:jump reg target jn)		      -> (begin (emit-jump reg target jn) (cont:nil))
 	 (insn:cexp sig type template args k)	      -> (begin (emit-cexp sig type template args (k/target k)) k)
-	 (insn:close name nreg body k)		      -> (begin (emit-close insn) k)
+	 (insn:close name nreg body k)		      -> (begin (emit-close name nreg body (k/target k)) k)
 	 (insn:varref d i k)			      -> (begin (emit-varref d i (k/target k)) k)
 	 (insn:varset d i v k)			      -> (begin (emit-varset d i v) k)
 	 (insn:new-env size top? k)		      -> (begin (emit-new-env size top? (k/target k)) k)
 	 (insn:alloc tag size k)		      -> (begin (emit-alloc tag size (k/target k)) k)
 	 (insn:store off arg tup i k)		      -> (begin (emit-store off arg tup i) k)
-	 (insn:invoke name fun args k)		      -> (begin (emit-call name fun args k) k)
+	 (insn:invoke name fun args k)		      -> (begin (emit-call name fun args k) (cont:nil))
 	 (insn:tail name fun args)		      -> (begin (emit-tail name fun args) (cont:nil))
 	 (insn:trcall d n args)			      -> (begin (emit-trcall d n args) (cont:nil))
 	 (insn:push r k)			      -> (begin (emit-push r) k)
@@ -215,6 +214,7 @@
 	 (insn:pvcase tr tags arities jn alts ealt k) -> (begin (emit-pvcase tr tags arities jn alts ealt k) (cont:nil))
 	 )))
 
+    ;; XXX arrange to avoid duplicates caused by jump conts
     (define (declare-static name)
       (decls.write (format "static void " name "(void);")))
 
@@ -244,11 +244,11 @@
       (push-jump-continuation k jn)
       (o.write (format "if PXLL_IS_TRUE(r" (int reg)") {"))
       (o.indent)
-      (emit-c-continuation k0)
+      (emit k0)
       (o.dedent)
       (o.write "} else {")
       (o.indent)
-      (emit-c-continuation k1)
+      (emit k1)
       (o.dedent)
       (o.write "}")
       )
@@ -263,18 +263,18 @@
 	     (push-jump-continuation k jn)
 	     (o.write (format "if PXLL_IS_TRUE(" exp ") {"))
 	     (o.indent)
-	     (emit-c-continuation k0)
+	     (emit k0)
 	     (o.dedent)
 	     (o.write "} else {")
 	     (o.indent)
-	     (emit-c-continuation k1)
+	     (emit k1)
 	     (o.dedent)
 	     (o.write "}"))
 	_ -> (impossible)))
 
     (define (emit-jump reg target jump-num)
       (move reg target)
-      (let ((jname (format "JUMP_CONT_" (int jump-num))))
+      (let ((jname (format "JUMP_" (int jump-num))))
 	(declare-static jname)
 	(o.write (format jname "();"))
 	))
@@ -298,83 +298,39 @@
 	    (o.write (format exp ";"))
 	    (o.write (format "r" (int target) " = " exp ";")))))
 
-    (define (current-fun-index)
-      (nth fun-stack 0))
-
-    (define (emit-close insn)
-      (match insn with
-	(insn:close name _ _ k)
-	-> (let ((target (k/target k))
-		 (cname (gen-function-cname name 0)))
-	     (PUSH fun-stack (:function cname insn))
-	     ;; emit a last-minute forward declaration
-	     (declare-static cname)
-	     (o.write (format "r" (int target) " = allocate (TC_CLOSURE, 2);"))
-	     (o.write (format "r" (int target) "[1] = " cname "; r" (int target) "[2] = lenv;"))
-	     )
-	x -> (error1 "emit-close: !insn:close?" x)
+    (define (emit-close name nreg body target)
+      (let ((cname (gen-function-cname name 0)))
+	(declare-static cname)
+	(PUSH fun-stack
+	      (lambda ()
+		(set! current-function-name name)
+		(set! current-function-cname cname)
+		(o.write (format "static void " cname " (void) {"))
+		(o.indent)
+		(if (vars-get-flag context name VFLAG-ALLOCATES)
+		    (o.write (format "check_heap (" (int nreg) ");")))
+		(emit body)
+		(o.dedent)
+		(o.write "}")))
+	(o.write (format "r" (int target) " = allocate (TC_CLOSURE, 2);"))
+	(o.write (format "r" (int target) "[1] = " cname "; r" (int target) "[2] = lenv;"))
 	))
 
-    (define emit-function
-      ;; XXX what if a c-cont happens to consist of a closure?
-      (:function cname (insn:close name nreg body _))
-      -> (begin
-	   (set! current-function-name name)
-	   (set! current-function-cname cname)
-	   (set! current-function-part 0)
-	   (o.write (format "\nstatic void " cname " (void) {"))
-	   (o.indent)
-	   (if (vars-get-flag context name VFLAG-ALLOCATES)
-	       (o.write (format "check_heap (" (int nreg) ");")))
-	   (emit body)
-	   (o.dedent)
-	   (o.write "}")
-	   )
-      (:function cname insn)
-      -> (begin
-	   (o.write (format "\nstatic void " cname " (void) {"))
-	   (o.indent)
-	   (emit insn)
-	   (o.dedent)
-	   (o.write "}")
-	   )
-      x -> (error1 "emit-function: !insn:close?" x)
-      )
+    (define (push-continuation cname insn)
+      (PUSH fun-stack
+	    (lambda ()
+	      (o.write (format "static void " cname " (void) {"))
+	      (o.indent)
+	      (emit insn)
+	      (o.dedent)
+	      (o.write "}")
+	      )))
 
-    (define (push-c-continuation insn)
-      (let ((cname (format "CONT_" (int (c-cont-counter.inc)))))
-	(PUSH fun-stack (:function cname insn))
-	cname))
-    
     (define (push-fail-continuation insn jump)
-      (let ((cname (format "FAIL_CONT_" (int jump))))
-	(PUSH fun-stack (:function cname insn))
-	cname))
+      (push-continuation (format "FAIL_" (int jump)) insn))
 
     (define (push-jump-continuation cont jump)
-      (let ((cname (format "JUMP_CONT_" (int jump))))
-	(match cont with
-	  (cont:k _ _ insn)
-	  -> (PUSH fun-stack (:function cname insn))
-	  x -> (error1 "push-jump-continuation: !cont?" x)
-	  )))
-
-    (define no-cont?
-      (insn:return _)	  -> #t
-      (insn:tail _ _ _)	  -> #t
-      (insn:trcall _ _ _) -> #t
-      (insn:jump _ _ _)	  -> #t
-      (insn:fail _ _)     -> #t
-      _			  -> #f
-      )
-
-    (define (emit-c-continuation insn)
-      (if (no-cont? insn)
-	  (emit insn)
-	  (let ((kname (push-c-continuation insn)))
-	    (declare-static kname)
-	    (o.write (format kname "();"))
-	    )))
+      (push-continuation (format "JUMP_" (int jump)) (k/insn cont)))
 
     (define (emit-varref d i target)
       (if (>= target 0)
@@ -423,25 +379,11 @@
 	    (o.write (format "lenv = r" (int fun) "[2]; " funcall))
 	    )))
 
-    ;; ok how do we do this?  we need to split the C function into two parts.
-    ;;   in other words, we need to
-    ;;   1) generate a new name for the second part
-    ;;   2) store its address into the continuation
-    ;;   3) close off this function
-    ;;   4) open a new one
-    ;;   5) continue on
-
-    ;; don't like the way this is done, it's very hackish, and will probably
-    ;;   break at some point.  probably the most flexible approach is to do
-    ;;   something in continuation-passing style (!), so when pushing a new
-    ;;   cfun onto the stack we push also a thunk that will populate it with
-    ;;   whatever it needs (in this case the restore code).
-
     (define (emit-call name fun args k)
       (let ((free (sort < (k/free k))) ;; sorting these might improve things
 	    (nregs (length free))
 	    (target (k/target k))
-	    (kfun (gen-function-cname current-function-name (+ current-function-part 1)))
+	    (kfun (gen-function-cname current-function-name (current-function-part.inc)))
 	    )
 	;; save
 	(o.write (format "t = allocate (TC_SAVE, " (int (+ 3 nregs)) ");"))
@@ -454,8 +396,8 @@
 	;; call
 	(let ((funcall
 	       (match name with
-		 (maybe:no)	  -> (format "((kfun)(r" (int fun) "[1]))();")
-		 (maybe:yes name) -> (let ((cfun (gen-function-cname name 0)))
+		 (maybe:no)	  -> (format "((kfun)(r" (int fun) "[1]))();") ;;; unknown
+		 (maybe:yes name) -> (let ((cfun (gen-function-cname name 0))) ;;; known
 				       ;; include last-minute forward declaration
 				       (declare-static cfun)
 				       (format cfun "();")
@@ -463,18 +405,25 @@
 	  (if (>= args 0)
 	      (o.write (format "r" (int args) "[1] = r" (int fun) "[2]; lenv = r" (int args) "; " funcall))
 	      (o.write (format "lenv = r" (int fun) "[2]; " funcall))))
-	(set! current-function-cname kfun)
-	(set! current-function-part (+ current-function-part 1))
-	;; end the current cfun, start the next part
-	(o.write (format "}\nstatic void " current-function-cname " (void) {"))
-	;; restore
-	(let ((restores
-	       (map-range
-		   i nregs
-		   (format "r" (int (nth free i)) " = k[" (int (+ i 4)) "]"))))
-	  (o.write (format (string-join restores "; ") "; lenv = k[2]; k = k[1];")))
-	(if (>= target 0)
-	    (o.write (format "r" (int target) " = result;")))
+	;; emit a new c function to represent the continuation of the current irken function
+	(PUSH fun-stack
+	      (lambda ()
+		(set! current-function-cname kfun)
+		(o.write (format "static void " kfun " (void) {"))
+		(o.indent)
+		;; restore
+		(let ((restores
+		       (map-range
+			   i nregs
+			   (format "r" (int (nth free i)) " = k[" (int (+ i 4)) "]"))))
+		  (o.write (format (string-join restores "; ") "; lenv = k[2]; k = k[1];")))
+		(if (>= target 0)
+		    (o.write (format "r" (int target) " = result;")))
+		(emitk k)
+		(o.dedent)
+		(o.write (format "}"))
+		)
+	      )
 	))
 
     (define (emit-trcall depth name regs)
@@ -670,15 +619,15 @@
 
     ;; we emit insns for k0, which may or may not jump to fail continuation in k1
     (define (emit-fatbar label jn k0 k1 k)
-      (let ((k-name (push-fail-continuation k1 label)))
-	(push-jump-continuation k jn)
-	(o.write (format "// fatbar jn=" (int jn) " k-name=" k-name))
-	(emit k0)))
+      (push-fail-continuation k1 label)
+      (push-jump-continuation k jn)
+      (o.write (format "// fatbar jn=" (int jn) " label=" (int label)))
+      (emit k0))
 
     (define (emit-fail label npop)
       (if (> npop 0)
 	  (o.write (format "lenv = ((object " (joins (n-of npop "*")) ")lenv)" (joins (n-of npop "[1]")) ";")))
-      (let ((jname (format "FAIL_CONT_" (int label))))
+      (let ((jname (format "FAIL_" (int label))))
 	(declare-static jname)
 	(o.write (format jname "();"))
 	))
@@ -733,7 +682,7 @@
 			     (o.write "default: {")
 			     (o.write (format "case (" tag "): {")))
 			 (o.indent)
-			 (emit-c-continuation sub)
+			 (emit sub)
 			 (o.dedent)
 			 (o.write "} break;")
 			 (o.dedent)
@@ -744,7 +693,7 @@
 			  (o.indent)
 			  (o.write "default: {")
 			  (o.indent)
-			  (emit-c-continuation ealt0)
+			  (emit ealt0)
 			  (o.dedent)
 			  (o.write "}")
 			  (o.dedent))
@@ -770,7 +719,7 @@
 	      (o.indent)
 	      (o.write case1)
 	      (o.indent)
-	      (emit-c-continuation alt)
+	      (emit alt)
 	      (o.dedent)
 	      (o.write "} break;")
 	      (o.dedent)))
@@ -780,7 +729,7 @@
 	       (o.indent)
 	       (o.write (format "default: {"))
 	       (o.indent)
-	       (emit-c-continuation ealt)
+	       (emit ealt)
 	       (o.dedent)
 	       (o.write "};")
 	       (o.dedent))
@@ -797,7 +746,7 @@
     (let loop ()
       (match fun-stack with
 	() -> #u
-	_  -> (begin (emit-function (pop fun-stack)) (loop))
+	_  -> (begin ((pop fun-stack)) (loop))
 	))
     ))
 
