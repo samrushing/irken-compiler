@@ -15,7 +15,7 @@
   (:cexp type type string (list int) cont)                      ;; <sig> <solved-type> <template> <args> <k>
   (:test int int insn insn cont)                                ;; <reg> <jump-number> <then> <else> <k>
   (:testcexp (list int) type string int insn insn cont)         ;; <regs> <sig> <template> <jump-number> <then> <else> <k>
-  (:jump int int int)                                           ;; <reg> <target> <jump-number>
+  (:jump int int int (list int))                                ;; <reg> <target> <jump-number> <free>
   (:close symbol int insn cont)                                 ;; <name> <nfree> <body> <k>
   (:varref int int cont)                                        ;; <depth> <index> <k>
   (:varset int int int cont)                                    ;; <depth> <index> <reg> <k>
@@ -30,7 +30,7 @@
   (:primop symbol sexp type (list int) cont)                    ;; <name> <params> <args> <k>
   (:move int int cont)                                          ;; <var> <src> <k>
   (:fatbar int int insn insn cont)                              ;; <label> <jump-num> <alt0> <alt1> <k>
-  (:fail int int)                                               ;; <label> <npop>
+  (:fail int int (list int))                                    ;; <label> <npop> <free>
   (:nvcase int symbol (list symbol) int (list insn) (maybe insn) cont)      ;; <reg> <dt> <tags> <jump-num> <alts> <ealt> <k>
   (:pvcase int (list symbol) (list int) int (list insn) (maybe insn) cont)  ;; <reg> <tags> <arities> <jump-num> <alts> <ealt> <k>
   )
@@ -213,8 +213,8 @@
 			     (insn:test
 			      reg
 			      jump-num
-			      (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target jump-num))))
-			      (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target jump-num))))
+			      (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
+			      (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
 			      k))
 			   )))
 	  _ -> (error1 "c-conditional" exp)
@@ -229,8 +229,8 @@
 	  (insn:testcexp
 	   regs sig template
 	   jump-num
-	   (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target jump-num))))
-	   (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target jump-num))))
+	   (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
+	   (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
 	   k))
 	(collect-primargs test.subs lenv k finish)))
 
@@ -242,7 +242,6 @@
     (define (c-function name formals id body lenv k)
       (set-flag! VFLAG-ALLOCATES)
       (PUSH current-funs name)
-      (context.regalloc.reset)
       (let ((regvars (get-register-variables '() lenv))
 	    (r
 	     (insn:close
@@ -254,7 +253,6 @@
 		       (cont regvars gen-return)
 		       )
 	      k)))
-	;; XXX consider asserting that regvars is of the form (0 1 2 3 ...)
 	(PUSH context.profile-funs current-funs)
 	(pop current-funs)
 	r))
@@ -415,10 +413,16 @@
 			     -> (if (vars-get-flag context name VFLAG-FUNCTION)
 				    (maybe:yes name)
 				    (maybe:no))
-			     _ -> (maybe:no))))
+			     _ -> (maybe:no)))
+		     (free (k/free k)))
 		 (define (make-call args-reg)
-		   (compile #f fun lenv (cont (cons args-reg (k/free k))
-					      (lambda (closure-reg) (gen-invoke name closure-reg args-reg k)))))
+		   (compile #f fun lenv
+			    (cont
+			     (if (= args-reg -1)
+				 free
+				 (cons args-reg free))
+			     (lambda (closure-reg)
+			       (gen-invoke name closure-reg args-reg k)))))
 		 (if (> (length args) 0)
 		     (compile-args args lenv (cont (k/free k) make-call))
 		     (make-call -1))))
@@ -429,14 +433,15 @@
       (set-flag! VFLAG-ALLOCATES)
       (match args with
 	() -> (insn:new-env 0 (lenv-top? lenv) k)
-	_  -> (let ((nargs (length args)))
+	_  -> (let ((nargs (length args))
+		    (target (k/target k))
+		    (free (k/free k)))
 		(insn:new-env
 		 nargs
 		 (lenv-top? lenv)
-		 (cont (k/free k)
-		       (lambda (tuple-reg)
-			 (compile-store-args 0 1 args tuple-reg
-					     (cons tuple-reg (k/free k)) lenv k)))))
+		 (cont:k target free
+			 (compile-store-args 0 1 args target
+					     (list:cons target free) lenv k))))
 	))
 
     (define (compile-store-args i offset args tuple-reg free-regs lenv k)
@@ -447,7 +452,7 @@
 	       (insn:store
 		offset arg-reg tuple-reg i
 		(if (null? (cdr args)) ;; was this the last argument?
-		    k
+		    (cont:k -1 free-regs (k/insn k)) ;; avoid bogus target for <store>
 		    (dead
 		     free-regs
 		     (compile-store-args (+ i 1) offset (cdr args) tuple-reg free-regs lenv k))))))))
@@ -505,7 +510,7 @@
 		   (eclause (nth subs 1))
 		   (alts (cdr (cdr subs))))
 	       (define (finish test-reg)
-		 (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num))))
+		 (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
 		       (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
 		       (ealt1
 			(if (not (= (dt.get-nalts) (length alts)))
@@ -527,7 +532,7 @@
 	       (eclause (nth subs 1))
 	       (alts (cdr (cdr subs))))
 	   (define (finish test-reg)
-	     (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num))))
+	     (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
 		   (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
 		   (else? (match eclause.t with (node:primapp '%match-error _) -> #f _ -> #t))
 		   (ealt (if else? (maybe:yes (compile tail? eclause lenv jump-k)) (maybe:no))))
@@ -545,8 +550,8 @@
 	(insn:fatbar
 	 label
 	 jump-num
-	 (compile tail? (nth subs 0) lenv0 (cont free (lambda (reg) (insn:jump reg target jump-num))))
-	 (compile tail? (nth subs 1) lenv  (cont free (lambda (reg) (insn:jump reg target jump-num))))
+	 (compile tail? (nth subs 0) lenv0 (cont free (lambda (reg) (insn:jump reg target jump-num free))))
+	 (compile tail? (nth subs 1) lenv  (cont free (lambda (reg) (insn:jump reg target jump-num free))))
 	 k)))
 
     (define (c-fail tail? lenv k)
@@ -557,14 +562,15 @@
 	  (cpsenv:nil)		-> (error "%fail without fatbar?")
 	  (cpsenv:rib _ lenv)	-> (loop (+ depth 1) lenv)
 	  (cpsenv:reg _ _ lenv) -> (loop depth lenv)
-	  (cpsenv:fat label _)	-> (insn:fail label depth))))
+	  (cpsenv:fat label _)	-> (insn:fail label depth (k/free k)))))
 
     (define (c-vcon params args lenv k)
       (match params with
 	(sexp:list ((sexp:symbol label) _))
 	-> (let ((tag (alist/get context.variant-labels label "unknown variant label?"))
 		 (free (k/free k))
-		 (nargs (length args)))
+		 (nargs (length args))
+		 (target (k/target k)))
 	     (if (> nargs 0)
 		 (set-flag! VFLAG-ALLOCATES))
 	     ;; in python this was implemented as a %make-tuple primitive, which used
@@ -573,12 +579,11 @@
 	     (if (> nargs 0)
 		 (insn:alloc (tag:uobj tag)
 			     nargs
-			     (cont free
-				   (lambda (reg)
+			     (cont:k target free
 				     (compile-store-args
-				      0 0 args reg
-				      (list:cons reg free)
-				      lenv k))))
+				      0 0 args target
+				      (list:cons target free)
+				      lenv k)))
 		 (insn:alloc (tag:uobj tag) 0 k)))
 	_ -> (error1 "bad %vcon params" params)))
 
@@ -589,9 +594,8 @@
 	(match exp.t with
 	  (node:primapp '%rextend (sexp:symbol field)) ;; add another field
 	  -> (match exp.subs with
-	       (exp0 val)
-	       -> (loop exp0 (list:cons (:pair field val) fields))
-	       _ -> (error1 "malformed %rextend" exp))
+	       (exp0 val) -> (loop exp0 (list:cons (:pair field val) fields))
+	       _	  -> (error1 "malformed %rextend" exp))
 	  (node:primapp '%rmake _) ;; done - put the names in canonical order
 	  -> (let ((fields0 (sort 
 			    (lambda (a b)
@@ -602,15 +606,19 @@
 		   (sig (map pair->first fields0))
 		   (args (map pair->second fields0))
 		   (tag (get-record-tag sig))
-		   (free (k/free k)))
+		   (free (k/free k))
+		   (target (k/target k))
+		   )
 	       (insn:alloc (tag:uobj tag)
 			   (length args)
-			   (cont free
-				 (lambda (reg)
+			   ;; this is a hack.  the issue is that <k> already holds the target for
+			   ;;   the allocation... compile-store-args is broken in that it assigns
+			   ;;   a target for a <stor> [rather than a dead cont].
+			   (cont:k target free
 				   (compile-store-args
-				    0 0 args reg
-				    (list:cons reg free)
-				    lenv k)))))
+				    0 0 args target
+				    (list:cons target free)
+				    lenv k))))
 	  _ -> (c-record-extension fields exp lenv k))))
 		       
     (define (c-record-extension fields exp lenv k)
@@ -694,7 +702,7 @@
     (insn:litcon i kind k)          -> (print-line (lambda () (ps2 "litcon") (ps i) (ps kind)) k)
     (insn:cexp sig typ tem args k)  -> (print-line (lambda () (ps2 "cexp") (ps2 (type-repr sig)) (ps2 (type-repr typ)) (ps tem) (ps args)) k)
     (insn:test reg jn then else k)  -> (print-line (lambda () (ps2 "test") (ps reg) (ps jn) (print-insn then (+ d 1)) (print-insn else (+ d 1))) k)
-    (insn:jump reg trg jn)	    -> (print-line (lambda () (ps2 "jmp") (ps trg) (ps jn)) (cont:nil))
+    (insn:jump reg trg jn f)	    -> (print-line (lambda () (ps2 "jmp") (ps trg) (ps jn) (ps f)) (cont:nil))
     (insn:close name nreg body k)   -> (print-line (lambda () (ps2 "close") (ps name) (ps nreg) (print-insn body (+ d 1))) k)
     (insn:varref d i k)		    -> (print-line (lambda () (ps2 "ref") (ps d) (ps i)) k)
     (insn:varset d i v k)	    -> (print-line (lambda () (ps2 "set") (ps d) (ps i) (ps v)) k)
@@ -707,7 +715,7 @@
     (insn:primop name p t args k)   -> (print-line (lambda () (ps2 "primop") (ps name) (ps2 (repr p)) (ps2 (type-repr t)) (ps args)) k)
     (insn:move var src k)           -> (print-line (lambda () (ps2 "move") (ps var) (ps src)) k)
     (insn:fatbar lab jn k0 k1 k)    -> (print-line (lambda () (ps2 "fatbar") (ps lab) (ps jn) (print-insn k0 (+ d 1)) (print-insn k1 (+ d 1))) k)
-    (insn:fail lab npop)            -> (print-line (lambda () (ps2 "fail") (ps lab) (ps npop)) (cont:nil))
+    (insn:fail lab npop f)          -> (print-line (lambda () (ps2 "fail") (ps lab) (ps npop) (ps f)) (cont:nil))
     (insn:testcexp r s t jn k0 k1 k)
     -> (print-line
 	(lambda ()
@@ -745,8 +753,8 @@
 	     (insn:return target) -> (cont:nil)
 	     (insn:tail _ _ _)	  -> (cont:nil)
 	     (insn:trcall _ _ _)  -> (cont:nil)
-	     (insn:jump _ _ _)	  -> (cont:nil)
-	     (insn:fail _ _)      -> (cont:nil)
+	     (insn:jump _ _ _ _)  -> (cont:nil)
+	     (insn:fail _ _ _)    -> (cont:nil)
 	     ;; these insns contain sub-bodies...
 	     (insn:fatbar _ _ k0 k1 k)	       -> (begin (walk k0 (+ d 1)) (walk k1 (+ d 1)) k)
 	     (insn:close _ nreg body k)	       -> (begin (walk body (+ d 1)) k)
