@@ -45,12 +45,11 @@ Which does the following:
 3. that binary will recompile the compiler again.
 4. the output from steps 2 and 3 are compared, they should be identical.
 
-If you're happy with the resulting compiler, you can compile an
-optimized version of self/compile.c, but be warned - you may need a
-lot of time and memory.  At this time (early 2013), clang builds -O3
-in about 30 seconds.  It is not possible to compile
-with optimization off, because this disables the tail call optimization
-that Irken relies on - otherwise the stack will overflow instantly.
+Note: It is not possible to compile with optimization off, because
+this disables the tail call optimization that Irken relies on -
+otherwise the stack will overflow instantly.
+
+At this time (early 2013), clang builds -O3 in about 30 seconds.  
 
 130301: The 'ctailfun/noreg-ssa' branch has been merged into master.  This is
   a fairly radical rearchitecting of the compiler that will enable lots of fun
