@@ -1,7 +1,7 @@
 The Irken Compiler
 ------------------
 
-![irken logo](irken.svg "logo")
+![irken logo](http://dark.nightmare.com/rushing/irken/irken/irken.svg "logo")
 
 Irken is a statically-typed, simplified variant of Scheme.  Or... a
 lisp-like variant of ML, depending on your point of view.  If you're
