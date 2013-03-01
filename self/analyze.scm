@@ -135,21 +135,22 @@
 
 (define (find-free-refs node context)
 
-  (define (maybe-free name lenv)
-    (if (not (member-eq? name (car lenv)))
+  (define (maybe-free name locals)
+    (if (not (member-eq? name locals))
 	(vars-set-flag! context name VFLAG-FREEREF)))
 
-  (define (search node lenv)
+  (define (search node locals)
     (match node.t with
-      ;; the three binding constructs extend the environment...
-      (node:function _ formals) -> (set! lenv (list:cons formals lenv))
-      (node:fix names)		-> (set! lenv (list:cons names lenv))
-      (node:let names)		-> (set! lenv (list:cons names lenv))
+      ;; these two binding constructs extend the environment...
+      (node:fix names)		-> (set! locals (append names locals))
+      (node:let names)		-> (set! locals (append names locals))
+      ;; but only this one adds a boundary layer
+      (node:function _ formals) -> (set! locals formals)
       ;; ... and here we search the environment.
-      (node:varref name)	-> (maybe-free name lenv)
-      (node:varset name)	-> (maybe-free name lenv)
+      (node:varref name)	-> (maybe-free name locals)
+      (node:varset name)	-> (maybe-free name locals)
       _				-> #u)
-    (for-each (lambda (x) (search x lenv)) node.subs))
+    (for-each (lambda (x) (search x locals)) node.subs))
 
   (search node (list:nil))
   )
