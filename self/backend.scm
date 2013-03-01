@@ -173,13 +173,30 @@
 							  r)
 						 tl))))))
 
+(define (find-jumps insns)
+  (let ((used (map-maker <)))
+    (walk-insns
+     (lambda (insn _)
+       (match insn with
+	 (insn:jump reg target num free)
+	 -> (match (used::get num) with
+	      (maybe:yes _) -> #u
+	      (maybe:no)    -> (used::add num (if (> target 0)
+						  (list:cons target free)
+						  free
+						  )))
+	 _ -> #u))
+     insns)
+    used))
+
 (define (emit o decls insns context)
 
   (let ((fun-stack '())
 	(current-function-cname "")
 	(current-function-name 'toplevel)
 	(current-function-part (make-counter 0))
-	)
+	(used-jumps (find-jumps insns))
+	(fatbar-free (map-maker <)))
 
     (define emitk
       (cont:k _ _ k) -> (emit k)
@@ -193,11 +210,11 @@
 	 (insn:litcon i kind k)			      -> (begin (emit-litcon i kind (k/target k)) k)
 	 (insn:test reg jn k0 k1 k)		      -> (begin (emit-test reg jn k0 k1 k) (cont:nil))
 	 (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
-	 (insn:jump reg target jn)		      -> (begin (emit-jump reg target jn) (cont:nil))
+	 (insn:jump reg target jn free)		      -> (begin (emit-jump reg target jn free) (cont:nil))
 	 (insn:cexp sig type template args k)	      -> (begin (emit-cexp sig type template args (k/target k)) k)
 	 (insn:close name nreg body k)		      -> (begin (emit-close name nreg body (k/target k)) k)
 	 (insn:varref d i k)			      -> (begin (emit-varref d i (k/target k)) k)
-	 (insn:varset d i v k)			      -> (begin (emit-varset d i v) k)
+	 (insn:varset d i v k)			      -> (begin (emit-varset d i v (k/target k)) k)
 	 (insn:new-env size top? k)		      -> (begin (emit-new-env size top? (k/target k)) k)
 	 (insn:alloc tag size k)		      -> (begin (emit-alloc tag size (k/target k)) k)
 	 (insn:store off arg tup i k)		      -> (begin (emit-store off arg tup i) k)
@@ -209,7 +226,7 @@
 	 (insn:primop name parm t args k)	      -> (begin (emit-primop name parm t args k) k)
 	 (insn:move dst var k)			      -> (begin (emit-move dst var (k/target k)) k)
 	 (insn:fatbar lab jn k0 k1 k)		      -> (begin (emit-fatbar lab jn k0 k1 k) (cont:nil))
-	 (insn:fail label npop)			      -> (begin (emit-fail label npop) (cont:nil))
+	 (insn:fail label npop free)		      -> (begin (emit-fail label npop free) (cont:nil))
 	 (insn:nvcase tr dt tags jn alts ealt k)      -> (begin (emit-nvcase tr dt tags jn alts ealt k) (cont:nil))
 	 (insn:pvcase tr tags arities jn alts ealt k) -> (begin (emit-pvcase tr tags arities jn alts ealt k) (cont:nil))
 	 )))
@@ -272,11 +289,14 @@
 	     (o.write "}"))
 	_ -> (impossible)))
 
-    (define (emit-jump reg target jump-num)
+    (define (emit-jump reg target jump-num free)
       (move reg target)
       (let ((jname (format "JUMP_" (int jump-num))))
-	(declare-static jname)
-	(o.write (format jname "();"))
+	(match (used-jumps::get jump-num) with
+	  (maybe:yes free)
+	  -> (o.write (format jname "(" (join (lambda (x) (format "r" (int x))) ", " free) ");"))
+	  (maybe:no)
+	  -> (impossible))
 	))
 
     ;; XXX consider this: giving access to the set of free registers.
@@ -298,6 +318,24 @@
 	    (o.write (format exp ";"))
 	    (o.write (format "O r" (int target) " = " exp ";")))))
 
+    (define (emit-check-heap free size)
+      (let ((n (length free)))
+	(o.write (format "if (freep + " size " >= limit) {"))
+	(o.indent)
+	;; copy free variables into tospace
+	(for-range
+	    i n
+	    (o.write (format "heap1[" (int (+ i 3)) "] = r" (int (nth free i)) ";")))
+	;; gc
+	(o.write (format "gc_flip (" (int n) ");"))
+	;; copy values back into free variables
+	(for-range
+	    i n
+	    (o.write (format "r" (int (nth free i)) " = heap0[" (int (+ i 3)) "];")))
+	(o.dedent)
+	(o.write "}")
+	))
+
     (define (emit-close name nreg body target)
       (let ((cname (gen-function-cname name 0)))
 	(declare-static cname)
@@ -308,7 +346,8 @@
 		(o.write (format "static void " cname " (void) {"))
 		(o.indent)
 		(if (vars-get-flag context name VFLAG-ALLOCATES)
-		    (o.write (format "check_heap (" (int nreg) ");")))
+		    ;; XXX this only works because we disabled letreg around functions
+		    (emit-check-heap '() "0"))
 		(emit body)
 		(o.dedent)
 		(o.write "}")))
@@ -316,21 +355,29 @@
 	(o.write (format "r" (int target) "[1] = " cname "; r" (int target) "[2] = lenv;"))
 	))
 
-    (define (push-continuation cname insn)
-      (PUSH fun-stack
-	    (lambda ()
-	      (o.write (format "static void " cname " (void) {"))
-	      (o.indent)
-	      (emit insn)
-	      (o.dedent)
-	      (o.write "}")
-	      )))
+    (define (push-continuation cname insn args)
+      (let ((args (format (join (lambda (x) (format "O r" (int x))) ", " args))))
+	(PUSH fun-stack
+	      (lambda ()
+		(o.write (format "static void " cname "(" args ") {"))
+		(o.indent)
+		(emit insn)
+		(o.dedent)
+		(o.write "}")
+		))))
 
-    (define (push-fail-continuation insn jump)
-      (push-continuation (format "FAIL_" (int jump)) insn))
+    (define (push-fail-continuation insn jump args)
+      (push-continuation (format "FAIL_" (int jump)) insn args))
 
     (define (push-jump-continuation cont jump)
-      (push-continuation (format "JUMP_" (int jump)) (k/insn cont)))
+      (match (used-jumps::get jump) with
+	(maybe:yes free)
+	-> (let ((cname (format "JUMP_" (int jump))))
+	     (decls.write (format "static void " cname "(" (string-join (n-of (length free) "O") ", ") ");"))
+	     (push-continuation (format "JUMP_" (int jump)) (k/insn cont) free)
+	     )
+	(maybe:no)
+	-> #u))
 
     (define (emit-varref d i target)
       (if (>= target 0)
@@ -342,12 +389,19 @@
 		     )))
 	    (o.write (format "O r" (int target) " = " src)))))
 
-    (define (emit-varset d i v)
+    (define (emit-varset d i v target)
       (if (= d -1)
 	  (o.write (format "top[" (int (+ 2 i)) "] = r" (int v) ";"))
 	  ;;(o.write (format "varset (lenv, " (int d) ", " (int i) ", r" (int v) ");"))
 	  (o.write (format "((object*" (repeat d "*") ") lenv) " (repeat d "[1]") "[" (int (+ i 2)) "] = r" (int v) ";"))
-	  ))
+	  )
+      (when (> target 0)
+	    ;; this handles this idiom:
+	    ;; (let ((x 3)
+	    ;;       (_ (set! x 99))
+	    ;;       (y ...)) ...)
+	    ;; the set! is a dead assignment, but we need to put something there
+	    (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 
     (define (emit-new-env size top? target)
       (o.write (format "O r" (int target) " = allocate (TC_ENV, " (int (+ size 1)) ");"))
@@ -505,7 +559,7 @@
 				  (cond ((= nargs 0)
 					 (o.write (format "O r" (int target) " = (object*)" (get-uitag dtname altname alt.index) ";")))
 					(else
-					 (o.write (format "O t = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
+					 (o.write (format "t = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
 					 (for-range
 					     i nargs
 					     (o.write (format "t[" (int (+ i 1)) "] = r" (int (nth args i)) ";")))
@@ -521,6 +575,7 @@
 			     -> (begin
 				  ;; since we cannot know the size at compile-time, there should
 				  ;; always be a call to ensure_heap() before any call to %make-vector
+				  (o.write (format "O r" (int target) ";"))
 				  (o.write (format "if (unbox(r" (int vlen) ") == 0) { r" (int target) " = (object *) TC_EMPTY_VECTOR; } else {"))
 				  (o.write (format "  t = alloc_no_clear (TC_VECTOR, unbox(r" (int vlen) "));"))
 				  (o.write (format "  for (int i=0; i<unbox(r" (int vlen) "); i++) { t[i+1] = r" (int vval) "; }"))
@@ -537,7 +592,9 @@
 			   (vec index val)
 			   -> (begin
 				(o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-				(o.write (format "((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";")))
+				(o.write (format "((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";"))
+				(when (> target 0)
+				      (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 			   _ -> (primop-error))
 	  '%record-get -> (match parm args with
 			    (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
@@ -568,16 +625,21 @@
 				   -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; run-time lookup
 						       ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
 						       ")-TC_USEROBJ)>>2," (int label-code)
-						       ")] = r" (int arg-reg) ";"))))
+						       ")] = r" (int arg-reg) ";")))
+				 (when (> target 0)
+				       (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 			    _ _ -> (primop-error))
-	  '%ensure-heap -> (o.write (format "ensure_heap (" (int (length (k/free k))) ", unbox(r" (int (car args)) "));"))
+	  '%ensure-heap -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
 	  '%callocate -> (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
 			   ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
 			   (if (>= target 0)
 			       (o.write (format "O r" (int target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
 						") * unbox(r" (int (car args)) "), sizeof (object)));"))
 			       (error1 "%callocate: dead target?" type)))
-	  '%exit -> (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
+	  '%exit -> (begin
+		      (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
+		      (when (> target 0)
+			    (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 	  '%cget -> (match args with
 		      (rbase rindex)
 		      ;; XXX range-check (probably need to add a length param to TC_BUFFER)
@@ -589,7 +651,9 @@
 		      ;; XXX range-check (probably need to add a length param to TC_BUFFER)
 		      -> (let ((rval-exp (lookup-cast to-type from-type (format "r" (int rval))))
 			       (lval (format "(((" (type-repr to-type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
-			   (o.write (format lval " = " rval-exp ";")))
+			   (o.write (format lval " = " rval-exp ";"))
+			   (when (> target 0)
+				 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 		      _ _ -> (primop-error))
 	  '%getcc -> (match args with
 		       () -> (o.write (format "O r" (int target) " = k; // %getcc"))
@@ -619,18 +683,24 @@
 
     ;; we emit insns for k0, which may or may not jump to fail continuation in k1
     (define (emit-fatbar label jn k0 k1 k)
-      (push-fail-continuation k1 label)
+      (fatbar-free::add label (k/free k))
+      (push-fail-continuation k1 label (k/free k))
       (push-jump-continuation k jn)
       (o.write (format "// fatbar jn=" (int jn) " label=" (int label)))
       (emit k0))
 
-    (define (emit-fail label npop)
+    (define (emit-fail label npop free)
       (if (> npop 0)
 	  (o.write (format "lenv = ((object " (joins (n-of npop "*")) ")lenv)" (joins (n-of npop "[1]")) ";")))
       (let ((jname (format "FAIL_" (int label))))
-	(declare-static jname)
-	(o.write (format jname "();"))
-	))
+	(match (fatbar-free::get label) with
+	  (maybe:yes free)
+	  -> (begin
+	       (o.write (format jname "(" (join (lambda (x) (format "r" (int x))) ", " free) ");"))
+	       (decls.write (format "static void " jname "(" (string-join (n-of (length free) "O") ", ") ");")))
+	  (maybe:no)
+	  -> (impossible)
+	  )))
 
     ;;
     ;; thinking about get_case():
