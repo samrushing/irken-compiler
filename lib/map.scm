@@ -50,3 +50,38 @@
       )))
 
 (define map-maker (map-class))
+
+;; set class using aa_map and ignoring values.
+(define (set2-class)
+  
+  (define (add self k)
+    (match (tree/member self.t self.cmp k) with
+      (maybe:yes _) -> #u
+      (maybe:no) -> (set! self.t (tree/insert self.t self.cmp k #u))))
+
+  (define (member self k)
+    (match (tree/member self.t self.cmp k) with
+      (maybe:yes _) -> #t
+      (maybe:no)    -> #f
+      ))
+
+  (define (iterate self p)
+    (tree/inorder
+     (lambda (k v) (p k))
+     self.t))
+
+  (define (keys self)
+    (tree/keys self.t))
+
+  (let ((methods
+	 {add=add
+	  member=member
+	  iterate=iterate
+	  keys=keys}))
+    ;; new method
+    (lambda (cmp)
+      ;; don't modify the cmp function slot, you dolt.
+      {o=methods t=(tree/empty) cmp=cmp}
+      )))
+
+(define set2-maker (set2-class))
