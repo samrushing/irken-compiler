@@ -369,7 +369,7 @@ pxll_int vm (int argc, char * argv[]);
 
 #include "rdtsc.h"
 
-unsigned long long gc_ticks = 0;
+uint64_t gc_ticks = 0;
 
 #if 0
 static
@@ -419,33 +419,6 @@ static object * freep; // = heap0;
 
 #include "gc1.c"
 
-// check heap is called at the top of each allocating function.
-//  [by locating the check at the top, we avoid considering any
-//   registers as roots of the gc...]
-static void
-check_heap (int nfree)
-{
-  if (freep >= limit) {
-    uint64_t t0, t1;
-    t0 = rdtsc();
-    gc_flip (nfree);
-    t1 = rdtsc();
-    gc_ticks += t1 - t0;
-  }
-}
-
-static void
-ensure_heap (int nfree, pxll_int size)
-{
-  if (freep + size + 1 >= limit) {
-    uint64_t t0, t1;
-    t0 = rdtsc();
-    gc_flip (nfree);
-    t1 = rdtsc();
-    gc_ticks += t1 - t0;
-  }
-}
-
 static object *
 allocate (pxll_int tc, pxll_int size)
 {
@@ -476,13 +449,25 @@ alloc_no_clear (pxll_int tc, pxll_int size)
   return save;  
 }
 
+static uint64_t program_start_time;
+static uint64_t program_end_time;
+
 typedef void(*kfun)(void);
-static void exit_continuation (void) {}
+static void exit_continuation (void)
+{
+  program_end_time = rdtsc();
+  dump_object ((object *) result, 0);
+  fprintf (stdout, "\n");
+  fprintf (stderr, "{total ticks: %lld gc ticks: %lld}\n", program_end_time - program_start_time, gc_ticks);
+  exit(0);
+}
+
 static void toplevel (void);
 
 // XXX rename these!
 static int argc;
 static char ** argv;
+
 
 int
 main (int _argc, char * _argv[])
@@ -493,7 +478,6 @@ main (int _argc, char * _argv[])
     fprintf (stderr, "unable to allocate heap\n");
     return -1;
   } else {
-    unsigned long long t0, t1;
     if (clear_tospace) {
       clear_space (heap0, heap_size);
     }
@@ -505,13 +489,9 @@ main (int _argc, char * _argv[])
     k[1] = (object *) PXLL_NIL; // top of stack
     k[2] = (object *) PXLL_NIL; // null environment
     k[3] = exit_continuation;
-    t0 = rdtsc();
+    program_start_time = rdtsc();
     toplevel();
-    t1 = rdtsc();
-    dump_object ((object *) result, 0);
-    fprintf (stdout, "\n");
-    fprintf (stderr, "{total ticks: %lld gc ticks: %lld}\n", t1 - t0, gc_ticks);
-    return (int) result;
+    return 1;
   }
 }
 
