@@ -375,8 +375,7 @@
 			(lambda (regs) (insn:primop op parm type regs k))))
 
     (define (safe-for-let-reg exp names context)
-      (and #f
-	   (not context.options.noletreg)
+      (and (not context.options.noletreg)
 	   (node-get-flag exp NFLAG-LEAF)
 	   (< (length names) 5)
 	   (not (some?
