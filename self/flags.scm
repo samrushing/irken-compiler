@@ -1,3 +1,3 @@
 
 (define CC "clang")
-(define CFLAGS "-O3 -g -I./include")
+(define CFLAGS "-std=c99 -O3 -fomit-frame-pointer -g -I./include")
