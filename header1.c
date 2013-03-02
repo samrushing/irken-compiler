@@ -459,7 +459,7 @@ static void exit_continuation (void)
   dump_object ((object *) result, 0);
   fprintf (stdout, "\n");
   fprintf (stderr, "{total ticks: %lld gc ticks: %lld}\n", program_end_time - program_start_time, gc_ticks);
-  exit(0);
+  exit((int)result);
 }
 
 static void toplevel (void);
