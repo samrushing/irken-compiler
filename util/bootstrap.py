@@ -82,6 +82,7 @@ def diff (p0, p1):
 samesame = diff ('self/compile.1.c', 'self/compile.2.c')
 if samesame:
     print 'stage1 and stage2 identical, party on wayne!'
+    print 'consider running "python util/install.py" now'
 else:
     print 'stage1 and stage2 output differs'
 
