@@ -458,7 +458,7 @@ static void exit_continuation (void)
   program_end_time = rdtsc();
   dump_object ((object *) result, 0);
   fprintf (stdout, "\n");
-  fprintf (stderr, "{total ticks: %lld gc ticks: %lld}\n", program_end_time - program_start_time, gc_ticks);
+  fprintf (stderr, "{total ticks: %" PRIu64 "gc ticks: %" PRIu64 "}\n", program_end_time - program_start_time, gc_ticks);
   exit((int)result);
 }
 
