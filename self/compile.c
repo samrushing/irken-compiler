@@ -1298,7 +1298,7 @@ pxll_int constructed_800[] = {TC_NIL};
 pxll_int constructed_801[] = {TC_NIL};
 pxll_int constructed_802[] = {TC_NIL};
 pxll_int constructed_803[] = {TC_NIL};
-pxll_string constructed_804 = {STRING_HEADER(7), 7, "-O3 -I." };
+pxll_string constructed_804 = {STRING_HEADER(18), 18, "-O3 -g -I./include" };
 pxll_string constructed_805 = {STRING_HEADER(5), 5, "clang" };
 pxll_string constructed_806 = {STRING_HEADER(27), 27, "// CONSTRUCTED LITERALS //\n" };
 pxll_string constructed_807 = {STRING_HEADER(28), 28, "// REGISTER_DECLARATIONS //\n" };
@@ -1762,7 +1762,7 @@ static void exit_continuation (void)
   program_end_time = rdtsc();
   dump_object ((object *) result, 0);
   fprintf (stdout, "\n");
-  fprintf (stderr, "{total ticks: %lld gc ticks: %lld}\n", program_end_time - program_start_time, gc_ticks);
+  fprintf (stderr, "{total ticks: %" PRIu64 " gc ticks: %" PRIu64 "}\n", program_end_time - program_start_time, gc_ticks);
   exit((int)result);
 }
 
