@@ -35,7 +35,7 @@ for path in os.listdir ('lib'):
 # copy headers
 headers = ['header1.c', 'gc1.c', 'pxll.h', 'rdtsc.h']
 for path in headers:
-    system ('cp -p %s %s' % (path, IRKENINC))
+    system ('cp -p include/%s %s' % (path, IRKENINC))
 
 # copy binary
 system ('cp -p self/compile %s/irken' % (IRKENBIN,))
