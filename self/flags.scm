@@ -1,3 +1,3 @@
 
 (define CC "clang")
-(define CFLAGS "-O3 -I.")
+(define CFLAGS "-O3 -g -I./include")
