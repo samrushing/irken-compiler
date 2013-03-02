@@ -1298,7 +1298,7 @@ pxll_int constructed_800[] = {TC_NIL};
 pxll_int constructed_801[] = {TC_NIL};
 pxll_int constructed_802[] = {TC_NIL};
 pxll_int constructed_803[] = {TC_NIL};
-pxll_string constructed_804 = {STRING_HEADER(18), 18, "-O3 -g -I./include" };
+pxll_string constructed_804 = {STRING_HEADER(48), 48, "-std=c99 -O3 -fomit-frame-pointer -g -I./include" };
 pxll_string constructed_805 = {STRING_HEADER(5), 5, "clang" };
 pxll_string constructed_806 = {STRING_HEADER(27), 27, "// CONSTRUCTED LITERALS //\n" };
 pxll_string constructed_807 = {STRING_HEADER(28), 28, "// REGISTER_DECLARATIONS //\n" };
