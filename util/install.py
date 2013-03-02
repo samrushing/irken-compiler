@@ -13,6 +13,16 @@ IRKENLIB = PJ (PREFIX, "lib/irken/lib")
 IRKENINC = PJ (PREFIX, "lib/irken/include")
 IRKENBIN = PJ (PREFIX, "bin")
 
+def getenv_or (name, default):
+    v = os.getenv (name)
+    if v is not None:
+        return v
+    else:
+        return default
+
+gcc = getenv_or ('CC', 'clang')
+cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -g -I./include')
+
 def system (cmd):
     print cmd
     if os.system (cmd) != 0:
@@ -37,7 +47,17 @@ headers = ['header1.c', 'gc1.c', 'pxll.h', 'rdtsc.h']
 for path in headers:
     system ('cp -p include/%s %s' % (path, IRKENINC))
 
+# we need a new binary with the new CFLAGS
+print 'building new binary with updated CFLAGS for install...'
+cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -g -I%s' % (IRKENINC,))
+open ('self/flags.scm', 'wb').write (
+"""
+(define CC "%s")
+(define CFLAGS "%s")
+""" % (gcc, cflags))
+
+# tricky, result code != 0
+os.system ('self/compile self/compile.scm')
+
 # copy binary
 system ('cp -p self/compile %s/irken' % (IRKENBIN,))
-
-
