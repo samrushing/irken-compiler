@@ -1,5 +1,12 @@
 ;; -*- Mode: Irken -*-
 
+(datatype bool (:true) (:false))
+(datatype list
+  (:nil)
+  (:cons 'a (list 'a))
+  )
+(datatype symbol (:t string int)) ;; string unique-id
+
 ;; derived expressions
 
 (defmacro and
@@ -20,11 +27,6 @@
   (let () body ...)
   -> (begin body ...)
 
-  ;; normal <let> here, we just rename it to our core
-  ;; binding construct, <let_splat>
-  (let ((name val) ...) body1 body2 ...)
-  -> (let_splat ((name val) ...) body1 body2 ...)
-
   ;; named let, strict version
   ;; http://groups.google.com/group/comp.lang.scheme/msg/3e2d267c8f0ef180
   ;; bad: this causes all recursive functions to 'escape' and thus lose tr_call!
@@ -32,10 +34,15 @@
   ;;   -> ((letrec ((tag (lambda (name ...) body1 body2 ...)))
   ;; 	tag) val ...)
 
-  ;; not-strict version
-  (let tag ((name val) ...) body1 body2 ...)
-  -> (letrec ((tag (lambda (name ...) body1 body2 ...)))
-       (tag val ...))
+  ;; not-strict version (using (function $tag ...) names the lambda)
+  (let $tag ((name val) ...) body1 body2 ...)
+  -> (letrec (($tag (function $tag (name ...) #f body1 body2 ...)))
+       ($tag val ...))
+
+  ;; normal <let> here, we just rename it to our core
+  ;; binding construct, <let_splat>
+  (let ((name val) ...) body1 body2 ...)
+  -> (let-splat ((name val) ...) body1 body2 ...)
 
   )
 
@@ -55,6 +62,10 @@
 	   (begin body ... ($loop))
 	   #u)))
 
+(defmacro when
+  (when test body ...)
+  -> (if test (begin body ...)))
+
 (defmacro for-range
   (for-range vname num body ...)
   -> (let (($n num))
@@ -64,33 +75,6 @@
 	     (begin body ...
 		    ($loop (+ vname 1)))))))
 
-;; because we have pattern matching, we don't really *need* <case>.
-;; however, without or-patterns it's not quite as compact.
-;; the right solution is to add or-patterns, not to use <case>.
-
-;; XXX cannot be done with the macro system (yet), mostly
-;;     because of my use of %thing/hack0/hack1/...
-;;
-;; nvcase
-;; match
-;;
-
-;; This converts vcase into &vcase, a primapp that uses success and
-;;   failure continuations, which simplifies typing a bit.  Similar
-;;   to a cond->if transformation...
-(defmacro notvcase
-
-  (vcase var)
-  -> (%vfail var)
-
-  (vcase var (<else> body0 ...))
-  -> (begin body0 ...)
-
-  (vcase var (((<colon> ignore label) bind0 ...) body0 ...) clause0 ...)
-  -> (&vcase (label)
-	     (lambda (bind0 ...) body0 ...)
-	     (lambda (vval) (vcase vval clause0 ...))
-	     var
-	     )
-  )
-  
+(defmacro forever
+  (forever body ...)
+  -> (let $loop () body ... ($loop)))
