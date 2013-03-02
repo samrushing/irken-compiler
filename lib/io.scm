@@ -16,36 +16,39 @@
 (define STDERR_FILENO (%%cexp int "STDERR_FILENO"))
 
 (define (open path oflag mode)
-  (let ((fd (%%cexp (string int int -> int) "open (%0, %1, %2)" (zero-terminate path) oflag mode)))
-    (if (>= fd 0)
-	fd
-	(error1 "open() failed" (zero-terminate path)))))
+  (let ((path (zero-terminate path)))
+    (syscall
+     (%%cexp (string int int -> int)
+	     "open (%0, %1, %2)"
+	     path oflag mode))))
 
 (define (read fd size)
   (let ((buffer (make-string size))
-	(r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
-    (cond ((< r 0) (error "read() failed"))
-	  ((= r size) buffer)
-	  (else (copy-string buffer r)))))
+	(r (syscall (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size))))
+    (if (= r size)
+	buffer
+	(copy-string buffer r))))
 
 (define (read-into-buffer fd buffer)
-  (let ((size (string-length buffer))
-	;; XXX range check
-	(r (%%cexp (int string int -> int) "read (%0, %1, %2)" fd buffer size)))
-    r))
+  (syscall
+   (%%cexp (int string int -> int)
+	   "read (%0, %1, %2)"
+	   ;; XXX range check
+	   fd buffer (string-length buffer)
+	   )))
 
 (define (write fd s)
-  (%%cexp (int string int -> int) "write (%0, %1, %2)" fd s (string-length s)))
+  (syscall (%%cexp (int string int -> int) "write (%0, %1, %2)" fd s (string-length s))))
 
 (define (write-substring fd s start len)
   ;; XXX range check
-  (%%cexp (int string int int -> int) "write (%0, %1+%2, %3)" fd s start len))
+  (syscall (%%cexp (int string int int -> int) "write (%0, %1+%2, %3)" fd s start len)))
 
 (define (read-stdin)
   (read 0 1024))
 
 (define (close fd)
-  (%%cexp (int -> int) "close (%0)" fd))
+  (syscall (%%cexp (int -> int) "close (%0)" fd)))
 
 ;; file I/O 'object'
 
