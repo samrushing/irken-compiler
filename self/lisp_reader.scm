@@ -379,7 +379,7 @@
 
     (define (read-include path result)
       ;; cons the forms from this file onto result, in reverse order...
-      (append (reverse (read-file path)) result))
+      (append (reverse (find-and-read-file path)) result))
 
     (define (read-all)
       (let loop ((result '()))
@@ -394,9 +394,33 @@
     (read-all)
     ))
 
+(define (join-paths a b)
+  (let ((alen (string-length a)))
+    (if (char=? #\/ (string-ref a (- alen 1)))
+	(format a b)
+	(format a "/" b))))
+
+(define find-file
+  () name
+  -> (raise (:FileNotFound "file not found" name))
+  (dir . dirs) name
+  -> (try
+      (let ((name0 (join-paths dir name)))
+	(when the-context.options.verbose
+	      (printf "trying " name0 "\n"))
+	(file/open-read name0))
+      except
+      (:OSError _) -> (find-file dirs name)
+      ))
+
 (define (read-file path)
   (print-string "reading file ") (printn path)
   (let ((file (file/open-read path)))
+    (reader (lambda () (file/read-char file)))))
+
+(define (find-and-read-file path)
+  (print-string "reading file ") (printn path)
+  (let ((file (find-file the-context.options.include-dirs path)))
     (reader (lambda () (file/read-char file)))))
 
 (define (read-string s)
@@ -493,16 +517,16 @@
 	  ;; XXX complete for vector & record.
 	  _ -> (print-string (repr exp))))))
 
-(define (test-file)
-  (let ((t (read-file
-	    (if (> sys.argc 1)
-		sys.argv[1]
-		"lib/core.scm"))))
-    ;;  (printn t)
-    ;;(for-each (lambda (x) (printn x) (pp 0 x) (newline)) t)
-    (printn t)
-    (for-each (lambda (x) (pp 0 x) (newline)) t)
-    #u
-    ))
+;; (define (test-file)
+;;   (let ((t (read-file
+;; 	    (if (> sys.argc 1)
+;; 		sys.argv[1]
+;; 		"lib/core.scm"))))
+;;     ;;  (printn t)
+;;     ;;(for-each (lambda (x) (printn x) (pp 0 x) (newline)) t)
+;;     (printn t)
+;;     (for-each (lambda (x) (pp 0 x) (newline)) t)
+;;     #u
+;;     ))
 
 ;(test-file)

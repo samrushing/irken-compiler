@@ -189,7 +189,7 @@
      insns)
     used))
 
-(define (emit o decls insns context)
+(define (emit o decls insns)
 
   (let ((fun-stack '())
 	(current-function-cname "")
@@ -345,7 +345,7 @@
 		(set! current-function-cname cname)
 		(o.write (format "static void " cname " (void) {"))
 		(o.indent)
-		(if (vars-get-flag context name VFLAG-ALLOCATES)
+		(if (vars-get-flag name VFLAG-ALLOCATES)
 		    ;; XXX this only works because we disabled letreg around functions
 		    (emit-check-heap '() "0"))
 		(emit body)
@@ -520,7 +520,7 @@
 	       (:pair sig0 index0)
 	       -> (if (subset? sig sig0)
 		      (PUSH candidates sig0))))
-	   context.records)
+	   the-context.records)
 	  (if (= 1 (length candidates))
 	      ;; unambiguous - there's only one possible match.
 	      (maybe:yes (nth candidates 0))
@@ -552,7 +552,7 @@
 	(match name with
 	  '%dtcon  -> (match parm with
 			(sexp:cons dtname altname)
-			-> (match (alist/lookup context.datatypes dtname) with
+			-> (match (alist/lookup the-context.datatypes dtname) with
 			     (maybe:no) -> (error1 "emit-primop: no such datatype" dtname)
 			     (maybe:yes dt)
 			     -> (let ((alt (dt.get altname)))
@@ -598,7 +598,7 @@
 			   _ -> (primop-error))
 	  '%record-get -> (match parm args with
 			    (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
-			    -> (let ((label-code (lookup-label-code label context)))
+			    -> (let ((label-code (lookup-label-code label)))
 				 (match (guess-record-type sig) with
 				   (maybe:yes sig0)
 				   -> (o.write (format "O r" (int target) ;; compile-time lookup
@@ -615,7 +615,7 @@
 	  ;; XXX very similar to record-get, maybe some way to collapse the code?
 	  '%record-set -> (match parm args with
 			    (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg arg-reg)
-			    -> (let ((label-code (lookup-label-code label context)))
+			    -> (let ((label-code (lookup-label-code label)))
 				 (match (guess-record-type sig) with
 				   (maybe:yes sig0)
 				   -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; compile-time lookup
@@ -723,7 +723,7 @@
 
     (define (emit-nvcase test dtname tags jump-num subs ealt k)
       (let ((use-else? (maybe? ealt)))
-	(match (alist/lookup context.datatypes dtname) with
+	(match (alist/lookup the-context.datatypes dtname) with
 	  (maybe:no) -> (error1 "emit-nvcase" dtname)
 	  (maybe:yes dt)
 	  -> ;;(if (and (= (length subs) 1) (= (dt.get-nalts) 1))
@@ -780,7 +780,7 @@
 	    (let ((label (nth tags i))
 		  (arity (nth arities i))
 		  (alt (nth alts i))
-		  (tag0 (match (alist/lookup context.variant-labels label) with
+		  (tag0 (match (alist/lookup the-context.variant-labels label) with
 			  (maybe:yes v) -> v
 			  (maybe:no) -> (error1 "variant constructor never called" label)))
 		  (tag1 (format (if (= arity 0) "UITAG(" "UOTAG(") (int tag0) ")"))
@@ -820,27 +820,7 @@
 	))
     ))
 
-(define (emit-registers o context)
-  (let ((nreg (+ 1 (context.regalloc.get-max))))
-    ;; (for-range
-    ;; 	i nreg
-    ;; 	(o.write (format "static object * r" (int i) ";")))
-    (o.write "static void gc_regs_in (int n) {")
-    (o.write "  switch (n) {")
-    ;; (for-each
-    ;;  (lambda (i)
-    ;;    (o.write (format "  case " (int (+ i 1)) ": heap1[" (int (+ i 3)) "] = r" (int i) ";")))
-    ;;  (reverse (range nreg)))
-    (o.write "}}")
-    (o.write "static void gc_regs_out (int n) {")
-    (o.write "  switch (n) {")
-    ;; (for-each
-    ;;  (lambda (i)
-    ;;    (o.write (format "  case " (int (+ i 1)) ": r" (int i) " = heap0[" (int (+ i 3)) "];")))
-    ;;  (reverse (range nreg)))
-    (o.write "}}")))
-
-(define (emit-profile-0 o context)
+(define (emit-profile-0 o)
   (o.write "
 static int64_t prof_mark0;
 static int64_t prof_mark1;
@@ -862,13 +842,13 @@ static prof_dump (void)
 }
 "))
 
-(define (emit-profile-1 o context)
+(define (emit-profile-1 o)
   (o.write "static pxll_prof prof_funs[] = \n  {{0, 0, \"top\"},")
   (for-each
    (lambda (names)
      (let ((name (cdr (reverse names)))) ;; strip 'top' off
        (o.write (format "   {0, 0, \"" (join symbol->string "." name) "\"},"))))
-   context.profile-funs)
+   the-context.profile-funs)
   (o.write "   {0, 0, NULL}};"))
 
 ;; we support three types of non-immediate literals:
@@ -884,8 +864,8 @@ static prof_dump (void)
 ;;      in the array points to the beginning of the top-level
 ;;      object.
 
-(define (emit-constructed o context)
-  (let ((lits (reverse context.literals))
+(define (emit-constructed o)
+  (let ((lits (reverse the-context.literals))
 	(nlits (length lits))
 	(strings (alist/make))
 	(output '())
@@ -908,7 +888,7 @@ static prof_dump (void)
       (match exp with
 	;; data constructor
 	(literal:cons dt variant args)
-	-> (let ((dto (alist/get context.datatypes dt "no such datatype"))
+	-> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
 		 (alt (dto.get variant))
 		 (nargs (length args)))
 	     (if (> nargs 0)
@@ -928,7 +908,7 @@ static prof_dump (void)
 	     (for-each (lambda (x) (PUSH output x)) args0)
 	     (format "UPTR(" (int current-index) "," (int addr) ")"))
 	(literal:symbol sym)
-	-> (let ((index (alist/get context.symbols sym "unknown symbol?")))
+	-> (let ((index (alist/get the-context.symbols sym "unknown symbol?")))
 	     (format "UPTR(" (int index) ",1)"))
 	(literal:string s)
 	-> (match (alist/lookup strings s) with
@@ -952,7 +932,7 @@ static prof_dump (void)
 		 (o.write (format "pxll_string constructed_" (int i) " = {STRING_HEADER(" (int slen) "), " (int slen) ", \"" (c-string s) "\" };")))
 	    ;; there's a temptation to skip the extra pointer at the front, but that would require additional smarts
 	    ;;   in insn_constructed (as already exist for strings).
-	    ;; NOTE: this reference to the string object only works because it comes before the symbol in self.context.constructed.
+	    ;; NOTE: this reference to the string object only works because it comes before the symbol in the-context.constructed.
 	    (literal:symbol s)
 	    -> (begin
 		 (o.write (format "// symbol " (sym s)))
@@ -970,7 +950,7 @@ static prof_dump (void)
       (alist/iterate
        (lambda (symbol index)
 	 (PUSH symptrs (format "UPTR(" (int index) ",1)")))
-       context.symbols)
+       the-context.symbols)
       (o.write (format "pxll_int pxll_internal_symbols[] = {(" (int (length symptrs)) "<<8)|TC_VECTOR, " (join id ", " symptrs) "};"))
       )
     (o.indent)
@@ -1013,8 +993,8 @@ static prof_dump (void)
 	   r)
 	  rest))))
 
-(define (emit-lookup-field o context)
-  (cond ((> (length context.records) 0)
+(define (emit-lookup-field o)
+  (cond ((> (length the-context.records) 0)
 	 (o.write "static int lookup_field (int tag, int label)")
 	 (o.write "{ switch (tag) {")
 	 (for-each
@@ -1026,9 +1006,9 @@ static prof_dump (void)
 			(for-range
 			    i (length sig)
 			    (o.write (format "     case "
-					     (int (lookup-label-code (nth sig i) context))
+					     (int (lookup-label-code (nth sig i)))
 					     ": return " (int i) "; break;")))
 			(o.write "  } break;"))))
-	  context.records)
+	  the-context.records)
 	 (o.write "} return 0; }"))))
 	 

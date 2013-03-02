@@ -25,7 +25,7 @@
   (:scheme gens type)
   -> (format "forall(" (join type-repr "," gens) ")." (type-repr type)))
 
-(define (type-program node context)
+(define (type-program node)
 
   (define (unify exp t0 t1)
 
@@ -73,7 +73,7 @@
 		))))
 
     (define (maybe-alias pred)
-      (match (alist/lookup context.aliases pred) with
+      (match (alist/lookup the-context.aliases pred) with
 	(maybe:yes other) -> other
 	(maybe:no) -> pred))
 
@@ -241,7 +241,7 @@
       (literal:char _)	    -> char-type
       (literal:undef)	    -> undefined-type
       (literal:symbol _)    -> symbol-type
-      (literal:cons dt v l) -> (let ((dto (alist/get context.datatypes dt "no such datatype")))
+      (literal:cons dt v l) -> (let ((dto (alist/get the-context.datatypes dt "no such datatype")))
 				 (match (dto.get-alt-scheme v) with
 				   (:scheme gens type)
 				   -> (match (instantiate-type-scheme gens type) with
@@ -359,7 +359,7 @@
 
   (define (type-of-fix names exp tenv)
     ;; reorder fix into dependency order
-    (match (reorder-fix names exp.subs context.scc-graph) with
+    (match (reorder-fix names exp.subs the-context.scc-graph) with
       (:reordered names0 inits0 body partition)
       -> (let ((n (length names0))
 	       (names (list->vector names0))
@@ -414,7 +414,7 @@
 	(type-of-nvcase dt tags exp tenv)))
 
   (define (type-of-nvcase dt tags exp tenv)
-    (let ((dt (alist/get context.datatypes dt "no such datatype"))
+    (let ((dt (alist/get the-context.datatypes dt "no such datatype"))
 	  (subs exp.subs)
 	  ;; use match for these!?
 	  (value (nth subs 0))
@@ -469,10 +469,10 @@
       ))
 
   (define (remember-variant-label label)
-    (match (alist/lookup context.variant-labels label) with
+    (match (alist/lookup the-context.variant-labels label) with
       (maybe:yes _) -> #u
-      (maybe:no) -> (let ((index (alist/length context.variant-labels)))
-		      (alist/push context.variant-labels label index))))
+      (maybe:no) -> (let ((index (alist/length the-context.variant-labels)))
+		      (alist/push the-context.variant-labels label index))))
 
   (define T0 (new-tvar))
   (define T1 (new-tvar))
@@ -529,7 +529,7 @@
 			 _ -> (prim-error name))
       '%dtcon       -> (match params with
 			 (sexp:cons dtname altname)
-			 -> (match (alist/lookup context.datatypes dtname) with
+			 -> (match (alist/lookup the-context.datatypes dtname) with
 			      (maybe:no) -> (error1 "lookup-primapp: no such datatype" dtname)
 			      (maybe:yes dt) ->
 			      (dt.get-alt-scheme altname))
@@ -567,7 +567,7 @@
 					   ;; ∀0123. Σ(l:pre (0,1,2);3) → 1
 					   (arrow (nth argvars index) (LIST vtype))))
 				;; normal variant
-				(match (alist/lookup context.datatypes dtname) with
+				(match (alist/lookup the-context.datatypes dtname) with
 				  (maybe:no) -> (error1 "lookup-primapp: no such datatype" dtname)
 				  (maybe:yes dt)
 				  -> (let ((alt (dt.get altname))
@@ -590,11 +590,11 @@
   ;; each exception is stored in a global table along with a tvar
   ;;  that will unify with each use.
   (define (get-exn-type name)
-    (match (alist/lookup context.exceptions name) with
+    (match (alist/lookup the-context.exceptions name) with
       (maybe:yes tvar) -> tvar
       (maybe:no)
       -> (let ((tvar (new-tvar)))
-	   (alist/push context.exceptions name tvar)
+	   (alist/push the-context.exceptions name tvar)
 	   tvar)))
 
   ;; given an exception row type for <exp> look up its name in the global

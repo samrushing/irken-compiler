@@ -89,15 +89,15 @@
   (cont:k target free k) regs -> (cont:k target (append free regs) k)
   (cont:nil) _		      -> (error "add-free-regs"))
 
-(define (compile exp context)
+(define (compile exp)
 
   (let ((current-funs '(top)))
 
     (define (set-flag! flag)
-      (vars-set-flag! context (car current-funs) flag))
+      (vars-set-flag! (car current-funs) flag))
 
     (define (cont free generator)
-      (let ((reg (context.regalloc.alloc free)))
+      (let ((reg (the-context.regalloc.alloc free)))
 	(cont:k reg free (generator reg))))
 
     (define (dead free k)
@@ -122,7 +122,7 @@
 	(node:nvcase 'nil tags arities) -> (c-pvcase tail? tags arities exp.subs lenv k)
 	(node:nvcase dt tags arities)	-> (c-nvcase tail? dt tags exp.subs lenv k)
 	(node:fix formals)		-> (c-let-splat tail? formals exp.subs lenv k)
-	(node:let formals)		-> (if (safe-for-let-reg exp formals context)
+	(node:let formals)		-> (if (safe-for-let-reg exp formals)
 					       (c-let-reg tail? formals exp.subs lenv k)
 					       (c-let-splat tail? formals exp.subs lenv k))
 	(node:subst _ _)		-> (impossible)
@@ -130,8 +130,8 @@
       )
 
     (define (add-literal lit)
-      (let ((index (length context.literals)))
-	(PUSH context.literals lit)
+      (let ((index (length the-context.literals)))
+	(PUSH the-context.literals lit)
 	index))
 
     ;; inlining often causes literals to be copied all over the place.
@@ -139,21 +139,20 @@
     ;;   a map from id->litindex so we can reference via litcon.
 
     (define (get-literal-index lit id)
-      (match (tree/member context.literal-ids < id) with
+      (match (tree/member the-context.literal-ids < id) with
 	(maybe:yes v) -> v
 	(maybe:no)
 	-> (let ((index (add-literal lit)))
-	     (set! context.literal-ids
-		   (tree/insert context.literal-ids < id index))
+	     (tree/insert! the-context.literal-ids < id index)
 	     index)))
 
     (define (get-symbol-index sym)
-      (match (alist/lookup context.symbols sym) with
+      (match (alist/lookup the-context.symbols sym) with
 	(maybe:yes index) -> index
 	(maybe:no)
 	-> (let ((string-index (add-literal (literal:string (symbol->string sym))))
 		 (symbol-index (add-literal (literal:symbol sym))))
-	     (alist/push context.symbols sym symbol-index)
+	     (alist/push the-context.symbols sym symbol-index)
 	     symbol-index)))
 
     ;; scan through a literal for symbols and strings, make sure they're recorded as well.
@@ -253,7 +252,7 @@
 		       (cont regvars gen-return)
 		       )
 	      k)))
-	(PUSH context.profile-funs current-funs)
+	(PUSH the-context.profile-funs current-funs)
 	(pop current-funs)
 	r))
 
@@ -374,13 +373,13 @@
       (collect-primargs args lenv k
 			(lambda (regs) (insn:primop op parm type regs k))))
 
-    (define (safe-for-let-reg exp names context)
-      (and (not context.options.noletreg)
+    (define (safe-for-let-reg exp names)
+      (and (not the-context.options.noletreg)
 	   (node-get-flag exp NFLAG-LEAF)
 	   (< (length names) 5)
 	   (not (some?
 		 (lambda (name)
-		   (vars-get-flag context name VFLAG-FREEREF)
+		   (vars-get-flag name VFLAG-FREEREF)
 		   )
 		 names))))
 
@@ -388,7 +387,7 @@
       (match fun with
 	(node:varref name)
 	-> (and (node-get-flag exp NFLAG-RECURSIVE)
-		(not (vars-get-flag context (car current-funs) VFLAG-ESCAPES)))
+		(not (vars-get-flag (car current-funs) VFLAG-ESCAPES)))
 	_ -> #f))
 
     (define (c-trcall depth name args lenv k)
@@ -409,7 +408,7 @@
 	       (let ((gen-invoke (if tail? gen-tail gen-invoke))
 		     (name (match fun.t with
 			     (node:varref name)
-			     -> (if (vars-get-flag context name VFLAG-FUNCTION)
+			     -> (if (vars-get-flag name VFLAG-FUNCTION)
 				    (maybe:yes name)
 				    (maybe:no))
 			     _ -> (maybe:no)))
@@ -457,7 +456,7 @@
 		     (compile-store-args (+ i 1) offset (cdr args) tuple-reg free-regs lenv k))))))))
 
     (define (c-let-reg tail? formals subs lenv k)
-      (for-each (lambda (f) (vars-set-flag! context f VFLAG-REG)) formals)
+      (for-each (lambda (f) (vars-set-flag! f VFLAG-REG)) formals)
       (define (loop names inits lenv regs)
 	(if (= 0 (length names))
 	    ;; note: the last 'init' is the body
@@ -502,7 +501,7 @@
       (let ((free (k/free k))
 	    (jump-num (jump-counter.inc)))
 	;; nvcase subs = <value>, <else-clause>, <alt0>, ...
-	(match (alist/lookup context.datatypes dtname) with
+	(match (alist/lookup the-context.datatypes dtname) with
 	  (maybe:no) -> (error1 "no such datatype" dtname)
 	  (maybe:yes dt)
 	  -> (let ((value (nth subs 0))
@@ -566,7 +565,7 @@
     (define (c-vcon params args lenv k)
       (match params with
 	(sexp:list ((sexp:symbol label) _))
-	-> (let ((tag (alist/get context.variant-labels label "unknown variant label?"))
+	-> (let ((tag (alist/get the-context.variant-labels label "unknown variant label?"))
 		 (free (k/free k))
 		 (nargs (length args))
 		 (target (k/target k)))
@@ -624,14 +623,14 @@
       (error "c-record-extension: NYI"))
 
     (define (record-label-tag label)
-      (let loop ((l context.labels))
+      (let loop ((l the-context.labels))
 	(match l with
 	  ((:pair key val) . tl)
 	  -> (if (eq? key label)
 		 #u
 		 (loop tl))
-	  () -> (let ((index (length context.labels)))
-		  (PUSH context.labels (:pair label index)))
+	  () -> (let ((index (length the-context.labels)))
+		  (PUSH the-context.labels (:pair label index)))
 	  )))
 
     (define (sig=? sig0 sig1)
@@ -639,16 +638,16 @@
 	   (every2? eq? sig0 sig1)))
 
     (define (get-record-tag sig)
-      (let loop ((l context.records))
+      (let loop ((l the-context.records))
 	(match l with
 	  ((:pair key val) . tl)
 	  -> (if (sig=? key sig)
 		 val
 		 (loop tl))
 	  ;; create a new entry
-	  () -> (let ((index (length context.records)))
+	  () -> (let ((index (length the-context.records)))
 		  (for-each record-label-tag sig)
-		  (PUSH context.records (:pair sig index))
+		  (PUSH the-context.records (:pair sig index))
 		  index)
 	  )))
 

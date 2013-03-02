@@ -42,7 +42,7 @@
     (for-each (lambda (x) (s::add x)) l)
     s))
 
-(define (build-dependency-graph root context)
+(define (build-dependency-graph root)
   ;;(let ((g (alist-maker)))
   (let ((g (map-maker symbol-index<?)))
     (define (search exp current-fun)
@@ -68,7 +68,7 @@
     (let ((top (symbol-set-maker '())))
       (g::add 'top top)
       (search root top))
-    (set! context.dep-graph g)))
+    (set! the-context.dep-graph g)))
 
 (define (transpose g)
   ;;(let ((gt (alist-maker)))

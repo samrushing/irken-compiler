@@ -8,7 +8,7 @@
 ;; scan for datatypes, definitions, etc..
 ;; and do transformations that can't be handled by the macro system.
 
-(define (transformer context)
+(define (transformer)
 
   (define counter 0)
 
@@ -105,8 +105,8 @@
 	   (sexp:symbol sym)
 	   -> (match (alist/lookup transform-table sym) with
 		(maybe:yes fun) -> (fun rands)
-		(maybe:no)	-> (match (alist/lookup context.macros sym) with
-				     (maybe:yes macro) -> (expand (macro.apply (sexp:list l) context.options.debugmacroexpansion))
+		(maybe:no)	-> (match (alist/lookup the-context.macros sym) with
+				     (maybe:yes macro) -> (expand (macro.apply (sexp:list l) the-context.options.debugmacroexpansion))
 				     (maybe:no)	       -> (sexp:list (list:cons rator (map expand rands)))))
 	   ;; automagically insert the <self> argument
 	   ;; (ob.o.method args0 ...) => (ob.o.method ob args0 ...)
@@ -263,7 +263,7 @@
 		      (in-pat (sexp:symbol '->) out-pat . rest)
 		      -> (list:cons (:pair in-pat out-pat) (loop rest))
 		      _ -> (error1 "malformed macro definition:" exps))))))
-	 (alist/push context.macros name macro))
+	 (alist/push the-context.macros name macro))
     x -> (error1 "malformed macro definition:" x)
     )
 
@@ -324,7 +324,7 @@
 	  (lambda (tag alt)
 	    (PUSH names (string->symbol (format (sym dt.name) ":" (sym tag))))
 	    (PUSH constructors (make-constructor dt.name tag alt.arity)))))
-       context.datatypes)
+       the-context.datatypes)
       (wrap-fix (map sexp:symbol names) constructors body)))
 
   (define (make-constructor dt tag arity)
@@ -354,7 +354,7 @@
 	      (sexp:list ((sexp:cons 'nil tag) . types)) -> (dt.add (make-alt tvars tag types))
 	      x						 -> (error1 "malformed alt in datatype" x)))
 	  subs)
-	 (alist/push context.datatypes name dt)
+	 (alist/push the-context.datatypes name dt)
 	 )
     x -> (error1 "malformed datatype" x)
     )
@@ -364,8 +364,8 @@
     ((sexp:symbol name) (sexp:symbol alias))
     ;; -> (let ((tvars (alist-maker))
     ;; 	        (type (parse-type* alias tvars)))
-    ;;      (alist/push context.aliases name (:scheme (reverse (tvars::values)) type)))
-    -> (alist/push context.aliases name alias)
+    ;;      (alist/push the-context.aliases name (:scheme (reverse (tvars::values)) type)))
+    -> (alist/push the-context.aliases name alias)
     x -> (error1 "malformed typealias" x))
 
   (define parse-define
@@ -385,7 +385,7 @@
     x -> (error1 "malformed <define>" x))
 
   (define (parse-pattern-matching-define name body)
-    (match (compile-pattern context expand '() body) with
+    (match (compile-pattern expand '() body) with
       (:pair vars body0)
       -> (:pair name
 		   (sexp (sexp:symbol 'function)
@@ -418,7 +418,7 @@
 	       (el exps))
       (match el with
 	((sexp:symbol 'with) . rules)
-	-> (match (compile-pattern context expand (reverse vars) rules) with
+	-> (match (compile-pattern expand (reverse vars) rules) with
 	     (:pair _ code)
 	     -> (expand
 		 (if (null? inits)
@@ -434,7 +434,7 @@
   (define expand-cinclude
     ((sexp:string path))
     -> (begin
-	 (PUSH context.cincludes path)
+	 (PUSH the-context.cincludes path)
 	 (sexp (sexp:symbol 'begin)))
     x -> (error1 "malformed <cinclude>" x)
     )
@@ -442,7 +442,7 @@
   (define expand-cverbatim
     ((sexp:string path))
     -> (begin
-	 (PUSH context.cverbatim path)
+	 (PUSH the-context.cverbatim path)
 	 (sexp (sexp:symbol 'begin)))
     x -> (error1 "malformed <cverbatim>" x)
     )
@@ -477,8 +477,10 @@
 
   )
 
-(define (prepend-standard-macros forms context)
-  (foldr list:cons forms (read-file context.standard-macros)))
+(define (prepend-standard-macros forms)
+  (foldr list:cons forms
+	 (find-and-read-file
+	  the-context.standard-macros)))
 
 (define (print-datatype dt)
   (print-string "(datatype ")

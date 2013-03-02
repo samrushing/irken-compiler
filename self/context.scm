@@ -1,15 +1,16 @@
 ;; -*- Mode: Irken -*-
 
 (define (make-options)
-  {verbose=#f
-   nocompile=#f
-   extra-cflags=""
-   optimize=#f
-   trace=#f
-   debugmacroexpansion=#f
-   profile=#f
-   noinline=#f
-   noletreg=#f
+  {verbose		= #f
+   nocompile		= #f
+   extra-cflags		= ""
+   optimize		= #f
+   trace		= #f
+   debugmacroexpansion	= #f
+   profile		= #f
+   noinline		= #f
+   noletreg		= #f
+   include-dirs		= (LIST "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    })
 
 (define (make-context)
@@ -21,7 +22,7 @@
     vars                = (tree/empty)
     funs                = (tree/empty)
     regalloc            = (make-register-allocator)
-    standard-macros     = "self/selfmac.scm"
+    standard-macros     = "lib/derived.scm"
     cincludes           = '()
     cverbatim           = '()
     records             = '()
@@ -38,21 +39,21 @@
 
 ;; XXX a builtin flags object would be nice...
 
-(define (vars-get-var context name)
-  (match (tree/member context.vars symbol-index<? name) with
+(define (vars-get-var name)
+  (match (tree/member the-context.vars symbol-index<? name) with
     (maybe:no) -> (error1 "vars-get-var: no such var" name)
     (maybe:yes v) -> v))
 
-(define (vars-get-flag context name flag)
-  (let ((var (vars-get-var context name)))
+(define (vars-get-flag name flag)
+  (let ((var (vars-get-var name)))
     (bit-get var.flags flag)))
 
-(define (vars-set-flag! context name flag)
-  (let ((var (vars-get-var context name)))
+(define (vars-set-flag! name flag)
+  (let ((var (vars-get-var name)))
     (set! var.flags (bit-set var.flags flag))))
 
-(define (vars-inc-calls! context name flag)
-  (let ((var (vars-get-var context name)))
+(define (vars-inc-calls! name flag)
+  (let ((var (vars-get-var name)))
     (set! var.calls (+ 1 var.calls))))
 
 (define VFLAG-RECURSIVE 0) ;; function that is recursive
@@ -66,18 +67,18 @@
 (define VFLAG-NFLAGS    8)
 
 ;; urgh, needs to be an object
-(define (add-var name context)
-  (match (tree/member context.vars symbol-index<? name) with
-    (maybe:no) -> (set! context.vars
-			(tree/insert context.vars
+(define (add-var name)
+  (match (tree/member the-context.vars symbol-index<? name) with
+    (maybe:no) -> (set! the-context.vars
+			(tree/insert the-context.vars
 				     symbol-index<? name {flags=0 calls=0 refs=0 sets=0 mult=0}))
     ;; <fix> then <function>, shows up twice, ignore.
     (maybe:yes _) -> #u))
 
-(define (add-vars root context)
+(define (add-vars root)
 
   (define (add name)
-    (add-var name context))
+    (add-var name))
 
   (define (search exp)
     (match exp.t with
@@ -92,12 +93,12 @@
   (search root)
   )
 
-(define (build-vars root context)
-  (add-vars root context)
-  (add-var 'top context))
+(define (build-vars root)
+  (add-vars root)
+  (add-var 'top))
 
-(define (lookup-label-code label context)
-  (let loop ((pairs context.labels))
+(define (lookup-label-code label)
+  (let loop ((pairs the-context.labels))
     (match pairs with
       () -> (error1 "lookup-label-code" label)
       ((:pair key val) . rest)
@@ -105,7 +106,7 @@
 	     val
 	     (loop rest)))))
 
-(define (print-vars context)
+(define (print-vars)
   (let ((flagpad (+ 2 VFLAG-NFLAGS)))
     (print-string "vars = {\n")
     (print-string
@@ -123,6 +124,6 @@
 		"  "
 		(rpad 30 (sym k))
 		"\n")))
-     context.vars)
+     the-context.vars)
     (print-string "}\n")))
 

@@ -42,7 +42,7 @@
   _		   -> #t
   )
 
-(define (compile-pattern context expander vars exp)
+(define (compile-pattern expander vars exp)
 
   (define (parse-pattern exp)
     (define parse-fieldpair
@@ -317,7 +317,7 @@
     (let ((dtname (rule->constructor-dt (car rules)))
 	  (alts (sort-constructor-rules rules))
 	  (nalts 0)
-	  (mdt (alist/lookup context.datatypes
+	  (mdt (alist/lookup the-context.datatypes
 			 (rule->constructor-dt (car rules))))
 	  (default0 (if (sexp=? default match-error) default match-fail))
 	  (cases '())

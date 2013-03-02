@@ -10,7 +10,7 @@
 ;;;
 ;; XXX consider combining these passes
 
-(define (find-recursion exp context)
+(define (find-recursion exp)
 
   (define (walk exp fenv)
     (match exp.t with
@@ -18,7 +18,7 @@
       -> (let ((rator (nth exp.subs 0)))
 	   (match rator.t with
 	     (node:varref name)
-	     -> (let ((var (vars-get-var context name)))
+	     -> (let ((var (vars-get-var name)))
 		  (cond ((member-eq? name fenv)
 			 (set! var.flags (bit-set var.flags VFLAG-RECURSIVE))
 			 (node-set-flag! exp NFLAG-RECURSIVE)))
@@ -28,12 +28,12 @@
       (node:function name _)
       -> (begin
 	   (PUSH fenv name)
-	   (set! context.funs (tree/insert context.funs symbol-index<? name exp))
-	   (vars-set-flag! context name VFLAG-FUNCTION))
+	   (tree/insert! the-context.funs symbol-index<? name exp)
+	   (vars-set-flag! name VFLAG-FUNCTION))
       ;; a convenient place to detect this.
       (node:primapp name _)
       -> (if (or (eq? name '%getcc) (eq? name '%putcc))
-	     (vars-set-flag! context (car fenv) VFLAG-GETCC))
+	     (vars-set-flag! (car fenv) VFLAG-GETCC))
       _ -> #u)
     (for-each (lambda (x) (walk x fenv)) exp.subs))
   
@@ -114,14 +114,14 @@
       (node-set-flag! node NFLAG-LEAF)))
 
 
-(define (find-refs node context)
+(define (find-refs node)
 
   (define (add-ref name)
-    (let ((var (vars-get-var context name)))
+    (let ((var (vars-get-var name)))
       (set! var.refs (+ 1 var.refs))))
 
   (define (add-set name)
-    (let ((var (vars-get-var context name)))
+    (let ((var (vars-get-var name)))
       (set! var.sets (+ 1 var.sets))))
 
   (define (walk node)
@@ -133,11 +133,11 @@
 
   (walk node))
 
-(define (find-free-refs node context)
+(define (find-free-refs node)
 
   (define (maybe-free name locals)
     (if (not (member-eq? name locals))
-	(vars-set-flag! context name VFLAG-FREEREF)))
+	(vars-set-flag! name VFLAG-FREEREF)))
 
   (define (search node locals)
     (match node.t with
@@ -160,7 +160,7 @@
 
 (define inline-threshold 13)
 
-(define (do-inlining root context)
+(define (do-inlining root)
 
   (let ((inline-counter (make-counter 0))
 	(rename-counter (make-counter 0))
@@ -170,7 +170,7 @@
     (define (set-multiplier name calls)
       ;; when we inline <name>, each function that it calls must have its call-count
       ;;  raised by a factor of <calls>.
-      (let ((g context.dep-graph))
+      (let ((g the-context.dep-graph))
 	(match (g::get name) with
 	  (maybe:yes deps)
 	  -> (deps::iterate
@@ -213,7 +213,7 @@
 		 -> (match (follow-aliases fenv name) with
 		      (maybe:no) -> #u
 		      (maybe:yes (:pair name fun))
-		      -> (let ((var (vars-get-var context name))
+		      -> (let ((var (vars-get-var name))
 			       (escapes (bit-get var.flags VFLAG-ESCAPES))
 			       (recursive (bit-get var.flags VFLAG-RECURSIVE))
 			       (getputcc (bit-get var.flags VFLAG-GETCC))
@@ -234,13 +234,13 @@
 ;; 				  (printf "inline: " (sym name) " calls " (int calls)" escapes " (bool escapes) " recursive " (bool recursive) "\n")
 				  (let ((r (inline-application fun rands)))
 				    ;; record the new variables...
-				    (add-vars r context)
+				    (add-vars r)
 				    (return (inline r fenv)))))))
 		 ;; always inline ((lambda (x) ...) ...)
 		 ({t=(node:function name formals) ...} . rands)
 		 -> (let ((r (inline-application (car node.subs) rands)))
 ;; 		      (printf "inlined lambda: final size = " (int r.size) "\n")
-		      (add-vars r context)
+		      (add-vars r)
 		      (return (inline r fenv)))
 		 _ -> #u)
 	    _ -> #u)
@@ -288,7 +288,7 @@
     (define (safe-nvget-inline rands)
       (match rands with
 	({t=(node:primapp '%nvget _) subs=({t=(node:varref name) ...} . _)  ...} . _)
-	-> (let ((var (vars-get-var context name)))
+	-> (let ((var (vars-get-var name)))
 	     (= 0 var.sets))
 	_ -> #f))
 
@@ -304,14 +304,14 @@
 		    (for-range
 			i n
 			(let ((formal (nth formals i))
-			      (fvar (vars-get-var context formal))
+			      (fvar (vars-get-var formal))
 			      (rand (nth rands i)))
 			  (if (> fvar.sets 0)
 			      (PUSH complex i) ;; if a formal is assigned to, it must go into a let.
 			      (match rand.t with
 				(node:literal _) -> (PUSH simple i)
 				(node:varref arg)
-				-> (let ((avar (vars-get-var context arg)))
+				-> (let ((avar (vars-get-var arg)))
 				     ;;(printf "formal: " (sym formal) " avar.sets=" (int avar.sets) " fvar.sets=" (int fvar.sets) "\n")
 				     (if (> avar.sets 0)
 					 (PUSH complex i)
@@ -382,7 +382,7 @@
     (inline root (tree/empty))
     ))
 
-(define (escape-analysis root context)
+(define (escape-analysis root)
 
   (let ((escaping-funs '()))
 
@@ -392,7 +392,7 @@
     ;;  varref'd outside of the operator position).
   
     (define (fun-escapes name)
-      (vars-set-flag! context name VFLAG-ESCAPES)
+      (vars-set-flag! name VFLAG-ESCAPES)
       (PUSH escaping-funs name))
 
     (define (find-escaping-functions node parent)
@@ -405,7 +405,7 @@
 	     ;;   ((lambda ...) ...) to (let ...)
 	     _ -> (fun-escapes name))
 	(node:varref name)
-	-> (if (vars-get-flag context name VFLAG-FUNCTION)
+	-> (if (vars-get-flag name VFLAG-FUNCTION)
 	       (match parent.t with
 		 (node:call)
 		 ;; any function referenced in a non-rator position
@@ -419,7 +419,7 @@
       ;;(printf "maybe-var-escapes: " (sym name) "\n")
       (if (not (member-eq? name lenv))
 	  ;; reference to a free variable. flag it as escaping.
-	  (vars-set-flag! context name VFLAG-ESCAPES)))
+	  (vars-set-flag! name VFLAG-ESCAPES)))
 
     ;; XXX make sure we still need to know if particular variables escape.
 
@@ -441,7 +441,7 @@
     (for-each
      (lambda (name)
        ;;(printf "searching escaping fun " (sym name) "\n")
-       (let ((fun (match (tree/member context.funs symbol-index<? name) with
+       (let ((fun (match (tree/member the-context.funs symbol-index<? name) with
 		    (maybe:yes fun) -> fun
 		    (maybe:no) -> (error1 "find-escaping-funs: failed lookup" name))))
        (find-escaping-variables fun '())))
@@ -563,8 +563,8 @@
 
 (define removed-count 0)
 
-(define (do-trim top context)
-  (let ((g context.dep-graph)
+(define (do-trim top)
+  (let ((g the-context.dep-graph)
 	(seen (symbol-set-maker '())))
 
     ;;(print-string "do-trim:\n")
@@ -617,26 +617,25 @@
     (trim top)
     ))
 
-(define (analyze exp context)
+(define (analyze exp)
   ;; clear the variable table
-  (set! context.vars (tree/empty))
-  (set! context.funs (tree/empty))
+  (set! the-context.vars (tree/empty))
+  (set! the-context.funs (tree/empty))
   ;; rebuild it
-  (build-vars exp context)
-  (find-recursion exp context)
-  (find-refs exp context)
-  (escape-analysis exp context)
+  (build-vars exp)
+  (find-recursion exp)
+  (find-refs exp)
+  (escape-analysis exp)
   )
 
-(define (do-one-round node context)
-  (analyze node context)
-  ;;(print-vars context)
-  (build-dependency-graph node context)
-  ;;(print-graph context.dep-graph)
+(define (do-one-round node)
+  (analyze node)
+  ;;(print-vars)
+  (build-dependency-graph node)
+  ;;(print-graph the-context.dep-graph)
   ;; trim, simple, inline, simple
   (do-simple-optimizations
    (do-inlining
     (do-simple-optimizations
-     (do-trim node context))
-    context)))
+     (do-trim node)))))
     
