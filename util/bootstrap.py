@@ -13,7 +13,7 @@ def getenv_or (name, default):
         return default
 
 gcc = getenv_or ('CC', 'clang')
-cflags = getenv_or ('CFLAGS', '-O3 -g -I.')
+cflags = getenv_or ('CFLAGS', '-O3 -g -I./include')
 
 windows = platform.uname()[0] == 'Windows'
 
