@@ -4,7 +4,7 @@ from pdb import set_trace as trace
 from pprint import pprint as pp
 is_a = isinstance
 
-# generate a Parsing.py-style parser from a Python-like metagrammar.
+# generate a parsing.py-style parser from a Python-like metagrammar.
 
 # To make use of the parser generated, you'll first need a lexer.
 #   [note that 'meta.py' uses the python tokenizer]
@@ -200,14 +200,14 @@ class translator:
         #self.renumber()
         
     def emit_python (self, name):
-        # emit the grammar in the form required by Jason Evans' Parsing.py module.
+        # emit the grammar in the form required by Jason Evans' parsing.py module.
         file = open ('%s.py' % (name,), 'wb')
         W = file.write
         W ('# -*- Mode: Python -*-\n\n')
         W ('import sys\n')
-        W ('import Parsing\n\n')
-        W ('T = Parsing.Token\n')
-        W ('NT = Parsing.Nonterm\n\n')
+        W ('import parsing\n\n')
+        W ('T = parsing.Token\n')
+        W ('NT = parsing.Nonterm\n\n')
         # emit token classes
         for tok in self.terminals:
             lname = self.lits.get (tok, tok)
@@ -215,7 +215,7 @@ class translator:
             W ('    "%%token %s [p1]"\n' % (lname,))
             W ('\n')
         # emit production classes
-        W ('class p1 (Parsing.Precedence):\n    "%right p1"\n')
+        W ('class p1 (parsing.Precedence):\n    "%right p1"\n')
         last_nt = None
         i = 0
         for nt, prod in self.rules:
@@ -232,7 +232,7 @@ class translator:
             W ('        "%%reduce %s [p1]"\n' % (' '.join ([fix(x) for x in prod])))
             i += 1
         W ('\n\n')
-        W ('spec = Parsing.Spec (sys.modules[__name__], skinny=False, logFile="%s.log", verbose=True)\n' % (name,))
+        W ('spec = parsing.Spec (sys.modules[__name__], skinny=False, logFile="%s.log", verbose=True)\n' % (name,))
 
 def fix (s):
     "make this non-terminal a legal python identifier"

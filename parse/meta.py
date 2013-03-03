@@ -10,14 +10,14 @@
 
 # grammar grammar grammar grammar grammar....
 
-import Parsing
+import parsing
 import sys
 
 is_a = isinstance
 
-class token (Parsing.Token):
+class token (parsing.Token):
     def __init__ (self, parser, val):
-        Parsing.Token.__init__ (self, parser)
+        parsing.Token.__init__ (self, parser)
         self.val = val
 
 T = token
@@ -55,7 +55,7 @@ class t_VBAR (T):
 class t_NEWLINE (T):
     "%token NEWLINE"
 
-NT = Parsing.Nonterm
+NT = parsing.Nonterm
 
 class rules (NT):
     "%start"
@@ -154,7 +154,7 @@ class optional (NT):
         "%reduce LBRACKET alts RBRACKET"
         self.val = ('optional', args[1].val)
 
-class parser (Parsing.Lr):
+class parser (parsing.Lr):
     
     def scan (self, stream):
         while 1:
@@ -207,7 +207,7 @@ def tokenize_grammar (filename):
             #print
             yield (tokenize.tok_name[code], val)
 
-spec = Parsing.Spec (
+spec = parsing.Spec (
     sys.modules[__name__],
     pickleFile="meta.pickle",
     #skinny=False,

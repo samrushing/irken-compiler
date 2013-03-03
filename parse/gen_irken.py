@@ -1,6 +1,6 @@
 
 is_a = isinstance
-import Parsing
+import parsing
 
 def make_map (l):
     m = {}
@@ -20,9 +20,9 @@ def build_tables (s):
         d = {}
         for k,v in action[i].iteritems():
             # v is always a one-element list?  GLR-related?
-            if is_a (v[0], Parsing.ShiftAction):
+            if is_a (v[0], parsing.ShiftAction):
                 v = -1, v[0].nextState
-            elif is_a (v[0], Parsing.ReduceAction):
+            elif is_a (v[0], parsing.ReduceAction):
                 p = v[0].production
                 v = -2, (len(p.rhs), p.lhs.name)
             else:
