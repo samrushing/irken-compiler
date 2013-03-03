@@ -43,8 +43,8 @@ via the python script, or manually.
 Just run the script "util/bootstrap.py":
 
     $ python util/bootstrap.py
-    [to use clang:
-      $ CC=clang python util/bootstrap.py ]
+    [the default compiler is 'clang', to use gcc:
+      $ CC=gcc python util/bootstrap.py ]
 
 Which does the following:
 
