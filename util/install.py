@@ -20,12 +20,6 @@ def getenv_or (name, default):
     else:
         return default
 
-gcc = getenv_or ('CC', 'clang')
-cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -I./include')
-# NOTE: if you are tempted to put "-g" in there and your compiler is gcc,
-#   you *must* add -fno-var-tracking as well or your compiles will never finish.
-#   See: http://gcc.gnu.org/bugzilla/show_bug.cgi?id=56510
-
 def system (cmd):
     print cmd
     if os.system (cmd) != 0:
@@ -53,11 +47,12 @@ for path in headers:
 # we need a new binary with the new CFLAGS
 print 'building new binary with updated CFLAGS for install...'
 cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -g -I%s' % (IRKENINC,))
+flags = open ('self/flags.scm', 'rb').read()
+
+# this way we pull in whatever decisions were made for bootstrap.py, updating only IRKENINC
 open ('self/flags.scm', 'wb').write (
-"""
-(define CC "%s")
-(define CFLAGS "%s")
-""" % (gcc, cflags))
+    flags.replace ('./include', IRKENINC)
+    )
 
 # tricky, result code != 0
 os.system ('self/compile self/compile.scm')
