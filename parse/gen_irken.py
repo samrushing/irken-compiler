@@ -42,6 +42,9 @@ datatypes = """
   (:shift int)
   (:reduce int int))
 
+(defmacro SH (SH n)   -> (action:shift n))
+(defmacro RE (RE a b) -> (action:reduce a b))
+
 (datatype action-list
   (:nil)
   (:cons int (action) (action-list)))
@@ -49,6 +52,16 @@ datatypes = """
 (datatype goto-list
   (:nil)
   (:cons int int (goto-list)))
+
+(defmacro ACTIONS
+  (ACTIONS)           -> (action-list:nil)
+  (ACTIONS (a b) r ...) -> (action-list:cons a b (ACTIONS r ...))
+  )
+
+(defmacro GOTOS
+  (GOTOS)             -> (goto-list:nil)
+  (GOTOS (a b) r ...) -> (goto-list:cons a b (GOTOS r ...))
+  )
 
 """
 
@@ -71,25 +84,24 @@ def gen_irken (file, tables):
     W ('(define actions\n')
     W ('    (literal #(\n')
     for action in actions:
-        l = '(action-list:nil)'
-        for k, v in action.items():
+        W ('    (ACTIONS ')
+        for k, v in reversed (action.items()):
             shift_reduce, n = v
             if shift_reduce == -1:
-                l = '(action-list:cons %d (action:shift %d) %s)' % (k, n, l)
+                W ('(%d (SH %d))' % (k, n))
             else:
                 plen, nt = n
-                l = '(action-list:cons %d (action:reduce %d %d) %s)' % (k, plen, ntm[nt], l)
-        W ('      %s\n' % l)
+                W ('(%d (RE %d %d))' % (k, plen, ntm[nt]))
+        W (')\n')
     W ('   )))\n')
     W ('(define goto\n')
     W ('    (literal #(\n')
     for entry in goto:
-        l = '(goto-list:nil)'
+        W ('    (GOTOS')
         items = entry.items()[:]
-        items.reverse()
         for k, v in items:
-            l = '(goto-list:cons %d %d %s)' % (ntm[k], v, l)
-        W ('      %s\n' % l)
+            W ('(%d %d)' % (ntm[k], v))
+        W (')\n')
     W ('  )))\n')
 
 if __name__ == '__main__':
