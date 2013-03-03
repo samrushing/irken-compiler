@@ -18,6 +18,10 @@ cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -I./include')
 #   you *must* add -fno-var-tracking as well or your compiles will never finish.
 #   See: http://gcc.gnu.org/bugzilla/show_bug.cgi?id=56510
 
+
+# NOTE: to make the bootstrap self/compile.c, make sure self/flags is untouched,
+#  then self-compile.  The result should be sent to github.
+
 windows = platform.uname()[0] == 'Windows'
 
 # this is frustrating, I could have sworn win32 would take either
