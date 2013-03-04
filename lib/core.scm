@@ -207,11 +207,16 @@
 ;; Note: <thunk> isn't really a thunk because there's no way to cast away the
 ;; argument from call/cc.
 
+;; N.B.: ASLR will cause this to break.
+;; Disabling ASLR is platform-specific:
+;; OSX: http://src.chromium.org/viewvc/chrome/trunk/src/build/mac/change_mach_o_flags.py?revision=111385
+;; Linux: setarch `uname -m` -R <binary>
+
 (define (dump filename thunk)
-  (%%cexp (string ('a -> int) -> int) "dump_image (%0, %1)" filename thunk))
+  (%%cexp (string (continuation int) -> int) "dump_image (%0, %1)" filename thunk))
 
 (define (load filename)
-  (%%cexp (string -> ('a -> int)) "load_image (%0)" filename))
+  (%%cexp (string -> (continuation int)) "load_image (%0)" filename))
 
 ;; *********************************************************************
 ;; VERY IMPORTANT LESSON: do not *ever* make a generator that doesn't
