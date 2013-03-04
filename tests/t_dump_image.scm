@@ -3,6 +3,10 @@
 (include "lib/basis.scm")
 (include "lib/os.scm")
 
+;;; Note: if this test is failing you may need to disable ASLR on your
+;;;   operating system.  Otherwise the addresses of continuations/functions/etc
+;;;   will not be identical between runs and the loading of image dumps will fail.
+
 (define (thing n)
   (printn "howdy!") 5)
 
