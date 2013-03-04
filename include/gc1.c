@@ -153,6 +153,8 @@ gc_flip (int nregs)
   return nwords;
 }
 
+// XXX: do we really want to store and restore lenv/k/top?
+
 // exactly the same, except <thunk> is an extra root.
 // Warning: dump_image() knows how many roots are used here.
 object *
@@ -234,5 +236,52 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
       scan += length+1;
       break;
     }
+  }
+}
+
+// these could probably be written in irken...
+pxll_int dump_image (char * filename, object * closure) {
+  FILE * dump_file = fopen (filename, "wb");
+  pxll_int offset;
+  pxll_int size;
+  object * start;
+  // do a gc for a compact dump
+  closure = gc_dump (closure);
+  // for now, start at the front of the heap
+  start = heap0;
+  size = freep - start;
+  offset = (pxll_int) heap0;
+  // XXX add endian indicator...
+  fprintf (dump_file, "(irken image %" PRIuPTR " %p)\n", sizeof (pxll_int), start);
+  fwrite (&offset, sizeof(pxll_int), 1, dump_file);
+  fwrite (&size, sizeof(pxll_int), 1, dump_file);
+  fwrite (start, sizeof(pxll_int), size, dump_file);
+  fclose (dump_file);
+  return size;
+}
+
+object * load_image (char * filename) {
+  FILE * load_file = fopen (filename, "rb");
+  if (!load_file) {
+    abort();
+  } else {
+    object * start, * thunk;
+    pxll_int size;
+    read_header (load_file);	// XXX verify header...
+    fread (&start, sizeof(pxll_int), 1, load_file);
+    fread (&size, sizeof(pxll_int), 1, load_file);
+    fread (heap1, sizeof(pxll_int), size, load_file);
+    fprintf (stderr, "size=%d\n", (int) size);
+    // relocate heap0
+    gc_relocate (4, heap1, heap1 + size, start - heap1);
+    // replace roots
+    lenv  = (object *) heap1[0];
+    k     = (object *) heap1[1];
+    top   = (object *) heap1[2];
+    thunk = (object *) heap1[3];
+    freep = heap1 + size;
+    // swap heaps
+    { object * temp = heap0; heap0 = heap1; heap1 = temp; }
+    return thunk;
   }
 }
