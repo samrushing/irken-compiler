@@ -194,7 +194,7 @@
   (let ((fun-stack '())
 	(current-function-cname "")
 	(current-function-name 'toplevel)
-	(current-function-part (make-counter 0))
+	(current-function-part (make-counter 1))
 	(used-jumps (find-jumps insns))
 	(fatbar-free (map-maker <)))
 
