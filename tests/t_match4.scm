@@ -4,8 +4,7 @@
   (:cons 'a (list 'a)))
 
 (define (error)
-  (%%cexp (-> 'a) "goto Lreturn")
-  (%%cexp (-> 'a) "PXLL_UNDEFINED")
+  (%exit #f #u)
   )
 
 (define thing
