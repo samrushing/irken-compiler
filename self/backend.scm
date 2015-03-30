@@ -676,7 +676,9 @@
     (define (emit-move var src target)
       (cond ((and (>= src 0) (not (= src var)))
 	     ;; from varset
-	     (o.write (format "r" (int var) " = r" (int src) "; // reg varset")))
+	     (o.write (format "r" (int var) " = r" (int src) "; // reg varset"))
+	     (if (>= target 0)
+		 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 	    ((and (>= target 0) (not (= target var)))
 	     ;; from varref
 	     (o.write (format "O r" (int target) " = r" (int var) "; // reg varref")))))
