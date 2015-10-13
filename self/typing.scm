@@ -665,8 +665,8 @@
 		    ;; very similar to type-of-cexp
 		    (type:pred 'arrow (result-type . arg-types) _)
 		    -> (begin
-			 (if (not (= (length arg-types) (length subs)))
-			     (error1 "wrong number of args to primapp" subs))
+			 (when (not (= (length arg-types) (length subs)))
+			       (error2 "wrong number of args to primapp" (map type-repr arg-types) subs))
 			 (for-range
 			     i (length arg-types)
 			     (let ((arg (nth subs i))
