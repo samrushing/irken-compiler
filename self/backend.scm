@@ -440,7 +440,7 @@
 	    (kfun (gen-function-cname current-function-name (current-function-part.inc)))
 	    )
 	;; save
-	(o.write (format "t = allocate (TC_SAVE, " (int (+ 3 nregs)) ");"))
+	(o.write (format "O t = allocate (TC_SAVE, " (int (+ 3 nregs)) ");"))
 	(let ((saves
 	       (map-range
 		   i nregs
@@ -559,11 +559,12 @@
 				  (cond ((= nargs 0)
 					 (o.write (format "O r" (int target) " = (object*)" (get-uitag dtname altname alt.index) ";")))
 					(else
-					 (o.write (format "t = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
-					 (for-range
-					     i nargs
-					     (o.write (format "t[" (int (+ i 1)) "] = r" (int (nth args i)) ";")))
-					 (o.write (format "O r" (int target) " = t;"))))))
+					 (let ((trg (format "r" (int target))))
+					   (o.write (format "O " trg " = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
+					   ;;(o.write (format "O t = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
+					   (for-range
+					    i nargs
+					    (o.write (format trg "[" (int (+ i 1)) "] = r" (int (nth args i)) ";"))))))))
 			_ -> (primop-error)
 			)
 	  '%nvget   -> (match parm args with
@@ -577,7 +578,7 @@
 				  ;; always be a call to ensure_heap() before any call to %make-vector
 				  (o.write (format "O r" (int target) ";"))
 				  (o.write (format "if (unbox(r" (int vlen) ") == 0) { r" (int target) " = (object *) TC_EMPTY_VECTOR; } else {"))
-				  (o.write (format "  t = alloc_no_clear (TC_VECTOR, unbox(r" (int vlen) "));"))
+				  (o.write (format "  O t = alloc_no_clear (TC_VECTOR, unbox(r" (int vlen) "));"))
 				  (o.write (format "  for (int i=0; i<unbox(r" (int vlen) "); i++) { t[i+1] = r" (int vval) "; }"))
 				  (o.write (format "  r" (int target) " = t;"))
 				  (o.write "}"))
