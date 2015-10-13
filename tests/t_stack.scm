@@ -24,11 +24,7 @@
   (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (error x)
-  (printn x)
-  (%%cexp (-> 'a) "goto Lreturn")
-  ;; NOTREACHED
-  ;; note: keep the 'a there... it allows a call to <error> to take any type...
-  (%%cexp (-> 'a) "PXLL_UNDEFINED")
+  (%exit #f x)
   )
 
 (let ((stack (:empty)))
