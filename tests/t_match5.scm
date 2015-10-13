@@ -3,8 +3,7 @@
   (%%cexp ('a 'a -> bool) "%0==%1" a b))
 
 (define (error x)
-  (%%cexp (-> 'a) "goto Lreturn")
-  (%%cexp (-> 'a) "PXLL_UNDEFINED")
+  (%exit #f x)
   )
 
 (define flip
