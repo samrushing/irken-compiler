@@ -191,6 +191,9 @@ Usage: compile <irken-src-file> [options]
     (for-each (lambda (path)
 		(o.write (format "#include <" path ">")))
 	      (reverse the-context.cincludes))
+    (for-each (lambda (path)
+		(o.write (format "#include \"" path "\"")))
+	      (reverse the-context.lincludes))
     (for-each o.write (reverse the-context.cverbatim))
     (match (get-header-parts the-context.options.include-dirs) with
       (:header part0 part1 part2)

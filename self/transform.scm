@@ -439,6 +439,14 @@
     x -> (error1 "malformed <cinclude>" x)
     )
 
+  (define expand-linclude
+    ((sexp:string path))
+    -> (begin
+	 (PUSH the-context.lincludes path)
+	 (sexp (sexp:symbol 'begin)))
+    x -> (error1 "malformed <linclude>" x)
+    )
+
   (define expand-cverbatim
     ((sexp:string path))
     -> (begin
@@ -468,6 +476,7 @@
       ('let-splat expand-let-splat)
       ('match expand-match)
       ('cinclude expand-cinclude)
+      ('local-include expand-linclude)
       ('cverbatim expand-cverbatim)
       ('%nvcase expand-%nvcase)
       ('%%cexp expand-%%cexp)

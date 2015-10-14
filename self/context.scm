@@ -24,6 +24,7 @@
     regalloc            = (make-register-allocator)
     standard-macros     = "lib/derived.scm"
     cincludes           = '()
+    lincludes           = '()
     cverbatim           = '()
     records             = '()
     labels              = '()
