@@ -1,10 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(datatype bool (:true) (:false))
-(datatype list
-  (:nil)
-  (:cons 'a (list 'a))
-  )
 (datatype symbol (:t string int)) ;; string unique-id
 
 ;; derived expressions

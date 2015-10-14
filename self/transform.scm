@@ -344,6 +344,11 @@
        arity=arity
        index=0}))
 
+  (define (add-datatype name dt)
+    (match (alist/lookup the-context.datatypes name) with
+	   (maybe:yes _) -> (error1 "datatype already defined" name)
+	   (maybe:no) -> (alist/push the-context.datatypes name dt)))
+
   (define parse-datatype
     ((sexp:symbol name) . subs)
     -> (let ((tvars (alist-maker))
@@ -354,7 +359,7 @@
 	      (sexp:list ((sexp:cons 'nil tag) . types)) -> (dt.add (make-alt tvars tag types))
 	      x						 -> (error1 "malformed alt in datatype" x)))
 	  subs)
-	 (alist/push the-context.datatypes name dt)
+	 (add-datatype name dt)
 	 )
     x -> (error1 "malformed datatype" x)
     )
