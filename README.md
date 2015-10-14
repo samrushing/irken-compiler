@@ -9,7 +9,7 @@ not familiar with either family of languages, Irken is a strongly
 typed, compiled language with a lisp-like syntax extensible with
 macros.  It uses type inference along with a powerful type system to
 give you the speed of a compiled language with high-level data types
-and unprecedented safety.
+and a higher degree of safety than languages like C/C++.
 
 * Why: to host massively scalable systems scriptable via a python-like language.
 * How: compile a vm using continuation-passing style to avoid using the C stack.
@@ -20,7 +20,11 @@ and unprecedented safety.
 News:
 -----
 
-130301: The 'ctailfun/noreg-ssa' branch has been merged into master.  This is
+20151013: I'm working on a generational garbage collector.  Also
+  hoping to add compile-time info that will let me use untagged
+  immediates.
+
+20130301: The 'ctailfun/noreg-ssa' branch has been merged into master.  This is
   a fairly radical rearchitecting of the compiler that will enable lots of fun
   new stuff like an LLVM backend, JIT, separate compilation, etc...
 
