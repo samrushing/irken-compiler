@@ -212,7 +212,7 @@ dump_object (object * ob, int depth)
 	break;
       }
       case TC_SYMBOL:
-	print_string (ob[1], 0);
+	print_string ((object*)ob[1], 0);
 	break;
       default: {
         pxll_vector * t = (pxll_vector *) ob;
@@ -252,7 +252,7 @@ void
 stack_depth_indent (object * k)
 {
   while (k != PXLL_NIL) {
-    k = k[1];
+    k = (object*) k[1];
     fprintf (stderr, "  ");
   }
 }
@@ -392,15 +392,15 @@ clear_space (object * p, pxll_int n)
 static object *
 varref (object * lenv, pxll_int depth, pxll_int index) {
   while (depth--) {
-    lenv = lenv[1];
+    lenv = (object*)lenv[1];
   }
-  return lenv[index+2];
+  return (object*)lenv[index+2];
 }
 
 static void
 varset (object * lenv, pxll_int depth, pxll_int index, object * val) {
   while (depth--) {
-    lenv = lenv[1];
+    lenv = (object*)lenv[1];
   }
   lenv[index+2] = val;
 }
@@ -472,8 +472,8 @@ static char ** argv;
 int
 main (int _argc, char * _argv[])
 {
-  heap0 = malloc (sizeof (object) * heap_size);
-  heap1 = malloc (sizeof (object) * heap_size);
+  heap0 = (object *) malloc (sizeof (object) * heap_size);
+  heap1 = (object *) malloc (sizeof (object) * heap_size);
   if (!heap0 || !heap1) {
     fprintf (stderr, "unable to allocate heap\n");
     return -1;
@@ -488,7 +488,7 @@ main (int _argc, char * _argv[])
     k = allocate (TC_SAVE, 3);
     k[1] = (object *) PXLL_NIL; // top of stack
     k[2] = (object *) PXLL_NIL; // null environment
-    k[3] = exit_continuation;
+    k[3] = (object *) exit_continuation;
     program_start_time = rdtsc();
     toplevel();
     return 1;
