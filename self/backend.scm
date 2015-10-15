@@ -381,7 +381,7 @@
 
     (define (emit-varref d i target)
       (if (>= target 0)
-	  (let ((src 
+	  (let ((src
 		 (if (= d -1)
 		     (format "top[" (int (+ 2 i)) "];") ;; the +2 is to skip the header and next ptr
 		     ;;(format "varref (lenv, " (int d) ", " (int i) ");")
@@ -533,14 +533,14 @@
 	'list 'cons -> "TC_PAIR"
 	'symbol 't -> "TC_SYMBOL"
 	_ _ -> (format "UOTAG(" (int index) ")")))
-  
+
     (define (get-uitag dtname altname index)
       (match dtname altname with
 	'list 'nil -> "TC_NIL"
 	'bool 'true -> "(pxll_int)PXLL_TRUE"
 	'bool 'false -> "(pxll_int)PXLL_FALSE"
 	_ _ -> (format "UITAG(" (int index) ")")))
-  
+
     (define (emit-primop name parm type args k)
 
       (define (primop-error)
@@ -730,7 +730,7 @@
 	  (maybe:no) -> (error1 "emit-nvcase" dtname)
 	  (maybe:yes dt)
 	  -> ;;(if (and (= (length subs) 1) (= (dt.get-nalts) 1))
-		 ;; (begin 
+		 ;; (begin
 		 ;;   ;; nothing to switch on, just emit the code
 		 ;;   (printf "unused jump-num: " (int jump-num) "\n")
 		 ;;   (emit (nth subs 0))
@@ -772,7 +772,7 @@
 			  (o.dedent))
 		     _ -> #u)
 		   (o.write "}")))))
-		      
+
     (define (emit-pvcase test-reg tags arities jump-num alts ealt k)
       (o.write (format "switch (get_case_noint (r" (int test-reg) ")) {"))
       (let ((else? (maybe? ealt))
@@ -967,7 +967,7 @@ static prof_dump (void)
 ;; fix when we get zero-padding format capability...
 (define (char->oct-encoding ch)
   (let ((in-oct (format (oct (char->ascii ch)))))
-    (format 
+    (format
      (match (string-length in-oct) with
        0 -> "000"
        1 -> "00"
@@ -997,21 +997,31 @@ static prof_dump (void)
 	  rest))))
 
 (define (emit-lookup-field o)
-  (cond ((> (length the-context.records) 0)
-	 (o.write "static int lookup_field (int tag, int label)")
-	 (o.write "{ switch (tag) {")
-	 (for-each
-	  (lambda (pair)
-	    (match pair with
-	      (:pair sig index)
-	      -> (begin (o.write (format "  case " (int index) ":"))
+  (when (> (length the-context.records) 0)
+	(o.write "static int lookup_field (int tag, int label)")
+	(o.write "{ switch (tag) {")
+	(for-each
+	 (lambda (pair)
+	   (match pair with
+		  (:pair sig index)
+	      -> (begin (o.write (format "  // {" (join symbol->string " " sig) "}"))
+			(o.write (format "  case " (int index) ":"))
 			(o.write "  switch (label) {")
 			(for-range
-			    i (length sig)
-			    (o.write (format "     case "
-					     (int (lookup-label-code (nth sig i)))
-					     ": return " (int i) "; break;")))
+			 i (length sig)
+			 (o.write (format "     case "
+					  (int (lookup-label-code (nth sig i)))
+					  ": return " (int i) "; break;")))
 			(o.write "  } break;"))))
-	  the-context.records)
-	 (o.write "} return 0; }"))))
-	 
+	 (reverse the-context.records))
+	(o.write "} return 0; }")))
+
+(define (emit-datatype-table o)
+  (o.write (format "// datatype table"))
+  (alist/iterate
+   (lambda (name dt)
+     (o.write (format "// name: " (sym name)))
+     (dt.iterate
+      (lambda (tag alt)
+	(o.write (format "//  (:" (sym tag) " " (join type-repr " " alt.types) ")")))))
+   the-context.datatypes))
