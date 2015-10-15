@@ -50,10 +50,28 @@
 (define (rpre t)                (pred 'pre (LIST t)))
 (define (make-label sym)        (pred sym '()))
 
+;; rproduct (rlabel (parent,pre(maybe(type)),rlabel (pending,pre(bool),rlabel(moo,pre(maybe(type)),rdefault(abs)))))
+
+(define rlabel-repr
+  (type:pred label () _) (type:pred 'pre (t) _) -> (format (sym label) "=" (type-repr t))
+  (type:pred label () _) (type:pred 'abs () _)  -> (format (sym label) "=#f")
+  (type:pred label () _) x                      -> (format (sym label) "=" (type-repr x))
+  x y -> (error1 "bad row type" (LIST x y))
+  )
+
+(define row-repr
+  (type:pred 'rlabel (label type rest) _)         -> (format (rlabel-repr label type) " " (row-repr rest))
+  (type:pred 'rdefault ((type:pred 'abs () _)) _) -> ""
+  (type:tvar id _)                                -> "..."
+  x                                               -> (format "<confused:" (type-repr x) ">")
+  )
+
 (define type-repr
   (type:tvar id _)                    -> (format "t" (int id))
   (type:pred 'arrow (rtype atype) _)  -> (format "(" (type-repr atype) "->" (type-repr rtype) ")")
   (type:pred 'arrow (rtype . args) _) -> (format "(" (join type-repr ", " args) ")->" (type-repr rtype))
+  ;;(type:pred 'rproduct (row) _)       -> (format "{" (row-repr row) "}")
+  (type:pred 'rproduct (row) _)       -> (format "{" (type-repr row) "}")
   (type:pred pred () _)               -> (format (sym pred))
   (type:pred pred args _)             -> (format (sym pred) "(" (join type-repr ", " args) ")")
   )
@@ -89,6 +107,10 @@
 
 (define (parse-type* exp tvars)
 
+  (define (gen-tvar)
+    (let ((sym (string->symbol (format "r" (int (tvar-counter.inc))))))
+      (get-tvar sym)))
+
   (define (get-tvar sym)
     (match (tvars::get sym) with
       (maybe:yes tv) -> tv
@@ -101,7 +123,7 @@
     ((sexp:symbol '->) . _) -> #t
     (_ . tl)                -> (arrow-type? tl)
     )
-  
+
   (define (parse-arrow-type t)
     (let loop ((args '()) (t0 t))
       (match t0 with
@@ -109,7 +131,7 @@
 	(arg . rest) -> (loop (list:cons (parse arg) args) rest)
 	() -> (error1 "bad arrow type" t)
 	)))
-  
+
   (define parse-predicate
     ((sexp:symbol p) . rest) -> (pred p (map parse rest))
     x -> (error1 "malformed predicate" x))
@@ -123,7 +145,7 @@
     )
 
   (define parse-field-list
-    ((field:t '... _))  -> (new-tvar)
+    ((field:t '... _))  -> (gen-tvar)
     ((field:t name type) . tl) -> (rlabel (make-label name) (rpre (parse type)) (parse-field-list tl))
     () -> (rdefault (rabs)))
 
@@ -148,7 +170,7 @@
 ;; I think this is a bug: the moo() in there should be inside the pre(),
 ;;  otherwise it's a malformed row! [hey, maybe this is where 'kinding' comes in. 8^)]
 ;;
-;; moo(t20093, rproduct(rlabel(level, pre(int), 
+;; moo(t20093, rproduct(rlabel(level, pre(int),
 ;;                      rlabel(key, pre(t908),
 ;;                      rlabel(val, pre(t909),
 ;;                      rlabel(left, moo(t20068, pre(t20092)),
@@ -194,7 +216,7 @@
 ;; 	(t3 (parse-type (car (read-string "{x=int ...}"))))
 ;; 	(t4 (parse-type (car (read-string "(((continuation 'a) -> 'a) -> 'a)"))))
 ;; 	)
-    
+
 ;;     (printn t0)
 ;;     (print-string (type-repr t0))
 ;;     (newline)
