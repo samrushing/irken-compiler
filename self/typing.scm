@@ -39,11 +39,13 @@
 	(error "type error")))
 
     (define (U t0 t1)
-      ;;(print-string (format "    ----U " (type-repr t0) " -- " (type-repr t1) "\n"))
+      (when the-context.options.debugtyping
+	    (print-string (format "    ----U " (type-repr t0) " -- " (type-repr t1) "\n")))
       (let/cc return
 	  (let ((u (type-find t0))
 		(v (type-find t1)))
-	    ;;(print-string (format "    ----: " (type-repr u) " -- " (type-repr v) "\n"))
+	    (when the-context.options.debugtyping
+		  (print-string (format "    ----: " (type-repr u) " -- " (type-repr v) "\n")))
 	    (if (not (eq? u v))
 		(begin
 		  (match u v with
@@ -107,7 +109,7 @@
 		  (U v d0))
 		 (else
 		  ;; some other predicate
-		  ;; C-MUTATE-GL
+		  ;; S-MUTATE-GL
 		  (let ((n (length s1))
 			(tvars0 (map-range i n (new-tvar)))
 			(tvars1 (map-range i n (new-tvar))))
@@ -119,7 +121,10 @@
 	;; both are rdefault
 	(type:pred 'rdefault (t0) _) (type:pred 'rdefault (t1) _)
 	-> (U t0 t1)
-	;; u is rdefault, v is some other predicate
+	;; ensure that u is the rdefault/δ
+	_ (type:pred 'rdefault (t1) _)
+	-> (U-row v u)
+	;; u is rdefault, v is some other predicate, S-MUTATE-GD
 	(type:pred 'rdefault (t0) _) (type:pred p1 s1 _)
 	-> (let ((n (length s1))
 		 (tvars (map-range i n (new-tvar))))
@@ -138,11 +143,12 @@
   ;;     (print-string (format "apply-subst: " (p type-repr t) "\n"))
   ;;     (print-string (format " = " (p type-repr t0) "\n"))
   ;;     t0))
-  
+
   (define (instantiate-type-scheme gens type)
     ;; map from gens->fresh
-    ;;(print-string "gens= ") (printn gens)
-    ;;(print-string "type= ") (print-string (type-repr type)) (newline)
+    (when the-context.options.debugtyping
+	  (printf "gens= " (join type-repr ", " gens) "\n")
+	  (printf "type= " (type-repr type) "\n"))
     (let ((fresh
 	   (foldr
 	    (lambda (gen al)
@@ -528,11 +534,12 @@
 						  T0)))
 			 _ -> (prim-error name))
       '%dtcon       -> (match params with
+			 ;; e.g. list := nil | cons X list
+			 ;; %dtcon/list/cons := ∀X.(X,list(X)) → list(X)
 			 (sexp:cons dtname altname)
 			 -> (match (alist/lookup the-context.datatypes dtname) with
 			      (maybe:no) -> (error1 "lookup-primapp: no such datatype" dtname)
-			      (maybe:yes dt) ->
-			      (dt.get-alt-scheme altname))
+			      (maybe:yes dt) -> (dt.get-alt-scheme altname))
 			 _ -> (prim-error name))
       '%vcon        -> (match params with
 			 (sexp:list ((sexp:symbol label) (sexp:int arity)))
@@ -638,9 +645,6 @@
 	_ -> (error1 "unify-handlers: expected row sum type" (type-repr val-type)))))
 
   (define (type-of-primapp name params subs tenv)
-;;     (print-string        (format "type-of-primapp, name = " (sym name) " params= " (repr params) "\n"))
-;;     (print-string        (format "type-of-primapp, scheme = " (scheme-repr (lookup-primapp name params)) "\n"))
-
     ;; special primapps
     (match name with
       ;; we need a map of exception => tvar, then cross-verify with each handle expression.
@@ -660,7 +664,11 @@
       _ -> (match (lookup-primapp name params) with
 	     (:scheme gens type)
 	     -> (let ((itype (instantiate-type-scheme gens type)))
-		  ;; 	   (print-string (format "           instantiated = " (type-repr itype) "\n"))
+		  (when the-context.options.debugtyping
+		  	(printf "type-of-primapp, name = " (sym name) " params= " (repr params) "\n")
+		  	(printf "type-of-primapp, scheme = " (scheme-repr (lookup-primapp name params)) "\n")
+		  	(printf "           instantiated = " (type-repr itype) "\n")
+		  	)
 		  (match itype with
 		    ;; very similar to type-of-cexp
 		    (type:pred 'arrow (result-type . arg-types) _)
