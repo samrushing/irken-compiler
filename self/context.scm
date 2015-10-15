@@ -10,6 +10,7 @@
    profile		= #f
    noinline		= #f
    noletreg		= #f
+   debugtyping          = #f
    include-dirs		= (LIST "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    })
 

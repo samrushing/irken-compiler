@@ -64,6 +64,7 @@
 		    (set! i (+ i 1))
 		    (PUSH options.include-dirs argv[i]))
 	  "-m" -> (set! options.debugmacroexpansion #t)
+	  "-dt" -> (set! options.debugtyping #t)
 	  ;; this option only applies to the C compilation phase.
 	  "-O" -> (set! options.optimize #t)
 	  "-p" -> (set! options.profile #t)
@@ -79,10 +80,11 @@
 Usage: compile <irken-src-file> [options]
  -c : don't compile .c file
  -v : verbose (very!) output
- -t : generate trace-printing code
+ -t : generate trace-printing code (currently unimplemented)
  -f : set CFLAGS for C compiler
  -I : add include search directory
  -m : debug macro expansion
+ -dt : debug typing
  -O : tell CC to optimize
  -p : generate profile-printing code
  -n : disable letreg optimization
@@ -124,7 +126,7 @@ Usage: compile <irken-src-file> [options]
 	;; try to free up some memory
 	(_ (set! node0 (node/sequence '())))
 	(_ (set! node1 (node/sequence '())))
-	(_ (set! node2 (node/sequence '())))	
+	(_ (set! node2 (node/sequence '())))
 	(_ (set! the-context.funs (tree/empty)))
 	(_ (find-tail noden))
 	(_ (find-leaves noden))
@@ -204,6 +206,7 @@ Usage: compile <irken-src-file> [options]
 		(o.copy part2)
 		(emit o0 o cps)))
     (emit-lookup-field o)
+    (emit-datatype-table o)
     (if the-context.options.profile (emit-profile-1 o))
     (print-string "done.\n")
     (o0.close)
@@ -218,5 +221,5 @@ Usage: compile <irken-src-file> [options]
 	  )
     )
   )
-  
+
 (main)
