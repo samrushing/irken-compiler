@@ -62,7 +62,7 @@
 	   -> (begin (parse-defmacro dtl) (recur tl acc))
 	   _ -> (recur tl (list:cons hd acc))))
     (recur exps '()))
-  
+
   (define (find-definitions exps0 k)
     (define recur
       defs exps ()	-> (k (reverse defs) (reverse exps))
@@ -268,6 +268,7 @@
     )
 
   (define (make-datatype tvars name)
+
     (let ((alt-map (alist-maker))
 	  (nalts 0))
 
@@ -297,11 +298,11 @@
 
       (define (get-alt-scheme tag)
 	(let ((alt (alt-map::get-err tag "no such alt in datatype"))
-	      (tvars (get-tvars)))
+	      (tvars0 (get-tvars)))
 	  ;; ok, this is a mistake: the order of the tvars *matters*!
-	  (let ((dtscheme (pred name tvars))
-		(r (:scheme tvars (arrow dtscheme alt.types))))
-;; 	    (print-string (format "get-alt-scheme dt=" (sym name) " tag=" (sym tag) " scheme=" (scheme-repr r)))
+	  (let ((dtscheme (pred name tvars0))
+		(r (:scheme tvars0 (arrow dtscheme alt.types))))
+ 	    ;; (printf "get-alt-scheme dt=" (sym name) " tag=" (sym tag) " scheme=" (scheme-repr r) "\n")
 	    r)))
 
       { name=name
@@ -499,7 +500,6 @@
 (define (print-datatype dt)
   (print-string "(datatype ")
   (printn dt.name)
-  ;; note: this prints them in reverse order. (fix?)
   (dt.iterate
    (lambda (tag alt)
      (print-string (format "  (:" (sym tag) " " (join type-repr " " alt.types) ")\n"))))
