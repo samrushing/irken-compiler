@@ -108,7 +108,7 @@
       ;; override continuation when in tail position
       (if tail?
 	  (set! k (cont (k/free k) gen-return)))
-  
+
       (match exp.t with
 	(node:literal lit)		-> (c-literal lit exp.id k)
 	(node:sequence)			-> (c-sequence tail? exp.subs lenv k)
@@ -331,7 +331,7 @@
 	  ;; note: discards first argument...
 	  '%exn-handle -> (compile tail? (second args) lenv k)
 	  _ -> (c-primargs args name params exp.type lenv k))))
-   
+
     (define (c-cexp sig template exp lenv k)
       ;;(print-string (format "c-cexp: sig = " (type-repr sig) " solved type = " (type-repr exp.type) "\n"))
       (collect-primargs exp.subs lenv k
@@ -595,7 +595,7 @@
 	       (exp0 val) -> (loop exp0 (list:cons (:pair field val) fields))
 	       _	  -> (error1 "malformed %rextend" exp))
 	  (node:primapp '%rmake _) ;; done - put the names in canonical order
-	  -> (let ((fields0 (sort 
+	  -> (let ((fields0 (sort
 			    (lambda (a b)
 			      (match a b with
 				(:pair f0 _) (:pair f1 _)
@@ -618,7 +618,7 @@
 				    (list:cons target free)
 				    lenv k))))
 	  _ -> (c-record-extension fields exp lenv k))))
-		       
+
     (define (c-record-extension fields exp lenv k)
       (error "c-record-extension: NYI"))
 
