@@ -27,7 +27,9 @@
      '("(let\\s-+\\(\\sw+\\)"
        (1 font-lock-function-name-face))
      ;; functions
-     '("(define\\s-+(?\\(\\sw+\\)"
+     ;; SMR: 2015 - had to tweak this regex, something breaking, probably syntax-table related?
+     ;;   may very well affect the other uses of \\sw...
+     '("(define\\s-+(?\\([^ \t\n)]+\\)"
        (1 font-lock-function-name-face))
      ;; datatypes
      '("(datatype\\s-+\\(\\sw+\\)" (1 font-lock-type-face))
@@ -38,19 +40,22 @@
       ))
   "Gaudy expressions to highlight in Scheme modes.")
 
+;;;###autoload
 (define-derived-mode irken-mode scheme-mode "Irken"
   "Major mode for editing Irken code."
+  :syntax-table nil
   (setq major-mode 'irken-mode
 	mode-name "Irken")
   (setq font-lock-defaults
-       '((irken-font-lock-keywords)
-         nil t (("+-*/.<>=!?$%_&~^:" . "w") (?#. "w 14"))
-         beginning-of-defun
-         (font-lock-mark-block-function . mark-defun)
-         (font-lock-syntactic-face-function
-          . scheme-font-lock-syntactic-face-function)
-         (parse-sexp-lookup-properties . t)
-         (font-lock-extra-managed-props syntax-table)))
+       '((irken-font-lock-keywords))
+       ;; nil t (("+-*/.<>=!?$%_&~^:" . "w") (?#. "w 14"))
+       ;; beginning-of-defun
+       ;; (font-lock-mark-block-function . mark-defun)
+       ;; (font-lock-syntactic-face-function
+       ;; 	. scheme-font-lock-syntactic-face-function)
+         ;; (parse-sexp-lookup-properties . t)
+         ;; (font-lock-extra-managed-props syntax-table)))
+       )
   )
 
 (defun scheme-indent-match (state indent-point normal-indent)
