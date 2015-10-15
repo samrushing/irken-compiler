@@ -1,7 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (define (map-class)
-  
+
   (define (add self k v)
     (match (tree/member self.t self.cmp k) with
       (maybe:yes _) -> (error1 "key already present in map" k)
@@ -23,11 +23,14 @@
   (define (iterate self p)
     (tree/inorder p self.t))
 
+  (define (riterate self p)
+    (tree/reverse p self.t))
+
   (define (map self p)
     (let ((r '()))
       (tree/reverse (lambda (k v) (PUSH r (p k v))) self.t)
       r))
-  
+
   (define (keys self)
     (tree/keys self.t))
 
@@ -40,6 +43,7 @@
 	  get-default=lookup*
 	  get-err=get-error
 	  iterate=iterate
+	  riterate=riterate
 	  map=map
 	  keys=keys
 	  values=values}))
@@ -53,7 +57,7 @@
 
 ;; set class using aa_map and ignoring values.
 (define (set2-class)
-  
+
   (define (add self k)
     (match (tree/member self.t self.cmp k) with
       (maybe:yes _) -> #u
