@@ -186,17 +186,17 @@
 	(loop (>> x 3)
 	      (list:cons hex-table[(logand x 7)] r)))))
 
-(define (pad width s left?)
+(define (pad width s left? ch)
   (let ((n (string-length s)))
     (if (> n width)
 	s ;; too wide
 	(let ((np (- width n)))
 	  (if left?
-	      (format (list->string (n-of np #\space)) s)
-	      (format s (list->string (n-of np #\space))))))))
-(define (lpad w s) (pad w s #t))
-(define (rpad w s) (pad w s #f))
-(define (cpad w s)
+	      (format (list->string (n-of np ch)) s)
+	      (format s (list->string (n-of np ch))))))))
+(define (lpad w s ch) (pad w s #t ch))
+(define (rpad w s ch) (pad w s #f ch))
+(define (cpad w s ch)
   (let ((sl (string-length s))
 	(lp (+ sl (/ (- w sl) 2))))
     (rpad w (lpad lp s))))
@@ -212,9 +212,10 @@
   (fitem (<join> p sep l))	-> (string-join (map p l) sep) ;; map <p> over list <l>, separate each with <sep>
   (fitem (<string> s))		-> s
   (fitem (<p> p x))		-> (p x) ;; fun <p> converts <x> to a string
-  (fitem (<lpad> n item ...))	-> (lpad n (format item ...)) ;; left-pad
-  (fitem (<rpad> n item ...))	-> (rpad n (format item ...)) ;; right-pad
-  (fitem (<cpad> n item ...))	-> (cpad n (format item ...)) ;; right-pad
+  (fitem (<lpad> n item ...))	-> (lpad n (format item ...) #\space) ;; left-pad
+  (fitem (<rpad> n item ...))	-> (rpad n (format item ...) #\space) ;; right-pad
+  (fitem (<cpad> n item ...))	-> (cpad n (format item ...) #\space) ;; right-pad
+  (fitem (<zpad> n item ...))	-> (lpad n (format item ...) #\0)     ;; zero-pad
   (fitem (<repeat> n item ...)) -> (string-concat (n-of n (format item ...)))
   (fitem x)			-> x	;; anything else must already be a string
   )
