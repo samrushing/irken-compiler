@@ -25,12 +25,12 @@
     _ -> #f))
 
 ;; singleton base types
-(define int-type	(pred 'int '()))
-(define char-type	(pred 'char '()))
-(define string-type	(pred 'string '()))
-(define undefined-type	(pred 'undefined '()))
-(define bool-type	(pred 'bool '()))
-(define symbol-type	(pred 'symbol '()))
+(define int-type        (pred 'int '()))
+(define char-type       (pred 'char '()))
+(define string-type     (pred 'string '()))
+(define undefined-type  (pred 'undefined '()))
+(define bool-type       (pred 'bool '()))
+(define symbol-type     (pred 'symbol '()))
 
 (define base-types
   (alist/make
@@ -70,8 +70,8 @@
   (type:tvar id _)                    -> (format "t" (int id))
   (type:pred 'arrow (rtype atype) _)  -> (format "(" (type-repr atype) "->" (type-repr rtype) ")")
   (type:pred 'arrow (rtype . args) _) -> (format "(" (join type-repr ", " args) ")->" (type-repr rtype))
-  ;;(type:pred 'rproduct (row) _)       -> (format "{" (row-repr row) "}")
-  (type:pred 'rproduct (row) _)       -> (format "{" (type-repr row) "}")
+  (type:pred 'rproduct (row) _)       -> (format "{" (row-repr row) "}")
+  ;;(type:pred 'rproduct (row) _)       -> (format "{" (type-repr row) "}")
   (type:pred pred () _)               -> (format (sym pred))
   (type:pred pred args _)             -> (format (sym pred) "(" (join type-repr ", " args) ")")
   )
@@ -80,7 +80,7 @@
   (let ((tvars (make-set '() eq?)))
     (define recur
       (type:pred sym types _) -> (for-each recur types)
-      x			      -> (tvars.add x))
+      x                       -> (tvars.add x))
     (recur t)
     (tvars.get)))
 
@@ -93,12 +93,12 @@
     (match trec.parent with
       (maybe:no)    -> t
       (maybe:yes t0) -> (let ((p (type-find t0)))
-			 (set! trec.parent (maybe:yes p)) ;; path compression
-			 p))))
+                         (set! trec.parent (maybe:yes p)) ;; path compression
+                         p))))
 
 (define (type-union a b)
   (let ((pa (type-find a))
-	(pb (type-find b)))
+        (pb (type-find b)))
     (match pa pb with
       (type:tvar _ ra) (type:pred _ _ _)    -> (set! ra.parent (maybe:yes pb))
       (type:pred _ _ _) (type:tvar _ rb)    -> (set! rb.parent (maybe:yes pa))
@@ -115,8 +115,8 @@
     (match (tvars::get sym) with
       (maybe:yes tv) -> tv
       (maybe:no) -> (let ((r (new-tvar)))
-		      (tvars::add sym r)
-		      r)))
+                      (tvars::add sym r)
+                      r)))
 
   (define arrow-type?
     ()                      -> #f
@@ -127,10 +127,10 @@
   (define (parse-arrow-type t)
     (let loop ((args '()) (t0 t))
       (match t0 with
-	((sexp:symbol '->) result-type) -> (arrow (parse result-type) (reverse args))
-	(arg . rest) -> (loop (list:cons (parse arg) args) rest)
-	() -> (error1 "bad arrow type" t)
-	)))
+        ((sexp:symbol '->) result-type) -> (arrow (parse result-type) (reverse args))
+        (arg . rest) -> (loop (list:cons (parse arg) args) rest)
+        () -> (error1 "bad arrow type" t)
+        )))
 
   (define parse-predicate
     ((sexp:symbol p) . rest) -> (pred p (map parse rest))
@@ -140,8 +140,8 @@
     ((sexp:symbol 'quote) (sexp:symbol tvar)) -> (get-tvar tvar)
     ((sexp:symbol 'quote) . x)  -> (error1 "malformed type?" x)
     l -> (if (arrow-type? l)
-	     (parse-arrow-type l)
-	     (parse-predicate l))
+             (parse-arrow-type l)
+             (parse-predicate l))
     )
 
   (define parse-field-list
@@ -153,10 +153,10 @@
     (match t with
       (sexp:symbol sym)
       -> (match (alist/lookup base-types sym) with
-	   ;; known base type
-	   (maybe:yes t) -> t
-	   ;; allow nullary predicates
-	   (maybe:no) -> (pred sym '()))
+           ;; known base type
+           (maybe:yes t) -> t
+           ;; allow nullary predicates
+           (maybe:no) -> (pred sym '()))
       (sexp:list l) -> (parse-list l)
       (sexp:record fl) -> (rproduct (parse-field-list fl))
       _ -> (error1 "bad type" exp)))
@@ -184,23 +184,23 @@
   -> (get-record-sig arg)
   (type:pred 'rproduct (row) _)
   -> (let ((sig
-	    (let loop ((row row)
-		       (labels '()))
-	      (match row with
-;; 		(type:pred 'rlabel ((type:pred label _ _) (type:pred 'pre _ _) rest) _)
-;; 		-> (loop rest (list:cons label labels))
-;; 		(type:pred 'moo (tv arg) _) -> (loop arg labels)
-		(type:pred 'rlabel ((type:pred label _ _) (type:pred 'abs _ _) rest) _)
-		-> (loop rest labels)
-		(type:pred 'rlabel ((type:pred label _ _) _ rest) _)
-		-> (loop rest (list:cons label labels))
-		(type:pred 'rdefault _ _)   -> labels
-		(type:tvar _ _)		    -> (list:cons '... labels)
-		_			    -> '()))))
+            (let loop ((row row)
+                       (labels '()))
+              (match row with
+;;              (type:pred 'rlabel ((type:pred label _ _) (type:pred 'pre _ _) rest) _)
+;;              -> (loop rest (list:cons label labels))
+;;              (type:pred 'moo (tv arg) _) -> (loop arg labels)
+                (type:pred 'rlabel ((type:pred label _ _) (type:pred 'abs _ _) rest) _)
+                -> (loop rest labels)
+                (type:pred 'rlabel ((type:pred label _ _) _ rest) _)
+                -> (loop rest (list:cons label labels))
+                (type:pred 'rdefault _ _)   -> labels
+                (type:tvar _ _)             -> (list:cons '... labels)
+                _                           -> '()))))
        (sort symbol<? sig))
   ;; type solver should guarantee this
   x -> (begin (print-string (format "unable to get record sig: " (type-repr x) "\n"))
-	      (error1 "bad record sig" x))
+              (error1 "bad record sig" x))
   )
 
 ;; as an sexp it can be attached to a primapp as a parameter.
@@ -211,11 +211,11 @@
 
 ;; (define (test-types)
 ;;   (let ((t0 (parse-type (car (read-string "((list sexp) -> int)"))))
-;; 	(t1 (parse-type (car (read-string "(thing 'a 'b (list 'a) (list 'b))"))))
-;; 	(t2 (parse-type (car (read-string "'a"))))
-;; 	(t3 (parse-type (car (read-string "{x=int ...}"))))
-;; 	(t4 (parse-type (car (read-string "(((continuation 'a) -> 'a) -> 'a)"))))
-;; 	)
+;;      (t1 (parse-type (car (read-string "(thing 'a 'b (list 'a) (list 'b))"))))
+;;      (t2 (parse-type (car (read-string "'a"))))
+;;      (t3 (parse-type (car (read-string "{x=int ...}"))))
+;;      (t4 (parse-type (car (read-string "(((continuation 'a) -> 'a) -> 'a)"))))
+;;      )
 
 ;;     (printn t0)
 ;;     (print-string (type-repr t0))
