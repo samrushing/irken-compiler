@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/basis.scm")
+(include "lib/os.scm")
 
 (datatype big
   (:zero)
@@ -559,6 +560,24 @@
     (assert (big= rem (big:zero)))
     ))
 
+;; Note: to use dump/load, you need to link with -no_pie to disable ASLR
+(define (pi-digit-emitter)
+  (let ((n 1))
+    (printf (lpad 6 (int 0)) ": ")
+    (define (emit dig)
+      (when (= 0 (mod n 100))
+	    (callcc (lambda (k) (dump "pi.image" k)))
+	    (printf "\n" (lpad 6 (int n)) ": ")
+	    (flush)
+	    #u
+	    )
+      (set! n (+ n 1))
+      (printf (big->dec dig))
+      (flush)
+      )
+    emit
+    ))
+
 (define (pi)
   (define B1 (int->big 1))
   (define B2 (int->big 2))
@@ -568,12 +587,15 @@
   (define B- big-sub)
   (define B/ big-div)
   (define IB int->big)
+  (define emit (pi-digit-emitter))
+
   (define (B/ a b)
     (match (big-div a b) with
       (:tuple quo rem)
       -> quo))
 
   (define (g q r t i)
+    (printf (big-repr q) "\n")
     (let ((i3 (B* i B3))
 	  (u (B* B3 (B* (B+ i3 B1) (B+ B2 i3))))
 	  (y (B/ 
@@ -581,8 +603,7 @@
 		  (B* (IB 5) r))
 	      (B* (IB 5) t)))
 	  )
-      (printf (big->dec y))
-      (flush)
+      (emit y)
       (g (B* (IB 10) (B* q (B* i (B- (B* B2 i) B1))))
 	 (B* (IB 10) 
 	     (B* u 
@@ -607,4 +628,8 @@
 ;      (test1))
 ;(test2)
 
-(pi)
+;; invoke without an argument to start generating,
+;; and with an argument to load it and run it.
+(if (> sys.argc 1)
+    (throw (load "pi.image") 0)
+    (pi))
