@@ -42,10 +42,10 @@
   (%%cexp (int int -> bool) "%0>=%1" a b))
 
 (define (>0 a)
-  (%%cexp (int -> bool) "%0>0" a))  
+  (%%cexp (int -> bool) "%0>0" a))
 
 (define (<0 a)
-  (%%cexp (int -> bool) "%0<0" a))  
+  (%%cexp (int -> bool) "%0<0" a))
 
 (define (+ a b)
   (%%cexp (int int -> int) "%0+%1" a b))
@@ -209,7 +209,9 @@
 
 ;; N.B.: ASLR will cause this to break.
 ;; Disabling ASLR is platform-specific:
-;; OSX: http://src.chromium.org/viewvc/chrome/trunk/src/build/mac/change_mach_o_flags.py?revision=111385
+;; OSX:
+;;   http://src.chromium.org/viewvc/chrome/trunk/src/build/mac/change_mach_o_flags.py?revision=111385
+;;   *or* link with -no_pie (cc arg '-Wl,-no_pie')
 ;; Linux: setarch `uname -m` -R <binary>
 
 (define (dump filename thunk)
