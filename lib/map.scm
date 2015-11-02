@@ -4,7 +4,13 @@
 
   (define (add self k v)
     (match (tree/member self.t self.cmp k) with
+      ;;(maybe:yes _) -> (raise (:KeyError "key already present in map" k))
       (maybe:yes _) -> (error1 "key already present in map" k)
+      (maybe:no) -> (set! self.t (tree/insert self.t self.cmp k v))))
+
+  (define (maybe-add self k v)
+    (match (tree/member self.t self.cmp k) with
+      (maybe:yes _) -> #u
       (maybe:no) -> (set! self.t (tree/insert self.t self.cmp k v))))
 
   (define (lookup self k)
@@ -39,6 +45,7 @@
 
   (let ((methods
 	 {add=add
+	  maybe-add=maybe-add
 	  get=lookup
 	  get-default=lookup*
 	  get-err=get-error
