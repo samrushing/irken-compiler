@@ -36,7 +36,7 @@
 	     (vars-set-flag! (car fenv) VFLAG-GETCC))
       _ -> #u)
     (for-each (lambda (x) (walk x fenv)) exp.subs))
-  
+
   (walk exp '()))
 
 (define (find-tail node)
@@ -244,7 +244,7 @@
 		      (return (inline r fenv)))
 		 _ -> #u)
 	    _ -> #u)
-    
+
 	(set! node.subs (map (lambda (x) (inline x fenv)) node.subs))
 	node
 	))
@@ -375,12 +375,14 @@
 		 _ -> node)))
 	  (set! node0.subs (map walk node0.subs))
 	  node0))
-    
+
       (walk body))
 
     ;; body of do-inlining
-    (inline root (tree/empty))
-    ))
+    (if the-context.options.noinline
+	root
+	(inline root (tree/empty))
+    )))
 
 (define (escape-analysis root)
 
@@ -390,7 +392,7 @@
     ;;  escape.  a variable 'escapes' when it is referenced while free
     ;;  inside a function that escapes (i.e., any function that is
     ;;  varref'd outside of the operator position).
-  
+
     (define (fun-escapes name)
       (vars-set-flag! name VFLAG-ESCAPES)
       (PUSH escaping-funs name))
@@ -464,7 +466,7 @@
 	  (else r))))
 
 (define (simpleopt node)
-  
+
   ;; early exit means we've rewritten the node, and will recur without
   ;;   the default processing at the end.
   (let/cc return
@@ -533,7 +535,7 @@
 	   ({t=(node:literal (literal:cons 'bool b _)) ...} then else)
 	   -> (if (eq? b 'true) (return (simpleopt then)) (return (simpleopt else)))
 	   _ -> #u)
-	
+
       (node:sequence)
       -> (if (= 1 (length node.subs))
 	     ;; single-item sequence
@@ -561,6 +563,92 @@
       node
       )))
 
+(datatype fatopt
+  (:cons symbol (list symbol) fatopt) ;; name tags
+  (:nil)
+  )
+
+;; this was translated pretty straight from python, it should maybe
+;;   be re-done.
+(define (optimize-nvcase root)
+
+  (define (lookup name0 fat-env)
+    (let loop ((result '()))
+      (match fat-env with
+	(fatopt:nil) -> result
+	(fatopt:cons name1 tags rest)
+	-> (if (eq? name0 name1)
+	       (loop (append result tags))
+	       (loop result)))))
+
+  (define (get-datatype name)
+    (match (alist/lookup the-context.datatypes name) with
+      (maybe:no) -> (error1 "no such datatype" name)
+      (maybe:yes dt) -> dt))
+
+  (define (is-match/fail? node)
+    (match node.t with
+      (node:primapp '%match-error _) -> #t
+      (node:primapp '%fail _)        -> #t
+      _ -> #f))
+
+  (define (search exp fat-env)
+    (let ((fatbar? #f))
+      (match exp.t with
+	(node:primapp '%fatbar _) -> (set! fatbar? #t)
+	(node:nvcase dtname alts arities)
+	-> (let ((val (car exp.subs)))
+	     (match val.t with
+	       (node:varref name)
+	       -> (let ((dt (get-datatype dtname))
+			(nalts (dt.get-nalts)))
+		    (if (< (length alts) nalts)
+			;; this nvcase is not exhaustive.  but have we already looked at
+			;; the others?
+			(let ((already (lookup dtname fat-env)))
+			  (if (= (+ (length already) (length alts)) nalts)
+			      (cond ((= (length alts) 1)
+				     ;; remove the whole nvcase node
+				     (assert (= 3 (length exp.subs)))
+				     (assert (is-match/fail? (nth exp.subs 2)))
+				     (set! exp (nth exp.subs 1)))
+				    (else
+				     ;; just remove the %match-error/%fail
+				     (assert (is-match/fail? (last exp.subs)))
+				     (set! exp.subs (slice exp.subs 0 (- (length exp.subs) 1)))))))
+			;; this nvcase is exhaustive, no need to extend fat-env
+			#u))
+	       ;; probably a manually-constructed nvcase
+	       _ -> (warning "non-standard nvcase expression.")
+	       ))
+	_ -> #u)
+      ;; fatbar is tricky here, because it can represent a sequence of tests,
+      ;;   but in such a way that the test performed is *not* a direct ancestor
+      ;;   of later tests... therefore when maintaining fat_env, we treat fatbar
+      ;;   specially, and preserve the interior version of fat_env for the second
+      ;;   test.  [theoretically this hack could be avoided if we had a variant of
+      ;;   fatbar that correctly maintained the parent/child relationship between
+      ;;   earlier and later tests... but this would require code duplication, the
+      ;;   elimination of which is the whole *purpose* of fatbar]
+      (let ((new-subs '())
+	    (size 0))
+	(for-each
+	 (lambda (sub)
+	   (let (((new-sub fat-env2) (search sub fat-env)))
+	     (if fatbar?
+		 ;; if we are in a fatbar, preserve the value of fat-env for the second branch.
+		 (set! fat-env fat-env2))
+	     (set! new-subs (append new-subs new-sub))
+	     (set! size (+ new-sub.size))))
+	 exp.subs)
+	(set! exp.subs new-subs)
+	(set! exp.size size)
+	(:tuple exp fat-env)
+	)))
+  (let (((root2 fat-env) (search root (fatopt:nil))))
+    root2
+    ))
+
 (define removed-count 0)
 
 (define (do-trim top)
@@ -581,7 +669,7 @@
 		(if (not (seen::in dep))
 		    (walk dep)))
 	      (deps::get)))))
-    
+
     (define (trim node)
       (let ((node0
 	     (match node.t with
@@ -638,4 +726,3 @@
    (do-inlining
     (do-simple-optimizations
      (do-trim node)))))
-    
