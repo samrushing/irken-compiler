@@ -52,11 +52,7 @@
 
 (define (string-concat l)
   ;; merge a list of strings into one string
-  (let ((tsize
-	 (let loop ((l0 l) (size 0))
-	   (match l0 with
-	     () -> size
-	     (hd . tl) -> (loop tl (+ size (string-length hd))))))
+  (let ((tsize (fold (lambda (s acc) (+ (string-length s) acc)) 0 l))
 	(buffer (make-string tsize)))
     (let loop ((l0 l) (pos 0))
       (match l0 with
