@@ -49,7 +49,7 @@
   (if (and (> d.level 0)
 	   (= d.left.level d.level))
       (node/make
-       d.level d.left.key d.left.val d.left.left 
+       d.level d.left.key d.left.val d.left.left
        (node/make
 	d.level d.key d.val d.left.right
 	(tree/skew d.right)))
@@ -63,7 +63,7 @@
        (node/make b.level b.key b.val b.left b.right.left)
        (tree/split b.right.right))
       b))
-       
+
 ;; urghhh, probably should have put '<' as the last arg.
 (define (tree/insert root < key val)
   (let loop ((n root))
