@@ -73,3 +73,44 @@
 (defmacro forever
   (forever body ...)
   -> (let $loop () body ... ($loop)))
+
+
+;; make an iterator from a 'visit' function.
+;; XXX: needs more work - the ability to specify other args
+;;      to visitfun...
+(defmacro iterator
+  (iterator visitfun ob (v0 ...))
+  -> (make-generator
+      (lambda (consumer)
+	(visitfun ob (lambda (v0 ...) (consumer (maybe:yes v0 ...))))
+	(forever (consumer (maybe:no))))))
+
+;; this is a generic 'for' iterator, that will iterate
+;;  over any generator using the 'maybe' type for its
+;;  items...
+
+(defmacro for
+
+  ;; multiple variables
+  (for generator-exp (var0 ...) body0 ...)
+  -> (let (($gen generator-exp))
+       (let $genloop (($item ($gen)))
+	 (match $item with
+	   (maybe:no) -> #u
+	   (maybe:yes (:tuple var0 ...))
+	   -> (begin body0 ...
+		     ($genloop ($gen))))))
+
+  ;; [about arity: I'm not sure if the confusion possible here is worth
+  ;;  the performance advantage of avoiding the :tuple wrapper.]
+
+  ;; single-variable
+  (for generator-exp var body0 ...)
+  -> (let (($gen generator-exp))
+       (let $genloop (($item ($gen)))
+	 (match $item with
+	   (maybe:no) -> #u
+	   (maybe:yes var)
+	   -> (begin body0 ...
+		     ($genloop ($gen))))))
+  )
