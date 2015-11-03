@@ -40,7 +40,7 @@
 
 ;; canonicalize the results of a subtraction
 ;; Note: the list of digits is in MSB form here.
-(define remove-zeros 
+(define remove-zeros
   (0 . tl) -> (remove-zeros tl)
   x	   -> x
   )
@@ -61,7 +61,7 @@
 	 (if (>= sum big/base)
 	     (digits-add0 tl0 tl1 (list:cons (- sum big/base) acc) #t)
 	     (digits-add0 tl0 tl1 (list:cons sum acc) #f)))
-    _ _ -> (error "matching is borken?")
+    ;;_ _ -> (error "matching is borken?")
     ))
 
 (define (digits-add a b)
@@ -88,21 +88,18 @@
   (eq? (digits-cmp da db) (cmp:<)))
 
 (define big-add
+  (big:zero) x              -> x
+  x (big:zero)              -> x
   (big:pos da) (big:pos db) -> (big:pos (digits-add da db))
   (big:pos da) (big:neg db) -> (big-sub (big:pos da) (big:pos db))
   (big:neg da) (big:neg db) -> (big:neg (digits-add da db))
   (big:neg da) (big:pos db) -> (big-sub (big:pos db) (big:pos da))
-  (big:zero) x              -> x
-  ;; why does this not work?
-  ;;x (big:zero)              -> x
-  (big:pos x) (big:zero)    -> (big:pos x)
-  (big:neg x) (big:zero)    -> (big:neg x)
   )
 
 ;; ---------- subtraction -----------
 
 ;; used for borrowing
-(define digits-sub1 
+(define digits-sub1
   () -> (raise (:UnderflowError))
   (1) -> '()
   (0 . tl) -> (list:cons (- big/base 1) (digits-sub1 tl))
@@ -120,7 +117,6 @@
 	 (if (< diff 0)
 	     (digits-sub0 (digits-sub1 tl0) tl1 (list:cons (+ big/base diff) acc))
 	     (digits-sub0 tl0 tl1 (list:cons diff acc))))
-    _ _ -> (error "matching is borken?")
     ))
 
 (define (digits-sub a b)
@@ -133,17 +129,13 @@
     (cmp:=) -> (big:zero)))
 
 (define big-sub
+  (big:zero) x              -> (big-negate x)
+  x (big:zero)              -> x
   (big:pos da) (big:pos db) -> (digits-sub-mag da db)
   (big:pos da) (big:neg db) -> (big-add (big:pos da) (big:pos db))
   (big:neg da) (big:neg db) -> (big-negate (big-add (big:pos da) (big:pos db)))
   (big:neg da) (big:pos db) -> (big-negate (big-add (big:pos da) (big:pos db)))
-  (big:zero) x              -> (big-negate x)
-  (big:pos x) (big:zero)    -> (big:pos x)
-  (big:neg x) (big:zero)    -> (big:neg x)
-  ;; why does this not work?
-  ;;x (big:zero)              -> x
   )
-
 
 ;; ---------- utility -----------
 
@@ -168,7 +160,7 @@
 ;; assumes positive n
 (define int->digits
   0 acc -> (reverse acc)
-  n acc -> (int->digits 
+  n acc -> (int->digits
 	    (/ n big/base)
 	    (list:cons (mod n big/base) acc))
   )
@@ -185,9 +177,7 @@
 (define big=
   (big:zero)  (big:zero)  -> #t
   (big:zero)  _		  -> #f
-  ;; again with the borken match
-  (big:pos _) (big:zero)  -> #f
-  (big:neg _) (big:zero)  -> #f
+  _ (big:zero)            -> #f
   (big:pos _) (big:neg _) -> #f
   (big:neg _) (big:pos _) -> #f
   (big:pos a) (big:pos b) -> (eq? (digits-cmp a b) (cmp:=))
@@ -253,7 +243,7 @@
 ;; multiply by a single digit
 (define digits-mul1
   ()        n carry acc -> (reverse (remove-zeros (list:cons carry acc)))
-  (d0 . tl) n carry acc 
+  (d0 . tl) n carry acc
   -> (let ((next (+ carry (* n d0)))
 	   (quo (/ next big/base))
 	   (rem (remainder next big/base)))
@@ -264,10 +254,10 @@
   (define recur
            () n acc -> acc
     (y0 . tl) n acc
-    -> (recur 
-	tl (+ n 1) 
-	(digits-add 
-	 acc 
+    -> (recur
+	tl (+ n 1)
+	(digits-add
+	 acc
 	 (shift (digits-mul1 x y0 0 '()) n)))
     )
   (canon (recur y 0 '())))
@@ -292,12 +282,11 @@
 
 (define big-mul
   (big:zero) x		    -> (big:zero)
-  (big:pos x) (big:zero)    -> (big:zero)
-  (big:neg x) (big:zero)    -> (big:zero)
+  x (big:zero)              -> (big:zero)
   (big:pos da) (big:pos db) -> (big:pos (digits-mul da db))
   (big:neg da) (big:neg db) -> (big:pos (digits-mul da db))
-  (big:pos da) (big:neg db) -> (big:neg (digits-mul da db))  
-  (big:neg da) (big:pos db) -> (big:neg (digits-mul da db))    
+  (big:pos da) (big:neg db) -> (big:neg (digits-mul da db))
+  (big:neg da) (big:pos db) -> (big:neg (digits-mul da db))
   )
 
 ;; ---------- division -----------
@@ -312,7 +301,7 @@
   ;;(printf "div1 " (join int->string " " dx) " n= " (int n ) "\n")
   (define div1
     ()        carry acc -> (:tuple (canon acc) (int->digits carry '()))
-    (d0 . tl) carry acc 
+    (d0 . tl) carry acc
     -> (let ((v (+ d0 (* carry big/base)))
 	     (q (/ v n))
 	     (r (mod v n))
@@ -327,7 +316,7 @@
   (let ((la (length da))
 	(lb (length db)))
     (if (<= lb 2)
-	(let ((b2 (match db with 
+	(let ((b2 (match db with
 		    (b0) -> b0
 		    (b0 b1) -> (+ (* b0 big/base) b1)
 		    _ -> (impossible))))
@@ -338,7 +327,7 @@
 	  (if (digits-<? (reverse db) (reverse a1))
 	      ;; simple case
 	      (let-values (((q1 r1) (burnzieg a1 db))
-			   ((q0 r0) (burnzieg 
+			   ((q0 r0) (burnzieg
 				     (reverse (digits-add (shift r1 n) (reverse a0)))
 				     db)))
 		(:tuple (digits-add (shift q1 n) q0) r0))
@@ -371,9 +360,8 @@
     -> (:tuple (digits->big quo pos?) (digits->big rem #t))))
 
 (define big-div
-  (big:pos _) (big:zero)    -> (raise (:ZeroDivisionError))
-  (big:neg _) (big:zero)    -> (raise (:ZeroDivisionError))
-  (big:zero) x              -> (:tuple (big:zero) x)
+  x            (big:zero)   -> (raise (:ZeroDivisionError))
+  (big:zero)   x            -> (:tuple (big:zero) x)
   (big:pos da) (big:pos db) -> (digits-div da db #t)
   (big:neg da) (big:neg db) -> (digits-div da db #t)
   (big:pos da) (big:neg db) -> (digits-div da db #f)
@@ -388,7 +376,7 @@
 	     (a)   -> a
 	     (a b) -> (+ (* b big/base) a)
 	     _ -> (impossible))))
-    (if pad? 
+    (if pad?
 	(format (zpad big/decimal-pad (int n)))
 	(format (int n)))))
 
@@ -469,9 +457,9 @@
 
 (define (exhaustive stop)
   (let ((counter 0))
-    (for-range 
+    (for-range
 	i stop
-	(for-range 
+	(for-range
 	    j stop
 	    (let ((a (int->big (+ i j)))
 		  (b (big-add (int->big i) (int->big j)))
@@ -483,14 +471,14 @@
 		  (h (big-sub (int->big (- i)) (int->big j)))
 		  )
 	      (try
-	       (begin 
+	       (begin
 		 (assert (big= a b))
 		 (assert (big= c d))
 		 (assert (big= e f))
 		 (assert (big= g h))
 		 (set! counter (+ counter 1)))
-	       except 
-	       (:AssertError) 
+	       except
+	       (:AssertError)
 	       -> (printf "failed with i=" (int i) " j=" (int j) "\n"
 			  (big-repr a) " = " (big-repr b) "\n"
 			  (big-repr c) " = " (big-repr d) "\n"
@@ -502,7 +490,7 @@
   )
 
 (define (big-fact n)
-  (define recur 
+  (define recur
     1 acc -> acc
     n acc -> (recur (- n 1) (big-mul acc (int->big n)))
     )
@@ -525,13 +513,13 @@
 
   ;; assumes base 16!
   (define (hex->big s)
-    (define recur 
+    (define recur
       () acc -> (big:pos acc)
       (hd . tl) acc -> (recur tl (list:cons (read-hex-digit hd) acc)))
     (recur (string->list s) '()))
 
-  (printf 
-   (big-repr 
+  (printf
+   (big-repr
     (big-mul
      (hex->big "eb2cb7a132097789dc60a2f4f09c56f51afa09c50e80c95d7b39b3e426690093")
      (int->big #xc)))
@@ -549,7 +537,7 @@
 (define (testdiv a b)
   (match (big-div a b) with
     (:tuple quo rem)
-    -> (begin 
+    -> (begin
 	 (printf "quo " (big-repr quo) "\n")
 	 (printf "rem " (big-repr rem) "\n")
 	 )))
@@ -595,18 +583,17 @@
       -> quo))
 
   (define (g q r t i)
-    (printf (big-repr q) "\n")
     (let ((i3 (B* i B3))
 	  (u (B* B3 (B* (B+ i3 B1) (B+ B2 i3))))
-	  (y (B/ 
+	  (y (B/
 	      (B+ (B* q (B- (B* (IB 27) i) (IB 12)))
 		  (B* (IB 5) r))
 	      (B* (IB 5) t)))
 	  )
       (emit y)
       (g (B* (IB 10) (B* q (B* i (B- (B* B2 i) B1))))
-	 (B* (IB 10) 
-	     (B* u 
+	 (B* (IB 10)
+	     (B* u
 		 (B- (B+ (B* q (B- (B* (IB 5) i) B2)) r)
 		     (B* y t))))
 	 (B* t u)
@@ -628,8 +615,14 @@
 ;      (test1))
 ;(test2)
 
+(define (set-verbose-gc b)
+  (%%cexp (bool -> undefined) "verbose_gc = %0" b))
+
+(set-verbose-gc #f)
+
 ;; invoke without an argument to start generating,
 ;; and with an argument to load it and run it.
+
 (if (> sys.argc 1)
     (throw (load "pi.image") 0)
     (pi))
