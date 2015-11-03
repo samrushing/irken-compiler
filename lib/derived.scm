@@ -34,11 +34,31 @@
   -> (letrec (($tag (function $tag (name ...) #f body1 body2 ...)))
        ($tag val ...))
 
+  ;; XXX this still does not allow free mixing of single and 
+  ;;  multiple bindings, because of the catch-all let->let-splat
+  ;;  below.  To do this correctly we need to cascade the two macros,
+  ;;  which might require some hackery to avoid chaining lets...
+  ;; multiple-value-bind
+  (let (((name0 name1 ...) val) bind ...) body ...)
+  -> (let-values (((name0 name1 ...) val))
+       (let (bind ...)
+         body ...))
+  
   ;; normal <let> here, we just rename it to our core
   ;; binding construct, <let_splat>
   (let ((name val) ...) body1 body2 ...)
   -> (let-splat ((name val) ...) body1 body2 ...)
 
+  )
+
+;; functions using this construct must return their multiple
+;;  values using the (:tuple ...) polyvariant.
+
+(defmacro let-values
+  (let-values (((x y ...) val)) body0 body1 ...)
+  -> (match val with (:tuple x y ...) -> (begin body0 body1 ...))
+  (let-values (((x y ...) val) b0 b1 ...) body0 body1 ...)
+  -> (match val with (:tuple x y ...) -> (let-values (b0 b1 ...) body0 body1 ...))
   )
 
 ;; simplified <cond>

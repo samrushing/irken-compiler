@@ -15,6 +15,9 @@
 (define (print-string* s)
   (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)))
 
+(define (flush)
+  (%%cexp (-> int) "fflush (stdout)"))
+
 (define (print-char ch)
   (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" ch))
 
@@ -47,20 +50,38 @@
 (define (<0 a)
   (%%cexp (int -> bool) "%0<0" a))
 
-(define (+ a b)
+(define (binary+ a b)
   (%%cexp (int int -> int) "%0+%1" a b))
 
-(define (- a b)
+(defmacro +
+  (+ x)       -> x
+  (+ a b ...) -> (binary+ a (+ b ...)))
+
+(define (binary- a b)
   (%%cexp (int int -> int) "%0-%1" a b))
 
-(define (* a b)
+(defmacro -
+  (- a)         -> (binary- 0 a)
+  (- a b)	-> (binary- a b)
+  (- a b c ...) -> (- (binary- a b) c ...))
+
+(define (binary* a b)
   (%%cexp (int int -> int) "%0*%1" a b))
+
+(defmacro *
+  (* x) -> x
+  (* a b ...) -> (binary* a (* b ...)))
 
 (define (/ a b)
   (%%cexp (int int -> int) "%0/%1" a b))
 
-(define (remainder a b)
+(define (mod a b)
   (%%cexp (int int -> int) "%0 %% %1" a b))
+
+(define remainder mod)
+
+(define (divmod a b)
+  (:tuple (/ a b) (remainder a b)))
 
 (define (<< a b)
   (%%cexp (int int -> int) "%0<<%1" a b))
@@ -95,6 +116,17 @@
   (if (> x y) x y))
 
 (define (abs x) (if (< x 0) (- 0 x) x))
+
+(datatype cmp
+  (:<)
+  (:>)
+  (:=)
+  )
+
+(define (cmp a b)
+  (cond ((< a b) (cmp:<))
+	((> a b) (cmp:>))
+	(else (cmp:=))))
 
 (define (eq? a b)
   (%%cexp ('a 'a -> bool) "%0==%1" a b))
