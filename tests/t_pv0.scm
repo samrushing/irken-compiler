@@ -15,4 +15,3 @@
 (printn (thing (:two 9)))
 
 
-
