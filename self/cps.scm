@@ -19,7 +19,7 @@
   (:close symbol int insn cont)                                 ;; <name> <nfree> <body> <k>
   (:varref int int cont)                                        ;; <depth> <index> <k>
   (:varset int int int cont)                                    ;; <depth> <index> <reg> <k>
-  (:new-env int bool cont)	                                ;; <size> <top?> <k>
+  (:new-env int bool (list type) cont)	                        ;; <size> <top?> <k>
   (:alloc tag int cont)                                         ;; <tag> <size> <k>
   (:store int int int int cont)                                 ;; <offset> <arg> <tuple> <i> <k>
   (:invoke (maybe symbol) int int cont)                         ;; <name> <closure> <args> <k>
@@ -430,13 +430,15 @@
     (define (compile-args args lenv k)
       (set-flag! VFLAG-ALLOCATES)
       (match args with
-	() -> (insn:new-env 0 (lenv-top? lenv) k)
+	() -> (insn:new-env 0 (lenv-top? lenv) '() k)
 	_  -> (let ((nargs (length args))
 		    (target (k/target k))
-		    (free (k/free k)))
+		    (free (k/free k))
+		    (types (map (lambda (x) x.type) args)))
 		(insn:new-env
 		 nargs
 		 (lenv-top? lenv)
+		 types
 		 (cont:k target free
 			 (compile-store-args 0 1 args target
 					     (list:cons target free) lenv k))))
@@ -478,6 +480,7 @@
       (let ((rsubs (reverse subs)) ;; subs = (init0 init1 ... body)
 	    (body (car rsubs))
 	    (inits (reverse (cdr rsubs)))
+	    (types (map (lambda (x) x.type) inits))
 	    (nargs (length formals))
 	    (free (k/free k))
 	    (k-body (dead free
@@ -487,6 +490,7 @@
 	(insn:new-env
 	 nargs
 	 (lenv-top? lenv)
+	 types
 	 (cont free
 	       (lambda (tuple-reg)
 		 (insn:push
@@ -662,6 +666,39 @@
     (compile #t exp (cpsenv:nil) (cont:nil))
     ))
 
+(define (collect-all-types root)
+  (let ((ng (make-node-generator root))
+	(type-map (map-maker type<?)))
+    (let loop ()
+      (match (ng) with
+	(maybe:no) -> #u
+	(maybe:yes (:tuple n d))
+	-> (begin
+	     (match n.t with
+	       (node:let formals)
+	       -> (for-each 
+		   (lambda (x) (type-map::maybe-add (apply-subst x.type) x.id))
+		   (reverse (cdr (reverse n.subs))))
+	       _ -> #u)
+	     (loop)
+	     )))
+    (printf "--- type-map ---\n")
+    (let ((nitems 0))
+      (type-map::iterate
+       (lambda (k v)
+    	 (set! nitems (+ 1 nitems))))
+      (printf "#types=" (int nitems) "\n"))
+    (type-map::iterate
+       (lambda (k v)
+    	 (printf (lpad 10 (int v)) " " (type-repr k) "\n")))
+    type-map
+    ))
+
+(define (print-type-tree root)
+  (for (make-node-generator root) (n d x) 
+       (indent d)
+       (printf (type-repr n.type) "\n")))
+
 ;;; XXX redo this with the new format macro - this function is horrible.
 (define (print-insn insn d)
 
@@ -706,7 +743,7 @@
     (insn:varset d i v k)	    -> (print-line (lambda () (ps2 "set") (ps d) (ps i) (ps v)) k)
     (insn:store o a t i k)	    -> (print-line (lambda () (ps2 "stor") (ps o) (ps a) (ps t) (ps i)) k)
     (insn:invoke n c a k)	    -> (print-line (lambda () (ps2 "invoke") (ps n) (ps c) (ps a)) k)
-    (insn:new-env n top? k)	    -> (print-line (lambda () (ps2 "env") (ps n) (ps top?)) k)
+    (insn:new-env n top? types k)   -> (print-line (lambda () (ps2 "env") (ps n) (ps top?) (ps2 (format "(" (join type-repr " " types) ")"))) k)
     (insn:alloc tag size k)         -> (print-line (lambda () (ps2 "alloc") (ps tag) (ps size)) k)
     (insn:push r k)                 -> (print-line (lambda () (ps2 "push") (ps r)) k)
     (insn:pop r k)                  -> (print-line (lambda () (ps2 "pop") (ps r)) k)
@@ -770,7 +807,7 @@
 	     (insn:varset _ _ _ k)   -> k
 	     (insn:store _ _ _ _ k)  -> k
 	     (insn:invoke _ _ _ k)   -> k
-	     (insn:new-env _ _ k)    -> k
+	     (insn:new-env _ _ _ k)  -> k
 	     (insn:alloc _ _ k)	     -> k
 	     (insn:push _ k)	     -> k
 	     (insn:pop _ k)	     -> k
@@ -794,6 +831,7 @@
        (loop)))))
 
 ;; could be for any generator?
+;; XXX replace this with the 'for' macro.
 (defmacro for-insns
   (for-insns vname insns body ...)
   -> (let (($ig (make-insn-generator insns)))
