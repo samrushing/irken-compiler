@@ -58,13 +58,13 @@
 		    -> (match pu pv with
 			 'moo 'moo   -> #u
 			 ;; row and moo vars - early exit to avoid union
-			 'moo _	   -> (return (U (car su) v))
-			 _ 'moo	   -> (return (U (car sv) u))
+			 'moo _	     -> (return (U (car su) v))
+			 _ 'moo	     -> (return (U (car sv) u))
 			 'rlabel _   -> (return (U-row u v))
 			 _ 'rlabel   -> (return (U-row v u))
 			 'rdefault _ -> (return (U-row u v))
 			 _ 'rdefault -> (return (U-row v u))
-			 _ _ -> (if (or (not (pred=? pu pv))
+			 _ _ -> (if (or (not (eq? pu pv))
 					(not (= (length su) (length sv))))
 				    (type-error t0 t1)
 				    #u)))
@@ -74,19 +74,34 @@
 		    _ _ -> #u))
 		))))
 
-    (define (maybe-alias pred)
-      (match (alist/lookup the-context.aliases pred) with
-	(maybe:yes other) -> other
-	(maybe:no) -> pred))
-
     (define (pred=? sym0 sym1)
-      (or (eq? sym0 sym1)
-	  (eq? (maybe-alias sym0) (maybe-alias sym1))))
+      (eq? sym0 sym1))
 
     (define label=?
       ;; labels are represented with nullary predicates, compare via symbol
       (type:pred na _ _) (type:pred nb _ _) -> (eq? na nb)
       _ _ -> #f)
+
+    ;; note: a remaining difference between the python solver and the this solver:
+    ;;   the python solver will emit rlabel (name,abs(), ...) in some cases.
+    ;;   doesn't seem to have an impact (yet), but something to watch for:
+    ;;
+    ;; 7039 L        primapp [11] ('%rextend/x', None) {a=bool b=bool x=int y=char z=char}
+    ;; 7037 L          primapp [9] ('%rextend/y', None) {a=bool b=bool x=#f y=char z=char}
+    ;; 7035 L            primapp [7] ('%rextend/z', None) {a=bool b=bool y=#f z=char}
+    ;; 7033 L              primapp [5] ('%rextend/a', None) {a=bool b=bool z=#f}
+    ;; 7031 L                primapp [3] ('%rextend/b', None) {a=#f b=bool}
+    ;; 7029 L                  primapp [1] ('%rmake', None) {b=#f}
+    ;;
+    ;; vs
+    ;;
+    ;; 2360   11  100       primapp %rextend x : {x=int y=char z=char a=bool b=bool }
+    ;; 2358    9  100         primapp %rextend y : {y=char z=char a=bool b=bool }
+    ;; 2356    7  100           primapp %rextend z : {z=char a=bool b=bool }
+    ;; 2354    5  100             primapp %rextend a : {a=bool b=bool }
+    ;; 2352    3  100               primapp %rextend b : {b=bool }
+    ;; 2350    1  100                 primapp %rmake #f : {}
+
 
     (define (U-row u v)
       (match u v with
@@ -137,12 +152,6 @@
 
     (U t0 t1)
     )
-
-  ;; (define (apply-subst t)
-  ;;   (let ((t0 (apply-subst* t)))
-  ;;     (print-string (format "apply-subst: " (p type-repr t) "\n"))
-  ;;     (print-string (format " = " (p type-repr t0) "\n"))
-  ;;     t0))
 
   (define (instantiate-type-scheme gens type)
     ;; map from gens->fresh
@@ -203,7 +212,8 @@
 	  (type:pred _ args _) -> (for-each find-generic-tvars args)))
       (let ((type (apply-subst type)))
 	(find-generic-tvars type)
-	;;(print-string (format "build-type-scheme type=" (type-repr type) " gens = " (join type-repr "," (gens::get)) "\n"))
+	(when the-context.options.debugtyping
+	      (print-string (format "build-type-scheme type=" (type-repr type) " gens = " (join type-repr "," (gens::get)) "\n")))
 	(:scheme (gens::get) type))))
 
   (define (type-of* exp tenv)
@@ -326,7 +336,11 @@
 	   formals)
 	  (arrow (type-of body tenv) (reverse arg-types)))
 	;; user-supplied type (do we need to instantiate?)
-	sig))
+	(let ((solved (type-of-function formals body no-type tenv)))
+	  (printf "unifying user-supplied type: " (type-repr sig) " with " (type-repr solved) "\n")
+	  (unify body solved sig)
+	  sig
+	  )))
 
   (define (apply-tenv name tenv)
 ;;     (print-string "apply-tenv: ") (printn name)
@@ -449,7 +463,7 @@
 			(node:primapp '%fail _) -> #f
 			(node:primapp '%match-error _) -> #f
 			_ -> #t))
-	       (row (if else? (rdefault (rabs)) (new-tvar))))
+	       (row (if else? (new-tvar) (rdefault (rabs)))))
 	   (for-range
 	       i (length tags)
 	       (let ((alt (nth alts i))
@@ -606,18 +620,15 @@
 
   ;; given an exception row type for <exp> look up its name in the global
   ;;   table and unify each element of the sum.
+
   (define (unify-exception-types exp row tenv)
-    (let loop ((row row))
-      (match row with
-	(type:pred 'rlabel ((type:pred exn-name _ _) exn-type rest) _)
-	-> (let ((global-type (get-exn-type exn-name)))
-;; 	     (print-string (format "global type of " (sym exn-name) " is " (type-repr global-type) "\n"))
-;; 	     (print-string (format "  unifying with " (type-repr exn-type) "\n"))
-	     (unify exp global-type exn-type)
-	     (loop rest))
-	(type:tvar _ _) -> #u
-	_ -> (error1 "unify-exception-types: bad type" (type-repr row))
-	)))
+    ;;(printf " ------- " (type-repr row) " -- " (type-repr (apply-subst (type-of exp tenv))) "\n")
+    (match row with
+      (type:pred 'rlabel ((type:pred exn-name _ _) exn-type _) _)
+      -> (let ((global-type (get-exn-type exn-name)))
+	   (unify exp global-type exn-type))
+      _ -> (error1 "unify-exception-types: bad type" (type-repr row))
+      ))
 
   ;; unify the label from this row with the global table
   (define (type-of-raise val tenv)
