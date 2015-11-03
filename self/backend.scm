@@ -195,6 +195,8 @@
 	(current-function-cname "")
 	(current-function-name 'toplevel)
 	(current-function-part (make-counter 1))
+	(env-counter (make-counter 0))
+	(env-stack '())
 	(used-jumps (find-jumps insns))
 	(fatbar-free (map-maker <)))
 
@@ -215,7 +217,7 @@
 	 (insn:close name nreg body k)		      -> (begin (emit-close name nreg body (k/target k)) k)
 	 (insn:varref d i k)			      -> (begin (emit-varref d i (k/target k)) k)
 	 (insn:varset d i v k)			      -> (begin (emit-varset d i v (k/target k)) k)
-	 (insn:new-env size top? k)		      -> (begin (emit-new-env size top? (k/target k)) k)
+	 (insn:new-env size top? types k)	      -> (begin (emit-new-env size top? types (k/target k)) k)
 	 (insn:alloc tag size k)		      -> (begin (emit-alloc tag size (k/target k)) k)
 	 (insn:store off arg tup i k)		      -> (begin (emit-store off arg tup i) k)
 	 (insn:invoke name fun args k)		      -> (begin (emit-call name fun args k) (cont:nil))
@@ -403,10 +405,13 @@
 	    ;; the set! is a dead assignment, but we need to put something there
 	    (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 
-    (define (emit-new-env size top? target)
-      (o.write (format "O r" (int target) " = allocate (TC_ENV, " (int (+ size 1)) ");"))
-      (if top?
-	  (o.write (format "top = r" (int target) ";"))))
+    (define (emit-new-env size top? types target)
+      (let ((env-index (env-counter.inc)))
+	(o.write (format "// env " (int env-index) ":"))
+	(o.write (format "//   " (join type-repr " " types)))
+	(o.write (format "O r" (int target) " = allocate (TC_ENV, " (int (+ size 1)) ");"))
+	(if top?
+	    (o.write (format "top = r" (int target) ";")))))
 
     (define (emit-alloc tag size target)
       (let ((tag-string
@@ -559,12 +564,15 @@
 				  (cond ((= nargs 0)
 					 (o.write (format "O r" (int target) " = (object*)" (get-uitag dtname altname alt.index) ";")))
 					(else
-					 (let ((trg (format "r" (int target))))
-					   (o.write (format "O " trg " = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
-					   ;;(o.write (format "O t = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
-					   (for-range
-					    i nargs
-					    (o.write (format trg "[" (int (+ i 1)) "] = r" (int (nth args i)) ";"))))))))
+					 (if (>= target 0)
+					     (let ((trg (format "r" (int target))))
+					       (o.write (format "O " trg " = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
+					       ;;(o.write (format "O t = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
+					       (for-range
+						   i nargs
+						   (o.write (format trg "[" (int (+ i 1)) "] = r" (int (nth args i)) ";"))))
+					     (warning (format "dead target in primop " (sym name) "\n"))
+					     )))))
 			_ -> (primop-error)
 			)
 	  '%nvget   -> (match parm args with
@@ -658,7 +666,7 @@
 		      _ _ -> (primop-error))
 	  '%getcc -> (match args with
 		       () -> (o.write (format "O r" (int target) " = k; // %getcc"))
-		       _	-> (primop-error))
+		       _  -> (primop-error))
 	  '%putcc -> (match args with
 		       (rk rv) -> (begin
 				    (o.write (format "k = r" (int rk) "; // %putcc"))
@@ -1025,3 +1033,41 @@ static prof_dump (void)
       (lambda (tag alt)
 	(o.write (format "//  (:" (sym tag) " " (join type-repr " " alt.types) ")")))))
    the-context.datatypes))
+
+;; (define (collect-all-types insns)
+;;  (let ((type-map (map-maker <)))
+;;    (for-insns insn insns
+
+;;     (define walk-k
+;;       (cont:k _ _ k) -> (walk k )
+;;       (cont:nil)     -> #u)
+
+;;     (define (walk insn)
+;;       (walk-k
+;;        (match insn with
+;; 	 (insn:literal lit k)                         -> #f
+;; 	 (insn:return target)			      -> (begin (o.write (format "PXLL_RETURN(" (int target) ");")) (cont:nil))
+;; 	 (insn:literal lit k)			      -> (begin (emit-literal lit (k/target k)) k)
+;; 	 (insn:litcon i kind k)			      -> (begin (emit-litcon i kind (k/target k)) k)
+;; 	 (insn:test reg jn k0 k1 k)		      -> (begin (emit-test reg jn k0 k1 k) (cont:nil))
+;; 	 (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
+;; 	 (insn:jump reg target jn free)		      -> (begin (emit-jump reg target jn free) (cont:nil))
+;; 	 (insn:cexp sig type template args k)	      -> (begin (emit-cexp sig type template args (k/target k)) k)
+;; 	 (insn:close name nreg body k)		      -> (begin (emit-close name nreg body (k/target k)) k)
+;; 	 (insn:varref d i k)			      -> (begin (emit-varref d i (k/target k)) k)
+;; 	 (insn:varset d i v k)			      -> (begin (emit-varset d i v (k/target k)) k)
+;; 	 (insn:new-env size top? k)		      -> (begin (emit-new-env size top? (k/target k)) k)
+;; 	 (insn:alloc tag size k)		      -> (begin (emit-alloc tag size (k/target k)) k)
+;; 	 (insn:store off arg tup i k)		      -> (begin (emit-store off arg tup i) k)
+;; 	 (insn:invoke name fun args k)		      -> (begin (emit-call name fun args k) (cont:nil))
+;; 	 (insn:tail name fun args)		      -> (begin (emit-tail name fun args) (cont:nil))
+;; 	 (insn:trcall d n args)			      -> (begin (emit-trcall d n args) (cont:nil))
+;; 	 (insn:push r k)			      -> (begin (emit-push r) k)
+;; 	 (insn:pop r k)				      -> (begin (emit-pop r (k/target k)) k)
+;; 	 (insn:primop name parm t args k)	      -> (begin (emit-primop name parm t args k) k)
+;; 	 (insn:move dst var k)			      -> (begin (emit-move dst var (k/target k)) k)
+;; 	 (insn:fatbar lab jn k0 k1 k)		      -> (begin (emit-fatbar lab jn k0 k1 k) (cont:nil))
+;; 	 (insn:fail label npop free)		      -> (begin (emit-fail label npop free) (cont:nil))
+;; 	 (insn:nvcase tr dt tags jn alts ealt k)      -> (begin (emit-nvcase tr dt tags jn alts ealt k) (cont:nil))
+;; 	 (insn:pvcase tr tags arities jn alts ealt k) -> (begin (emit-pvcase tr tags arities jn alts ealt k) (cont:nil))
+;; 	 )))
