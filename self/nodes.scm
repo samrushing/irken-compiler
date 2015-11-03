@@ -47,7 +47,7 @@
 ;; a cleaner way to do this might be with an alist? (makes sense if
 ;;   most flags are clear most of the time?)
 ;; flags
-(define (node-get-flag node i) 
+(define (node-get-flag node i)
   (bit-get node.flags i))
 (define (node-set-flag! node i)
   (set! node.flags (bit-set node.flags i)))
@@ -59,6 +59,10 @@
 (define NFLAG-TAIL      3)
 (define NFLAG-NFLAGS    4)
 
+(typealias rnode
+   {t=node subs=(list rnode) size=int id=int type=type flags=int})
+
+;(define (make-node t subs) : (node (list rnode) -> rnode)
 (define (make-node t subs)
   {t=t subs=subs size=(sum-size subs) id=(node-counter.inc) type=no-type flags=0}
   )
@@ -181,6 +185,11 @@
                                             "(" (join int->string " " arities) ")")
   )
 
+(define (format-type-parent trec)
+  (match trec.parent with
+    (maybe:yes pt) -> (type-repr pt)
+    (maybe:no)     -> "<>"))
+
 (define (format-node n d)
   (format (lpad 6 (int n.id))
           (lpad 5 (int n.size))
@@ -203,7 +212,7 @@
    (lambda (consumer)
      (walk-node-tree
       (lambda (n d)
-	(consumer (maybe:yes (:pair n d))))
+	(consumer (maybe:yes (:tuple n d))))
       n 0)
      (forever (consumer (maybe:no)))
      )))
@@ -212,7 +221,7 @@
   (let ((ng (make-node-generator root)))
     (let loop ()
       (match (ng) with
-	(maybe:yes (:pair n d))
+	(maybe:yes (:tuple n d))
 	-> (begin (print-string (format-node n d)) (newline)
                   (loop))
         (maybe:no)
@@ -232,7 +241,7 @@
 	(reverse r)))
     (let loop ((i 0))
       (match (ng) with
-        (maybe:yes (:pair n d))
+        (maybe:yes (:tuple n d))
         -> (begin (set! context[i] (format-node n d))
                   ;; state machine
                   (cond ((= collected (/ count 2)) (result (+ i 1)))
@@ -297,26 +306,6 @@
     (:sorted-fix (append (reverse names0) (reverse names1))
 		 (append (reverse inits0) (reverse inits1)))))
 
-;; XXX not stable for some reason...
-;; (define (sort-fix-inits names inits)
-;;   (let ((n (length names))
-;; 	(l0 (map2 (lambda (a b) {name=a init=b}) names inits))
-;; 	(l1 (sort
-;; 	     (lambda (a b)
-;; 	       (match a.init.t b.init.t with
-;; 		 (node:function _ _) (node:function _ _) -> #f ;; stable?
-;; 		 (node:function _ _) _			 -> #t
-;; 		 _ _					 -> #f
-;; 		 ))
-;; 	     l0))
-;; 	(names0 (map (lambda (x) x.name) l1))
-;; 	(inits0 (map (lambda (x) x.init) l1)))
-;;     (print-string "sort-fix-inits unsorted=") (printn names)
-;;     (print-string "sort-fix-inits   sorted=") (printn names0)
-;;     (:sorted-fix names0 inits0)
-;;     ;;(:sorted-fix names inits)
-;;     ))
-
 (define walk
   (sexp:symbol s)  -> (node/varref s)
   (sexp:string s)  -> (node/literal (literal:string s))
@@ -351,18 +340,10 @@
        -> (node/nvcase dt (map sexp->symbol tags) (map sexp->int arities) (walk val-exp) (map walk alts) (walk ealt))
        ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) type . body)
        -> (node/function name (get-formals formals) type (node/sequence (map walk body)))
-       ;; ----------------------------------------------------------
-       ;; HUGE typing problem here, when I accidentally did this:
-       ;; ((sexp:symbol 'fix) (sexp:list names) (sexp:list inits) . body)
-       ;; -> (match (sort-fix-inits names inits) with
-       ;;      (:sorted-fix names inits)
-       ;;      -> (node/fix (get-formals names) (map walk inits) (node/sequence (map walk body))))
-       ;; the typer let it fly. 
-       ;; ----------------------------------------------------------
        ((sexp:symbol 'fix) (sexp:list names) (sexp:list inits) . body)
        -> (match (sort-fix-inits (get-formals names) (map walk inits)) with
-	    (:sorted-fix names inits)
-	    -> (node/fix names inits (node/sequence (map walk body))))
+       	    (:sorted-fix names inits)
+       	    -> (node/fix names inits (node/sequence (map walk body))))
        ((sexp:symbol 'let-splat) (sexp:list bindings) . body)
        -> (match (unpack-bindings bindings) with
 	    (:pair names inits)
@@ -441,7 +422,7 @@
 
     (define (rename-all exps lenv)
       (for-each (lambda (exp) (rename exp lenv)) exps))
-    
+
     (define (rename exp lenv)
 
       (define (lookup name)
@@ -454,7 +435,7 @@
 				(vd . tl) -> (if (eq? name vd.name)
 						 (maybe:yes vd)
 						 (loop1 tl)))))))
-      
+
       (match exp.t with
 	(node:function name formals)
 	-> (let ((rib (map varmap.add formals))
@@ -500,7 +481,7 @@
 
 ;; walk the node tree, applying subst nodes
 (define (apply-substs exp)
-  
+
   ;; could we do this more easily by flattening the environment and just using member?
   (define shadow
     names ()		-> (list:nil)
