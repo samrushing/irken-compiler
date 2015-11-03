@@ -65,6 +65,7 @@
 		    (PUSH options.include-dirs argv[i]))
 	  "-m" -> (set! options.debugmacroexpansion #t)
 	  "-dt" -> (set! options.debugtyping #t)
+	  "-ni" -> (set! options.noinline #t)
 	  ;; this option only applies to the C compilation phase.
 	  "-O" -> (set! options.optimize #t)
 	  "-p" -> (set! options.profile #t)
@@ -85,10 +86,14 @@ Usage: compile <irken-src-file> [options]
  -I : add include search directory
  -m : debug macro expansion
  -dt : debug typing
+ -ni : no inlining
  -O : tell CC to optimize
  -p : generate profile-printing code
  -n : disable letreg optimization
 "))
+
+(define (warning msg)
+  (printf "warning: " msg "\n"))
 
 (defmacro verbose
   (verbose item ...) -> (if the-context.options.verbose (begin item ... #u)))
@@ -142,6 +147,8 @@ Usage: compile <irken-src-file> [options]
 	(_ (set! the-context.scc-graph strong))
 	(_ (print-string "typing...\n"))
 	(type0 (type-program noden))
+	(type-map (collect-all-types noden))
+	;;(_ (print-type-tree noden))
 	(_ (verbose (print-string "\n-- after typing --\n") (pp-node noden) (newline)))
 	(_ (print-string "cps...\n"))
 	(cps (compile noden))
@@ -164,7 +171,8 @@ Usage: compile <irken-src-file> [options]
      (print-string "\n-- typealiases --\n")
      (alist/iterate
       (lambda (name alias)
-	(print-string (format "  " (sym name) " : " (sym alias) "\n")))
+	(print-string (format "  " (sym name) " : " (scheme-repr alias) "\n")))
+	;;(print-string (format "  " (sym name) " : " (type-repr alias) "\n")))
       the-context.aliases)
      (print-string "\n-- variables --\n")
      (print-vars)
