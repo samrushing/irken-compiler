@@ -6,7 +6,7 @@
 (include "self/match.scm")
 
 ;; scan for datatypes, definitions, etc..
-;; and do transformations that can't be handled by the macro system.
+;; and do source-level transformations that can't be handled by the macro system.
 
 (define (transformer)
 
@@ -186,7 +186,7 @@
 	-> (k tags formals alts (maybe:yes (expand (sexp1 'begin else-code))))
 	_ -> (begin (pp 0 (car pairs)) (error1 "split-alts" pairs)))))
 
-  ;; (nvcase type x 
+  ;; (nvcase type x
   ;;    ((<select0> <formal0> <formal1> ...) <body0>)
   ;;    ((<select1> <formal0> <formal1> ...) <body1>)
   ;;    ...
@@ -196,7 +196,7 @@
   ;; (nvcase type x
   ;;    ((let ((f0 x.0) (f1 x.1) (f2 x.2)) <body0>) ...))
   ;;
-  
+
   (define (make-nvget dt label index arity value)
     (sexp (sexp:symbol '%nvget)
 	  (sexp (sexp:cons dt label) (sexp:int index) (sexp:int arity))
@@ -365,14 +365,34 @@
     x -> (error1 "malformed datatype" x)
     )
 
+  ;; XXX I think this approach is wrong... either
+  ;;  1) we need to store these in *unparsed* form so when they are seen in the datatype
+  ;;     alts their typevars are seen, or
+  ;;  2) we have to byte the bullet and either add a new kind of datatype or extend the
+  ;;     current datatype to support non-variant datatypes natively.
+  ;;  I think we have to do #2... because otherwise we have no way to specify the typevars
+  ;;    correctly, e.g.:
+  ;; (define typealias thing1 {x=int y='a})
+  ;; (datatype thing2
+  ;;    (:one (thing1 int))
+  ;;    (:two (thing1 bool)))
+  ;; becomes impossible?
   (define parse-typealias
-    ;; for now, allow only predicate -> predicate mapping
-    ((sexp:symbol name) (sexp:symbol alias))
-    ;; -> (let ((tvars (alist-maker))
-    ;; 	        (type (parse-type* alias tvars)))
-    ;;      (alist/push the-context.aliases name (:scheme (reverse (tvars::values)) type)))
-    -> (alist/push the-context.aliases name alias)
+    ((sexp:symbol name) alias)
+    -> (let ((tvars (alist-maker))
+  	     (type (parse-type* alias tvars)))
+         (alist/push the-context.aliases
+		     name
+		     (check-for-typealias-recursion name (:scheme (reverse (tvars::values)) type))))
+    ;; only predicate -> predicate mapping
+    ;;((sexp:symbol name) (sexp:symbol alias))
+    ;;-> (alist/push the-context.aliases name alias)
     x -> (error1 "malformed typealias" x))
+
+  ;; pushes unparsed alias
+  ;; (define parse-typealias
+  ;;   ((sexp:symbol name) alias) -> (alist/push the-context.aliases name alias)
+  ;;   x -> (error1 "malformed typealias" x))
 
   (define parse-define
     ;; (define name ...)
@@ -417,7 +437,7 @@
 		      type
 		      ;; note: expand-body returns one sexp
 		      (expand-body body))))
-  
+
   (define (expand-match exps)
     (let loop ((vars '())
 	       (inits '())
@@ -498,10 +518,11 @@
 	  the-context.standard-macros)))
 
 (define (print-datatype dt)
-  (print-string "(datatype ")
-  (printn dt.name)
+  (printf "(forall (" (join type-repr " " (dt.get-tvars)) ")\n")
+  (printf "  (datatype " (sym dt.name) "\n")
   (dt.iterate
    (lambda (tag alt)
-     (print-string (format "  (:" (sym tag) " " (join type-repr " " alt.types) ")\n"))))
+     (print-string (format "    (:" (sym tag) " " (join type-repr " " alt.types) ")\n"))))
+  (print-string "    )\n")
   (print-string "  )\n")
   )
