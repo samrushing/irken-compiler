@@ -99,7 +99,7 @@
 	  (set! char (read-char))
 	  #u)
       char)
-    
+
     (define (next)
       (let ((result char))
 	;;(print result)
@@ -269,7 +269,7 @@
 	(if (eq? (peek) #\])
 	    (begin (next) exp)
 	    (error "expected closing ]/} character"))))
-	   
+
     (define (read-hex-digit ch)
       (match (alist/lookup hex-map ch) with
 	     (maybe:no) -> (error "bad hex digit")
@@ -304,7 +304,7 @@
 		     ))
 	  _   -> (loop (skip-peek) (list:cons ch result))
 	  )))
-    
+
     (define (read-list)
       ;; throw away the open paren
       (next)
@@ -484,8 +484,8 @@
   n -> (begin (print-string "  ") (indent (- n 1))))
 
 (define pp-size-field
-  (field:t name val) -> (+ (+ (string-length (symbol->string name))
-			      1) (pp-size val)))
+  (field:t name val) -> (+ (+ 1 (string-length (symbol->string name)))
+			   (pp-size val)))
 (define pp-size
   (sexp:list l)     -> (foldr + (+ 1 (length l)) (map pp-size l))
   (sexp:symbol s)   -> (string-length (symbol->string s))
