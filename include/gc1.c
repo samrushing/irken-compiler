@@ -59,12 +59,12 @@ do_gc (int nroots)
   for (i = 0; i < nroots; i++) {
     scan[i] = (object) copy (&(scan[i]));
   }
-      
+
   // bump scan
   scan += nroots;
 
   // scan loop
-      
+
   while (scan < freep) {
     if (IMMEDIATE (*scan)) {
       scan++;
