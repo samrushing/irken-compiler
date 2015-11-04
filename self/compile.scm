@@ -95,6 +95,11 @@ Usage: compile <irken-src-file> [options]
 (define (warning msg)
   (printf "warning: " msg "\n"))
 
+(define assert
+  #t -> #u
+  #f -> (error "assertion failed.")
+  )
+
 (defmacro verbose
   (verbose item ...) -> (if the-context.options.verbose (begin item ... #u)))
 
@@ -125,6 +130,7 @@ Usage: compile <irken-src-file> [options]
 	;;(_ (begin (print-string "after subst:\n") (pp-node node0)))
 	(_ (rename-variables node1))
 	;;(_ (begin (pp-node node0) (newline)))
+	(_ (optimize-nvcase node1))
 	(node2 (do-one-round node1))
 	;;(_ (begin (print-string "after first round:\n") (pp-node node1)))
 	(noden (do-one-round node2))
