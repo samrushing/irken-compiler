@@ -348,3 +348,10 @@
   (if (< retval 0)
       (raise (:OSError (%%cexp (-> int) "errno")))
       retval))
+
+(define (set-verbose-gc b)
+  (%%cexp (bool -> undefined) "verbose_gc = %0" b)
+  )
+
+(define (get-word-size)
+  (%%cexp (-> int) "sizeof(pxll_int)"))
