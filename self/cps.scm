@@ -517,8 +517,9 @@
 		       (ealt1
 			(if (not (= (dt.get-nalts) (length alts)))
 			    (match eclause.t with
-			      (node:primapp '%match-error _)
-			      -> (error1 "incomplete match" alt-formals)
+			      (node:primapp '%match-error _) -> (error1 "incomplete match" alt-formals)
+			      ;; complete match, no ealt
+			      (node:primapp '%complete-match _) -> (maybe:no)
 			      ;; incomplete match with ealt
 			      _ -> (maybe:yes (compile tail? eclause lenv jump-k)))
 			    ;; complete match, no ealt
