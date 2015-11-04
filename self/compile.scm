@@ -70,10 +70,12 @@
 	  "-O" -> (set! options.optimize #t)
 	  "-p" -> (set! options.profile #t)
 	  "-n" -> (set! options.noletreg #t)
+	  "-q" -> (set! options.quiet #t)
 	  x -> (if (char=? #\- (string-ref x 0) )
 		   (raise (:UnknownOption "Unknown option" x))
 		   (set! filename-index i))
 	  ))
+    (set-verbose-gc (not options.quiet))
     filename-index))
 
 (define (usage)
