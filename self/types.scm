@@ -236,7 +236,6 @@
     () -> (rdefault (rabs)))
 
   (define (parse t)
-    (printf "parse " (repr t) "\n")
     (match t with
       (sexp:symbol sym)
       -> (match (alist/lookup base-types sym) with
