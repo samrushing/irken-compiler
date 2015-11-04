@@ -195,7 +195,7 @@
 (define (cpad w s ch)
   (let ((sl (string-length s))
 	(lp (+ sl (/ (- w sl) 2))))
-    (rpad w (lpad lp s))))
+    (rpad w (lpad lp s ch) ch)))
 
 (defmacro fitem
   (fitem (<int> n))		-> (int->string n)
