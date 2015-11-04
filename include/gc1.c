@@ -3,6 +3,7 @@
 // cheney copying garbage collector
 // --------------------------------------------------
 
+static
 int
 sitting_duck (object * p)
 {
@@ -11,6 +12,7 @@ sitting_duck (object * p)
 
 static object * scan;
 
+static
 object *
 copy (object * p)
 {
@@ -42,6 +44,7 @@ copy (object * p)
   }
 }
 
+static
 object
 do_gc (int nroots)
 {
@@ -130,6 +133,7 @@ do_gc (int nroots)
   return (object) box (freep - heap0);
 }
 
+static
 object
 gc_flip (int nregs)
 {
@@ -157,6 +161,7 @@ gc_flip (int nregs)
 
 // exactly the same, except <thunk> is an extra root.
 // Warning: dump_image() knows how many roots are used here.
+static
 object *
 gc_dump (object * thunk)
 {
@@ -177,6 +182,7 @@ gc_dump (object * thunk)
 }
 
 
+static
 void adjust (object * q, pxll_int delta)
 {
   if ((*q) && (!IMMEDIATE(*(q)))) {
@@ -186,6 +192,7 @@ void adjust (object * q, pxll_int delta)
   }
 }
 
+static
 void
 gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
 {
@@ -240,7 +247,8 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
 }
 
 // these could probably be written in irken...
-pxll_int dump_image (char * filename, object * closure) {
+static pxll_int
+dump_image (char * filename, object * closure) {
   FILE * dump_file = fopen (filename, "wb");
   pxll_int offset;
   pxll_int size;
@@ -260,7 +268,9 @@ pxll_int dump_image (char * filename, object * closure) {
   return size;
 }
 
-object * load_image (char * filename) {
+static
+object *
+load_image (char * filename) {
   FILE * load_file = fopen (filename, "rb");
   if (!load_file) {
     abort();
