@@ -1,6 +1,9 @@
 // http://www-unix.mcs.anl.gov/~kazutomo/rdtsc.html
 
-#if defined(__i386__)
+#if defined(__llvm__)
+uint64_t rdtsc(void) __asm__ ("llvm.readcyclecounter");
+
+#elif defined(__i386__)
 
 static __inline__ unsigned long long rdtsc(void)
 {
