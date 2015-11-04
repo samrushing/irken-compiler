@@ -101,12 +101,14 @@
   (literal:cons 'bool 'false _) -> #x006
   x -> (error1 "expected immediate literal " x))
 
+;; provide automatic conversions of base types for inputs to %%cexp
 (define (wrap-in type arg)
   (match type with
     (type:tvar id _) -> arg
     (type:pred name predargs _)
     -> (match name with
 	 'int	       -> (format "unbox(" arg ")")
+	 'bool         -> (format "PXLL_IS_TRUE(" arg ")")
 	 'string       -> (format "((pxll_string*)(" arg "))->data")
 	 'cstring      -> (format "(char*)" arg)
 	 'buffer       -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
