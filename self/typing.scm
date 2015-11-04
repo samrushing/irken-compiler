@@ -50,10 +50,7 @@
 		(begin
 		  (match u v with
 		    (type:tvar _ _) _ -> #u
-		    ;; original line
-		    ;;_ (type:tvar _ _) -> #u
-		    ;; missing optimize-nvcase version:
-		    (type:pred _ _ _) (type:tvar _ _) -> #u
+		    _ (type:tvar _ _) -> #u
 		    (type:pred pu su _) (type:pred pv sv _)
 		    -> (match pu pv with
 			 'moo 'moo   -> #u
@@ -606,6 +603,9 @@
       ;;   disable inlining of functions that use them.
       '%getcc      -> (:scheme (LIST T0) (arrow (pred 'continuation (LIST T0)) (LIST)))
       '%putcc      -> (:scheme (LIST T0 T1) (arrow T1 (LIST (pred 'continuation (LIST T0)) T0)))
+      ;; used in an nvcase else clause when the compiler knows the match is complete
+      ;;  [i.e., no else clause is needed]
+      '%complete-match -> (:scheme (LIST T0) (arrow T0 '()))
       _ -> (error1 "lookup-primapp" name)))
 
   ;; each exception is stored in a global table along with a tvar
