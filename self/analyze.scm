@@ -568,18 +568,29 @@
   (:nil)
   )
 
+;; When we know that a particular nvcase represents an exhaustive/complete match,
+;;   either replace the nvcase with its body (when only one alt remains), or
+;;   flag the else clause as complete to the rest of the compiler.
+;;
 ;; this was translated pretty straight from python, it should maybe
 ;;   be re-done.
+;;
+;; XXX the more I think about this, the more this seems like there should
+;;   be an easier way.  Ideally, this capability would be built into the
+;;   match compiler itself.
+;;
+
 (define (optimize-nvcase root)
 
   (define (lookup name0 fat-env)
-    (let loop ((result '()))
-      (match fat-env with
+    (let loop ((result '())
+	       (rib fat-env))
+      (match rib with
 	(fatopt:nil) -> result
 	(fatopt:cons name1 tags rest)
 	-> (if (eq? name0 name1)
-	       (loop (append result tags))
-	       (loop result)))))
+	       (loop (append result tags) rest)
+	       (loop result rest)))))
 
   (define (get-datatype name)
     (match (alist/lookup the-context.datatypes name) with
@@ -596,26 +607,42 @@
     (let ((fatbar? #f))
       (match exp.t with
 	(node:primapp '%fatbar _) -> (set! fatbar? #t)
-	(node:nvcase dtname alts arities)
+	(node:nvcase 'nil tags arities) -> #u ;; pvcase
+	(node:nvcase dtname tags arities)
 	-> (let ((val (car exp.subs)))
 	     (match val.t with
 	       (node:varref name)
 	       -> (let ((dt (get-datatype dtname))
 			(nalts (dt.get-nalts)))
-		    (if (< (length alts) nalts)
+		    (if (< (length tags) nalts)
 			;; this nvcase is not exhaustive.  but have we already looked at
 			;; the others?
-			(let ((already (lookup dtname fat-env)))
-			  (if (= (+ (length already) (length alts)) nalts)
-			      (cond ((= (length alts) 1)
-				     ;; remove the whole nvcase node
+			(let ((already (lookup name fat-env)))
+			  ;;(printf "--- already " (int (length already)) " tags " (int (length tags)) " nalts " (int nalts) "\n")
+			  (if (= (+ (length already) (length tags)) nalts)
+			      ;; note: nvcase subs = <value> <else-clause> <alt0> ... <altn>
+			      (cond ((= (length tags) 1)
+				     ;; remove the nvcase, leave only its body...
+				     ;;(printf "removed nvcase.\n")
 				     (assert (= 3 (length exp.subs)))
-				     (assert (is-match/fail? (nth exp.subs 2)))
-				     (set! exp (nth exp.subs 1)))
+				     (assert (is-match/fail? (nth exp.subs 1)))
+				     (set! exp (nth exp.subs 2))
+				     )
 				    (else
-				     ;; just remove the %match-error/%fail
-				     (assert (is-match/fail? (last exp.subs)))
-				     (set! exp.subs (slice exp.subs 0 (- (length exp.subs) 1)))))))
+				     ;; disable the %match-error/%fail
+				     (printf "second arm.\n")
+				     ;; I think we can do this by simply replacing %match-error
+				     ;;   with %complete-match (or any other symbol) to tell cps.scm
+				     ;;   to ignore it.  Need to write a test to expose this branch!
+				     (let ((eclause (nth exp.subs 1)))
+				       (assert (is-match/fail? eclause))
+				       (set! eclause.t (node:primapp '%complete-match (sexp:bool #f)))
+				       ;;(raise (:NotTestedError))
+				       )
+				     ))
+			      ;; not exhaustive, extend fat-env with these new tags
+			      (set! fat-env (fatopt:cons name tags fat-env))
+			      ))
 			;; this nvcase is exhaustive, no need to extend fat-env
 			#u))
 	       ;; probably a manually-constructed nvcase
@@ -630,24 +657,23 @@
       ;;   fatbar that correctly maintained the parent/child relationship between
       ;;   earlier and later tests... but this would require code duplication, the
       ;;   elimination of which is the whole *purpose* of fatbar]
-      (let ((new-subs '())
-	    (size 0))
+      (let ((new-subs '()))
 	(for-each
 	 (lambda (sub)
-	   (let (((new-sub fat-env2) (search sub fat-env)))
+	   (let-values (((new-sub fat-env2) (search sub fat-env)))
 	     (if fatbar?
 		 ;; if we are in a fatbar, preserve the value of fat-env for the second branch.
 		 (set! fat-env fat-env2))
-	     (set! new-subs (append new-subs new-sub))
-	     (set! size (+ new-sub.size))))
+	     (PUSH new-subs new-sub)))
 	 exp.subs)
-	(set! exp.subs new-subs)
-	(set! exp.size size)
+	(set! exp.subs (reverse new-subs))
+	(set! exp.size (sum-size exp.subs))
 	(:tuple exp fat-env)
 	)))
-  (let (((root2 fat-env) (search root (fatopt:nil))))
-    root2
-    ))
+  (printf "starting optimize-nvcase...\n")
+  (search root (fatopt:nil))
+  (printf "done with optimize-nvcase.\n")
+  )
 
 (define removed-count 0)
 
