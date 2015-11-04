@@ -677,26 +677,28 @@
 	-> (begin
 	     (match n.t with
 	       (node:let formals)
-	       -> (for-each 
+	       -> (for-each
 		   (lambda (x) (type-map::maybe-add (apply-subst x.type) x.id))
 		   (reverse (cdr (reverse n.subs))))
 	       _ -> #u)
 	     (loop)
 	     )))
-    (printf "--- type-map ---\n")
-    (let ((nitems 0))
-      (type-map::iterate
-       (lambda (k v)
-    	 (set! nitems (+ 1 nitems))))
-      (printf "#types=" (int nitems) "\n"))
-    (type-map::iterate
-       (lambda (k v)
-    	 (printf (lpad 10 (int v)) " " (type-repr k) "\n")))
+    (when the-context.options.debugtyping
+       (printf "--- type-map ---\n")
+       (let ((nitems 0))
+	 (type-map::iterate
+	  (lambda (k v)
+	    (set! nitems (+ 1 nitems))))
+	 (printf "#types=" (int nitems) "\n"))
+       (type-map::iterate
+	(lambda (k v)
+	  (printf (lpad 10 (int v)) " " (type-repr k) "\n")))
+       )
     type-map
     ))
 
 (define (print-type-tree root)
-  (for (make-node-generator root) (n d x) 
+  (for (make-node-generator root) (n d x)
        (indent d)
        (printf (type-repr n.type) "\n")))
 
