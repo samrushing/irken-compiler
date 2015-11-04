@@ -91,8 +91,8 @@ indent (int n)
   }
 }
 
-void print_string (object * ob, int quoted);
-void print_list (pxll_pair * l);
+static void print_string (object * ob, int quoted);
+static void print_list (pxll_pair * l);
 
 // this is kinda lame, it's part pretty-printer, part not.
 static
@@ -248,6 +248,7 @@ DO (object * x)
 }
 
 // for debugging
+static
 void
 stack_depth_indent (object * k)
 {
@@ -257,6 +258,7 @@ stack_depth_indent (object * k)
   }
 }
 
+static
 void
 print_string (object * ob, int quoted)
 {
@@ -288,6 +290,7 @@ print_string (object * ob, int quoted)
   }
 }
 
+static
 void
 print_list (pxll_pair * l)
 {
@@ -311,6 +314,7 @@ print_list (pxll_pair * l)
   }
 }
 
+static
 int
 read_header (FILE * file)
 {
@@ -436,7 +440,7 @@ allocate (pxll_int tc, pxll_int size)
   // if you use this version, be sure to set <clear_tospace>!
   freep += size + 1;
 #endif
-  return save;  
+  return save;
 }
 
   // this is emitted by the backend for %make-tuple
@@ -446,7 +450,7 @@ alloc_no_clear (pxll_int tc, pxll_int size)
   object * save = freep;
   *freep = (object*) (size<<8 | (tc & 0xff));
   freep += size + 1;
-  return save;  
+  return save;
 }
 
 static uint64_t program_start_time;
@@ -468,7 +472,6 @@ static void toplevel (void);
 static int argc;
 static char ** argv;
 
-
 int
 main (int _argc, char * _argv[])
 {
@@ -484,7 +487,7 @@ main (int _argc, char * _argv[])
     argc = _argc;
     argv = _argv;
     limit = heap0 + (heap_size - head_room);
-    freep = heap0;  
+    freep = heap0;
     k = allocate (TC_SAVE, 3);
     k[1] = (object *) PXLL_NIL; // top of stack
     k[2] = (object *) PXLL_NIL; // null environment
