@@ -487,15 +487,15 @@
   (field:t name val) -> (+ (+ 1 (string-length (symbol->string name)))
 			   (pp-size val)))
 (define pp-size
-  (sexp:list l)     -> (foldr + (+ 1 (length l)) (map pp-size l))
+  (sexp:list l)     -> (foldr binary+ (+ 1 (length l)) (map pp-size l))
   (sexp:symbol s)   -> (string-length (symbol->string s))
   (sexp:string s)   -> (+ 2 (string-length s)) ;; escaped backslashes!
   (sexp:char ch)    -> (string-length (repr (sexp:char ch)))
   (sexp:bool _)     -> 2
   (sexp:int n)      -> (string-length (int->string n))
   (sexp:undef)      -> 2
-  (sexp:vector v)   -> (foldr + (+ 2 (length v)) (map pp-size v))
-  (sexp:record fl)  -> (foldr + (+ (length fl) 1) (map pp-size-field fl))
+  (sexp:vector v)   -> (foldr binary+ (+ 2 (length v)) (map pp-size v))
+  (sexp:record fl)  -> (foldr binary+ (+ (length fl) 1) (map pp-size-field fl))
   (sexp:cons dt c)  -> (+ 1 (+ (string-length (symbol->string dt)) (string-length (symbol->string c))))
   (sexp:attr lhs a) -> (+ 1 (+ (pp-size lhs) (string-length (symbol->string a))))
   )
