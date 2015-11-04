@@ -11,6 +11,7 @@
    noinline		= #f
    noletreg		= #f
    debugtyping          = #f
+   quiet                = #f
    include-dirs		= (LIST "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    })
 
