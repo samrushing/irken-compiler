@@ -59,8 +59,8 @@
 (define NFLAG-TAIL      3)
 (define NFLAG-NFLAGS    4)
 
-(typealias rnode
-   {t=node subs=(list rnode) size=int id=int type=type flags=int})
+;;(typealias rnode
+;;   {t=node subs=(list rnode) size=int id=int type=type flags=int})
 
 ;(define (make-node t subs) : (node (list rnode) -> rnode)
 (define (make-node t subs)
