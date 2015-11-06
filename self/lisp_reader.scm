@@ -91,9 +91,19 @@
 (define letter?        (char-class letters))
 (define field?         (char-class (cons #\- (append letters digits))))
 
-(define (reader read-char)
+(define (reader path read-char)
 
-  (let ((char #\eof)) ;; one-character buffer
+  (let ((char #\eof) ;; one-character buffer
+	(line 1)
+	(pos 1))
+
+    (define (read-error0 msg)
+      (printf "\nread error: file= " path " line " (int line) ":" (int pos) ".\n")
+      (error msg))
+
+    (define (read-error1 msg ob)
+      (printf "\nread error: file= " path " line " (int line) ":" (int pos) ".\n")
+      (error1 msg ob))
 
     (define (peek)
       (if (eq? char #\eof)
@@ -103,7 +113,10 @@
 
     (define (next)
       (let ((result char))
-	;;(print result)
+	(if (eq? result #\newline)
+	    (begin (set! line (+ line 1))
+		   (set! pos 0))
+	    (set! pos (+ 1 pos)))
 	(set! char (read-char))
 	result))
 
@@ -155,7 +168,7 @@
 			     (else 3))
 		  _ -> (impossible)))
 	  (cond ((< state 4) (loop (list:cons (next) result))) ;; non-final
-		((= state 4) (error "unexpected end-of-file")) ;; error final
+		((= state 4) (read-error1 "unexpected end-of-file" path)) ;; error final
 		(else ;; all other finals: 5,6,7
 		 ;; single-character - for #\A
 		 (if (= state 7) (set! result (list:cons (next) result)))
@@ -180,16 +193,16 @@
 
     (define (read-symbol)
       (match (read-atom) with
-	(:atom sym #t _ _) -> (error1 "expected symbol" sym)
+	(:atom sym #t _ _) -> (read-error1 "expected symbol" sym)
 	(:atom sym #f _ 0) -> (string->symbol sym)
-	(:atom sym #f _ _) -> (error1 "no dots allowed in constructor names" sym)
+	(:atom sym #f _ _) -> (read-error1 "no dots allowed in constructor names" sym)
 	))
 
     (define (read1)
       (skip-whitespace)
       (let ((ch (peek)))
 	(match ch with
-	  #\eof -> (error "unexpected end of file")
+	  #\eof -> (read-error1 "unexpected end of file" 0)
 	  #\(   -> (sexp:list (read-list))
 	  #\{   -> (read-record)
 	  #\"   -> (read-string)
@@ -210,7 +223,7 @@
 				   (:atom "tab" _ _ _)     -> (sexp:char #\tab)
 				   (:atom "eof" _ _ _)     -> (sexp:char #\eof)
 				   (:atom "nul" _ _ _)     -> (sexp:char #\nul)
-				   x                       -> (error1 "bad character constant" x)
+				   x                       -> (read-error1 "bad character constant" x)
 				   ))
 		       ;; Bb
 		       #\X -> (begin (next) (sexp:int (read-hex-int)))
@@ -224,9 +237,9 @@
 		       #\U -> (begin (next) (sexp:undef))
 		       #\u -> (begin (next) (sexp:undef))
 		       #\( -> (sexp:vector (read-list))
-		       x   -> (error1 "syntax error" x)
+		       x   -> (read-error1 "syntax error" x)
 		       ))
-	  #\)   -> (error "unexpected close-paren")
+	  #\)   -> (read-error0 "unexpected close-paren")
 	  _     -> (match (read-atom) with
 		      (:atom chars #t n _) -> (sexp:int (read-int chars n))
 		      (:atom chars #f _ 0) -> (sexp:symbol (string->symbol chars))
@@ -255,7 +268,7 @@
 		       ob (sexp:cons 'nil method) -> (sexp (sexp:symbol '%method) (sexp:symbol method) ob)
 		       ;; object : type syntax
 		       ob type -> (sexp (sexp:symbol '%typed) ob type)))
-		       ;;x y -> (error1 "colon syntax" (:pair x y))))
+		       ;;x y -> (read-error1 "colon syntax" (:pair x y))))
 	    ;; infix 'get' syntax (i.e., attribute access)
 	    ;; XXX this is disabled because it breaks symbols like '...
 	    ;;   so we'll probably need to do the same hack as the python version
@@ -269,11 +282,11 @@
 	(skip-whitespace)
 	(if (eq? (peek) #\])
 	    (begin (next) exp)
-	    (error "expected closing ]/} character"))))
+	    (read-error0 "expected closing ]/} character"))))
 
     (define (read-hex-digit ch)
       (match (alist/lookup hex-map ch) with
-	     (maybe:no) -> (error "bad hex digit")
+	     (maybe:no) -> (read-error0 "bad hex digit")
 	     (maybe:yes num) -> num))
 
     (define (read-hex-code)
@@ -301,7 +314,7 @@
 		     #\t -> (loop (peek) (list:cons #\tab result))
 		     #\" -> (loop (peek) (list:cons #\" result))
 		     #\\ -> (loop (peek) (list:cons #\\ result))
-		     _   -> (error1 "bad backslash escape in string" result)
+		     _   -> (read-error1 "bad backslash escape in string" result)
 		     ))
 	  _   -> (loop (skip-peek) (list:cons ch result))
 	  )))
@@ -334,7 +347,7 @@
 		      (else
 		       (skip-whitespace)
 		       (if (not (eq? (peek) #\=))
-			   (error1 "expected '=' in record literal" result)
+			   (read-error1 "expected '=' in record literal" result)
 			   (begin
 			     (next)
 			     (let ((val (read)))
@@ -358,7 +371,7 @@
 	  (if (= i n)
 	      (if neg? (- 0 r) r)
 	      (match (alist/lookup dec-map (string-ref s i)) with
-		(maybe:no) -> (error1 "bad decimal digit?" s)
+		(maybe:no) -> (read-error1 "bad decimal digit?" s)
 		(maybe:yes digit) -> (loop (+ i 1) (+ (* r 10) digit)))
 	      ))))
 
@@ -415,17 +428,19 @@
       ))
 
 (define (read-file path)
-  (print-string "reading file ") (printn path)
-  (let ((file (file/open-read path)))
-    (reader (lambda () (file/read-char file)))))
+  (printf "reading '" path "'...")
+  (let ((file (file/open-read path))
+	(result (reader path (lambda () (file/read-char file)))))
+    (printf "done.\n")
+    result))
 
 (define (find-and-read-file path)
   (print-string "reading file ") (printn path)
   (let ((file (find-file the-context.options.include-dirs path)))
-    (reader (lambda () (file/read-char file)))))
+    (reader path (lambda () (file/read-char file)))))
 
 (define (read-string s)
-  (reader (string-reader s)))
+  (reader "<string>" (string-reader s)))
 
 (define sexp->symbol
   (sexp:symbol s) -> s
