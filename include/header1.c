@@ -92,6 +92,7 @@ indent (int n)
 }
 
 void print_string (object * ob, int quoted);
+void print_float (pxll_float * ob);
 void print_list (pxll_pair * l);
 
 // this is kinda lame, it's part pretty-printer, part not.
@@ -206,6 +207,9 @@ dump_object (object * ob, int depth)
       case TC_STRING:
 	print_string (ob, 1);
 	break;
+      case TC_FLOAT:
+	print_float ((pxll_float *) ob);
+	break;
       case TC_BUFFER: {
 	pxll_int n = get_tuple_size (ob);
 	fprintf (stdout, "<buffer %" PRIuPTR " words %" PRIuPTR " bytes>", n, n * (sizeof(pxll_int)));
@@ -286,6 +290,12 @@ print_string (object * ob, int quoted)
   if (quoted) {
     fputc ('"', stdout);
   }
+}
+
+void
+print_float (pxll_float * ob)
+{
+  fprintf (stdout, "%g", ob->f);
 }
 
 void

@@ -26,6 +26,7 @@
 
 ;; singleton base types
 (define int-type        (pred 'int '()))
+(define float-type      (pred 'float '()))
 (define char-type       (pred 'char '()))
 (define string-type     (pred 'string '()))
 (define undefined-type  (pred 'undefined '()))
@@ -35,6 +36,7 @@
 (define base-types
   (alist/make
    ('int int-type)
+   ('float float-type)
    ('char char-type)
    ('string string-type)
    ('undefined undefined-type)

@@ -42,7 +42,8 @@ object * heap1 = NULL;
 #define TC_SYMBOL               (7<<2) // 00011100  1c
 #define TC_VEC16                (8<<2) // 00100000  20
 #define TC_BUFFER               (9<<2) // 00100100  24
-#define TC_USEROBJ             (10<<2) // 00101000  28
+#define TC_FLOAT               (10<<2) // 00101000  28
+#define TC_USEROBJ             (11<<2) // 00101100  32
 
 // alias
 #define TC_CONTINUATION TC_SAVE
@@ -151,6 +152,11 @@ typedef struct _closure {
   void * pc;
   pxll_tuple * lenv;
 } pxll_closure;
+
+typedef struct _float {
+  header tc;
+  double f;
+} pxll_float;
 
 // The layout of strings is actually an endless source of
 // hand-wringing.  I can't bring myself to waste an entire 64 bits for

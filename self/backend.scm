@@ -107,6 +107,7 @@
     (type:pred name predargs _)
     -> (match name with
 	 'int	       -> (format "unbox(" arg ")")
+	 'float        -> (format "((pxll_float*)(" arg "))->f")
 	 'string       -> (format "((pxll_string*)(" arg "))->data")
 	 'cstring      -> (format "(char*)" arg)
 	 'buffer       -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
@@ -252,7 +253,7 @@
 
     (define (emit-litcon index kind target)
       (if (>= target 0)
-	  (cond ((eq? kind 'string)
+	  (cond ((or (eq? kind 'string) (eq? kind 'float))
 		 (o.write (format "O r" (int target) " = (object*) &constructed_" (int index) ";")))
 		(else
 		 (o.write (format "O r" (int target) " = (object *) constructed_" (int index) "[0];"))))))
@@ -917,6 +918,8 @@ static prof_dump (void)
 	-> (match (alist/lookup strings s) with
 	     (maybe:yes index) -> (format "UPTR0(" (int index) ")")
 	     (maybe:no) -> (error "emit-constructed: lost string"))
+	(literal:float f)
+	-> (format f)
 	_ -> (int->string (encode-immediate exp))
 	))
     (o.dedent) ;; XXX fix this by defaulting to zero indent
@@ -945,6 +948,8 @@ static prof_dump (void)
 				  "), INTCON(" (int symbol-counter) ")};"))
 		 (set! symbol-counter (+ 1 symbol-counter))
 		 )
+	    (literal:float f)
+	    -> (o.write (format "pxll_float constructed_" (int i) " = {TC_FLOAT, " f "};"))
 	    _ -> (let ((val (walk (nth lits i)))
 		       (rout (list:cons val (reverse output))))
 		   (o.write (format "pxll_int constructed_" (int i) "[] = {" (join id "," rout) "};")))

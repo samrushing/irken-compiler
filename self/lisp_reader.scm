@@ -24,6 +24,7 @@
   (:char char)
   (:bool bool)
   (:int int)
+  (:float string)
   (:undef)
   (:vector (list sexp))
   (:record (list field))
@@ -148,6 +149,7 @@
 		  2 -> (cond ((eq? ch #\eof) 6)
 			     ((delim? ch) 6)
 			     ((digit? ch) 2)
+			     ((eq? ch #\.) 2)
 			     (else 3))
 		  3 -> (cond ((eq? ch #\eof) 5)
 			     ((delim? ch) 5)
@@ -227,6 +229,7 @@
 		       ))
 	  #\)   -> (error "unexpected close-paren")
 	  _     -> (match (read-atom) with
+		      (:atom chars #t n 1) -> (sexp:float (read-float chars n))
 		      (:atom chars #t n _) -> (sexp:int (read-int chars n))
 		      (:atom chars #f _ 0) -> (sexp:symbol (string->symbol chars))
 		      (:atom chars #f _ n) -> (dotted-symbol chars n)
@@ -361,6 +364,11 @@
 		(maybe:yes digit) -> (loop (+ i 1) (+ (* r 10) digit)))
 	      ))))
 
+    (define (read-float s n)
+      (printf "reading float n=" (int n) " s=\"" s "\"\n")
+      (let ((neg? (eq? (string-ref s 0) #\-)))
+	s))
+
     (define (read-hex-int)
       (let ((neg? (eq? (peek) #\-)))
 	(if neg? (begin (next) #u))
@@ -445,6 +453,7 @@
   (sexp:symbol a) (sexp:symbol b)     -> (eq? a b)
   (sexp:bool a) (sexp:bool b)         -> (eq? a b)
   (sexp:int a) (sexp:int b)           -> (= a b)
+  (sexp:float a) (sexp:float b)       -> (string=? a b) ;; tmp, f=
   (sexp:string a) (sexp:string b)     -> (string=? a b)
   (sexp:char a) (sexp:char b)         -> (char=? a b)
   (sexp:list l0) (sexp:list l1)       -> (every2? sexp=? l0 l1)
@@ -472,6 +481,7 @@
   (sexp:bool #t)    -> "#t"
   (sexp:bool #f)    -> "#f"
   (sexp:int n)      -> (format (int n))
+  (sexp:float f)    -> f ;; tmp
   (sexp:undef)      -> "#u"
   (sexp:vector v)   -> (format "#(" (join repr " " v) ")")
   (sexp:record fl)  -> (format "{" (join repr-field " " fl) "}")
@@ -487,15 +497,16 @@
   (field:t name val) -> (+ (+ (string-length (symbol->string name))
 			      1) (pp-size val)))
 (define pp-size
-  (sexp:list l)     -> (foldr + (+ 1 (length l)) (map pp-size l))
+  (sexp:list l)     -> (foldr binary+ (+ 1 (length l)) (map pp-size l))
   (sexp:symbol s)   -> (string-length (symbol->string s))
   (sexp:string s)   -> (+ 2 (string-length s)) ;; escaped backslashes!
   (sexp:char ch)    -> (string-length (repr (sexp:char ch)))
   (sexp:bool _)     -> 2
   (sexp:int n)      -> (string-length (int->string n))
+  (sexp:float f)    -> (string-length (float->string f))
   (sexp:undef)      -> 2
-  (sexp:vector v)   -> (foldr + (+ 2 (length v)) (map pp-size v))
-  (sexp:record fl)  -> (foldr + (+ (length fl) 1) (map pp-size-field fl))
+  (sexp:vector v)   -> (foldr binary+ (+ 2 (length v)) (map pp-size v))
+  (sexp:record fl)  -> (foldr binary+ (+ (length fl) 1) (map pp-size-field fl))
   (sexp:cons dt c)  -> (+ 1 (+ (string-length (symbol->string dt)) (string-length (symbol->string c))))
   (sexp:attr lhs a) -> (+ 1 (+ (pp-size lhs) (string-length (symbol->string a))))
   )

@@ -244,6 +244,7 @@
     (match lit with
       (literal:string _)    -> string-type
       (literal:int _)	    -> int-type
+      (literal:float _)     -> float-type
       (literal:char _)	    -> char-type
       (literal:undef)	    -> undefined-type
       (literal:symbol _)    -> symbol-type

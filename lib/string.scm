@@ -166,6 +166,9 @@
 		  (list:cons (ascii->char (+ 48 (remainder x 10))) r)
 		  )))))
 
+(define (float->string f)
+  f) ;; tmp
+
 (define hex-table (literal #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\a #\b #\c #\d #\e #\f)))
 
 (define (int->hex-string n)
@@ -199,7 +202,7 @@
 (define (cpad w s ch)
   (let ((sl (string-length s))
 	(lp (+ sl (/ (- w sl) 2))))
-    (rpad w (lpad lp s))))
+    (rpad w (lpad lp s ch) ch)))
 
 (defmacro fitem
   (fitem (<int> n))		-> (int->string n)

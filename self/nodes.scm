@@ -6,6 +6,7 @@
 (datatype literal
   (:string string)
   (:int int)
+  (:float string) ;; tmp
   (:char char)
   (:undef)
   (:symbol symbol)
@@ -143,6 +144,7 @@
   (literal:string s)	 -> (format (char #\") s (char #\")) ;; XXX correct string repr
   (literal:symbol s)     -> (format (sym s))
   (literal:int n)	 -> (format (int n))
+  (literal:float f)      -> (format f) ;; tmp
   (literal:char ch)	 -> (format (char #\#) (char #\\) (char ch)) ;; printable?
   (literal:undef)	 -> (format "#u")
   (literal:cons dt v ()) -> (format "(" (sym dt) ":" (sym v) ")")
@@ -321,6 +323,7 @@
   (sexp:symbol s)  -> (node/varref s)
   (sexp:string s)  -> (node/literal (literal:string s))
   (sexp:int n)	   -> (node/literal (literal:int n))
+  (sexp:float f)   -> (node/literal (literal:float f))
   (sexp:char c)	   -> (node/literal (literal:char c))
   (sexp:bool b)	   -> (node/literal (literal:cons 'bool (if b 'true 'false) '()))
   (sexp:undef)	   -> (node/literal (literal:undef))
@@ -405,6 +408,7 @@
   (match exp with
     (sexp:string s)  -> (literal:string s)
     (sexp:int n)     -> (literal:int n)
+    (sexp:float f)   -> (literal:float f)
     (sexp:char c)    -> (literal:char c)
     (sexp:undef)     -> (literal:undef)
     (sexp:symbol s)  -> (literal:symbol s)

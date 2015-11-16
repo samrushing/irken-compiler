@@ -89,6 +89,7 @@
       (sexp:char _)	   -> exp
       (sexp:bool _)	   -> exp
       (sexp:int _)	   -> exp
+      (sexp:float _)       -> exp
       (sexp:undef)	   -> exp
       (sexp:list l)	   -> (maybe-expand l)
       (sexp:vector rands)  -> (sexp:vector (map expand rands))

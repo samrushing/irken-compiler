@@ -162,6 +162,7 @@
 		     (match hd with
 		       (literal:symbol sym)    -> (get-symbol-index sym)
 		       (literal:string s)      -> (add-literal hd)
+		       (literal:float f)       -> (add-literal hd)
 		       (literal:cons _ _ args) -> (scan-literals args)
 		       (literal:vector args)   -> (scan-literals args)
 		       _ -> 0)
@@ -172,6 +173,7 @@
 	;; non-immediate literals are 'constructed' and referenced by index.
 	(literal:symbol s)	-> (insn:litcon (get-symbol-index s) 'symbol k)
 	(literal:string s)	-> (insn:litcon (get-literal-index lit id) 'string k)
+	(literal:float f)       -> (insn:litcon (get-literal-index lit id) 'float k)
 	(literal:vector args)	-> (begin
 				     (scan-literals args)
 				     (insn:litcon (get-literal-index lit id) 'vector k))
