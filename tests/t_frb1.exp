@@ -1,0 +1,10 @@
+{u1 {u0 {u1 <u2> <u2> 1 "time"} {u1 <u2> <u2> 3 "like"} 2 "flies"} {u1 <u2> <u2> 5 "banana"} 4 "a"}
+    1 time
+  2 flies
+    3 like
+4 a
+  5 banana
+{u1 {u1 <u2> <u2> 1 "time"} {u1 {u0 <u2> <u2> 3 "like"} <u2> 5 "banana"} 2 "flies"}
+black-height: 7
+#t
+#u
