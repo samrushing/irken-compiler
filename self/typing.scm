@@ -1,7 +1,13 @@
 ;; -*- Mode: Irken -*-
 
 (define (apply-subst t)
-  (type-find t))
+  (define (p t)
+    (let ((t (type-find t)))
+      (match t with
+	(type:tvar _ _)	-> t
+	(type:pred name subs _) -> (pred name (map p subs))
+	)))
+  (p t))
 
 (define scheme-repr
   (:scheme gens type)
