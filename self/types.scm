@@ -3,19 +3,13 @@
 (include "lib/set.scm")
 
 
-;; temporarily disabled while working on typealias
-
-;; (typealias rtype {parent=(maybe type) pending=bool moo=(maybe type)})
-
 (datatype type
-  (:tvar int                {parent=(maybe type) pending=bool moo=(maybe type)})
-  (:pred symbol (list type) {parent=(maybe type) pending=bool moo=(maybe type)})
-  ;; (:tvar int rtype)
-  ;; (:pred symbol (list type) rtype)
+  (:tvar int                {parent=(maybe type)})
+  (:pred symbol (list type) {parent=(maybe type)})
   )
 
 (define (pred name subs)
-  (type:pred name subs {parent=(maybe:no) pending=#f moo=(maybe:no)}))
+  (type:pred name subs {parent=(maybe:no)}))
 
 (define (arrow result-type arg-types)
   (pred 'arrow (list:cons result-type arg-types)))
@@ -23,7 +17,7 @@
 (define tvar-counter (make-counter 0))
 
 (define (new-tvar)
-  (type:tvar (tvar-counter.inc) {parent=(maybe:no) pending=#f moo=(maybe:no)}))
+  (type:tvar (tvar-counter.inc) {parent=(maybe:no)}))
 
 (define (is-pred? t name)
   (match t with
@@ -78,8 +72,6 @@
 (define (rabs)                  (pred 'abs '()))
 (define (rpre t)                (pred 'pre (LIST t)))
 (define (make-label sym)        (pred sym '()))
-
-;; rproduct (rlabel (parent,pre(maybe(type)),rlabel (pending,pre(bool),rlabel(moo,pre(maybe(type)),rdefault(abs)))))
 
 (define rlabel-repr
   (type:pred label () _) (type:pred 'pre (t) _) -> (format (sym label) "=" (type-repr t))
@@ -272,16 +264,11 @@
 ;; rproduct(rlabel(x, pre(bool), rlabel(y, pre(int), rdefault(abs))))
 ;; => '(x y)
 (define get-record-sig
-  (type:pred 'moo (tv arg) _)
-  -> (get-record-sig arg)
   (type:pred 'rproduct (row) _)
   -> (let ((sig
             (let loop ((row row)
                        (labels '()))
               (match row with
-;;              (type:pred 'rlabel ((type:pred label _ _) (type:pred 'pre _ _) rest) _)
-;;              -> (loop rest (list:cons label labels))
-;;              (type:pred 'moo (tv arg) _) -> (loop arg labels)
                 (type:pred 'rlabel ((type:pred label _ _) (type:pred 'abs _ _) rest) _)
                 -> (loop rest labels)
                 (type:pred 'rlabel ((type:pred label _ _) _ rest) _)
@@ -299,46 +286,6 @@
 (define (get-record-sig-sexp t)
   (let ((sig (get-record-sig t)))
     (sexp:list (map sexp:symbol sig))))
-
-;; ok, I think this can be done right after parsing the typealias,
-;;  and I think we can put the substitution back into the datatype
-;;  parser...
-
-(define check-for-typealias-recursion
-  name (:scheme gens type)
-  -> (begin
-       (let ((moovar (new-tvar))
-	     (recursive? #f)
-	     (result
-	      (let walk ((t type))
-		(match t with
-		  (type:pred name0 args _)
-		  -> (begin
-		       (printf "  pred compare " (sym name0) " = " (sym name) "\n")
-		       (if (eq? name name0)
-			   ;; a recursive type alias.  moooo.
-			   ;; XXX what about args? assert null?
-			   (begin
-			     (printf "found recursion in type alias\n")
-			     (set! recursive? #t)
-			     moovar
-			     )
-			   (pred name0 (map walk args)))
-		       )
-		  _ -> t))))
-	 (let ((result0
-		(if recursive?
-		    ;;(:scheme (append gens (LIST moovar)) (pred 'moo (LIST moovar result)))
-		    ;; XXX I don't think its right to add moovar to gens, it's not meant to
-		    ;;     stand for any other type than itself. [but: what if the type is
-		    ;;     specialized, in that case there will be several of them?]
-		    (:scheme gens (pred 'moo (LIST moovar result)))
-		    (:scheme gens result))))
-	   (when the-context.options.debugtyping
-		 (printf "result   " (scheme-repr result0) "\n"))
-	   result0
-	   ))
-       ))
 
 ;; (define (test-types)
 ;;   (let ((t0 (parse-type (car (read-string "((list sexp) -> int)"))))

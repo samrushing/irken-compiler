@@ -383,7 +383,7 @@
   	     (type (parse-type* alias tvars)))
          (alist/push the-context.aliases
 		     name
-		     (check-for-typealias-recursion name (:scheme (reverse (tvars::values)) type))))
+		     (:scheme (reverse (tvars::values)) type)))
     ;; only predicate -> predicate mapping
     ;;((sexp:symbol name) (sexp:symbol alias))
     ;;-> (alist/push the-context.aliases name alias)

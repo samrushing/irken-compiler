@@ -1,25 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (define (apply-subst t)
-  (define (p t)
-    (let ((t (type-find t))
-	  (trec (type->trec t)))
-      (if trec.pending
-	  (let ((tv (new-tvar)))
-	    (set! trec.moo (maybe:yes tv))
-	    tv)
-	  (match t with
-	    (type:tvar _ _)	 -> t
-	    (type:pred 'moo _ _) -> t
-	    (type:pred name subs _)
-	    -> (begin
-		 (set! trec.pending #t)
-		 (let ((r (pred name (map p subs))))
-		   (set! trec.pending #f)
-		   (match trec.moo with
-		     (maybe:yes mv) -> (pred 'moo (LIST mv r))
-		     (maybe:no) -> r)))))))
-  (p t))
+  (type-find t))
 
 (define scheme-repr
   (:scheme gens type)
@@ -53,10 +35,6 @@
 		    _ (type:tvar _ _) -> #u
 		    (type:pred pu su _) (type:pred pv sv _)
 		    -> (match pu pv with
-			 'moo 'moo   -> #u
-			 ;; row and moo vars - early exit to avoid union
-			 'moo _	     -> (return (U (car su) v))
-			 _ 'moo	     -> (return (U (car sv) u))
 			 'rlabel _   -> (return (U-row u v))
 			 _ 'rlabel   -> (return (U-row v u))
 			 'rdefault _ -> (return (U-row u v))
