@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/core.scm")
+(include "lib/pair.scm")
 (include "lib/frb.scm")
 
 ;; test tree/make macro
@@ -15,8 +16,3 @@
   (printn t)
   (tree/member t < 5)
   )
-
-
-
- 
-    
