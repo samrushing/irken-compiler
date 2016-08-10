@@ -13,10 +13,10 @@
 (define (find-recursion exp)
 
   (define (walk exp fenv)
-    (match exp.t with
+    (match (noderec->t exp) with
       (node:call)
-      -> (let ((rator (nth exp.subs 0)))
-	   (match rator.t with
+      -> (let ((rator (nth (noderec->subs exp) 0)))
+	   (match (noderec->t rator) with
 	     (node:varref name)
 	     -> (let ((var (vars-get-var name)))
 		  (cond ((member-eq? name fenv)
@@ -35,7 +35,7 @@
       -> (if (or (eq? name '%getcc) (eq? name '%putcc))
 	     (vars-set-flag! (car fenv) VFLAG-GETCC))
       _ -> #u)
-    (for-each (lambda (x) (walk x fenv)) exp.subs))
+    (for-each (lambda (x) (walk x fenv)) (noderec->subs exp)))
 
   (walk exp '()))
 
@@ -59,48 +59,49 @@
       ))
 
   (define (walk-primapp tail? exp)
-    (match exp.t with
+    (match (noderec->t exp) with
       ;; these are special-case w.r.t. tail status
-      (node:primapp '%fatbar _)      -> (walk-list tail? exp.subs)
-      (node:primapp '%exn-raise _)   -> (walk tail? (first exp.subs))
-      (node:primapp '%exn-handle _)  -> (walk tail? (second exp.subs))
-      _ -> (walk-list #f exp.subs)
+      (node:primapp '%fatbar _)      -> (walk-list tail? (noderec->subs exp))
+      (node:primapp '%exn-raise _)   -> (walk tail? (first (noderec->subs exp)))
+      (node:primapp '%exn-handle _)  -> (walk tail? (second (noderec->subs exp)))
+      _ -> (walk-list #f (noderec->subs exp))
       ))
 
   (define (walk tail? exp)
     (if tail?
 	(node-set-flag! exp NFLAG-TAIL))
-    (match exp.t with
-      (node:sequence)      -> (walk-sequence tail? exp.subs)
-      (node:if)            -> (match exp.subs with
-				(test then else)
-				-> (begin (walk #f test)
-					  (walk tail? then)
-					  (walk tail? else))
-				_ -> (error "malformed conditional"))
-      (node:function _ _)  -> (walk #t (car exp.subs))
-      (node:varset _)      -> (walk #f (car exp.subs))
-      (node:cexp _ _ _)    -> (walk-list #f exp.subs)
-      (node:call)          -> (walk-list #f exp.subs)
-      (node:primapp _ _)   -> (walk-primapp tail? exp)
-      (node:nvcase _ _ _)  -> (match exp.subs with
-				(val eclause . alts)
-				-> (begin (walk #f val)
-					  (walk tail? eclause)
-					  (walk-list tail? alts))
-				_ -> (error "malformed nvcase"))
-      (node:fix _)         -> (walk-let tail? exp.subs)
-      (node:let _)         -> (walk-let tail? exp.subs)
-      (node:subst _ _)     -> #u
-      _                    -> #u
-      ))
+    (let ((subs (noderec->subs exp)))
+      (match (noderec->t exp) with
+	(node:sequence)      -> (walk-sequence tail? subs)
+	(node:if)            -> (match subs with
+				  (test then else)
+				  -> (begin (walk #f test)
+					    (walk tail? then)
+					    (walk tail? else))
+				  _ -> (error "malformed conditional"))
+	(node:function _ _)  -> (walk #t (car subs))
+	(node:varset _)      -> (walk #f (car subs))
+	(node:cexp _ _ _)    -> (walk-list #f subs)
+	(node:call)          -> (walk-list #f subs)
+	(node:primapp _ _)   -> (walk-primapp tail? exp)
+	(node:nvcase _ _ _)  -> (match subs with
+				  (val eclause . alts)
+				  -> (begin (walk #f val)
+					    (walk tail? eclause)
+					    (walk-list tail? alts))
+				  _ -> (error "malformed nvcase"))
+	(node:fix _)         -> (walk-let tail? subs)
+	(node:let _)         -> (walk-let tail? subs)
+	(node:subst _ _)     -> #u
+	_                    -> #u
+	)))
   (walk #t node)
   )
 
 (define (find-leaves node)
   (define (search exp)
     (let ((leaf?
-	   (match exp.t with
+	   (match (noderec->t exp) with
 	     (node:call) -> (node-get-flag exp NFLAG-TAIL)
 	     _ -> #t)))
       (for-each
@@ -108,7 +109,7 @@
 	 (let ((sub-leaf? (search sub)))
 	   (if sub-leaf? (node-set-flag! sub NFLAG-LEAF))
 	   (set! leaf? (and leaf? sub-leaf?))))
-       exp.subs)
+       (noderec->subs exp))
       leaf?))
   (if (search node)
       (node-set-flag! node NFLAG-LEAF)))
@@ -125,11 +126,11 @@
       (set! var.sets (+ 1 var.sets))))
 
   (define (walk node)
-    (match node.t with
+    (match (noderec->t node) with
       (node:varref name) -> (add-ref name)
       (node:varset name) -> (add-set name)
       _ -> #u)
-    (for-each walk node.subs))
+    (for-each walk (noderec->subs node)))
 
   (walk node))
 
@@ -140,7 +141,7 @@
 	(vars-set-flag! name VFLAG-FREEREF)))
 
   (define (search node locals)
-    (match node.t with
+    (match (noderec->t node) with
       ;; these two binding constructs extend the environment...
       (node:fix names)		-> (set! locals (append names locals))
       (node:let names)		-> (set! locals (append names locals))
@@ -150,7 +151,7 @@
       (node:varref name)	-> (maybe-free name locals)
       (node:varset name)	-> (maybe-free name locals)
       _				-> #u)
-    (for-each (lambda (x) (search x locals)) node.subs))
+    (for-each (lambda (x) (search x locals)) (noderec->subs node)))
 
   (search node (list:nil))
   )
@@ -186,7 +187,7 @@
       (match (tree/member fenv symbol-index<? name) with
 	(maybe:no) -> (maybe:no)
 	(maybe:yes fun)
-	-> (match fun.t with
+	-> (match (noderec->t fun) with
 	     (node:varref name0)
 	     -> (follow-aliases fenv name0)
 	     _ -> (maybe:yes (:pair name fun)))))
@@ -200,16 +201,16 @@
 
       (let/cc return
 
-	  (match node.t with
+	  (match (noderec->t node) with
 	    (node:fix names)
 	    -> (for-range
 		   i (length names)
-		   (tree/insert! fenv symbol-index<? (nth names i) (nth node.subs i)))
+		   (tree/insert! fenv symbol-index<? (nth names i) (nth (noderec->subs node) i)))
 
 	    (node:call)
-	    -> (match node.subs with
+	    -> (match (noderec->subs node) with
 		 () -> (impossible)
-		 ({t=(node:varref name) ...} . rands)
+		 ((noderec:t {t=(node:varref name) ...}) . rands)
 		 -> (match (follow-aliases fenv name) with
 		      (maybe:no) -> #u
 		      (maybe:yes (:pair name fun))
@@ -220,39 +221,39 @@
 			       ;; this will spin unwanted extra copies
 			       ;;(recursive (node-get-flag node NFLAG-RECURSIVE))
 			       (calls (get-fun-calls name var.calls)))
-;;                            (printf "testing " (sym name) " calls " (int calls)
-;;                                                  " escapes " (bool escapes) " recursive " (bool recursive) "\n")
+                           ;; (printf "testing " (sym name) " calls " (int calls)
+                           ;;                       " escapes " (bool escapes) " recursive " (bool recursive) "\n")
 			   (cond ((and (function? fun)
 				       (not (eq? (string-ref (symbol->string name) 0) #\^))
 				       (not getputcc) ;; don't inline functions that use getcc/putcc
 				       (> calls 0)
-				       (and (or (<= fun.size inline-threshold)
+				       (and (or (<= (noderec->size fun) inline-threshold)
 						(and (= calls 1) (not escapes)))
 					    (not recursive)))
 				  (if (> calls 1)
 				      (set-multiplier name calls))
-;; 				  (printf "inline: " (sym name) " calls " (int calls)" escapes " (bool escapes) " recursive " (bool recursive) "\n")
+				  ;; (printf "inline: " (sym name) " calls " (int calls)" escapes " (bool escapes) " recursive " (bool recursive) "\n")
 				  (let ((r (inline-application fun rands)))
 				    ;; record the new variables...
 				    (add-vars r)
 				    (return (inline r fenv)))))))
 		 ;; always inline ((lambda (x) ...) ...)
-		 ({t=(node:function name formals) ...} . rands)
-		 -> (let ((r (inline-application (car node.subs) rands)))
-;; 		      (printf "inlined lambda: final size = " (int r.size) "\n")
+		 ((noderec:t {t=(node:function name formals) ...}) . rands)
+		 -> (let ((r (inline-application (car (noderec->subs node)) rands)))
+		      ;; (printf "inlined lambda: final size = " (int r.size) "\n")
 		      (add-vars r)
 		      (return (inline r fenv)))
 		 _ -> #u)
 	    _ -> #u)
 
-	(set! node.subs (map (lambda (x) (inline x fenv)) node.subs))
+	(set-node-subs! node (map (lambda (x) (inline x fenv)) (noderec->subs node)))
 	node
 	))
 
     (define (instantiate fun)
       (let ((new-vars '())
 	    (suffix (format "_i" (int (inline-counter.inc))))
-	    (body (nth fun.subs 0)))
+	    (body (nth (noderec->subs fun) 0)))
 
 	(define (append-suffix sym)
 	  (string->symbol (format (symbol->string sym) suffix)))
@@ -270,16 +271,16 @@
 
 	  ;; start with a copy of this node.
 	  (set! node (node-copy node))
-	  (match node.t with
-	    (node:let names)		 -> (set! node.t (node:let (get-new-names names)))
-	    (node:fix names)		 -> (set! node.t (node:fix (get-new-names names)))
-	    (node:function name formals) -> (set! node.t (node:function (get-new-name name) (get-new-names formals)))
+	  (match (noderec->t node) with
+	    (node:let names)		 -> (set-node-t! node (node:let (get-new-names names)))
+	    (node:fix names)		 -> (set-node-t! node (node:fix (get-new-names names)))
+	    (node:function name formals) -> (set-node-t! node (node:function (get-new-name name) (get-new-names formals)))
 	    (node:varref name)		 -> (if (member-eq? name lenv)
-						(set! node.t (node:varref (append-suffix name))))
+						(set-node-t! node (node:varref (append-suffix name))))
 	    (node:varset name)		 -> (if (member-eq? name lenv)
-						(set! node.t (node:varset (append-suffix name))))
+						(set-node-t! node (node:varset (append-suffix name))))
 	    _ -> #u)
-	  (set! node.subs (map (lambda (x) (rename x lenv)) node.subs))
+	  (set-node-subs! node (map (lambda (x) (rename x lenv)) (noderec->subs node)))
 	  node)
 
 	(rename body '())
@@ -287,7 +288,7 @@
 
     (define (safe-nvget-inline rands)
       (match rands with
-	({t=(node:primapp '%nvget _) subs=({t=(node:varref name) ...} . _)  ...} . _)
+	((noderec:t {t=(node:primapp '%nvget _) subs=((noderec:t {t=(node:varref name) ...}) . _)  ...}) . _)
 	-> (let ((var (vars-get-var name)))
 	     (= 0 var.sets))
 	_ -> #f))
@@ -296,7 +297,7 @@
       (let ((simple '())
 	    (complex '())
 	    (n (length rands)))
-	(match fun.t with
+	(match (noderec->t fun) with
 	  (node:function name formals)
 	  -> (cond ((not (= n (length formals))) (error1 "inline: bad arity" name))
 		   (else
@@ -308,7 +309,7 @@
 			      (rand (nth rands i)))
 			  (if (> fvar.sets 0)
 			      (PUSH complex i) ;; if a formal is assigned to, it must go into a let.
-			      (match rand.t with
+			      (match (noderec->t rand) with
 				(node:literal _) -> (PUSH simple i)
 				(node:varref arg)
 				-> (let ((avar (vars-get-var arg)))
@@ -363,17 +364,17 @@
 
       (define (walk node)
 	(let ((node0
-	       (match node.t with
+	       (match (noderec->t node) with
 		 (node:varref name)
 		 -> (match (lookup name) with
 		      (maybe:yes val) -> val
 		      (maybe:no) -> node)
 		 (node:varset name)
 		 -> (match (lookup name) with
-		      (maybe:yes val) -> (node/varset (varref->name val.t) (car node.subs))
+		      (maybe:yes val) -> (node/varset (varref->name (noderec->t val)) (car (noderec->subs node)))
 		      (maybe:no) -> node)
 		 _ -> node)))
-	  (set! node0.subs (map walk node0.subs))
+	  (set-node-subs! node0 (map walk (noderec->subs node0)))
 	  node0))
 
       (walk body))
@@ -398,9 +399,9 @@
       (PUSH escaping-funs name))
 
     (define (find-escaping-functions node parent)
-      (match node.t with
+      (match (noderec->t node) with
 	(node:function name _)
-	-> (match parent.t with
+	-> (match (noderec->t parent) with
 	     (node:fix _) -> #u
 	     ;; any function defined outside a fix (i.e., a lambda) is by
 	     ;;   definition an escaping function - because we always reduce
@@ -408,14 +409,14 @@
 	     _ -> (fun-escapes name))
 	(node:varref name)
 	-> (if (vars-get-flag name VFLAG-FUNCTION)
-	       (match parent.t with
+	       (match (noderec->t parent) with
 		 (node:call)
 		 ;; any function referenced in a non-rator position
-		 -> (if (not (eq? (first parent.subs) node))
+		 -> (if (not (eq? (first (noderec->subs parent)) node))
 			(fun-escapes name))
 		 _ -> (fun-escapes name)))
 	_ -> #u)
-      (for-each (lambda (x) (find-escaping-functions x node)) node.subs))
+      (for-each (lambda (x) (find-escaping-functions x node)) (noderec->subs node)))
 
     (define (maybe-var-escapes name lenv)
       ;;(printf "maybe-var-escapes: " (sym name) "\n")
@@ -427,7 +428,7 @@
 
     ;; within each escaping function, we search for escaping variables.
     (define (find-escaping-variables node lenv)
-      (match node.t with
+      (match (noderec->t node) with
 	;; the three binding constructs extend the environment...
 	(node:function _ formals) -> (set! lenv (append formals lenv))
 	(node:fix names)	  -> (set! lenv (append names lenv))
@@ -436,7 +437,7 @@
 	(node:varref name)	  -> (maybe-var-escapes name lenv)
 	(node:varset name)	  -> (maybe-var-escapes name lenv)
 	_ -> #u)
-      (for-each (lambda (x) (find-escaping-variables x lenv)) node.subs))
+      (for-each (lambda (x) (find-escaping-variables x lenv)) (noderec->subs node)))
 
     ;; first we identify escaping functions
     (find-escaping-functions root (node/literal (literal:int 0)))
@@ -465,8 +466,8 @@
 	   (loop (simpleopt r)))
 	  (else r))))
 
-(define (simpleopt node)
-
+(define simpleopt
+  (noderec:t node) ->
   ;; early exit means we've rewritten the node, and will recur without
   ;;   the default processing at the end.
   (let/cc return
@@ -482,7 +483,7 @@
       (node:fix names0)
       -> (match (unpack-fix node.subs) with
 	   ;; body of fix is another fix...
-	   (:fixsubs {t=(node:fix names1) subs=subs1 ...} inits0)
+	   (:fixsubs (noderec:t {t=(node:fix names1) subs=subs1 ...}) inits0)
 	   -> (match (unpack-fix subs1) with
 		(:fixsubs body1 inits1)
 		-> (return
@@ -499,7 +500,7 @@
       (node:let names0)
       -> (match (unpack-fix node.subs) with
 	   ;; body of let is another let...
-	   (:fixsubs {t=(node:let names1) subs=subs1 ...} inits0)
+	   (:fixsubs (noderec:t {t=(node:let names1) subs=subs1 ...}) inits0)
 	   -> (match (unpack-fix subs1) with
 		(:fixsubs body1 inits1)
 		-> (return
@@ -513,7 +514,7 @@
 		(for-range
 		    i n
 		    (match (nth inits0 i) with
-		      {t=(node:let names1) subs=subs1 ...}
+		      (noderec:t {t=(node:let names1) subs=subs1 ...})
 		      -> (match (unpack-fix subs1) with
 			   (:fixsubs body1 inits1)
 			   -> (return
@@ -532,7 +533,7 @@
       (node:if)
       -> (match node.subs with
 	   ;; (if #t a b) => a
-	   ({t=(node:literal (literal:cons 'bool b _)) ...} then else)
+	   ((noderec:t {t=(node:literal (literal:cons 'bool b _)) ...}) then else)
 	   -> (if (eq? b 'true) (return (simpleopt then)) (return (simpleopt else)))
 	   _ -> #u)
 
@@ -546,7 +547,7 @@
 	       (for-range
 		   i n
 		   (match (nth subs0 i) with
-		     {t=(node:sequence) subs=subs1 ...}
+		     (noderec:t {t=(node:sequence) subs=subs1 ...})
 		     -> (return
 			 (simpleopt
 			  (node/sequence
@@ -560,7 +561,7 @@
     ;;  onto the sub-expressions
     (let ((new-subs (map simpleopt node.subs)))
       (set! node.subs new-subs)
-      node
+      (noderec:t node)
       )))
 
 (datatype fatopt
@@ -603,14 +604,15 @@
       (node:primapp '%fail _)        -> #t
       _ -> #f))
 
-  (define (search exp fat-env)
-    (let ((fatbar? #f))
+  (define (search exp0 fat-env)
+    (let ((exp (noderec->rec exp0))
+	  (fatbar? #f))
       (match exp.t with
 	(node:primapp '%fatbar _) -> (set! fatbar? #t)
 	(node:nvcase 'nil tags arities) -> #u ;; pvcase
 	(node:nvcase dtname tags arities)
 	-> (let ((val (car exp.subs)))
-	     (match val.t with
+	     (match (noderec->t val) with
 	       (node:varref name)
 	       -> (let ((dt (get-datatype dtname))
 			(nalts (dt.get-nalts)))
@@ -625,16 +627,15 @@
 				     ;; remove the nvcase, leave only its body...
 				     ;;(printf "removed nvcase.\n")
 				     (assert (= 3 (length exp.subs)))
-				     (assert (is-match/fail? (nth exp.subs 1)))
-				     (set! exp (nth exp.subs 2))
+				     (assert (is-match/fail? (noderec->rec (nth exp.subs 1))))
+				     (set! exp (noderec->rec (nth exp.subs 2)))
 				     )
 				    (else
 				     ;; disable the %match-error/%fail
-				     (printf "second arm.\n")
 				     ;; I think we can do this by simply replacing %match-error
 				     ;;   with %complete-match (or any other symbol) to tell cps.scm
 				     ;;   to ignore it.  Need to write a test to expose this branch!
-				     (let ((eclause (nth exp.subs 1)))
+				     (let ((eclause (noderec->rec (nth exp.subs 1))))
 				       (assert (is-match/fail? eclause))
 				       (set! eclause.t (node:primapp '%complete-match (sexp:bool #f)))
 				       ;;(raise (:NotTestedError))
@@ -668,7 +669,7 @@
 	 exp.subs)
 	(set! exp.subs (reverse new-subs))
 	(set! exp.size (sum-size exp.subs))
-	(:tuple exp fat-env)
+	(:tuple (noderec:t exp) fat-env)
 	)))
   (printf "starting optimize-nvcase...\n")
   (search root (fatopt:nil))
@@ -698,10 +699,10 @@
 
     (define (trim node)
       (let ((node0
-	     (match node.t with
+	     (match (noderec->t node) with
 	       (node:fix names)
 	       -> (let ((n (length names))
-			(inits node.subs)
+			(inits (noderec->subs node))
 			(remove '()))
 		    (for-range
 			i n
@@ -710,10 +711,7 @@
 		    (if (null? remove)
 			node
 			(let ((new-names '())
-			      (new-inits '())
-			      ;; XXX remove when happy, this var only for the print
-			      (trimmed (map (lambda (i) (nth names i)) remove)))
-			  ;;(printf "trimming: " (join symbol->string ", " trimmed) "\n")
+			      (new-inits '()))
 			  (for-range
 			      i n
 			      (cond ((not (member-eq? i remove))
@@ -724,7 +722,7 @@
 				    (last inits))
 			  )))
 	       _ -> node)))
-	(set! node0.subs (map trim node0.subs))
+	(set-node-subs! node0 (map trim (noderec->subs node0)))
 	node0))
 
     (walk 'top)

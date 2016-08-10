@@ -46,25 +46,25 @@
   ;;(let ((g (alist-maker)))
   (let ((g (map-maker symbol-index<?)))
     (define (search exp current-fun)
-      (match exp.t with
+      (match (noderec->t exp) with
 	(node:varref name)
 	-> (begin
 	     (current-fun::add name)
 	     )
 	(node:varset name)
 	-> (begin (current-fun::add name)
-		  (search (car exp.subs) current-fun))
+		  (search (car (noderec->subs exp)) current-fun))
 	(node:fix names)
 	-> (begin
 	     (for-range
 		 i (length names)
 		 (let ((name (nth names i))
-		       (init (nth exp.subs i))
+		       (init (nth (noderec->subs exp) i))
 		       (fun (symbol-set-maker '())))
 		   (g::add name fun)
 		   (search init fun)))
-	     (search (nth exp.subs (length names)) current-fun))
-	_ -> (for-each (lambda (sub) (search sub current-fun)) exp.subs)))
+	     (search (nth (noderec->subs exp) (length names)) current-fun))
+	_ -> (for-each (lambda (sub) (search sub current-fun)) (noderec->subs exp))))
     (let ((top (symbol-set-maker '())))
       (g::add 'top top)
       (search root top))

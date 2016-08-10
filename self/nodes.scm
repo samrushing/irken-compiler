@@ -31,11 +31,59 @@
   (:primapp symbol sexp) ;; name params
   )
 
+;; to avoid recursive types, we wrap the node record in a datatype.
+(datatype noderec
+  (:t {
+       t=node		   ;; node kind
+       subs=(list noderec) ;; node children
+       size=int		   ;; size (including children)
+       id=int		   ;; unique id
+       type=type	   ;; solved/assigned type
+       flags=int	   ;; bit flags (recursive, leaf, etc...)
+       })
+  )
+
+;; --- accessors ---
+(define noderec->rec
+  (noderec:t n) -> n)
+
+(define noderec->t
+  (noderec:t n) -> n.t)  
+
+(define noderec->subs
+  (noderec:t n) -> n.subs)
+
+(define noderec->size
+  (noderec:t n) -> n.size)
+
+(define noderec->id
+  (noderec:t n) -> n.id)
+
+(define noderec->type
+  (noderec:t n) -> n.type)
+
+(define noderec->flags
+  (noderec:t n) -> n.flags)
+
+(define set-node-subs! 
+  (noderec:t nr) s -> (set! nr.subs s))
+
+(define set-node-type! 
+  (noderec:t nr) t -> (set! nr.type t))
+
+(define set-node-flags! 
+  (noderec:t nr) f -> (set! nr.flags f))
+
+(define set-node-t! 
+  (noderec:t nr) t -> (set! nr.t t))
+
+;; --- accessors ---
+
 (define node-counter (make-counter 0))
 
 ;; given a list of nodes, add up their sizes (+1)
 (define (sum-size l)
-  (fold (lambda (n acc) (+ n.size acc)) 1 l))
+  (fold (lambda (n acc) (+ (noderec->size n) acc)) 1 l))
 
 (define no-type (pred '? '()))
 
@@ -48,9 +96,10 @@
 ;;   most flags are clear most of the time?)
 ;; flags
 (define (node-get-flag node i)
-  (bit-get node.flags i))
+  (bit-get (noderec->flags node) i))
+
 (define (node-set-flag! node i)
-  (set! node.flags (bit-set node.flags i)))
+  (set-node-flags! node (bit-set (noderec->flags node) i)))
 
 ;; defined node flags
 (define NFLAG-RECURSIVE 0)
@@ -62,10 +111,16 @@
 ;;(typealias rnode
 ;;   {t=node subs=(list rnode) size=int id=int type=type flags=int})
 
-;(define (make-node t subs) : (node (list rnode) -> rnode)
 (define (make-node t subs)
-  {t=t subs=subs size=(sum-size subs) id=(node-counter.inc) type=no-type flags=0}
+  (noderec:t {t=t subs=subs size=(sum-size subs) id=(node-counter.inc) type=no-type flags=0})
   )
+
+(define (node-copy node0)
+  (match node0 with
+    (noderec:t {t=(node:literal _) ...}) -> node0 ;; don't copy literals
+    (noderec:t nr)
+    -> (noderec:t {t=nr.t subs=nr.subs size=nr.size id=(node-counter.inc) type=nr.type flags=nr.flags})
+    ))
 
 (define (node/varref name)
   (make-node (node:varref name) '()))
@@ -94,17 +149,20 @@
   (let ((node (make-node (node:function name formals) (LIST body))))
     (match type with
       (sexp:bool #f) -> node
-      type-exp -> (begin (set! node.type (parse-type type)) node))))
+      _ -> (begin (set-node-type! node (parse-type type))
+		  node))))
 
-(define (function? node)
-  (match node.t with
-    (node:function _ _ ) -> #t
-    _ -> #f))
+(define function?
+  (noderec:t node)
+  -> (match node.t with
+       (node:function _ _ ) -> #t
+       _ -> #f))
 
-(define (function->name node)
-  (match node.t with
-    (node:function name _) -> name
-    _ -> (error "function->name")))
+(define function->name
+  (noderec:t node)
+  -> (match node.t with
+       (node:function name _) -> name
+       _ -> (error "function->name")))
 
 (define (node/call rator rands)
   (let ((subs (list:cons rator rands)))
@@ -127,14 +185,6 @@
 
 (define (node/primapp name params args)
   (make-node (node:primapp name params) args))
-
-(define (node-copy node0)
-  (match node0.t with
-    (node:literal _) -> node0 ;; no deep copy on literals
-    _ -> (let ((node1 (make-node node0.t node0.subs)))
-	   (set! node1.flags node0.flags)
-	   (set! node1.type node0.type)
-	   node1)))
 
 (define (unpack-fix subs)
   ;; unpack (init0 init1 ... body) for fix and let.
@@ -185,26 +235,22 @@
                                             "(" (join int->string " " arities) ")")
   )
 
-(define (format-type-parent trec)
-  (match trec.parent with
-    (maybe:yes pt) -> (type-repr pt)
-    (maybe:no)     -> "<>"))
-
-(define (format-node n d)
-  (format (lpad 6 (int n.id))
-          (lpad 5 (int n.size))
-          (lpad (+ 2 NFLAG-NFLAGS) (flags-repr n.flags) " ")
-          (repeat d "  ")
-          (format-node-type n.t)
-          " : " (type-repr (apply-subst n.type))
-          ))
+(define format-node
+  (noderec:t n) d
+  -> (format (lpad 6 (int n.id))
+	     (lpad 5 (int n.size))
+	     (lpad (+ 2 NFLAG-NFLAGS) (flags-repr n.flags) " ")
+	     (repeat d "  ")
+	     (format-node-type n.t)
+	     " : " (type-repr (apply-subst n.type))
+	     ))
 
 (define (walk-node-tree p n d)
   (p n d)
   (for-each
    (lambda (sub)
      (walk-node-tree p sub (+ d 1)))
-   n.subs
+   (noderec->subs n)
    ))
 
 (define (make-node-generator n)
@@ -245,7 +291,7 @@
         -> (begin (set! context[i] (format-node n d))
                   ;; state machine
                   (cond ((= collected (/ count 2)) (result (+ i 1)))
-			((or (> collected 0) (= n.id id))
+			((or (> collected 0) (= (noderec->id n) id))
 			 (set! collected (+ collected 1))
 			 (loop (remainder (+ i 1) count)))
 			(else
@@ -300,7 +346,7 @@
 	i n
 	(let ((name (nth names i))
 	      (init (nth inits i)))
-	  (match init.t with
+	  (match (noderec->t init) with
 	    (node:function _ _) -> (begin (PUSH names0 name) (PUSH inits0 init))
 	    _			-> (begin (PUSH names1 name) (PUSH inits1 init)))))
     (:sorted-fix (append (reverse names0) (reverse names1))
@@ -436,23 +482,23 @@
 						 (maybe:yes vd)
 						 (loop1 tl)))))))
 
-      (match exp.t with
+      (match (noderec->t exp) with
 	(node:function name formals)
 	-> (let ((rib (map varmap.add formals))
 		 (name2 (match (lookup name) with
 			  (maybe:no) -> (if (eq? name 'lambda)
-					    (string->symbol (format "lambda_" (int exp.id)))
+					    (string->symbol (format "lambda_" (int (noderec->id exp))))
 					    name)
 			  (maybe:yes vd) -> vd.name2)))
-	     (set! exp.t (node:function name2 (map (lambda (x) x.name2) rib)))
-	     (rename-all exp.subs (list:cons rib lenv)))
+	     (set-node-t! exp (node:function name2 (map (lambda (x) x.name2) rib)))
+	     (rename-all (noderec->subs exp) (list:cons rib lenv)))
 	(node:fix names)
 	-> (let ((rib (map varmap.add names)))
 	     ;; in this one, the <inits> namespace is renamed, too
-	     (set! exp.t (node:fix (map (lambda (x) x.name2) rib)))
-	     (rename-all exp.subs (list:cons rib lenv)))
+	     (set-node-t! exp (node:fix (map (lambda (x) x.name2) rib)))
+	     (rename-all (noderec->subs exp) (list:cons rib lenv)))
 	(node:let names) ;; this one is tricky!
-	-> (match (unpack-fix exp.subs) with
+	-> (match (unpack-fix (noderec->subs exp)) with
 	     (:fixsubs body inits)
 	     -> (let ((rib '())
 		      (n (length inits)))
@@ -462,18 +508,18 @@
 		      (rename (nth inits i) (list:cons rib lenv))
 		      (set! rib (list:cons (varmap.add (nth names i)) rib)))
 		  ;; now that all the inits are done, rename the bindings and body
-		  (set! exp.t (node:let (map (lambda (x) x.name2) (reverse rib))))
+		  (set-node-t! exp (node:let (map (lambda (x) x.name2) (reverse rib))))
 		  (rename body (list:cons rib lenv))))
 	(node:varref name)
 	-> (match (lookup name) with
 	     (maybe:no) -> #u ;; can't rename it if we don't know what it is
-	     (maybe:yes vd) -> (set! exp.t (node:varref vd.name2)))
+	     (maybe:yes vd) -> (set-node-t! exp (node:varref vd.name2)))
 	(node:varset name)
 	-> (begin (match (lookup name) with
 		    (maybe:no) -> #u
-		    (maybe:yes vd) -> (set! exp.t (node:varset vd.name2)))
-		  (rename-all exp.subs lenv))
-	_ -> (rename-all exp.subs lenv)
+		    (maybe:yes vd) -> (set-node-t! exp (node:varset vd.name2)))
+		  (rename-all (noderec->subs exp) lenv))
+	_ -> (rename-all (noderec->subs exp) lenv)
 	))
 
     (rename n '())
@@ -497,18 +543,18 @@
 
   (define (walk exp lenv)
     (let/cc return
-	(match exp.t with
+	(match (noderec->t exp) with
 	  (node:fix formals)	    -> (set! lenv (shadow formals lenv))
 	  (node:let formals)	    -> (set! lenv (shadow formals lenv))
 	  (node:function _ formals) -> (set! lenv (shadow formals lenv))
 	  (node:subst from to)	    -> (begin
 					 (set! lenv (list:cons {from=from to=(lookup to lenv)} lenv))
-					 (return (walk (car exp.subs) lenv)))
-	  (node:varref name)	    -> (set! exp.t (node:varref (lookup name lenv)))
-	  (node:varset name)	    -> (set! exp.t (node:varset (lookup name lenv)))
+					 (return (walk (car (noderec->subs exp)) lenv)))
+	  (node:varref name)	    -> (set-node-t! exp (node:varref (lookup name lenv)))
+	  (node:varset name)	    -> (set-node-t! exp (node:varset (lookup name lenv)))
 	  _ -> #u
 	  )
-      (set! exp.subs (map (lambda (x) (walk x lenv)) exp.subs))
+      (set-node-subs! exp (map (lambda (x) (walk x lenv)) (noderec->subs exp)))
       exp))
 
   (walk exp '())

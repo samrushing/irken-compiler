@@ -84,14 +84,14 @@
     (add-var name))
 
   (define (search exp)
-    (match exp.t with
+    (match (noderec->t exp) with
       ;; only these three bind names.
       (node:fix names)		   -> (for-each add names)
       (node:let names)		   -> (for-each add names)
       (node:function name formals) -> (begin (for-each add formals)
 					     (add name))
       _ -> #u)
-    (for-each search exp.subs))
+    (for-each search (noderec->subs exp)))
 
   (search root)
   )

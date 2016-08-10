@@ -109,22 +109,22 @@
       (if tail?
 	  (set! k (cont (k/free k) gen-return)))
 
-      (match exp.t with
-	(node:literal lit)		-> (c-literal lit exp.id k)
-	(node:sequence)			-> (c-sequence tail? exp.subs lenv k)
+      (match (noderec->t exp) with
+	(node:literal lit)		-> (c-literal lit (noderec->id exp) k)
+	(node:sequence)			-> (c-sequence tail? (noderec->subs exp) lenv k)
 	(node:if)			-> (c-conditional tail? exp lenv k)
-	(node:function name formals)	-> (c-function name formals exp.id (car exp.subs) lenv k)
+	(node:function name formals)	-> (c-function name formals (noderec->id exp) (car (noderec->subs exp)) lenv k)
 	(node:varref name)		-> (c-varref name lenv k)
-	(node:varset name)		-> (c-varset name (car exp.subs) lenv k)
+	(node:varset name)		-> (c-varset name (car (noderec->subs exp)) lenv k)
 	(node:cexp gens sig template)	-> (c-cexp sig template exp lenv k)
 	(node:call)			-> (c-call tail? exp lenv k)
 	(node:primapp name params)	-> (c-primapp tail? name params exp lenv k)
-	(node:nvcase 'nil tags arities) -> (c-pvcase tail? tags arities exp.subs lenv k)
-	(node:nvcase dt tags arities)	-> (c-nvcase tail? dt tags exp.subs lenv k)
-	(node:fix formals)		-> (c-let-splat tail? formals exp.subs lenv k)
+	(node:nvcase 'nil tags arities) -> (c-pvcase tail? tags arities (noderec->subs exp) lenv k)
+	(node:nvcase dt tags arities)	-> (c-nvcase tail? dt tags (noderec->subs exp) lenv k)
+	(node:fix formals)		-> (c-let-splat tail? formals (noderec->subs exp) lenv k)
 	(node:let formals)		-> (if (safe-for-let-reg exp formals)
-					       (c-let-reg tail? formals exp.subs lenv k)
-					       (c-let-splat tail? formals exp.subs lenv k))
+					       (c-let-reg tail? formals (noderec->subs exp) lenv k)
+					       (c-let-splat tail? formals (noderec->subs exp) lenv k))
 	(node:subst _ _)		-> (impossible)
 	)
       )
@@ -200,9 +200,9 @@
       (let ((target (k/target k))
 	    (free (k/free k))
 	    (jump-num (jump-counter.inc)))
-	(match exp.subs with
+	(match (noderec->subs exp) with
 	  (test then else)
-	  -> (match test.t with
+	  -> (match (noderec->t test) with
 	       (node:cexp _ sig template)
 	       -> (c-simple-conditional tail? test then else sig template lenv k)
 	       _ -> (compile
@@ -231,7 +231,7 @@
 	   (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
 	   (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
 	   k))
-	(collect-primargs test.subs lenv k finish)))
+	(collect-primargs (noderec->subs test) lenv k finish)))
 
     (define extend-lenv
       () lenv -> lenv ;; don't extend with an empty rib
@@ -296,31 +296,31 @@
 	(compile #f exp lenv (cont (k/free k) kfun))))
 
     (define (c-primapp tail? name params exp lenv k)
-      (let ((args exp.subs))
+      (let ((args (noderec->subs exp)))
 	(match name with
 	  '%fail    -> (c-fail tail? lenv k)
 	  '%fatbar  -> (c-fatbar tail? args lenv k)
 	  '%dtcon   -> (begin (if (> (length args) 0)
 				 (set-flag! VFLAG-ALLOCATES))
-			     (c-primargs args name params exp.type lenv k))
+			     (c-primargs args name params (noderec->type exp) lenv k))
 	  '%vcon    -> (c-vcon params args lenv k)
 	  '%rextend -> (c-record-literal exp lenv k)
 	  '%raccess -> (let ((arg0 (nth args 0))
-			     (sig (get-record-sig-sexp arg0.type)))
+			     (sig (get-record-sig-sexp (noderec->type arg0))))
 			 (c-primargs args '%record-get
 				     (sexp params sig) ;; (field sig)
-				     exp.type
+				     (noderec->type exp)
 				     lenv k))
 	  '%rset    -> (let ((arg0 (nth args 0))
-			     (sig (get-record-sig-sexp arg0.type)))
+			     (sig (get-record-sig-sexp (noderec->type arg0))))
 			 (c-primargs args '%record-set
 				     (sexp params sig) ;; (field sig)
-				     exp.type
+				     (noderec->type exp)
 				     lenv k))
 	  '%cset    -> (let ((val (nth args 2))
-			     (tval val.type)
+			     (tval (noderec->type val))
 			     (buffer (nth args 0)))
-			 (match buffer.type with
+			 (match (noderec->type buffer) with
 			   (type:pred 'buffer (tbase) _)
 			   -> (let ((cast-type (arrow tbase (LIST tval))))
 				;; we need both types in order to cast correctly
@@ -330,13 +330,13 @@
 	  '%exn-raise  -> (compile tail? (first args) lenv k)
 	  ;; note: discards first argument...
 	  '%exn-handle -> (compile tail? (second args) lenv k)
-	  _ -> (c-primargs args name params exp.type lenv k))))
+	  _ -> (c-primargs args name params (noderec->type exp) lenv k))))
 
     (define (c-cexp sig template exp lenv k)
-      ;;(print-string (format "c-cexp: sig = " (type-repr sig) " solved type = " (type-repr exp.type) "\n"))
-      (collect-primargs exp.subs lenv k
+      ;;(print-string (format "c-cexp: sig = " (type-repr sig) " solved type = " (type-repr (noderec->type exp)) "\n"))
+      (collect-primargs (noderec->subs exp) lenv k
 			(lambda (regs)
-			  (insn:cexp sig exp.type template regs k))))
+			  (insn:cexp sig (noderec->type exp) template regs k))))
 
     ;; collect-primargs is used by primops, simple-conditional, and tr-call.
     ;;   in order to avoid the needless consumption of registers, we re-arrange
@@ -349,7 +349,7 @@
 	    (args1 (sort (lambda (a b)
 			   (match a b with
 			     (:pair arg_a _) (:pair arg_b _)
-			     -> (> arg_a.size arg_b.size)))
+			     -> (> (noderec->size arg_a) (noderec->size arg_b))))
 			 args0))
 	    (perm (map pair->second args1))
 	    (args2 (map pair->first args1)))
@@ -396,17 +396,17 @@
 			(lambda (regs) (insn:trcall depth name regs))))
 
     (define (c-call tail? exp lenv k)
-      (match exp.subs with
+      (match (noderec->subs exp) with
 	(fun . args)
-	-> (if (and tail? (safe-for-tr-call exp fun.t))
-	       (let ((name (varref->name fun.t)))
+	-> (if (and tail? (safe-for-tr-call exp (noderec->t fun)))
+	       (let ((name (varref->name (noderec->t fun))))
 		 (match (lexical-address name 0 lenv) with
 		   (:reg _) -> (error "c-call function in register?")
 		   (:pair depth _) -> (c-trcall depth name args lenv k)
 		   (:top depth _) -> (c-trcall depth name args lenv k)
 		   ))
 	       (let ((gen-invoke (if tail? gen-tail gen-invoke))
-		     (name (match fun.t with
+		     (name (match (noderec->t fun) with
 			     (node:varref name)
 			     -> (if (vars-get-flag name VFLAG-FUNCTION)
 				    (maybe:yes name)
@@ -434,7 +434,7 @@
 	_  -> (let ((nargs (length args))
 		    (target (k/target k))
 		    (free (k/free k))
-		    (types (map (lambda (x) x.type) args)))
+		    (types (map (lambda (x) (noderec->type x)) args)))
 		(insn:new-env
 		 nargs
 		 (lenv-top? lenv)
@@ -480,7 +480,7 @@
       (let ((rsubs (reverse subs)) ;; subs = (init0 init1 ... body)
 	    (body (car rsubs))
 	    (inits (reverse (cdr rsubs)))
-	    (types (map (lambda (x) x.type) inits))
+	    (types (map (lambda (x) (noderec->type x)) inits))
 	    (nargs (length formals))
 	    (free (k/free k))
 	    (k-body (dead free
@@ -516,7 +516,7 @@
 		       (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
 		       (ealt1
 			(if (not (= (dt.get-nalts) (length alts)))
-			    (match eclause.t with
+			    (match (noderec->t eclause) with
 			      (node:primapp '%match-error _) -> (error1 "incomplete match" alt-formals)
 			      ;; complete match, no ealt
 			      (node:primapp '%complete-match _) -> (maybe:no)
@@ -537,7 +537,7 @@
 	   (define (finish test-reg)
 	     (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
 		   (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
-		   (else? (match eclause.t with (node:primapp '%match-error _) -> #f _ -> #t))
+		   (else? (match (noderec->t eclause) with (node:primapp '%match-error _) -> #f _ -> #t))
 		   (ealt (if else? (maybe:yes (compile tail? eclause lenv jump-k)) (maybe:no))))
 	       (insn:pvcase test-reg alt-formals arities jump-num alts ealt k)))
 	   (compile #f value lenv (cont free finish)))))
@@ -594,9 +594,9 @@
       (let loop ((exp exp)
 		 (fields '()))
         ;; (%rextend field0 (%rextend field1 (%rmake) ...)) => {field0=x field1=y}
-	(match exp.t with
+	(match (noderec->t exp) with
 	  (node:primapp '%rextend (sexp:symbol field)) ;; add another field
-	  -> (match exp.subs with
+	  -> (match (noderec->subs exp) with
 	       (exp0 val) -> (loop exp0 (list:cons (:pair field val) fields))
 	       _	  -> (error1 "malformed %rextend" exp))
 	  (node:primapp '%rmake _) ;; done - put the names in canonical order
@@ -675,11 +675,11 @@
 	(maybe:no) -> #u
 	(maybe:yes (:tuple n d))
 	-> (begin
-	     (match n.t with
+	     (match (noderec->t n) with
 	       (node:let formals)
 	       -> (for-each
-		   (lambda (x) (type-map::maybe-add (apply-subst x.type) x.id))
-		   (reverse (cdr (reverse n.subs))))
+		   (lambda (x) (type-map::maybe-add (apply-subst (noderec->type x)) (noderec->id x)))
+		   (reverse (cdr (reverse (noderec->subs n)))))
 	       _ -> #u)
 	     (loop)
 	     )))
@@ -700,7 +700,7 @@
 (define (print-type-tree root)
   (for (make-node-generator root) (n d x)
        (indent d)
-       (printf (type-repr n.type) "\n")))
+       (printf (type-repr (noderec->type n)) "\n")))
 
 ;;; XXX redo this with the new format macro - this function is horrible.
 (define (print-insn insn d)

@@ -30,8 +30,8 @@
   (define (unify exp t0 t1)
 
     (define (type-error t0 t1)
-      (print-string (format (join id "\n" (get-node-context node exp.id 30)) "\n"))
-      (print-string (format "node id=" (int exp.id) "\n"))
+      (print-string (format (join id "\n" (get-node-context node (noderec->id exp) 30)) "\n"))
+      (print-string (format "node id=" (int (noderec->id exp)) "\n"))
       (let ((ut0 (apply-subst t0))
 	    (ut1 (apply-subst t1)))
 	(print-string
@@ -214,18 +214,18 @@
 	(:scheme (gens::get) type))))
 
   (define (type-of* exp tenv)
-    (match exp.t with
+    (match (noderec->t exp) with
       (node:literal lit)	    -> (type-of-literal lit exp tenv)
       (node:cexp gens sig _)	    -> (type-of-cexp gens sig exp tenv)
       (node:if)			    -> (type-of-conditional exp tenv)
-      (node:sequence)		    -> (type-of-sequence exp.subs tenv)
-      (node:function _ formals)	    -> (type-of-function formals (car exp.subs) exp.type tenv)
+      (node:sequence)		    -> (type-of-sequence (noderec->subs exp) tenv)
+      (node:function _ formals)	    -> (type-of-function formals (car (noderec->subs exp)) (noderec->type exp) tenv)
       (node:varref name)	    -> (type-of-varref name tenv)
       (node:varset name)	    -> (type-of-varset name exp tenv)
       (node:call)		    -> (type-of-call exp tenv)
       (node:fix names)		    -> (type-of-fix names exp tenv)
       (node:let names)		    -> (type-of-let names exp tenv)
-      (node:primapp name parms)	    -> (type-of-primapp name parms exp.subs tenv)
+      (node:primapp name parms)	    -> (type-of-primapp name parms (noderec->subs exp) tenv)
       (node:nvcase dt tags arities) -> (type-of-vcase dt tags arities exp tenv)
       _ -> (begin
 	     (pp-node exp)
@@ -244,7 +244,7 @@
 ;;       (dump-tenv tenv)
 ;;       (print-string "type-of ") (pp-node exp) (newline)
 ;;       (print-string "  == ") (print-string (type-repr t)) (newline)
-      (set! exp.type t)
+      (set-node-type! exp t)
       t))
 
   (define (type-of-literal lit exp tenv)
@@ -285,12 +285,12 @@
     (let ((type (instantiate-type-scheme gens sig)))
       (match type with
 	(type:pred 'arrow pargs _)
-	-> (if (not (= (- (length pargs) 1) (length exp.subs)))
+	-> (if (not (= (- (length pargs) 1) (length (noderec->subs exp))))
 	       (error1 "wrong number of args to cexp" exp)
 	       (match pargs with
 		 () -> (error1 "malformed arrow type" sig)
 		 (result-type . parg-types)
-		 -> (let ((arg-types (map (lambda (x) (type-of x tenv)) exp.subs)))
+		 -> (let ((arg-types (map (lambda (x) (type-of x tenv)) (noderec->subs exp))))
 		      (for-each2 (lambda (a b)
 				   (unify exp (unraw a) b))
 				 parg-types arg-types)
@@ -299,7 +299,7 @@
 	_ -> type)))
 
   (define (type-of-conditional exp tenv)
-    (match (map (lambda (x) (type-of x tenv)) exp.subs) with
+    (match (map (lambda (x) (type-of x tenv)) (noderec->subs exp)) with
       (tif tthen telse)
       -> (begin
 	   (unify exp tif bool-type)
@@ -358,7 +358,7 @@
       t))
 
   (define (type-of-varset name exp tenv)
-    (let ((val (car exp.subs))
+    (let ((val (car (noderec->subs exp)))
 	  (t0 (apply-tenv name tenv))
 	  (t1 (type-of val tenv)))
       (unify exp t0 t1)
@@ -366,7 +366,7 @@
       ))
 
   (define (type-of-call exp tenv)
-    (match (map (lambda (x) (type-of x tenv)) exp.subs) with
+    (match (map (lambda (x) (type-of x tenv)) (noderec->subs exp)) with
       (rator-type . rand-types)
       -> (let ((result-type (new-tvar)))
 	   (unify exp rator-type (arrow result-type rand-types))
@@ -376,7 +376,7 @@
 
   (define (type-of-fix names exp tenv)
     ;; reorder fix into dependency order
-    (match (reorder-fix names exp.subs the-context.scc-graph) with
+    (match (reorder-fix names (noderec->subs exp) the-context.scc-graph) with
       (:reordered names0 inits0 body partition)
       -> (let ((n (length names0))
 	       (names (list->vector names0))
@@ -413,7 +413,7 @@
 
   (define (type-of-let names exp tenv)
     (let ((n (length names))
-	  (inits exp.subs))
+	  (inits (noderec->subs exp)))
       (for-range
 	  i n
 	  (let ((init (nth inits i))
@@ -432,7 +432,7 @@
 
   (define (type-of-nvcase dt tags exp tenv)
     (let ((dt (alist/get the-context.datatypes dt "no such datatype"))
-	  (subs exp.subs)
+	  (subs (noderec->subs exp))
 	  ;; use match for these!?
 	  (value (nth subs 0))
 	  (else-exp (nth subs 1))
@@ -453,10 +453,10 @@
       tv))
 
   (define (type-of-pvcase tags arities exp tenv)
-    (match exp.subs with
+    (match (noderec->subs exp) with
       (value else-exp . alts)
       -> (let ((tv-exp (new-tvar))
-	       (else? (match else-exp.t with
+	       (else? (match (noderec->t else-exp) with
 			(node:primapp '%fail _) -> #f
 			(node:primapp '%match-error _) -> #f
 			_ -> #t))
@@ -697,8 +697,8 @@
 		    )))))
 
   (define (apply-subst-to-program n)
-    (set! n.type (apply-subst n.type))
-    (for-each apply-subst-to-program n.subs))
+    (set-node-type! n (apply-subst (noderec->type n)))
+    (for-each apply-subst-to-program (noderec->subs n)))
 
   (let ((t (type-of node (alist/make))))
     (apply-subst-to-program node)
