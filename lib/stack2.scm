@@ -13,7 +13,7 @@
   (define (len self) (length self.s))
   (let ((methods {push=push pop=pop get=get len=len}))
     (lambda ()
-      {s='() o=methods}))
+      {o=methods self={s='()}}))
   )
 
 (define new-stack (stack-class))

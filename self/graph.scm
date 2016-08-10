@@ -30,7 +30,7 @@
 
   (let ((methods {in=in add=add get=get iterate=iterate}))
     (define (new)
-      {o=methods t=(tree/empty)})
+      {o=methods self={t=(tree/empty)}})
     new)
   )
 

@@ -111,8 +111,8 @@
 	   ;; automagically insert the <self> argument
 	   ;; (ob.o.method args0 ...) => (ob.o.method ob args0 ...)
 	   ;; XXX use something like __methods__ rather than 'o', duh.
-	   (sexp:list ((sexp:symbol '%method) (sexp:symbol name) self))
-	   -> (sexp:list (append (LIST (sexp:attr (sexp:attr self 'o) name) self) (map expand rands)))
+	   (sexp:list ((sexp:symbol '%method) (sexp:symbol name) ob))
+	   -> (sexp:list (append (LIST (sexp:attr (sexp:attr ob 'o) name) (sexp:attr ob 'self)) (map expand rands)))
 	   _ -> (sexp:list (map expand l)))))
 
   (define expand-if

@@ -61,6 +61,6 @@
 	  keys=keys
 	  values=values}))
     ;; new method
-    (lambda () {o=methods alist=(alist:nil)})))
+    (lambda () {o=methods self={alist=(alist:nil)}})))
 
 (define alist-maker (alist-class))

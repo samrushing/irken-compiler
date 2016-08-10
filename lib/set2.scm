@@ -10,7 +10,7 @@
 			 #t
 			 (loop tl)))))
   (define (add self x)
-    (if (self::in x) ;; note inline
+    (if (in self x)
 	#u
 	(set! self.list (list:cons x self.list))))
   
@@ -25,7 +25,7 @@
 
   (let ((methods {in=in add=add get=get iterate=iterate}))
     (define (new l)
-      {o=methods list=l})
+      {o=methods self={list=l}})
     new
     ))
 

@@ -57,7 +57,7 @@
     ;; new method
     (lambda (cmp)
       ;; don't modify the cmp function slot, you dolt.
-      {o=methods t=(tree/empty) cmp=cmp}
+      {o=methods self={t=(tree/empty) cmp=cmp}}
       )))
 
 (define map-maker (map-class))
@@ -92,7 +92,7 @@
     ;; new method
     (lambda (cmp)
       ;; don't modify the cmp function slot, you dolt.
-      {o=methods t=(tree/empty) cmp=cmp}
+      {o=methods self={t=(tree/empty) cmp=cmp}}
       )))
 
 (define set2-maker (set2-class))
