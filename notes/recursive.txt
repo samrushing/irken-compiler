@@ -1,0 +1,40 @@
+
+Aug 2016.
+
+I've gone back and forth several times on what to do about recursive types.
+[this is an understatement]
+
+On the 'typewalk' branch I experimented with implementing them
+'correctly', and while I came *close* at times, it came at an extreme
+cost in memory, compile time, and complexity - and I'm still not
+certain that it works correctly.
+
+My original type solver, based on the one in ATTPL, can theoretically
+handle recursive types without too much trouble.  This was back when
+irken was written in python.  I've *also* spent some time on rewriting
+that in irken, but haven't made much progress.  And it's a big task.
+
+I'm now leaning toward banishing recursive types.  In practice they are
+only needed when using recursive record types, like aa_map.scm and the 
+compiler node type.  I think all of these can be rewritten to use a 
+datatype wrapper:
+
+(datatype node-rec
+  (:t {f0=int f1=bool subs=(list node-rec)...})
+  )
+
+This would give us the safety/simplicity of naturally folded/unfolded
+recursion.  We can get rid of the run-time overhead with a simple
+optimization for single-variant datatypes that avoids wrapping them.
+[this may already be in place, I don't remember].
+
+But here's another reason to avoid direct recursion in structs: even with
+a working type solver, you can still get obscure bugs, since something like:
+
+{data=1 left={data=2 left=#f right=9} right={data=#\A left=0 right=12}}
+
+Is a perfectly valid type, though probably not what was intended.
+
+
+
+
