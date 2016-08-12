@@ -978,11 +978,13 @@ static prof_dump (void)
 (define (char->oct-encoding ch)
   (let ((in-oct (format (oct (char->ascii ch)))))
     (format
+     "\\"
      (match (string-length in-oct) with
        0 -> "000"
        1 -> "00"
        2 -> "0"
-       _ -> (error1 "unable to oct-encode character" ch)
+       3 -> ""
+       _ -> (error1 "unable to oct-encode character" in-oct)
        )
      in-oct)))
 

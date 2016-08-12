@@ -292,7 +292,7 @@
     (define (read-hex-code)
       (let ((n0 (read-hex-digit (next)))
 	    (n1 (read-hex-digit (next))))
-	(ascii->char (+ (<< n0 8) n1))))
+	(ascii->char (+ (<< n0 4) n1))))
 
     (define (read-string)
       (next) ;; throw away the opening quote
@@ -307,8 +307,8 @@
 		   (next)
 		   (set! ch (next))
 		   (match ch with
-		     #\x -> (loop (peek) (list:cons (read-hex-code) result))
-		     #\X -> (loop (peek) (list:cons (read-hex-code) result))
+		     #\x -> (let ((sch (read-hex-code))) (loop (peek) (list:cons sch result)))
+		     #\X -> (let ((sch (read-hex-code))) (loop (peek) (list:cons sch result)))
 		     #\r -> (loop (peek) (list:cons #\return result))
 		     #\n -> (loop (peek) (list:cons #\newline result))
 		     #\t -> (loop (peek) (list:cons #\tab result))
