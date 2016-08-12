@@ -522,7 +522,7 @@
   (printf "  (datatype " (sym dt.name) "\n")
   (dt.iterate
    (lambda (tag alt)
-     (print-string (format "    (:" (sym tag) " " (join type-repr " " alt.types) ")\n"))))
-  (print-string "    )\n")
-  (print-string "  )\n")
+     (printf "    (:" (sym tag) " " (join type-repr " " alt.types) ")\n")))
+  (printf "    )\n")
+  (printf "  )\n")
   )
