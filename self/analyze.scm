@@ -676,6 +676,32 @@
   (printf "done with optimize-nvcase.\n")
   )
 
+(define (remove-onearmed-nvcase root)
+
+  ;; remove nvcase for datatypes with only one alt.
+  ;;  [this is now more common since we removed recursive types].
+
+  (define (get-datatype name)
+    (match (alist/lookup the-context.datatypes name) with
+      (maybe:no) -> (error1 "no such datatype" name)
+      (maybe:yes dt) -> dt))
+
+  (define (search exp)
+    (match (noderec->t exp) with
+      (node:nvcase 'nil _ _) -> #u	;; pvcase
+      (node:nvcase dtname tags arities)
+      -> (let ((dt (get-datatype dtname)))
+	   (if (= 1 (dt.get-nalts))	;; the one-armed man
+	       (set! exp (nth (noderec->subs exp) 2))
+	       #u))
+      _ -> #u)
+    (set-node-subs! exp (map search (noderec->subs exp)))
+    exp
+    )
+  
+  (search root)
+  )
+
 (define removed-count 0)
 
 (define (do-trim top)

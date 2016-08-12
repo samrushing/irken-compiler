@@ -158,6 +158,7 @@ Usage: compile <irken-src-file> [options]
 	(type-map (collect-all-types noden))
 	;;(_ (print-type-tree noden))
 	(_ (verbose (print-string "\n-- after typing --\n") (pp-node noden) (newline)))
+	(_ (remove-onearmed-nvcase noden)) ;; safe after typing
 	(_ (print-string "cps...\n"))
 	(cps (compile noden))
 	(_ (set! noden (node/sequence '()))) ;; go easier on memory
