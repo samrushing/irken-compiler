@@ -2,14 +2,13 @@
 
 (include "lib/set.scm")
 
-
 (datatype type
-  (:tvar int                {parent=(maybe type)})
-  (:pred symbol (list type) {parent=(maybe type)})
+  (:tvar int                {parent=(maybe type) pending=bool})
+  (:pred symbol (list type) {parent=(maybe type) pending=bool})
   )
 
 (define (pred name subs)
-  (type:pred name subs {parent=(maybe:no)}))
+  (type:pred name subs {parent=(maybe:no) pending=#f}))
 
 (define (arrow result-type arg-types)
   (pred 'arrow (list:cons result-type arg-types)))
@@ -17,7 +16,7 @@
 (define tvar-counter (make-counter 0))
 
 (define (new-tvar)
-  (type:tvar (tvar-counter.inc) {parent=(maybe:no)}))
+  (type:tvar (tvar-counter.inc) {parent=(maybe:no) pending=#f}))
 
 (define (is-pred? t name)
   (match t with

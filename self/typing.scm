@@ -1,12 +1,31 @@
 ;; -*- Mode: Irken -*-
 
+;; This uses a relatively inexpensive form of an 'occurs check'.
+;;   Since apply-subst is used all over the place (including in the
+;;   printing of errors), this gets better coverage than an explicit
+;;   'occurs check' in the unifier.
+
+;; If you see INFINITE-TYPE in an error message, you have either
+;;   inadvertently created one via a bug, or you're trying to do
+;;   something not supported but the compiler.
+
+;; XXX can this benefit from memoization?
+
 (define (apply-subst t)
   (define (p t)
-    (let ((t (type-find t)))
-      (match t with
-	(type:tvar _ _)	-> t
-	(type:pred name subs _) -> (pred name (map p subs))
-	)))
+    (let ((t (type-find t))
+	  (trec (type->trec t)))
+      (if trec.pending
+	  (pred 'INFINITE-TYPE '())
+	  (match t with
+	    (type:tvar _ _) -> t
+	    (type:pred name subs _) 
+	    -> (begin
+		 (set! trec.pending #t)
+		 (let ((r (pred name (map p subs))))
+		   (set! trec.pending #f)
+		   r))
+	    ))))
   (p t))
 
 (define scheme-repr
@@ -24,7 +43,8 @@
 	    (ut1 (apply-subst t1)))
 	(print-string
 	 (format "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n"))
-	(error "type error")))
+	(error "type error"))
+      )
 
     (define (U t0 t1)
       (when the-context.options.debugtyping
@@ -211,9 +231,8 @@
       (node:let names)		    -> (type-of-let names exp tenv)
       (node:primapp name parms)	    -> (type-of-primapp name parms (noderec->subs exp) tenv)
       (node:nvcase dt tags arities) -> (type-of-vcase dt tags arities exp tenv)
-      _ -> (begin
-	     (pp-node exp)
-	     (error1 "typing NYI" exp))))
+      (node:subst _ _)              -> (impossible)
+      ))
 
   (define (dump-tenv tenv)
     (print-string "tenv {\n")
@@ -225,9 +244,6 @@
 
   (define (type-of exp tenv)
     (let ((t (type-of* exp tenv)))
-;;       (dump-tenv tenv)
-;;       (print-string "type-of ") (pp-node exp) (newline)
-;;       (print-string "  == ") (print-string (type-repr t)) (newline)
       (set-node-type! exp t)
       t))
 
@@ -382,7 +398,8 @@
 		 (lambda (i)
 		   (let ((ti (type-of inits[i] temp-tenv))
 			 (_ (unify inits[i] ti init-tvars[i]))
-			 (ti (apply-subst ti)))
+			 ;;(ti (apply-subst ti)))
+			 )
 		     (set! init-types[i] ti)))
 		 part)
 		;; now extend the environment with type schemes instead
