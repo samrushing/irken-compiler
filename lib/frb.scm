@@ -56,7 +56,7 @@
 
 ;; deletion translated from https://github.com/bmeurer/ocaml-rbtrees
 
-(define (tree/delete root < k)
+(define (tree/delete-check root < k)
 
   (define lunbalanced
     (tree:red (tree:black A B k0 v0) C k1 v1)
@@ -65,7 +65,6 @@
     -> (:tuple (lbalance (tree:red A B k0 v0) C k1 v1) #t)
     (tree:black (tree:red A (tree:black B C k1 v1) k0 v0) D k2 v2)
     -> (:tuple (tree:black A (lbalance (tree:red B C k1 v1) D k2 v2) k0 v0) #f)
-    ;;-> (:tuple (tree:black A (lbalance (tree:red B C k1 v1) k2 v2 D) k0 v0) #f)
     _ -> (impossible)
     )
 
@@ -79,6 +78,8 @@
     _ -> (impossible)
     )
 
+  ;; XXX would like to have a tree/delete-min, but this helper
+  ;;    for remove-aux is not exactly that.
   (define remove-min
     (tree:empty)
     -> (impossible)
@@ -92,18 +93,18 @@
     -> (:tuple R k0 v0 #f)
     (tree:black L R k0 v0)
     -> (let-values (((L k1 v1 d) (remove-min L)))
-         (let ((m (tree:black L R k0 v0)))
-           (if d
-               (let-values (((s d) (runbalanced m)))
-                 (:tuple s k1 v1 d))
-               (:tuple m k1 v1 #f))))
+	 (let ((m (tree:black L R k0 v0)))
+	   (if d
+	       (let-values (((s d) (runbalanced m)))
+		 (:tuple s k1 v1 d))
+	       (:tuple m k1 v1 #f))))
     (tree:red L R k0 v0)
     -> (let-values (((L k1 v1 d) (remove-min L)))
-         (let ((m (tree:red L R k0 v0)))
-           (if d
-               (let-values (((s d) (runbalanced m)))
-                 (:tuple s k1 v1 d))
-               (:tuple m k1 v1 #f))))
+	 (let ((m (tree:red L R k0 v0)))
+	   (if d
+	       (let-values (((s d) (runbalanced m)))
+		 (:tuple s k1 v1 d))
+	       (:tuple m k1 v1 #f))))
     )
 
   (define blackify
@@ -145,9 +146,12 @@
                          (if d (lunbalanced m) (:tuple m #f)))))))
     )
 
-  (match (remove-aux root) with
-    (:tuple result _) -> result
-    ))
+  (remove-aux root)
+  )
+
+(define (tree/delete root < k)
+  (match (tree/delete-check root < k) with
+    (:tuple result _) -> result))
 
 (define tree/black-height
   (tree:empty) acc	   -> acc
@@ -181,6 +185,22 @@
                ((< k key) (member0 r))
                (else (maybe:yes v)))
       )))
+
+(define tree/min
+  (tree:empty) -> (raise (:KeyError))
+  (tree:black (tree:empty) _ k v) -> (:tuple k v)
+  (tree:red   (tree:empty) _ k v) -> (:tuple k v)
+  (tree:black L _ _ _) -> (tree/min L)
+  (tree:red   L _ _ _) -> (tree/min L)
+  )
+
+(define tree/max
+  (tree:empty) -> (raise (:KeyError))
+  (tree:black _ (tree:empty) k v) -> (:tuple k v)
+  (tree:red   _ (tree:empty) k v) -> (:tuple k v)
+  (tree:black _ R _ _) -> (tree/max R)
+  (tree:red   _ R _ _) -> (tree/max R)
+  )
 
 (define tree/inorder
   _ (tree:empty)         -> #u
