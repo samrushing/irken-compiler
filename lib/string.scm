@@ -110,6 +110,18 @@
 		(else
 		 (loop (+ i 1) 0)))))))
 
+(define (starts-with a b)
+  ;; does <a> start with <b>?
+  (let ((alen (string-length a))
+	(blen (string-length b)))
+    (if (< alen blen)
+	#f
+	(let loop ((i 0))
+	  (cond ((= i blen) #t)
+		((eq? (string-ref a i) (string-ref b i))
+		 (loop (+ i 1)))
+		(else #f))))))
+
 (define (string=? s1 s2)
   (= (string-compare s1 s2) 0))
 (define (string<? s1 s2)
