@@ -33,8 +33,9 @@
        (1 font-lock-function-name-face))
      ;; datatypes
      '("(datatype\\s-+\\(\\sw+\\)" (1 font-lock-type-face))
-     ;; constructors
-      '("\\<\\sw*:\\sw+\\>" . font-lock-type-face)
+     ;; constructors (again, the issue with \\sw)
+     ;; '("\\<\\sw*:\\sw+\\>" . font-lock-type-face)
+     '("(\\(\\sw*:[^) \t\n]+\\)" . (1 font-lock-type-face))
       ;; matching
       '("->" . font-lock-function-name-face)
       ))
