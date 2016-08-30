@@ -193,7 +193,7 @@
      (lambda (x)
        (match x with
 	 (:pair in-pat out-pat)
-	 -> (begin (pp 0 in-pat) (print-string " ") (pp 0 out-pat) (print-string "\n\t"))))
+	 -> (begin (pp in-pat 80) (print-string " ") (pp out-pat 80) (print-string "\n\t"))))
      patterns)
     (print-string ")\n"))
   { name     = name
