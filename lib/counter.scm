@@ -11,5 +11,10 @@
     (define (get)
       value)
 
-    {inc=inc get=get}
+    (define (dec)
+      (let ((r value))
+	(set! value (- value 1))
+	r))
+
+    {inc=inc get=get dec=dec}
     ))
