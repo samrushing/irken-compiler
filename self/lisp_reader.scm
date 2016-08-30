@@ -414,30 +414,12 @@
 	(format a b)
 	(format a "/" b))))
 
-(define find-file
-  () name
-  -> (raise (:FileNotFound "file not found" name))
-  (dir . dirs) name
-  -> (try
-      (let ((name0 (join-paths dir name)))
-	(when the-context.options.verbose
-	      (printf "trying " name0 "\n"))
-	(file/open-read name0))
-      except
-      (:OSError _) -> (find-file dirs name)
-      ))
-
 (define (read-file path)
-  (printf "reading '" path "'...")
+  (printf "reading file '" path "'\n")
   (let ((file (file/open-read path))
 	(result (reader path (lambda () (file/read-char file)))))
     (printf "done.\n")
     result))
-
-(define (find-and-read-file path)
-  (print-string "reading file ") (printn path)
-  (let ((file (find-file the-context.options.include-dirs path)))
-    (reader path (lambda () (file/read-char file)))))
 
 (define (read-string s)
   (reader "<string>" (string-reader s)))
@@ -516,22 +498,28 @@
   (sexp:attr lhs a) -> (+ 1 (+ (pp-size lhs) (string-length (symbol->string a))))
   )
 
-(define (pp d exp)
-  (let ((size (pp-size exp)))
-    (if (< size 80)
-	(print-string (repr exp))
-	(match exp with
-	  (sexp:list ())	-> (print-string "()")
-	  (sexp:list (hd . tl)) -> (begin (print-string "(")
-					  (pp d hd)
-					  (for-each
-					   (lambda (x)
-					     (newline)
-					     (indent (+ d 1))
-					     (pp (+ d 1) x)) tl)
-					  (print-string ")"))
-	  ;; XXX complete for vector & record.
-	  _ -> (print-string (repr exp))))))
+(define (pp exp width)
+  (define (recur d exp)
+    (let ((size (pp-size exp)))
+      (if (< size width)
+	  (print-string (repr exp))
+	  (match exp with
+	    (sexp:list ())
+	    -> (print-string "()")
+	    (sexp:list (hd . tl))
+	    -> (begin (print-string "(")
+		      (recur d hd)
+		      (for-each
+		       (lambda (x)
+			 (newline)
+			 (indent (+ d 1))
+			 (recur (+ d 1) x)) tl)
+		      (print-string ")"))
+	    ;; XXX complete for vector & record.
+	    _ -> (print-string (repr exp))))))
+  (recur 0 exp)
+  (print-string "\n")
+  )
 
 ;; (define (test-file)
 ;;   (let ((t (read-file
