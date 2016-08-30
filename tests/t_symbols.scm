@@ -3,7 +3,7 @@
 (include "lib/core.scm")
 (include "lib/pair.scm")
 (include "lib/string.scm")
-(include "lib/aa_map.scm")
+(include "lib/frb.scm")
 (include "lib/symbol.scm")
 
 '(not-final not-final whitespace not-final not-final comment newline)
