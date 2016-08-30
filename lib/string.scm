@@ -222,7 +222,7 @@
   (fitem (<p> p x))		-> (p x) ;; fun <p> converts <x> to a string
   (fitem (<lpad> n item ...))	-> (lpad n (format item ...) #\space) ;; left-pad
   (fitem (<rpad> n item ...))	-> (rpad n (format item ...) #\space) ;; right-pad
-  (fitem (<cpad> n item ...))	-> (cpad n (format item ...) #\space) ;; right-pad
+  (fitem (<cpad> n item ...))	-> (cpad n (format item ...) #\space) ;; center-pad
   (fitem (<zpad> n item ...))	-> (lpad n (format item ...) #\0)     ;; zero-pad
   (fitem (<repeat> n item ...)) -> (string-concat (n-of n (format item ...)))
   (fitem x)			-> x	;; anything else must already be a string
