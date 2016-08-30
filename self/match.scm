@@ -127,7 +127,7 @@
 ;;       (for-each dump-rule rules)
 ;;       (let ((r (compile-match* vars rules default)))
 ;; 	(print-string "\n  -- result=") (printn n)
-;; 	(pp 0 r) (newline)
+;; 	(pp r 80) (newline)
 ;; 	r)))
 
   (define (compile-match vars rules default)
@@ -379,7 +379,7 @@
 			  (dump-pat p)
 			  (print-string " ")) pats)
 	      (print-string "-> ")
-	      (pp 0 code)
+	      (pp code 80)
 	      (newline)
 	      ))
 
@@ -396,7 +396,7 @@
 		    vars))
 	  (result (compile-match vars rules match-error)))
 ;;       (print-string "match compiler result:\n")
-;;       (pp 0 result) (newline)
+;;       (pp result 80) (newline)
 ;;       (print-string " ---\n")
       (:pair vars result)))
   )
