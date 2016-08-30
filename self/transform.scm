@@ -184,7 +184,7 @@
 	;; ((else body ...))
 	((sexp:list ((sexp:symbol 'else) . else-code)))
 	-> (k tags formals alts (maybe:yes (expand (sexp1 'begin else-code))))
-	_ -> (begin (pp 0 (car pairs)) (error1 "split-alts" pairs)))))
+	_ -> (begin (pp (car pairs) 80) (error1 "split-alts" pairs)))))
 
   ;; (nvcase type x
   ;;    ((<select0> <formal0> <formal1> ...) <body0>)
@@ -491,6 +491,15 @@
 			  (map expand args)))
     x -> (error1 "malformed %%cexp" x))
 
+  (define expand-%%ffi
+    (name sig . args)
+    -> (sexp:list (append (LIST (sexp:symbol '%%ffi) name sig)
+			  (map expand args)))
+    x -> (error1 "malformed %%ffi" x))
+
+  (define (expand-%%sexp list)
+    (sexp:list (cons (sexp:symbol '%%sexp) list)))
+
   (define transform-table
      (alist/make
       ('if expand-if)
@@ -506,6 +515,8 @@
       ('cverbatim expand-cverbatim)
       ('%nvcase expand-%nvcase)
       ('%%cexp expand-%%cexp)
+      ('%%ffi expand-%%ffi)
+      ('%%sexp expand-%%sexp)
       ))
 
   go

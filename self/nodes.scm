@@ -11,6 +11,7 @@
   (:symbol symbol)
   (:cons symbol symbol (list literal))
   (:vector (list literal))
+  (:sexp sexp)
   )
 
 ;; node type holds metadata related to the node,
@@ -20,6 +21,7 @@
   (:varset symbol)
   (:literal literal)
   (:cexp (list type) type string) ;; generic-tvars type template
+  (:ffi (list type) type symbol)  ;; generic-tvars type name
   (:nvcase symbol (list symbol) (list int))  ;; datatype alts arities
   (:sequence)
   (:if)
@@ -138,6 +140,9 @@
 (define (node/cexp gens type template args)
   (make-node (node:cexp gens type template) args))
 
+(define (node/ffi gens type name args)
+  (make-node (node:ffi gens type name) args))
+
 (define (node/sequence subs)
   (make-node (node:sequence) subs))
 
@@ -202,6 +207,7 @@
   (literal:cons dt v ()) -> (format "(" (sym dt) ":" (sym v) ")")
   (literal:cons dt v l)	 -> (format "(" (sym dt) ":" (sym v) " " (join literal->string " " l) ")")
   (literal:vector l)     -> (format "#(" (join literal->string " " l) ")")
+  (literal:sexp s)       -> (repr s)
   )
 
 (define (flags-repr n)
@@ -222,6 +228,7 @@
   (node:varset name)             -> (format "varset " (sym name))
   (node:literal lit)             -> (format "literal " (p literal->string lit))
   (node:cexp gens type template) -> (format "cexp " (p type-repr type) " " template)
+  (node:ffi gens type name)      -> (format "ffi " (p type-repr type) " " (sym name))
   (node:sequence)                -> (format "sequence")
   (node:if)                      -> (format "conditional")
   (node:call)                    -> (format "call")
@@ -377,11 +384,17 @@
        ((sexp:symbol 'quote) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'literal) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'if) test then else)	    -> (node/if (walk test) (walk then) (walk else))
+       ((sexp:symbol '%%sexp) exp)                  -> (node/literal (unsexp exp))
        ((sexp:symbol '%%cexp) sig template . args)
        -> (let ((scheme (parse-cexp-sig sig)))
 	    (match scheme with
 	      (:scheme gens type)
 	      -> (node/cexp gens type (join-cexp-template template) (map walk args))))
+       ((sexp:symbol '%%ffi) (sexp:symbol name) sig . args)
+       -> (let ((scheme (parse-cexp-sig sig)))
+	    (match scheme with
+	      (:scheme gens type)
+	      -> (node/ffi gens type name (map walk args))))
        ((sexp:symbol '%nvcase) (sexp:symbol dt) val-exp (sexp:list tags) (sexp:list arities) (sexp:list alts) ealt)
        -> (node/nvcase dt (map sexp->symbol tags) (map sexp->int arities) (walk val-exp) (map walk alts) (walk ealt))
        ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) type . body)
@@ -428,18 +441,34 @@
   ()			      -> (literal:cons 'list 'nil '())
   )
 
-(define (build-literal exp)
-  (match exp with
-    (sexp:string s)  -> (literal:string s)
-    (sexp:int n)     -> (literal:int n)
-    (sexp:char c)    -> (literal:char c)
-    (sexp:undef)     -> (literal:undef)
-    (sexp:symbol s)  -> (literal:symbol s)
-    (sexp:list l)    -> (build-list-literal l)
-    (sexp:vector l)  -> (literal:vector (map build-literal l))
-    ;; XXX the rest
-    _ -> (error1 "unhandled literal type" exp)
-    ))
+(define build-literal
+  (sexp:string s)  -> (literal:string s)
+  (sexp:int n)     -> (literal:int n)
+  (sexp:char c)    -> (literal:char c)
+  (sexp:undef)     -> (literal:undef)
+  (sexp:symbol s)  -> (literal:symbol s)
+  (sexp:list l)    -> (build-list-literal l)
+  (sexp:vector l)  -> (literal:vector (map build-literal l))
+  ;; XXX the rest
+  exp -> (error1 "unhandled literal type" exp)
+  )
+
+(define unsexp-list
+  ()        -> (literal:cons 'list 'nil '())
+  (hd . tl) -> (literal:cons 'list 'cons (LIST (unsexp hd) (unsexp-list tl)))
+  )
+
+(define unsexp
+  (sexp:string s)  -> (literal:cons 'sexp 'string (LIST (literal:string s)))
+  (sexp:int n)     -> (literal:cons 'sexp 'int (LIST (literal:int n)))
+  (sexp:char c)    -> (literal:cons 'sexp 'char (LIST (literal:char c)))
+  (sexp:bool b)    -> (literal:cons 'sexp 'bool (LIST (literal:cons 'bool (if b 'true 'false) '())))
+  (sexp:undef)     -> (literal:cons 'sexp 'undef '())
+  (sexp:symbol s)  -> (literal:cons 'sexp 'symbol (LIST (literal:symbol s)))
+  (sexp:list l)    -> (literal:cons 'sexp 'list (LIST (unsexp-list l))) ;; (map unsexp l))
+  (sexp:vector l)  -> (literal:cons 'sexp 'vector (map unsexp l))
+  exp -> (error1 "unsexp: unhandled literal type" exp)
+  )
 
 (define (frob name num)
   (string->symbol (format (sym name) "_" (int num))))

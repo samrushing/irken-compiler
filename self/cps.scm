@@ -13,6 +13,7 @@
   (:literal literal cont)                                       ;; <value> <k>
   (:litcon int symbol cont)                                     ;; <index> <value> <k>
   (:cexp type type string (list int) cont)                      ;; <sig> <solved-type> <template> <args> <k>
+  (:ffi type type symbol (list int) cont)                       ;; <sig> <solved-type> <name> <args> <k>
   (:test int int insn insn cont)                                ;; <reg> <jump-number> <then> <else> <k>
   (:testcexp (list int) type string int insn insn cont)         ;; <regs> <sig> <template> <jump-number> <then> <else> <k>
   (:jump int int int (list int))                                ;; <reg> <target> <jump-number> <free>
@@ -36,7 +37,6 @@
   )
 
 ;; continuation
-;; XXX wonder if this would make more sense as a record?
 (datatype cont
   (:k int (list int) insn) ;; <target-register> <free-registers> <code>
   (:nil)
@@ -117,6 +117,7 @@
 	(node:varref name)		-> (c-varref name lenv k)
 	(node:varset name)		-> (c-varset name (car (noderec->subs exp)) lenv k)
 	(node:cexp gens sig template)	-> (c-cexp sig template exp lenv k)
+	(node:ffi gens sig name)	-> (c-ffi sig name exp lenv k)
 	(node:call)			-> (c-call tail? exp lenv k)
 	(node:primapp name params)	-> (c-primapp tail? name params exp lenv k)
 	(node:nvcase 'nil tags arities) -> (c-pvcase tail? tags arities (noderec->subs exp) lenv k)
@@ -337,6 +338,11 @@
       (collect-primargs (noderec->subs exp) lenv k
 			(lambda (regs)
 			  (insn:cexp sig (noderec->type exp) template regs k))))
+
+    (define (c-ffi sig name exp lenv k)
+      (collect-primargs (noderec->subs exp) lenv k
+			(lambda (regs)
+			  (insn:ffi sig (noderec->type exp) name regs k))))
 
     ;; collect-primargs is used by primops, simple-conditional, and tr-call.
     ;;   in order to avoid the needless consumption of registers, we re-arrange
@@ -739,8 +745,9 @@
     (insn:literal lit k)	    -> (print-line (lambda () (ps2 "lit") (ps2 (literal->string lit))) k)
     (insn:litcon i kind k)          -> (print-line (lambda () (ps2 "litcon") (ps i) (ps kind)) k)
     (insn:cexp sig typ tem args k)  -> (print-line (lambda () (ps2 "cexp") (ps2 (type-repr sig)) (ps2 (type-repr typ)) (ps tem) (ps args)) k)
+    (insn:ffi sig typ name args k)  -> (print-line (lambda () (ps2 "ffi") (ps2 (type-repr sig)) (ps2 (type-repr typ)) (ps name) (ps args)) k)
     (insn:test reg jn then else k)  -> (print-line (lambda () (ps2 "test") (ps reg) (ps jn) (print-insn then (+ d 1)) (print-insn else (+ d 1))) k)
-    (insn:jump reg trg jn f)	    -> (print-line (lambda () (ps2 "jmp") (ps trg) (ps jn) (ps f)) (cont:nil))
+    (insn:jump reg trg jn f)	    -> (print-line (lambda () (ps2 "jmp") (ps reg) (ps trg) (ps jn) (ps f)) (cont:nil))
     (insn:close name nreg body k)   -> (print-line (lambda () (ps2 "close") (ps name) (ps nreg) (print-insn body (+ d 1))) k)
     (insn:varref d i k)		    -> (print-line (lambda () (ps2 "ref") (ps d) (ps i)) k)
     (insn:varset d i v k)	    -> (print-line (lambda () (ps2 "set") (ps d) (ps i) (ps v)) k)
@@ -806,6 +813,7 @@
 	     (insn:literal _ k)	     -> k
 	     (insn:litcon _ _ k)     -> k
 	     (insn:cexp _ _ _ _ k)   -> k
+	     (insn:ffi _ _ _ _ k)    -> k
 	     (insn:varref _ _ k)     -> k
 	     (insn:varset _ _ _ k)   -> k
 	     (insn:store _ _ _ _ k)  -> k

@@ -221,6 +221,7 @@
     (match (noderec->t exp) with
       (node:literal lit)	    -> (type-of-literal lit exp tenv)
       (node:cexp gens sig _)	    -> (type-of-cexp gens sig exp tenv)
+      (node:ffi gens sig _)	    -> (type-of-cexp gens sig exp tenv)
       (node:if)			    -> (type-of-conditional exp tenv)
       (node:sequence)		    -> (type-of-sequence (noderec->subs exp) tenv)
       (node:function _ formals)	    -> (type-of-function formals (car (noderec->subs exp)) (noderec->type exp) tenv)
@@ -254,6 +255,7 @@
       (literal:char _)	    -> char-type
       (literal:undef)	    -> undefined-type
       (literal:symbol _)    -> symbol-type
+      (literal:sexp _)      -> sexp-type
       (literal:cons dt v l) -> (let ((dto (alist/get the-context.datatypes dt "no such datatype")))
 				 (match (dto.get-alt-scheme v) with
 				   (:scheme gens type)
@@ -282,6 +284,23 @@
     t -> t)
 
   (define (type-of-cexp gens sig exp tenv)
+    (let ((type (instantiate-type-scheme gens sig)))
+      (match type with
+	(type:pred 'arrow pargs _)
+	-> (if (not (= (- (length pargs) 1) (length (noderec->subs exp))))
+	       (error1 "wrong number of args to cexp" exp)
+	       (match pargs with
+		 () -> (error1 "malformed arrow type" sig)
+		 (result-type . parg-types)
+		 -> (let ((arg-types (map (lambda (x) (type-of x tenv)) (noderec->subs exp))))
+		      (for-each2 (lambda (a b)
+				   (unify exp (unraw a) b))
+				 parg-types arg-types)
+		      result-type
+		      )))
+	_ -> type)))
+
+  (define (type-of-ffi gens sig exp tenv)
     (let ((type (instantiate-type-scheme gens sig)))
       (match type with
 	(type:pred 'arrow pargs _)
@@ -607,6 +626,9 @@
       ;; used in an nvcase else clause when the compiler knows the match is complete
       ;;  [i.e., no else clause is needed]
       '%complete-match -> (:scheme (LIST T0) (arrow T0 '()))
+      ;; llvm prims
+      '%llarith    -> (:scheme '() (arrow int-type (LIST int-type int-type)))
+      '%llicmp     -> (:scheme '() (arrow bool-type (LIST int-type int-type)))
       _ -> (error1 "lookup-primapp" name)))
 
   ;; each exception is stored in a global table along with a tvar

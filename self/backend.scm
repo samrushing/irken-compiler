@@ -4,6 +4,7 @@
 (include "self/typing.scm")
 (include "self/graph.scm")
 (include "self/analyze.scm")
+(include "self/llvm.scm")
 
 ;;; notes about ctailfun branch:
 ;;; what we want to experiment with is llvm's claim that it properly
@@ -191,7 +192,31 @@
      insns)
     used))
 
-(define (emit o decls insns)
+(define (subset? a b)
+  (every? (lambda (x) (member-eq? x b)) a))
+
+(define (guess-record-type sig)
+  ;; can we disambiguate this record signature?
+  (let ((sig (map (lambda (x) ;; remove sexp wrapping
+		    (match x with
+		      (sexp:symbol field) -> field
+		      _ -> (impossible))) sig))
+	(sig (filter (lambda (x) (not (eq? x '...))) sig)))
+    (let ((candidates '()))
+      (for-each
+       (lambda (x)
+	 (match x with
+	   (:pair sig0 index0)
+	   -> (if (subset? sig sig0)
+		  (PUSH candidates sig0))))
+       the-context.records)
+      (if (= 1 (length candidates))
+	  ;; unambiguous - there's only one possible match.
+	  (maybe:yes (nth candidates 0))
+	  ;; this sig is ambiguous given the set of known records.
+	  (maybe:no)))))
+
+(define (emit-c o decls ollvm insns)
 
   (let ((fun-stack '())
 	(current-function-cname "")
@@ -218,6 +243,7 @@
 	 (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
 	 (insn:jump reg target jn free)		      -> (begin (emit-jump reg target jn free) (cont:nil))
 	 (insn:cexp sig type template args k)	      -> (begin (emit-cexp sig type template args (k/target k)) k)
+	 (insn:ffi sig type name args k)	      -> (error1 "no FFI in C backend" insn)
 	 (insn:close name nreg body k)		      -> (begin (emit-close name nreg body (k/target k)) k)
 	 (insn:varref d i k)			      -> (begin (emit-varref d i (k/target k)) k)
 	 (insn:varset d i v k)			      -> (begin (emit-varset d i v (k/target k)) k)
@@ -238,10 +264,11 @@
 	 )))
 
     ;; XXX arrange to avoid duplicates caused by jump conts
-    (define (declare-static name)
+    (define (declare-function name extern?)
       (when (not (declared::member name))
 	    (declared::add name)
-	    (decls.write (format "static void " name "(void);"))))
+	    (let ((linkage (if extern? "extern" "static")))
+	      (decls.write (format linkage " void " name "(void);")))))
 
     (define (move src dst)
       (if (and (>= dst 0) (not (= src dst)))
@@ -341,21 +368,28 @@
 	(o.write "}")
 	))
 
+    (define (emit-cfun o name cname body)
+      (set! current-function-name name)
+      (set! current-function-cname cname)
+      (o.write (format "static void " cname " (void) {"))
+      (o.indent)
+      (if (vars-get-flag name VFLAG-ALLOCATES)
+	  ;; XXX this only works because we disabled letreg around functions
+	  (emit-check-heap '() "0"))
+      (emit body)
+      (o.dedent)
+      (o.write "}")
+      )
+
     (define (emit-close name nreg body target)
-      (let ((cname (gen-function-cname name 0)))
-	(declare-static cname)
+      (let ((cname (gen-function-cname name 0))
+	    (llvm (starts-with (symbol->string name) "^llvm-")))
+	(declare-function cname llvm)
 	(PUSH fun-stack
 	      (lambda ()
-		(set! current-function-name name)
-		(set! current-function-cname cname)
-		(o.write (format "static void " cname " (void) {"))
-		(o.indent)
-		(if (vars-get-flag name VFLAG-ALLOCATES)
-		    ;; XXX this only works because we disabled letreg around functions
-		    (emit-check-heap '() "0"))
-		(emit body)
-		(o.dedent)
-		(o.write "}")))
+		(if llvm
+		    (emit-llvm ollvm name cname body)
+		    (emit-cfun o name cname body))))
 	(o.write (format "O r" (int target) " = allocate (TC_CLOSURE, 2);"))
 	(o.write (format "r" (int target) "[1] = " cname "; r" (int target) "[2] = lenv;"))
 	))
@@ -389,7 +423,7 @@
 	  (let ((src
 		 (if (= d -1)
 		     (format "top[" (int (+ 2 i)) "];") ;; the +2 is to skip the header and next ptr
-		     ;;(format "varref (lenv, " (int d) ", " (int i) ");")
+		     ;;(format "varref (" (int d) ", " (int i) ");")
 		     (format "((object*" (repeat d "*") ") lenv) " (repeat d "[1]") "[" (int (+ i 2)) "];")
 		     )))
 	    (o.write (format "O r" (int target) " = " src)))))
@@ -397,7 +431,7 @@
     (define (emit-varset d i v target)
       (if (= d -1)
 	  (o.write (format "top[" (int (+ 2 i)) "] = r" (int v) ";"))
-	  ;;(o.write (format "varset (lenv, " (int d) ", " (int i) ", r" (int v) ");"))
+	  ;;(o.write (format "varset (" (int d) ", " (int i) ", r" (int v) ");"))
 	  (o.write (format "((object*" (repeat d "*") ") lenv) " (repeat d "[1]") "[" (int (+ i 2)) "] = r" (int v) ";"))
 	  )
       (when (> target 0)
@@ -434,7 +468,7 @@
 	     (match name with
 	       (maybe:no)       -> (format "((kfun)(r" (int fun) "[1]))();")
 	       (maybe:yes name) -> (let ((cname (gen-function-cname name 0)))
-				     (declare-static cname)
+				     (declare-function cname #f)
 				     (format cname "();")))))
 	(if (>= args 0)
 	    (o.write (format "r" (int args) "[1] = r" (int fun) "[2]; lenv = r" (int args) "; " funcall))
@@ -453,7 +487,7 @@
 	       (map-range
 		   i nregs
 		   (format "t[" (int (+ i 4)) "] = r" (int (nth free i))))))
-	  (declare-static kfun)
+	  (declare-function kfun #f)
 	  (o.write (format "t[1] = k; t[2] = lenv; t[3] = " kfun "; " (string-join saves "; ") "; k = t;")))
 	;; call
 	(let ((funcall
@@ -461,7 +495,7 @@
 		 (maybe:no)	  -> (format "((kfun)(r" (int fun) "[1]))();") ;;; unknown
 		 (maybe:yes name) -> (let ((cfun (gen-function-cname name 0))) ;;; known
 				       ;; include last-minute forward declaration
-				       (declare-static cfun)
+				       (declare-function cfun #f)
 				       (format cfun "();")
 				       ))))
 	  (if (>= args 0)
@@ -500,7 +534,7 @@
 	(for-range
 	    i nargs
 	    (o.write (format "lenv[" (int (+ 2 i)) "] = r" (int (nth regs i)) ";")))
-	(declare-static cname)
+	(declare-function cname #f)
 	(o.write (format cname "();"))
       ))
 
@@ -510,30 +544,6 @@
     (define (emit-pop src target)
       (o.write (format "lenv = lenv[1];"))
       (move src target))
-
-    (define (subset? a b)
-      (every? (lambda (x) (member-eq? x b)) a))
-
-    (define (guess-record-type sig)
-      ;; can we disambiguate this record signature?
-      (let ((sig (map (lambda (x) ;; remove sexp wrapping
-			(match x with
-			  (sexp:symbol field) -> field
-			  _ -> (impossible))) sig))
-	    (sig (filter (lambda (x) (not (eq? x '...))) sig)))
-	(let ((candidates '()))
-	  (for-each
-	   (lambda (x)
-	     (match x with
-	       (:pair sig0 index0)
-	       -> (if (subset? sig sig0)
-		      (PUSH candidates sig0))))
-	   the-context.records)
-	  (if (= 1 (length candidates))
-	      ;; unambiguous - there's only one possible match.
-	      (maybe:yes (nth candidates 0))
-	      ;; this sig is ambiguous given the set of known records.
-	      (maybe:no)))))
 
     ;; hacks for datatypes known by the runtime
     (define (get-uotag dtname altname index)
@@ -964,6 +974,7 @@ static prof_dump (void)
        (lambda (symbol index)
 	 (PUSH symptrs (format "UPTR(" (int index) ",1)")))
        the-context.symbols)
+      ;; XXX NOTE: this does not properly use TC_EMPTY_VECTOR
       (o.write (format "pxll_int pxll_internal_symbols[] = {(" (int (length symptrs)) "<<8)|TC_VECTOR, " (join id ", " symptrs) "};"))
       )
     (o.indent)
@@ -1009,7 +1020,8 @@ static prof_dump (void)
 	  rest))))
 
 (define (emit-lookup-field o)
-  (when (> (length the-context.records) 0)
+  (if (> (length the-context.records) 0)
+      (begin
 	(o.write "static int lookup_field (int tag, int label)")
 	(o.write "{ switch (tag) {")
 	(for-each
@@ -1026,7 +1038,10 @@ static prof_dump (void)
 					  ": return " (int i) "; break;")))
 			(o.write "  } break;"))))
 	 (reverse the-context.records))
-	(o.write "} return 0; }")))
+	(o.write "} return 0; }"))
+      ;; record_fetch/record_store refer to this function even when it's not needed.
+      (o.write "static int lookup_field (int tag, int label) { return 0; }")
+      ))
 
 (define (emit-datatype-table o)
   (o.write (format "// datatype table"))

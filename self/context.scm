@@ -12,6 +12,7 @@
    noletreg		= #f
    debugtyping          = #f
    quiet                = #f
+   no-range-check       = #f
    include-dirs		= (LIST "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    })
 
@@ -67,7 +68,8 @@
 (define VFLAG-GETCC     5) ;; function uses getcc or putcc (consider calling this NOINLINE)
 (define VFLAG-REG       6) ;; variable was put into a register
 (define VFLAG-FREEREF   7) ;; variable is referenced free
-(define VFLAG-NFLAGS    8)
+(define VFLAG-LLVM      8) ;; emit function via llvm backend
+(define VFLAG-NFLAGS    9)
 
 ;; urgh, needs to be an object
 (define (add-var name)

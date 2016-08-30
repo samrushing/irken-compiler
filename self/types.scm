@@ -53,6 +53,7 @@
 (define undefined-type  (pred 'undefined '()))
 (define bool-type       (pred 'bool '()))
 (define symbol-type     (pred 'symbol '()))
+(define sexp-type       (pred 'sexp '()))
 
 (define base-types
   (alist/make

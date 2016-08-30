@@ -392,30 +392,34 @@ clear_space (object * p, pxll_int n)
 }
 #endif
 
-
-static object *
-varref (object * lenv, pxll_int depth, pxll_int index) {
-  while (depth--) {
-    lenv = (object*)lenv[1];
-  }
-  return (object*)lenv[index+2];
-}
-
-static void
-varset (object * lenv, pxll_int depth, pxll_int index, object * val) {
-  while (depth--) {
-    lenv = (object*)lenv[1];
-  }
-  lenv[index+2] = val;
-}
-
-static object * lenv = PXLL_NIL;
-static object * k = PXLL_NIL;
-static object * top = PXLL_NIL; // top-level (i.e. 'global') environment
+object * lenv = PXLL_NIL;
+object * k = PXLL_NIL;
+object * top = PXLL_NIL; // top-level (i.e. 'global') environment
+object * result;
+object * limit; // = heap0 + (heap_size - head_room);
+object * freep; // = heap0;
 static object * t = 0; // temp - for swaps & building tuples
-static object * result;
-static object * limit; // = heap0 + (heap_size - head_room);
-static object * freep; // = heap0;
+
+static
+object *
+varref (pxll_int depth, pxll_int index) {
+  object * lenv0 = lenv;
+  while (depth--) {
+    lenv0 = (object*)lenv0[1];
+  }
+  return (object*)lenv0[index+2];
+}
+
+static
+void
+varset (pxll_int depth, pxll_int index, object * val) {
+  object * lenv0 = lenv;
+  while (depth--) {
+    lenv0 = (object*)lenv0[1];
+  }
+  lenv0[index+2] = val;
+}
+
 
 // REGISTER_DECLARATIONS //
 
@@ -451,6 +455,49 @@ alloc_no_clear (pxll_int tc, pxll_int size)
   *freep = (object*) (size<<8 | (tc & 0xff));
   freep += size + 1;
   return save;
+}
+
+object *
+make_vector (pxll_int size, object * val)
+{
+  object * v = allocate (TC_VECTOR, size);
+  for (int i=0; i < size; i++) {
+    v[i+1] = (object *) val;
+  }
+  return v;
+}
+
+
+// used to lookup record elements when the index
+//  cannot be computed at compile-time.
+object *
+record_fetch (object * rec, pxll_int label)
+{
+  return ((pxll_vector*)rec)->val[
+    lookup_field (
+      (GET_TYPECODE(*rec)-TC_USEROBJ)>>2,
+      label
+    )
+  ];
+}
+
+void
+record_store (object * rec, pxll_int label, object * val)
+{
+  ((pxll_vector*)rec)->val[
+    lookup_field (
+      (GET_TYPECODE(*rec)-TC_USEROBJ)>>2,
+      label
+    )
+  ] = val;
+}
+
+// (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
+
+void
+vector_range_check (object * v, pxll_int index)
+{
+  range_check (GET_TUPLE_LENGTH (*v), index);
 }
 
 static uint64_t program_start_time;

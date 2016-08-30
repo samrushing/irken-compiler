@@ -16,6 +16,24 @@
 	  (else (loop (file/read-buffer ifile)
 		      (list:cons buf l))))))
 
+(define find-file
+  () name
+  -> (raise (:FileNotFound "file not found" name))
+  (dir . dirs) name
+  -> (try
+      (let ((name0 (join-paths dir name)))
+	(when the-context.options.verbose
+	      (printf "trying " name0 "\n"))
+	(file/open-read name0))
+      except
+      (:OSError _) -> (find-file dirs name)
+      ))
+
+(define (find-and-read-file path)
+  (printf "reading file '" path "'\n")
+  (let ((file (find-file the-context.options.include-dirs path)))
+    (reader path (lambda () (file/read-char file)))))
+
 (define sentinel0 "// REGISTER_DECLARATIONS //\n")
 (define sentinel1 "// CONSTRUCTED LITERALS //\n")
 
@@ -41,11 +59,11 @@
 
 (include "self/flags.scm")
 
-(define (invoke-cc base options)
+(define (invoke-cc base options extra)
   (let ((cc (getenv-or "CC" CC))
 	(cflags (getenv-or "CFLAGS" CFLAGS))
 	(cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
-	(cmd (format cc " " cflags " " base ".c -o " base)))
+	(cmd (format cc " " cflags " " base ".c " extra " -o " base)))
     (print-string (format "system: " cmd "\n"))
     (system cmd)))
 
@@ -71,6 +89,7 @@
 	  "-p" -> (set! options.profile #t)
 	  "-n" -> (set! options.noletreg #t)
 	  "-q" -> (set! options.quiet #t)
+	  "-nr" -> (set! options.no-range-check #t)
 	  x -> (if (char=? #\- (string-ref x 0) )
 		   (raise (:UnknownOption "Unknown option" x))
 		   (set! filename-index i))
@@ -119,9 +138,9 @@ Usage: compile <irken-src-file> [options]
 	(forms0 (read-file path))
 	(forms1 (prepend-standard-macros forms0))
 	(exp0 (sexp:list forms1))
-	(_ (verbose (pp 0 exp0) (newline)))
+	(_ (verbose (pp exp0 80) (newline)))
 	(exp1 (transform exp0))
-	(_ (verbose (pp 0 exp1) (newline)))
+	(_ (verbose (pp exp1 80) (newline)))
 	(node0 (walk exp1))
 	(node1 (apply-substs node0))
 	;; clear some memory usage
@@ -167,6 +186,10 @@ Usage: compile <irken-src-file> [options]
 	(tmp-path (format base ".tmp.c"))
 	(tfile (file/open-write tmp-path #t #o644))
 	(o0 (make-writer tfile))
+	(tmp-path1 (format base ".tmp.ll"))
+	(llvm-file (file/open-write tmp-path1 #t #o644))
+	;;(llvm-file (file/open-write "/tmp/x.ll" #t #o644))
+	(ollvm (make-writer llvm-file))
 	)
     (verbose
      (print-string "\n-- RTL --\n")
@@ -214,6 +237,7 @@ Usage: compile <irken-src-file> [options]
 		(o.write (format "#include \"" path "\"")))
 	      (reverse the-context.lincludes))
     (for-each o.write (reverse the-context.cverbatim))
+    (ollvm.copy (read-file-contents (find-file the-context.options.include-dirs "include/preamble.ll")))
     (match (get-header-parts the-context.options.include-dirs) with
       (:header part0 part1 part2)
       -> (begin (o.copy part0)
@@ -221,19 +245,21 @@ Usage: compile <irken-src-file> [options]
 		(if the-context.options.profile (emit-profile-0 o))
 		(o.copy part1)
 		(o.copy part2)
-		(emit o0 o cps)))
+		(emit-c o0 o ollvm cps)
+		))
     (emit-lookup-field o)
     (emit-datatype-table o)
     (if the-context.options.profile (emit-profile-1 o))
     (print-string "done.\n")
     (o0.close)
+    (ollvm.close)
     ;; copy code after declarations
     (o.copy (read-file-contents (file/open-read tmp-path)))
     (o.close)
     (unlink tmp-path)
     (when (not the-context.options.nocompile)
 	  (print-string "compiling...\n")
-	  (invoke-cc base the-context.options)
+	  (invoke-cc base the-context.options tmp-path1)
 	  #u
 	  )
     )
