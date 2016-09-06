@@ -465,7 +465,7 @@
   (sexp:bool b)    -> (literal:cons 'sexp 'bool (LIST (literal:cons 'bool (if b 'true 'false) '())))
   (sexp:undef)     -> (literal:cons 'sexp 'undef '())
   (sexp:symbol s)  -> (literal:cons 'sexp 'symbol (LIST (literal:symbol s)))
-  (sexp:list l)    -> (literal:cons 'sexp 'list (LIST (unsexp-list l))) ;; (map unsexp l))
+  (sexp:list l)    -> (literal:cons 'sexp 'list (LIST (unsexp-list l)))
   (sexp:vector l)  -> (literal:cons 'sexp 'vector (map unsexp l))
   exp -> (error1 "unsexp: unhandled literal type" exp)
   )
