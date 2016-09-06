@@ -527,9 +527,9 @@
 ;; 		sys.argv[1]
 ;; 		"lib/core.scm"))))
 ;;     ;;  (printn t)
-;;     ;;(for-each (lambda (x) (printn x) (pp 0 x) (newline)) t)
+;;     ;;(for-each (lambda (x) (printn x) (pp x 80) (newline)) t)
 ;;     (printn t)
-;;     (for-each (lambda (x) (pp 0 x) (newline)) t)
+;;     (for-each (lambda (x) (pp x 80) (newline)) t)
 ;;     #u
 ;;     ))
 
