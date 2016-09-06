@@ -203,20 +203,21 @@
 	    (jump-num (jump-counter.inc)))
 	(match (noderec->subs exp) with
 	  (test then else)
-	  -> (match (noderec->t test) with
-	       (node:cexp _ sig template)
+	  -> (match (noderec->t test) the-context.options.use-llvm with
+	       (node:cexp _ sig template) #f
 	       -> (c-simple-conditional tail? test then else sig template lenv k)
-	       _ -> (compile
-		     #f test lenv
-		     (cont free
-			   (lambda (reg)
-			     (insn:test
-			      reg
-			      jump-num
-			      (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
-			      (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
-			      k))
-			   )))
+	       _ _ 
+	       -> (compile
+		   #f test lenv
+		   (cont free
+			 (lambda (reg)
+			   (insn:test
+			    reg
+			    jump-num
+			    (compile tail? then lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
+			    (compile tail? else lenv (cont free (lambda (reg) (insn:jump reg target jump-num free))))
+			    k))
+			 )))
 	  _ -> (error1 "c-conditional" exp)
 	  )))
 
@@ -258,7 +259,7 @@
 	r))
 
     (define search-rib
-      name0 _ ()		  -> (maybe:no)
+      name0 _ ()              -> (maybe:no)
       name0 i (name1 . names) -> (if (eq? name0 name1)
 				     (maybe:yes i)
 				     (search-rib name0 (+ i 1) names)))
@@ -517,9 +518,14 @@
 	  -> (let ((value (nth subs 0))
 		   (eclause (nth subs 1))
 		   (alts (cdr (cdr subs))))
+	       ;; previously we made a single jump continuation and re-used it for each alt.
+	       ;;  this worked (in the C backend) because the separate blocks in each case
+	       ;;  introduced a new namespace.  with llvm we cannot re-use names at all, so we
+	       ;;  generate a fresh continuation/target for each alt.
+	       (define (make-jump-k)
+		 (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
 	       (define (finish test-reg)
-		 (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
-		       (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
+		 (let ((alts (map (lambda (alt) (compile tail? alt lenv (make-jump-k))) alts))
 		       (ealt1
 			(if (not (= (dt.get-nalts) (length alts)))
 			    (match (noderec->t eclause) with
@@ -527,7 +533,7 @@
 			      ;; complete match, no ealt
 			      (node:primapp '%complete-match _) -> (maybe:no)
 			      ;; incomplete match with ealt
-			      _ -> (maybe:yes (compile tail? eclause lenv jump-k)))
+			      _ -> (maybe:yes (compile tail? eclause lenv (make-jump-k))))
 			    ;; complete match, no ealt
 			    (maybe:no))))
 		   (insn:nvcase test-reg dtname alt-formals jump-num alts ealt1 k)))
@@ -540,11 +546,12 @@
 	 (let ((value (nth subs 0))
 	       (eclause (nth subs 1))
 	       (alts (cdr (cdr subs))))
+	   (define (make-jump-k)
+	     (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
 	   (define (finish test-reg)
-	     (let ((jump-k (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
-		   (alts (map (lambda (alt) (compile tail? alt lenv jump-k)) alts))
+	     (let ((alts (map (lambda (alt) (compile tail? alt lenv (make-jump-k))) alts))
 		   (else? (match (noderec->t eclause) with (node:primapp '%match-error _) -> #f _ -> #t))
-		   (ealt (if else? (maybe:yes (compile tail? eclause lenv jump-k)) (maybe:no))))
+		   (ealt (if else? (maybe:yes (compile tail? eclause lenv (make-jump-k))) (maybe:no))))
 	       (insn:pvcase test-reg alt-formals arities jump-num alts ealt k)))
 	   (compile #f value lenv (cont free finish)))))
 
