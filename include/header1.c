@@ -420,7 +420,6 @@ varset (pxll_int depth, pxll_int index, object * val) {
   lenv0[index+2] = val;
 }
 
-
 // REGISTER_DECLARATIONS //
 
 // CONSTRUCTED LITERALS //
@@ -492,19 +491,67 @@ record_store (object * rec, pxll_int label, object * val)
   ] = val;
 }
 
-// (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-
 void
 vector_range_check (object * v, pxll_int index)
 {
   range_check (GET_TUPLE_LENGTH (*v), index);
 }
 
+void
+check_heap()
+{
+  if (freep >= limit) {
+    gc_flip (0);
+  }
+}
+
+object *
+topref (pxll_int index) {
+  return (object*)top[index+2];
+}
+
+void
+insn_topset (pxll_int index, object * val) {
+  top[index+2] = val;
+}
+
+object *
+insn_callocate (pxll_int size, pxll_int count) {
+  return alloc_no_clear (TC_BUFFER, HOW_MANY (size * count, sizeof(object)));
+}
+
+void
+DENV0 (object * env)
+{
+  pxll_tuple * t = (pxll_tuple *) env;
+  fprintf (stdout, "ENV: [");
+  while (t != (pxll_tuple*)PXLL_NIL) {
+    pxll_int n = get_tuple_size ((object *) t);
+    fprintf (stdout, "%ld ", n);
+    t = t->next;
+  }
+  fprintf (stdout, "]\n");
+}
+
+void DENV() { DENV0 (lenv); }
+
+void TRACE (const char * name)
+{
+  stack_depth_indent (lenv);
+  fprintf (stderr, "%s ", name);
+  DENV();
+}
+
+void T (pxll_int n)
+{
+  fprintf (stderr, "[%ld]", n);
+}
+
 static uint64_t program_start_time;
 static uint64_t program_end_time;
 
 typedef void(*kfun)(void);
-static void exit_continuation (void)
+void exit_continuation (void)
 {
   program_end_time = rdtsc();
   dump_object ((object *) result, 0);
@@ -513,7 +560,7 @@ static void exit_continuation (void)
   exit((int)(intptr_t)result);
 }
 
-static void toplevel (void);
+void toplevel (void);
 
 // XXX rename these!
 static int argc;
