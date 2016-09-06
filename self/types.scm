@@ -39,10 +39,11 @@
 	      (match args0 args1 with
 		() _ -> #f
 		(t0 . tl0) (t1 . tl1)
-		-> (if (type<? t0 t1)
-		       #t
-		       (loop (cdr args0) (cdr args1)))
-		_ _ -> (error "impossible")
+		-> (cond ((type<? t0 t1) #t)
+			 ((type<? t1 t0) #f)
+			 (else
+			  (loop tl0 tl1)))
+		_ _ -> (impossible)
 		)))))
 
 
