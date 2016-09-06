@@ -70,7 +70,7 @@ object * heap1 = NULL;
 
 #define IS_INTEGER(p)		(((pxll_int)(p)) & 1)
 #define BOX_INTEGER(p)		((object)(((p)<<1)|1))
-#define UNBOX_INTEGER(p)	((p)>>1)
+#define UNBOX_INTEGER(p)	(((pxll_int)(p))>>1)
 
 #define IMMEDIATE(p)		(((pxll_int)(p)) & 3)
 #define IS_TYPE(t, p)		(((pxll_int)(p)&0xff)==t)
