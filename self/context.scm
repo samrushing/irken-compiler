@@ -13,6 +13,7 @@
    debugtyping          = #f
    quiet                = #f
    no-range-check       = #f
+   use-llvm             = #f
    include-dirs		= (LIST "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    })
 
@@ -38,6 +39,8 @@
     options             = (make-options)
     exceptions          = (alist/make)
     profile-funs        = '()
+    cexps               = (map-maker cexp<?)
+    callocates          = (map-maker type<?)
     }
   )
 
