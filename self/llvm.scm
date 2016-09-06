@@ -27,6 +27,10 @@
 (define TC_USEROBJ 40) ;; (10<<2)// 00101000  28
 
 
+;; XXX shouldn't be global (or should be kept in the-context).
+(define fatbar-free (map-maker <))
+(define litcons (set2-maker <))
+
 ;; CPS registers are mapped to LLVM idents like this:
 ;;  r5 -> "%r5"
 ;;  other idents are assigned sequentially like most llvm.
@@ -38,19 +42,16 @@
   )
 
 ;; when ready, cname will become name, and called first as 'toplevel
-(define (cps->llvm cps o first-id cname args external?)
+(define (cps->llvm cps co o first-id name cname args external?)
 
-  (let ((current-function-cname "")
-	;;(current-function-name 'toplevel)
-	(current-function-name 'temp)
+  (let ((current-function-cname cname)
 	(current-function-part (make-counter 1))
 	(used-jumps (find-jumps cps))
 	(ident first-id)
 	(fun-stack '())
-	(fatbar-free (map-maker <))
-	(litcons (set2-maker <))
 	(label-counter (make-counter 1))
 	(arg-counter (make-counter 0))
+	(renamed (map-maker <))
 	)
 
     (define (ID)
@@ -73,17 +74,17 @@
 	   (set! v[i] (new-label)))
 	v))
 
-    (define (push-continuation cname cps args)
-      (PUSH fun-stack (lambda () (cps->llvm cps o 0 cname args #f))))
+    (define (push-continuation name cname cps args)
+      (PUSH fun-stack (lambda () (cps->llvm cps co o 0 name cname args #f))))
 
     (define (push-fail-continuation cps jump args)
-      (push-continuation (format "FAIL_" (int jump)) cps args))
+      (push-continuation 'fail (format "FAIL_" (int jump)) cps args))
 
     (define (push-jump-continuation k jump)
       (match (used-jumps::get jump) with
 	(maybe:yes free)
 	-> (let ((cname (format "JUMP_" (int jump))))
-	     (push-continuation (format "JUMP_" (int jump)) k free)
+	     (push-continuation 'jump (format "JUMP_" (int jump)) k free)
 	     )
 	(maybe:no)
 	-> #u))
@@ -97,6 +98,11 @@
     (define (move src dst)
       (if (and (>= dst 0) (not (= src dst)))
 	  (oformat "%r" (int dst) " = bitcast i8** %r" (int src) " to i8**")))
+
+    (define (dead-set target)
+      ;; this happens with (let ((_ (set! x y))) ...)
+      (if (not (= target -1))
+	  (oformat "%r" (int target) " = inttoptr i64 " (int TC_UNDEFINED) " to i8**")))
 
     (define (emit-arith op arg0 arg1 trg)
       (let ((ids (make-idents 3)))
@@ -177,25 +183,61 @@
 	'%nvget   (sexp:list (_ (sexp:int index) _)) (reg) -> (emit-nvget target reg index)
 	'%make-vector _ (vlen vval)                        -> (emit-make-vector vlen vval target)
 	'%array-ref _ (vec index)                          -> (emit-array-ref vec index target)
-	'%array-set _ (vec index val)                      -> (emit-array-set vec index val)
+	'%array-set _ (vec index val)                      -> (emit-array-set vec index val target)
 
 	'%record-get (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec)
 	-> (emit-record-get label sig rec target)
 
 	'%record-set (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec arg)
-	-> (emit-record-set label sig rec arg)
+	-> (emit-record-set label sig rec arg target)
 
 	'%call (sexp:list ((sexp:symbol name) sig)) args
 	-> (emit-ccall name (parse-cexp-sig sig) args target)
 
-	;; '%ensure-heap
-	;; '%callocate
-	;; '%exit
+	'%exit _ (arg)
+	-> (begin
+	     (oformat "store i8** %r" (int arg) ", i8*** @result")
+	     (oformat "tail call void @exit_continuation()")
+	     (oformat "ret void")
+	     )
+
+	;; XXX NYI
+	'%ensure-heap _ _
+	-> #u
+
+	;; XXX move to emit-callocate
+	'%callocate _ (count)
+	-> (let ((id0 (ID))
+		 (id1 (ID)))
+	     (match type with 
+	       (type:pred 'buffer (type0) _)
+	       -> (match (the-context.callocates::get type0) with
+		    (maybe:yes index)
+		    -> (begin
+			 (oformat "%" (int id0) " = load i64* @size_" (int index))
+			 (oformat "%" (int id1) " = call i64 @insn_unbox (i8** %r" (int count) ")")
+			 (oformat "%r" (int target) " = call i8** @insn_callocate (i64 %" (int id0) ", i64 %" (int id1) ")")
+			 )
+		    (maybe:no)
+		    -> (error1 "%callocate failed type lookup" (type-repr type))
+		    )
+	       _ -> (error1 "%callocate unexpected type" (type-repr type))
+	       ))
+
+	'%getcc _ ()
+	-> (o.write (format "%r" (int target) " = load i8*** @k ;; %getcc"))
+
+	'%putcc _ (rk rv)
+	-> (begin 
+	     (o.write (format "store i8** %r" (int rk) ", i8*** @k ;; %putcc"))
+	     (o.write (format "%r" (int target) " = bitcast i8** %r" (int rv) " to i8**"))
+	     )
+
 	;; '%cget
-	;; '%cset
+	;; '%cset XXX dont' forget call to dead-set
 	;; '%getcc
 	;; '%putcc
-	x _ _ -> (error1 "unsupported llvm primop" (:tuple x (repr params) args))
+	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x (repr params) args))
 	))
 
     (define (emit-ccall name sig args target)
@@ -219,7 +261,7 @@
 		      ")")
 	  )))
 
-    (define (emit-record-set label sig rec val)
+    (define (emit-record-set label sig rec val target)
       (let ((label-code (lookup-label-code label)))
 	(match (guess-record-type sig) with
 	  (maybe:yes sig0)
@@ -234,7 +276,8 @@
 		      ", i64 " (int label-code)
 		      ", i8** %r" (int val)
 		      ")")
-	  )))
+	  )
+	(dead-set target)))
 
     (define (emit-make-vector vlen vval target)
       (let ((id0 (ID)))
@@ -251,13 +294,14 @@
 	(oformat "%r" (int target) " = call i8** @insn_fetch (i8** %r" (int vec) ", i64 %" (int id1) ")")
 	))
 
-    (define (emit-array-set vec index val)
+    (define (emit-array-set vec index val target)
       (let ((id0 (ID)) (id1 (ID)))
 	(oformat "%" (int id0) " = call i64 @insn_unbox (i8** %r" (int index) ")")
 	(when (not the-context.options.no-range-check)
 	      (oformat "call void @vector_range_check (i8** %r" (int vec) ", i64 %" (int id0) ")"))
 	(oformat "%" (int id1) " = add i64 %" (int id0) ", 1")
 	(oformat "call void @insn_store (i8** %r" (int vec) ", i64 %" (int id1) ", i8** %r" (int val) ")")
+	(dead-set target)
 	))
 
     ;; thoughts on C interface: we might need to keep %%cexp because of stuff like EV_SET,
@@ -294,8 +338,30 @@
 	x -> (error1 "bad ffi type" (type-repr sig))
 	))
 
+    ;; this will just call the generated C function.
+    (define (emit-cexp sig type template args target)
+      ;; llvm automatically assigns a target to any non-void function call, so 
+      ;;  we have to put the result somewhere even if dead.
+      (let ((target (if (= target -1) 
+			(format "%" (int (ID)) " = ") 
+			(format "%r" (int target) " = "))))
+	(match (the-context.cexps::get (:tuple sig template)) with
+	  (maybe:yes index)
+	  -> (match sig with
+	       (type:pred 'arrow _ _)
+	       -> (oformat target "call i8** @cexp_" (int index) "("
+			   (join (lambda (r) (format "i8** %r" (int r))) ", " args)
+			   ")")
+	       _ -> (oformat target "load i8*** @cexp_" (int index))
+	       )
+	  (maybe:no)
+	  -> (error1 "unknown cexp" (format (type-repr sig) " : "template))
+	  )))
+
     (define (emit-new-env size top? types target)
-      (oformat "%r" (int target) " = call i8** @allocate (i64 " (int TC_ENV) ", i64 " (int (+ size 1)) ")"))
+      (oformat "%r" (int target) " = call i8** @allocate (i64 " (int TC_ENV) ", i64 " (int (+ size 1)) ")")
+      (if top?
+	  (oformat "store i8** %r" (int target) ", i8*** @top")))
 
     (define (emit-store off arg tup i)
       ;; XXX rewrite to use @insn_store
@@ -307,8 +373,8 @@
 
     (define (emit-tail name fun args)
       (if (>= args 0)
-	  (oformat "call void @push_env (i8** %r" (int args) ")")
-	  (oformat "store i8** %r" (int args) ", i8*** @lenv"))
+	  (oformat "call void @link_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
+	  (oformat "call void @link_env_noargs (i8** %r" (int fun) ")"))
       (match name with
 	(maybe:yes name) ;; known function
 	-> (let ((cname (gen-function-cname name 0)))
@@ -339,7 +405,7 @@
     (define (emit-call name fun args target free k)
       (let ((free (sort < free)) ;; sorting these might improve things
 	    (nregs (length free))
-	    (kfun (gen-function-cname current-function-name (current-function-part.inc)))
+	    (kfun (format current-function-cname "_" (int (current-function-part.inc))))
 	    (ids (make-idents 2))
 	    )
 	;; save
@@ -354,8 +420,8 @@
 	(oformat "call void @push_k (i8** %" (int ids[0]) ", i8** %" (int ids[1]) ")")
 	;; push env
 	(if (>= args 0)
-	    (oformat "call void @push_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
-	    (oformat "call void @push_env_noargs (i8** %r" (int fun) ")"))
+	    (oformat "call void @link_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
+	    (oformat "call void @link_env_noargs (i8** %r" (int fun) ")"))
 	;; call
 	(match name with
 	  (maybe:no)
@@ -403,28 +469,32 @@
 	       (oformat "tail call void @" jname "(" (build-args free) ")")
 	       (o.write "ret void"))
     	  (maybe:no) 
-	  -> (impossible)
+	  -> (error1 "emit-fail: failed to lookup fatbar" label) ;; (impossible)
     	  )))
+
+    (define (emit-jump reg trg jn free)
+      (begin (oformat "tail call void @JUMP_" (int jn) "(" 
+		      ;; note: c back end does a move from reg to target, we
+		      ;;  achieve the same effect by passing reg as first arg.
+		      (build-args (if (= trg -1) free (list:cons reg free)))
+		      ")")
+	     (oformat "ret void")))
 
     (define (emit-close name nreg body target)
       (let ((cname (gen-function-cname name 0)))
 	(PUSH fun-stack
 	      (lambda ()
-		(cps->llvm body o 0 cname '() #f)))
+		(cps->llvm body co o 0 name cname '() #f)))
 	(oformat "%r" (int target) " = call i8** @insn_close (void()* @" cname ")")
 	))
 
     (define (emit-litcon index kind target)
       (when (>= target 0) 
 	    (litcons::add index)
-	    (cond ((eq? kind 'string)
-		   (oformat "%r" (int target) " = bitcast i8*** @constructed_" (int index) " to i8**"))
-		  (else
-		   (let ((id0 (ID)))
-		     (oformat "%" (int id0) " = load i64** getelementptr (i64** @constructed_" (int index) ", i64 0)")
-		     (oformat "%r" (int target) " = bitcast i64* %" (int id0) " to i8**")
-		     )))
-	    ))
+	    (if (eq? kind 'string)
+		(oformat "%r" (int target) " = bitcast i8*** @constructed_" (int index) " to i8**")
+		(oformat "%r" (int target) " = load i8*** getelementptr (i8*** @constructed_" (int index) ", i64 0)")
+		)))
 
     (define split-last
       ()        acc -> (impossible)
@@ -522,8 +592,9 @@
 	   (o.write "ret void"))
 
       (insn:literal lit (cont:k reg _ k))
-      -> (begin 
-	   (oformat "%r" (int reg) " = inttoptr i64 " (int (encode-immediate lit)) " to i8**")
+      -> (begin
+	   (if (not (= reg -1)) ;; ignore dead literals
+	       (oformat "%r" (int reg) " = inttoptr i64 " (int (encode-immediate lit)) " to i8**"))
 	   (walk k))
 
       (insn:varref depth index (cont:k reg _ k))
@@ -534,24 +605,39 @@
 			"(i64 " (int depth) ", i64 " (int index) ")"))
 	   (walk k))
 
+      (insn:varset depth index val (cont:k target _ k))
+      -> (begin
+	   (if (= depth -1)
+	       (oformat "call void @insn_topset (i64 " (int index) ", i8** %r" (int val) ")")
+	       (oformat "call void @insn_varset "
+			"(i64 " (int depth) ", i64 " (int index) ", i8** %r" (int val) ")"))
+	   (dead-set target)
+	   (walk k))
+
       (insn:test val jumpnum then else (cont:k _ _ k))
       -> (begin 
 	   (push-jump-continuation k jumpnum)
 	   (emit-test val then else))
 
       (insn:jump reg trg jn free)
-      -> (begin
-	   (oformat "tail call void @JUMP_" (int jn) "(" (build-args (list:cons reg free)) ")")
-	   (oformat "ret void"))
+      -> (emit-jump reg trg jn free)
+
+      (insn:move dst var (cont:k reg _ k))
+      -> (begin (emit-move dst var reg) (walk k))
+
+      ;; note: special case to ignore continuation after %exit.
+      ;; XXX check if this is still needed.
+      (insn:primop '%exit params type args (cont:k target _ k))
+      -> (begin (emit-primop '%exit params type args target))
 
       (insn:primop name params type args (cont:k target _ k))
       -> (begin (emit-primop name params type args target) (walk k))
 
+      (insn:cexp sig type template args (cont:k target _ k))
+      -> (begin (emit-cexp sig type template args target) (walk k))
+
       (insn:ffi sig type name args (cont:k target _ k))
       -> (begin (emit-ffi sig type name args target) (walk k))
-
-      (insn:move dst var (cont:k reg _ k))
-      -> (begin (emit-move dst var reg) (walk k))
 
       (insn:new-env size top? types (cont:k target _ k))
       -> (begin (emit-new-env size top? types target) (walk k))
@@ -572,6 +658,8 @@
 		    ", i64 " (int (+ 1 i off)) 
 		    ", i8** %r" (int arg) 
 		    ")")
+	   (if (not (= target -1))
+	       (oformat "%r" (int target) " = inttoptr i64 " (int TC_UNDEFINED) " to i8**"))
 	   (walk k))
 
       (insn:trcall d n args)
@@ -616,6 +704,12 @@
       		  (raise (:CPSNotImplemented x)))
       )
 
+    (when the-context.options.trace
+	  (oformat "@." cname " = private unnamed_addr constant [" 
+		   (int (+ 1 (string-length cname))) " x i8] c\""
+		   cname
+		   "\\00\", align 1"))
+
     (oformat "\ndefine " (if external? "external" "internal")
 	     " void @" cname "("
 	     (join (lambda (x) (format "i8** %r" (int x))) ", " args)
@@ -623,6 +717,16 @@
 
     ;; emit function body
     (o.indent)
+
+    (when the-context.options.trace 
+	  (oformat "call void @TRACE (i8* getelementptr ([" 
+		   (int (+ 1 (string-length cname)))
+		   " x i8]* @." cname ", i64 0, i64 0))"))
+
+    (if (and (not (member-eq? name '(toplevel fail jump)))
+	     (vars-get-flag name VFLAG-ALLOCATES))
+	(o.write (format "call void @check_heap()")))
+
     (walk cps)
     (o.dedent)
     (o.write "}")
@@ -631,13 +735,93 @@
     (while (not (null? fun-stack))
 	   ((pop fun-stack)))
 
+    ))
+
+;; collect all unique cexp templates and generate a C function for each one.
+
+(define cexp<?
+  (:tuple s0 t0) (:tuple s1 t1)
+  -> (cond ((type<? s0 s1) #t)
+	   ((type<? s1 s0) #f)
+	   (else (string<? t0 t1))))
+
+(define (find-cexps cps)
+  (let ((cexp-map the-context.cexps)
+	(counter (make-counter 0)))
+    (walk-insns
+     (lambda (insn _)
+       (match insn with
+	 (insn:cexp sig type template args _)
+	 -> (match (cexp-map::get (:tuple sig template)) with
+	      (maybe:yes _) -> #u
+	      (maybe:no) -> (cexp-map::add (:tuple sig template) (counter.inc)))
+	 _ -> #u
+	 ))
+     cps)
+    cexp-map))
+
+;; XXX combine this pass with find-cexps
+(define (find-callocate cps)
+  (let ((cmap the-context.callocates)
+	(counter (make-counter 0)))
+    (walk-insns
+     (lambda (insn _)
+       (match insn with
+	 (insn:primop '%callocate _ (type:pred 'buffer (type) _) _ _)
+	 -> (match (cmap::get type) with
+	      (maybe:yes _) -> #u
+	      (maybe:no)    -> (cmap::add type (counter.inc)))
+	 _ -> #u
+	 ))
+     cps)
+    ))
+
+(define (emit-cexp-fun co o num sig template)
+  (match sig with
+    (type:pred 'arrow (result-type . arg-types) _)
+    -> (let ((args0 (range (length arg-types)))
+	     (args1 (map (lambda (x) (format "r" (int x))) args0))
+	     (args2 (map2 wrap-in arg-types args1))
+	     (args3 (format (join (lambda (x) (format "O " x)) ", " args1))))
+	 (co.write (format "object* cexp_" (int num) "(" args3 ") { "
+			   (if (is-pred? result-type 'undefined)
+			       (format (cexp-subst template args2) "; return PXLL_UNDEFINED")
+			       (format "return " (wrap-out result-type (cexp-subst template args2))))
+			       ";}"))
+	 (o.write (format "declare i8** @cexp_" (int num) "("
+			  (join id ", " (n-of (length arg-types) "i8**"))
+			  ")"))
+	 )
+    _ -> (begin
+	   (co.write (format "const object * cexp_" (int num) " = " (wrap-out sig template) ";"))
+	   (o.write (format "@cexp_" (int num) " = external global i8**"))
+	   )
+    ))
+
+(define (emit-llvm co o cname cps)
+  (printf "scanning for cexp...\n")
+  (let ((cexp-map (find-cexps cps)))
+    (cexp-map::iterate
+     (lambda (k v)
+       (match k with
+	 (:tuple sig template)
+	 -> (begin 
+	      (printf (lpad 5 (int v)) " " (type-repr sig) " '" template "'\n")
+	      (emit-cexp-fun co o v sig template)
+	      )
+	 )))
+    (printf "scanning for callocate...\n")
+    (find-callocate cps)
+    (the-context.callocates::iterate
+     (lambda (k v)
+       (printf (lpad 5 (int v)) " " (type-repr k) "\n")
+       (co.write (format "pxll_int size_" (int v) " = sizeof (" (irken-type->c-type k) ");"))
+       (o.write (format "@size_" (int v) " = external global i64"))
+       ))
+    (cps->llvm cps co o 0 'toplevel cname '() #t)
     ;; emit litcon externals
     ;; *SOOOO* nice that llvm supports forward references...
     (litcons::iterate
      (lambda (index)
        (oformat "@constructed_" (int index) " = external global i8**")))
     ))
-
-(define (emit-llvm o name cname cps)
-  (cps->llvm cps o 0 cname '() #t)
-  )
