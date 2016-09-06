@@ -46,7 +46,7 @@
   (let ((cc (getenv-or "CC" CC))
 	(cflags (getenv-or "CFLAGS" CFLAGS))
 	(cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
-	(cmd (format cc " " cflags " " (join id " " paths) " " extra " -o " base)))
+	(cmd (format cc " " cflags " " (join " " paths) " " extra " -o " base)))
     (print-string (format "system: " cmd "\n"))
     (system cmd)))
 

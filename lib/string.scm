@@ -216,7 +216,8 @@
   (fitem (<hex> n))		-> (int->hex-string n)
   (fitem (<oct> n))		-> (int->oct-string n)
   (fitem (<sym> s))		-> (symbol->string s)
-  (fitem (<joins> l))		-> (string-concat l)
+  (fitem (<join> l))		-> (string-concat l)
+  (fitem (<join> sep l))	-> (string-join l sep)         ;; separate each string in <l> with <sep>
   (fitem (<join> p sep l))	-> (string-join (map p l) sep) ;; map <p> over list <l>, separate each with <sep>
   (fitem (<string> s))		-> s
   (fitem (<p> p x))		-> (p x) ;; fun <p> converts <x> to a string

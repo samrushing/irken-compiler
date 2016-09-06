@@ -386,7 +386,7 @@
 	    ;; a zero-arg trcall needs an extra level of pop
 	    (set! npop (+ npop 1)))
 	(if (> npop 0)
-	    (o.write (format "lenv = ((object " (joins (n-of npop "*")) ")lenv)" (joins (n-of npop "[1]")) ";")))
+	    (o.write (format "lenv = ((object " (join (n-of npop "*")) ")lenv)" (join (n-of npop "[1]")) ";")))
 	(for-range
 	    i nargs
 	    (o.write (format "lenv[" (int (+ 2 i)) "] = r" (int (nth regs i)) ";")))
@@ -570,7 +570,7 @@
 
     (define (emit-fail label npop free)
       (if (> npop 0)
-	  (o.write (format "lenv = ((object " (joins (n-of npop "*")) ")lenv)" (joins (n-of npop "[1]")) ";")))
+	  (o.write (format "lenv = ((object " (join (n-of npop "*")) ")lenv)" (join (n-of npop "[1]")) ";")))
       (let ((jname (format "FAIL_" (int label))))
 	(match (fatbar-free::get label) with
 	  (maybe:yes free)

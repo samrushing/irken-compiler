@@ -334,7 +334,7 @@
 	     (if (not (= target -1))
 		 (oformat "%r" (int target) " = "))
 	     ;; XXX wrap-out
-	     (oformat "call i8** @" (sym name) "(" (join id ", " args0) ")"))
+	     (oformat "call i8** @" (sym name) "(" (join ", " args0) ")"))
 	x -> (error1 "bad ffi type" (type-repr sig))
 	))
 
@@ -789,7 +789,7 @@
 			       (format "return " (wrap-out result-type (cexp-subst template args2))))
 			       ";}"))
 	 (o.write (format "declare i8** @cexp_" (int num) "("
-			  (join id ", " (n-of (length arg-types) "i8**"))
+			  (join ", " (n-of (length arg-types) "i8**"))
 			  ")"))
 	 )
     _ -> (begin

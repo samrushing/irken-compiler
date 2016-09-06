@@ -37,7 +37,7 @@
   (define (unify exp t0 t1)
 
     (define (type-error t0 t1)
-      (print-string (format (join id "\n" (get-node-context node (noderec->id exp) 30)) "\n"))
+      (print-string (format (join "\n" (get-node-context node (noderec->id exp) 30)) "\n"))
       (print-string (format "node id=" (int (noderec->id exp)) "\n"))
       (let ((ut0 (apply-subst t0))
 	    (ut1 (apply-subst t1)))
