@@ -487,7 +487,7 @@
 						       " = ((pxll_vector*)r" (int rec-reg)
 						       ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
 						       ")-TC_USEROBJ)>>2," (int label-code)
-						       ")];"))))
+						       ")]; // label=" (sym label)))))
 			    _ _ -> (primop-error))
 	  ;; XXX very similar to record-get, maybe some way to collapse the code?
 	  '%record-set -> (match parm args with
