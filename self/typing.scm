@@ -36,24 +36,25 @@
 
   (define (unify exp t0 t1)
 
-    (define (type-error t0 t1)
-      (print-string (format (join "\n" (get-node-context node (noderec->id exp) 30)) "\n"))
-      (print-string (format "node id=" (int (noderec->id exp)) "\n"))
+    (define (print-type-error t0 t1)
+      (printf (join "\n" (get-node-context node (noderec->id exp) 30)) "\n")
+      (printf "node id=" (int (noderec->id exp)) "\n")
       (let ((ut0 (apply-subst t0))
 	    (ut1 (apply-subst t1)))
-	(print-string
-	 (format "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n"))
-	(error "type error"))
-      )
+	(printf "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n")))
+
+    (define (type-error t0 t1)
+      (print-type-error t0 t1)
+      (error "type error"))
 
     (define (U t0 t1)
       (when the-context.options.debugtyping
-	    (print-string (format "    ----U " (type-repr t0) " -- " (type-repr t1) "\n")))
+	    (printf "    ----U " (type-repr t0) " -- " (type-repr t1) "\n"))
       (let/cc return
 	  (let ((u (type-find t0))
 		(v (type-find t1)))
 	    (when the-context.options.debugtyping
-		  (print-string (format "    ----: " (type-repr u) " -- " (type-repr v) "\n")))
+		  (printf "    ----: " (type-repr u) " -- " (type-repr v) "\n"))
 	    (if (not (eq? u v))
 		(begin
 		  (match u v with
@@ -214,7 +215,7 @@
       (let ((type (apply-subst type)))
 	(find-generic-tvars type)
 	(when the-context.options.debugtyping
-	      (print-string (format "build-type-scheme type=" (type-repr type) " gens = " (join type-repr "," (gens::get)) "\n")))
+	      (printf "build-type-scheme type=" (type-repr type) " gens = " (join type-repr "," (gens::get)) "\n"))
 	(:scheme (gens::get) type))))
 
   (define (type-of* exp tenv)
@@ -236,12 +237,12 @@
       ))
 
   (define (dump-tenv tenv)
-    (print-string "tenv {\n")
+    (printf "tenv {\n")
     (tree/inorder
      (lambda (name scheme)
-       (print-string (format "  " (sym name) " = " (scheme-repr scheme) "\n")))
+       (printf "  " (sym name) " = " (scheme-repr scheme) "\n"))
      tenv)
-    (print-string "}\n"))
+    (printf "}\n"))
 
   (define (type-of exp tenv)
     (let ((t (type-of* exp tenv)))
@@ -363,7 +364,7 @@
 ;;     (print-string " tenv= {\n")
 ;;     (alist/iterate
 ;;      (lambda (k v)
-;;        (print-string (format " " (sym k) " " (scheme-repr v) "\n")))
+;;        (printf " " (sym k) " " (scheme-repr v) "\n"))
 ;;      tenv)
 ;;     (print-string "}\n")
     (match (alist/lookup tenv name) with
@@ -373,7 +374,7 @@
 
   (define (type-of-varref name tenv)
     (let ((t (apply-tenv name tenv)))
-      ;;(print-string (format "varref: " (sym name) " type = " (type-repr t) "\n"))
+      ;;(printf "varref: " (sym name) " type = " (type-repr t) "\n")
       t))
 
   (define (type-of-varset name exp tenv)
@@ -662,7 +663,7 @@
 	     (unify-exception-types val row tenv)
 	     val-type)
 	_ -> (begin
-	       (print-string "bad exception type:\n")
+	       (printf "bad exception type:\n")
 	       (pp-node val) (newline)
 	       (error1 "bad exception type:" val)))))
 
@@ -670,7 +671,7 @@
   (define (type-of-handle exn-val exn-match tenv)
     (let ((match-type (type-of exn-match tenv))
 	  (val-type (apply-subst (type-of exn-val tenv))))
-      (print-string (format "type-of-handle: " (type-repr (apply-subst val-type)) "\n"))
+      (printf "type-of-handle: " (type-repr (apply-subst val-type)) "\n")
       (match val-type with
 	(type:pred 'rsum (row) _)
 	-> (begin
