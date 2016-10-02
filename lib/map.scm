@@ -1,5 +1,9 @@
 ;; -*- Mode: Irken -*-
 
+;; OO/imperative map and set interfaces for frb.scm
+
+;; XXX now that delete is available, add delete methods.
+
 (define (map-class)
 
   (define (add self k v)
