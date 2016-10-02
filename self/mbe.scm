@@ -3,6 +3,9 @@
 ;; based on my python translation of Dorai Sitaram's common lisp implementation
 ;;   of scheme's <syntax-rules>.
 ;;
+;; XXX needs to be rewritten in irken properly.. e.g. with a datatype representing
+;;    ellipses rather than list nesting.
+;;
 ;; see http://www.ccs.neu.edu/home/dorai/mbe/mbe-imps.html
 ;;     http://www.ccs.neu.edu/home/dorai/mbe/mbe-lsp.html
 ;;
@@ -38,10 +41,17 @@
 	(string=? (substring s0 1 (- n 1)) (symbol->string s1))
 	#t)))
 
+(define (bracketed? sym)
+  (let ((s (symbol->string sym))
+	(slen (string-length s)))
+    (match (string-ref s 0) (string-ref s (- slen 1)) with
+      #\< #\> -> #t
+      _ _ -> #f)))
+
 (define matches-pattern?
   ;; symbol usually means a variable, unless surround by <brackets>
   (sexp:symbol v0) v1
-  -> (if (eq? (string-ref (symbol->string v0) 0) #\<)
+  -> (if (bracketed? v0)
 	 (match v1 with
 	   (sexp:symbol v1)
 	   -> (angle-bracket-equal? v0 v1) ;; both literal symbols
@@ -171,6 +181,36 @@
     )
   )
 
+(define gensym-counter (make-counter 0))
+
+(define (gen-syms out-pat)
+  ;; replace all $var in output using gensym
+  (let ((sym-map (tree/empty)))
+
+    (define (T s)
+      ;; replace a single symbol.
+      (match (tree/member sym-map symbol<? s) with
+	(maybe:yes replacement) 
+	-> replacement
+	(maybe:no) 
+	-> (let ((new (string->symbol (format (sym s) (int (gensym-counter.inc))))))
+	     (tree/insert! sym-map symbol<? s new)
+	     new)))
+
+    (define walk
+      (sexp:symbol s)
+      -> (sexp:symbol 
+	  (if (eq? (string-ref (symbol->string s) 0) #\$)
+	      (T s)
+	      s))
+      (sexp:list l)
+      -> (sexp:list (map walk l))
+      x -> x
+      )
+
+    (walk out-pat)
+    ))
+    
 (define (make-macro name patterns)
   (define (apply exp debug?)
     (let loop ((l patterns))
@@ -179,7 +219,8 @@
 	-> (if (matches-pattern? in-pat exp)
 	       (begin
 		 (if debug? (printf "expanding macro " (sym name) " in " (repr exp) "\n"))
-		 (let ((r (expand-pattern out-pat (get-bindings in-pat exp))))
+		 (let ((out-pat0 (gen-syms out-pat))
+		       (r (expand-pattern out-pat0 (get-bindings in-pat exp))))
 		   (if debug? (printf "  -> " (repr r) "\n"))
 		   r))
 	       (loop tl))
