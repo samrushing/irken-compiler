@@ -30,9 +30,9 @@
   ;; 	tag) val ...)
 
   ;; not-strict version (using (function $tag ...) names the lambda)
-  (let $tag ((name val) ...) body1 body2 ...)
-  -> (letrec (($tag (function $tag (name ...) #f body1 body2 ...)))
-       ($tag val ...))
+  (let tag ((name val) ...) body1 body2 ...)
+  -> (letrec ((tag (function tag (name ...) #f body1 body2 ...)))
+       (tag val ...))
 
   ;; XXX this still does not allow free mixing of single and 
   ;;  multiple bindings, because of the catch-all let->let-splat
@@ -89,6 +89,13 @@
 	     #u
 	     (begin body ...
 		    ($loop (+ vname 1)))))))
+
+(defmacro for-vector
+  (for-vector vname vec body ...)
+  -> (let (($v vec)) ;; avoid duplicating <vec> expression.
+       (for-range $i (vector-length $v)
+	 (let ((vname $v[$i]))
+	   body ...))))
 
 (defmacro forever
   (forever body ...)
