@@ -54,8 +54,13 @@
 (define (reverse l)
   (reverse-onto l '()))
 
-(define (append list1 list2)
+(define (append2 list1 list2)
   (reverse-onto (reverse list1) list2))
+
+(defmacro append
+  (append l)	   -> l
+  (append a b ...) -> (append2 a (append b ...))
+  )
 
 (define (length l)
   (define fun
@@ -63,12 +68,20 @@
     (hd . tl) acc -> (fun tl (+ 1 acc)))
   (fun l 0))
 
-(define (first l) (car l))
+(define (first x) (car x))
+(define (rest x) (cdr x))
 (define (second l) (car (cdr l)))
 (define last
   ()	   -> (error "last")
   (last)   -> last
   (_ . tl) -> (last tl))
+(define (butlast l)
+  (let loop ((l l) (acc '()))
+    (match l with
+      ()	-> acc
+      (_)	-> (reverse acc)
+      (hd . tl) -> (loop tl (list:cons hd acc))
+      )))
 
 ;; A possible pattern-matching named-let construct?
 ;; (define (length l)
@@ -175,6 +188,24 @@
   p () ()		-> #u
   p (h0 . t0) (h1 . t1) -> (begin (p h0 h1) (for-each2 p t0 t1))
   p _ _			-> (error "for-each2: unequal-length lists")
+  )
+
+;(defmacro for-list
+;  (for-list vname list body ...)
+;  -> (for-each (lambda (vname) body ...) list)
+;  )
+
+(defmacro for-list
+  (for-list vname list body ...)
+  -> (let $loop (($list list))
+       (match $list with
+	 () -> #u
+	 (vname . $tl) -> (begin body ... ($loop $tl))
+	 )))
+
+(defmacro for-list2
+  (for-list v0 v1 l0 l1 body ...)
+  -> (for-each2 (lambda (v0 v1) body ...) l0 l1)
   )
 
 (define fold
