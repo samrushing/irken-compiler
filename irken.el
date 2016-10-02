@@ -73,8 +73,15 @@
 (put 'match 'scheme-indent-function 'scheme-indent-match)
 (put 'datatype 'scheme-indent-function 1)
 (put 'map-range 'scheme-indent-function 1)
-(put 'for-range 'scheme-indent-function 1)
-(put 'let/cc 'scheme-indent-function 'scheme-let-indent)
+(put 'for-range 'scheme-indent-function 2)
+(put 'for-list 'scheme-indent-function 2)
+(put 'for-list2 'scheme-indent-function 4)
+(put 'for-set 'scheme-indent-function 2)
+(put 'for-set2 'scheme-indent-function 4)
+(put 'for-map 'scheme-indent-function 3)
+(put 'let/cc 'scheme-indent-function 1)
+(put 'while 'scheme-indent-function 1)
+(put 'when 'scheme-indent-function 1)
 
 ;; This allows "M-x align" to line up a series of pattern-matches, try it!
 (add-to-list 'align-rules-list
