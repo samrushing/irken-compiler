@@ -123,6 +123,12 @@
   (:=)
   )
 
+(define cmp-repr
+  (cmp:=) -> "="
+  (cmp:<) -> "<"
+  (cmp:>) -> ">"
+  )
+
 (define (cmp a b)
   (cond ((< a b) (cmp:<))
 	((> a b) (cmp:>))
@@ -185,6 +191,9 @@
   (error "Why, sometimes I've believed as many as six impossible things before breakfast."))
 
 (define (id x) x)
+
+;; ignore an unused value.
+(define (discard _) #u)
 
 ;; these must be macros (rather than functions) in order to inline them.
 ;; Note that outside of callcc and throw, these are not necessarily type-safe.
