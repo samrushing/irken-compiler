@@ -153,6 +153,11 @@
   (match (tree/delete-check root < k) with
     (:tuple result _) -> result))
 
+(defmacro tree/delete!
+  (tree/delete! root < k)
+  -> (set! root (tree/delete root < k))
+  )
+
 (define tree/black-height
   (tree:empty) acc	   -> acc
   (tree:red L _ _ _) acc   -> (tree/black-height L acc)
@@ -185,6 +190,12 @@
                ((< k key) (member0 r))
                (else (maybe:yes v)))
       )))
+
+(define (tree/get root < key)
+  (match (tree/member root < key) with
+    (maybe:yes val) -> val
+    (maybe:no) -> (raise (:KeyError))
+    ))
 
 (define tree/min
   (tree:empty) -> (raise (:KeyError))
@@ -225,7 +236,12 @@
   )
 
 (defmacro tree/insert!
-  (tree/insert! root < k v) -> (set! root (tree/insert root < k v)))
+  (tree/insert! root lt k v) -> (set! root (tree/insert root lt k v)))
+
+(defmacro for-map
+  (for-map k v map body ...) 
+  -> (tree/inorder (lambda (k v) body ...) map)
+  )
 
 ;; some way to do these using foldr?
 (define (tree/keys t)
@@ -250,12 +266,59 @@
 
 ;; XXX use :tuple instead, so let-values can be used.
 
-(define (tree/make-generator tree end-key end-val)
+;; (define (tree/make-generator tree end-key end-val)
+;;   (make-generator
+;;    (lambda (consumer)
+;;      (tree/inorder (lambda (k v) (consumer (:pair k v))) tree)
+;;      (let loop ()
+;;        (consumer (:pair end-key end-val))
+;;        (loop))
+;;      )
+;;    ))
+
+;; 'standard' generator form.
+
+(define (tree/make-generator t)
   (make-generator
    (lambda (consumer)
-     (tree/inorder (lambda (k v) (consumer (:pair k v))) tree)
-     (let loop ()
-       (consumer (:pair end-key end-val))
-       (loop))
-     )
-   ))
+     (tree/inorder 
+      (lambda (k v)
+	(consumer (maybe:yes (:tuple k v))))
+      t)
+     (forever (consumer (maybe:no))))))
+
+;; do a range query [lo, hi) over the map/set.
+(define (tree/range root < lo hi p)
+
+  (define (visit l r k v)
+    (if (< lo k) (walk l))
+    (if (and (< k hi) (not (< k lo))) (p k v))
+    (if (< k hi) (walk r))
+    )
+
+  (define walk
+    (tree:empty)         -> #u
+    (tree:red   l r k v) -> (visit l r k v)
+    (tree:black l r k v) -> (visit l r k v)
+    )
+
+  (walk root)
+  )
+
+(define tree/least
+  (tree:empty)                     -> (error "tree/least on empty tree")
+  (tree:red (tree:empty) _ k v)    -> (:tuple k v)
+  (tree:black (tree:empty) _ k v)  -> (:tuple k v)
+  (tree:red l _ _ _)               -> (tree/least l)
+  (tree:black l _ _ _)             -> (tree/least l)
+  )
+
+(define (tree/pop-least s <)
+  (let-values (((k v) (tree/least s)))
+    (:tuple (:tuple k v) (tree/delete s < k))))
+
+(defmacro tree/pop-least!
+  (tree/pop-least! s <)
+  -> (let-values (((least s0) (tree/pop-least s <)))
+       (set! s s0)
+       least))
