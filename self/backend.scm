@@ -126,7 +126,7 @@ typedef struct {
 static pxll_prof prof_funs[];
 static int prof_current_fun;
 static int prof_num_funs;
-static prof_dump (void)
+static void prof_dump (void)
 {
  int i=0;
  fprintf (stderr, \"%20s\\t%20s\\t%s\\n\", \"calls\", \"ticks\", \"name\");
@@ -138,11 +138,9 @@ static prof_dump (void)
 
 (define (emit-profile-1 o)
   (o.write "static pxll_prof prof_funs[] = \n  {{0, 0, \"top\"},")
-  (for-each
-   (lambda (names)
-     (let ((name (cdr (reverse names)))) ;; strip 'top' off
-       (o.write (format "   {0, 0, \"" (join symbol->string "." name) "\"},"))))
-   the-context.profile-funs)
+  (for-map k v the-context.profile-funs
+    (let ((name (cdr (reverse v.names)))) ;; strip 'top' off
+      (o.write (format "   {0, 0, \"" (join symbol->string "." name) "\"},"))))
   (o.write "   {0, 0, NULL}};"))
 
 ;; we support three types of non-immediate literals:
@@ -328,6 +326,14 @@ static prof_dump (void)
   (read-file-contents
    (find-file the-context.options.include-dirs path)))
 
+;; give a unique index to each function.
+(define (number-profile-funs)
+  (let ((i 0))
+    (for-map k v the-context.profile-funs
+      (set! v.index i)
+      (set! i (+ i 1)))
+    ))
+
 (include "self/c.scm")
 (include "self/llvm.scm")
 
@@ -355,7 +361,10 @@ static prof_dump (void)
     (emit-constructed o)
     (emit-lookup-field o)
     (emit-datatype-table o)
-    ;;(if the-context.options.profile (emit-profile-0 o))
+    (number-profile-funs)
+    (if the-context.options.profile 
+	(emit-profile-0 o)
+	(o.write "static void prof_dump (void) {}"))
     (if llvm?
 	(let ((llpath (format base ".ll"))
 	      (llvm-file (file/open-write llpath #t #o644))
@@ -367,7 +376,7 @@ static prof_dump (void)
 	  (ollvm.close)
 	  (PUSH sources llpath))
 	(emit-c o0 o cps))
-    ;; (if the-context.options.profile (emit-profile-1 o))
+    (if the-context.options.profile (emit-profile-1 o))
     (print-string "done.\n")
     (o0.close)
     ;; copy code after declarations

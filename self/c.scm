@@ -233,9 +233,24 @@
       (o.write (format "static void " cname " (void) {"))
       (o.indent)
       (when the-context.options.trace (o.write (format "TRACE(\"" cname "\");")))
+      (when the-context.options.profile
+	(match (tree/member the-context.profile-funs symbol<? name) with
+	  (maybe:yes {index=index names=_})
+	  -> (begin
+	       (o.write "prof_mark1 = rdtsc();")
+	       ;; charge to the calling function
+	       (o.write "prof_funs[prof_current_fun].ticks += (prof_mark1 - prof_mark0);")
+	       ;; set the current function (note: 'top' is at position zero)
+	       (o.write (format "prof_current_fun = " (int (+ index 1)) ";"))
+	       (o.write "prof_funs[prof_current_fun].calls++;"))
+	  (maybe:no) -> (impossible)
+	  ))
       (if (vars-get-flag name VFLAG-ALLOCATES)
 	  ;; XXX this only works because we disabled letreg around functions
 	  (emit-check-heap '() "0"))
+      (when the-context.options.profile
+	;; this avoids charging gc to this fun
+	(o.write "prof_mark0 = rdtsc();"))
       (emit body)
       (o.dedent)
       (o.write "}")

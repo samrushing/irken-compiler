@@ -254,7 +254,7 @@
 		       (cont regvars gen-return)
 		       )
 	      k)))
-	(PUSH the-context.profile-funs current-funs)
+	(tree/insert! the-context.profile-funs symbol<? name {index=0 names=current-funs})
 	(pop current-funs)
 	r))
 

@@ -38,7 +38,7 @@
     variant-labels      = (alist/make)
     options             = (make-options)
     exceptions          = (alist/make)
-    profile-funs        = '()
+    profile-funs        = (tree/empty)
     cexps               = (map-maker cexp<?)
     callocates          = (map-maker type<?)
     }

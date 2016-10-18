@@ -549,6 +549,7 @@ void T (pxll_int n)
 
 static uint64_t program_start_time;
 static uint64_t program_end_time;
+static void prof_dump (void);
 
 typedef void(*kfun)(void);
 void exit_continuation (void)
@@ -557,6 +558,7 @@ void exit_continuation (void)
   dump_object ((object *) result, 0);
   fprintf (stdout, "\n");
   fprintf (stderr, "{total ticks: %" PRIu64 " gc ticks: %" PRIu64 "}\n", program_end_time - program_start_time, gc_ticks);
+  prof_dump();
   exit((int)(intptr_t)result);
 }
 
