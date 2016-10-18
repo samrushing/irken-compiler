@@ -143,6 +143,9 @@
 (define (char=? a b)
   (%%cexp (char char -> bool) "%0==%1" a b))
 
+(define (char< a b)
+  (%%cexp (char char -> bool) "%0<%1" a b))
+
 (define (string-length s)
   (%%cexp ((raw string) -> int) "%0->len" s))
 
