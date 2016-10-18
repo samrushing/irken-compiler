@@ -230,6 +230,11 @@
   (tree:red l r _ _)   -> (+ 1 (+ (tree/size l) (tree/size r)))
   (tree:black l r _ _) -> (+ 1 (+ (tree/size l) (tree/size r))))
 
+(define tree/empty?
+  (tree:empty) -> #t
+  _            -> #f
+  )
+
 (defmacro tree/make
   (tree/make <)                     -> (tree:empty)
   (tree/make < (k0 v0) (k1 v1) ...) -> (tree/insert (tree/make < (k1 v1) ...) < k0 v0)
