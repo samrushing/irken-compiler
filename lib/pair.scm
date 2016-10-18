@@ -284,19 +284,13 @@
 
 (define (sort < l)
 
-  (define (merge la lb)
-    (let loop ((la la) (lb lb))
-      (match la lb with
-	() lb -> lb
-	;; implement optimize-nvcase to put this back
-	;;la () -> la
-	(_ . _) () -> la
-	(ha . ta) (hb . tb)
-	-> (if (< ha hb)
-	       (list:cons ha (loop ta (list:cons hb tb)))
-	       (list:cons hb (loop (list:cons ha ta) tb))
-	       )
-	)))
+  (define merge
+    () lb -> lb
+    la () -> la
+    (ha . ta) (hb . tb)
+    -> (if (< ha hb)
+	   (list:cons ha (merge ta (list:cons hb tb)))
+	   (list:cons hb (merge (list:cons ha ta) tb))))
 
   (define (halve l)
     (match l with
