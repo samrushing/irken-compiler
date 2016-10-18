@@ -163,6 +163,8 @@
 		(+ (* 10 n)
 		   (- (char->ascii (string-ref s i)) 48)))))))
 
+;; XXX pre-compute 0..100
+
 (define (int->string n)
   (if (= 0 n)
       (char->string #\0) ;; don't use a constant here, mutable string
