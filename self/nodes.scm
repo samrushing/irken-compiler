@@ -280,6 +280,10 @@
         (maybe:no)
         -> #u))))
 
+(define (highlight s)
+  (format "\x1b[1;1m" s "\x1b[0m")
+  )
+
 ;; render the node tree, looking for a window of <count> lines
 ;;   around the node with <id>.  for printing errors.
 (define (get-node-context root id count)
@@ -297,6 +301,8 @@
         (maybe:yes (:tuple n d))
         -> (begin (set! context[i] (format-node n d))
                   ;; state machine
+		  (if (= (noderec->id n) id)
+		      (set! context[i] (highlight context[i])))
                   (cond ((= collected (/ count 2)) (result (+ i 1)))
 			((or (> collected 0) (= (noderec->id n) id))
 			 (set! collected (+ collected 1))
