@@ -169,8 +169,8 @@ define internal void @pop_env() {
 ; void
 ; push_k (object * t, object * fp)
 ; {
-;   t[1] = k; 
-;   t[2] = lenv;  
+;   t[1] = k;
+;   t[2] = lenv;
 ;   t[3] = fp;
 ;   k = t;
 ; }
@@ -221,7 +221,7 @@ define internal i8** @insn_fetch (i8** %ob, i64 %i)
 
 define internal i8** @insn_topref (i64 %index) {
   %1 = load i8**, i8*** @top
-  %2 = add i64 %index, 2 ;; skip lenv:header,next 
+  %2 = add i64 %index, 2 ;; skip lenv:header,next
   %3 = getelementptr i8*, i8** %1, i64 %2
   %4 = load i8*, i8** %3
   %5 = bitcast i8* %4 to i8**
@@ -287,4 +287,3 @@ define internal i8** @insn_close (void()* %fun) {
 }
 
 ;; --- generated code follows ---
-
