@@ -37,7 +37,7 @@
 ;;  [I may experiment with using unique names instead, though
 ;;   this might impact compile times]
 
-(defmacro oformat 
+(defmacro oformat
   (oformat item ...) -> (o.write (format item ...))
   )
 
@@ -128,20 +128,20 @@
 	-> (let ((alt (dt.get altname))
 		 (nargs (length args)))
 	     (if (= nargs 0)
-		 (oformat "%r" (int target) " = inttoptr i64 " 
+		 (oformat "%r" (int target) " = inttoptr i64 "
 				  (int (get-uitag dtname altname alt.index)) " to i8**")
 		 (if (= target -1)
 		     (warning (format "dead target in primop " (sym dtname) ":" (sym altname) "\n"))
 		     (begin
 		       ;; XXX in the c backend this was alloc_no_clear()
 		       (oformat "%r" (int target) " = call i8** @allocate ("
-				"i64 " (int (get-uotag dtname altname alt.index)) 
-				", i64 " (int nargs) 
+				"i64 " (int (get-uotag dtname altname alt.index))
+				", i64 " (int nargs)
 				")")
 		       (for-range
 			   i nargs
 			   (oformat "call void @insn_store ("
-				    "  i8** %r" (int target) 
+				    "  i8** %r" (int target)
 				    ", i64 " (int (+ i 1))
 				    ", i8** %r" (int (nth args i))
 				    ")"))
@@ -209,7 +209,7 @@
 	'%callocate _ (count)
 	-> (let ((id0 (ID))
 		 (id1 (ID)))
-	     (match type with 
+	     (match type with
 	       (type:pred 'buffer (type0) _)
 	       -> (match (the-context.callocates::get type0) with
 		    (maybe:yes index)
@@ -228,7 +228,7 @@
 	-> (o.write (format "%r" (int target) " = load i8**, i8*** @k ;; %getcc"))
 
 	'%putcc _ (rk rv)
-	-> (begin 
+	-> (begin
 	     (o.write (format "store i8** %r" (int rk) ", i8*** @k ;; %putcc"))
 	     (o.write (format "%r" (int target) " = bitcast i8** %r" (int rv) " to i8**"))
 	     )
@@ -251,7 +251,7 @@
 	(match (guess-record-type sig) with
 	  (maybe:yes sig0)
 	  -> (oformat "%r" (int target) " = call i8** @insn_fetch ("
-		      "i8** %r" (int rec) 
+		      "i8** %r" (int rec)
 		      ", i64 " (int (+ 1 (index-eq label sig0)))
 		      ")")
 	  (maybe:no)
@@ -266,7 +266,7 @@
 	(match (guess-record-type sig) with
 	  (maybe:yes sig0)
 	  -> (oformat "call void @insn_store ("
-		      "i8** %r" (int rec) 
+		      "i8** %r" (int rec)
 		      ", i64 " (int (+ 1 (index-eq label sig0)))
 		      ", i8** %r" (int val)
 		      ")")
@@ -312,7 +312,7 @@
     ;; provide automatic conversions of base types for inputs to %%ffi
     (define (wrap-in type arg)
       (match type with
-      	(type:tvar id _) 
+      	(type:tvar id _)
 	-> (format "i8** %r" (int arg))
       	(type:pred name predargs _)
       	-> (let ((arg0 (format "%arg" (int (arg-counter.inc)))))
@@ -340,10 +340,10 @@
 
     ;; this will just call the generated C function.
     (define (emit-cexp sig type template args target)
-      ;; llvm automatically assigns a target to any non-void function call, so 
+      ;; llvm automatically assigns a target to any non-void function call, so
       ;;  we have to put the result somewhere even if dead.
-      (let ((target (if (= target -1) 
-			(format "%" (int (ID)) " = ") 
+      (let ((target (if (= target -1)
+			(format "%" (int (ID)) " = ")
 			(format "%r" (int target) " = "))))
 	(match (the-context.cexps::get (:tuple sig template)) with
 	  (maybe:yes index)
@@ -381,11 +381,11 @@
 	     (oformat "tail call void @" cname "()")
 	     (oformat "ret void"))
 	(maybe:no) ;; unknown function
-	-> (begin 
+	-> (begin
 	     (oformat "tail call void @tail_call (i8** %r" (int fun) ")")
 	     (oformat "ret void"))
 	))
-  
+
     (define (emit-trcall depth name regs)
       (let ((nargs (length regs))
     	    (npop (- depth 1))
@@ -396,7 +396,7 @@
 	(for-range i npop
 	    (oformat "call void @pop_env()"))
     	(for-range i nargs
-	    (oformat "call void @insn_varset (i64 0, i64 " 
+	    (oformat "call void @insn_varset (i64 0, i64 "
 		     (int i) ", i8** %r" (int (nth regs i)) ")"))
 	(oformat "tail call void @" cname "()")
 	(oformat "ret void")
@@ -464,16 +464,16 @@
 	 (oformat "call void @pop_env()"))
       (let ((jname (format "FAIL_" (int label))))
     	(match (fatbar-free::get label) with
-    	  (maybe:yes free) 
-	  -> (begin 
+    	  (maybe:yes free)
+	  -> (begin
 	       (oformat "tail call void @" jname "(" (build-args free) ")")
 	       (o.write "ret void"))
-    	  (maybe:no) 
+    	  (maybe:no)
 	  -> (error1 "emit-fail: failed to lookup fatbar" label) ;; (impossible)
     	  )))
 
     (define (emit-jump reg trg jn free)
-      (begin (oformat "tail call void @JUMP_" (int jn) "(" 
+      (begin (oformat "tail call void @JUMP_" (int jn) "("
 		      ;; note: c back end does a move from reg to target, we
 		      ;;  achieve the same effect by passing reg as first arg.
 		      (build-args (if (= trg -1) free (list:cons reg free)))
@@ -489,7 +489,7 @@
 	))
 
     (define (emit-litcon index kind target)
-      (when (>= target 0) 
+      (when (>= target 0)
 	    (litcons::add index)
 	    (if (eq? kind 'string)
 		(oformat "%r" (int target) " = bitcast i8*** @constructed_" (int index) " to i8**")
@@ -508,7 +508,7 @@
       ;;   the else block is not optional.
       (match ealt with
 	(maybe:yes elsek) -> (:tuple tags subs elsek)
-	(maybe:no) 
+	(maybe:no)
 	-> (let-values (((tags0 tagn) (split-last tags '()))
 			((subs0 subn) (split-last subs '())))
 	     (:tuple tags0 subs0 subn))
@@ -587,7 +587,7 @@
     (define walk
 
       (insn:return reg)
-      -> (begin 
+      -> (begin
 	   (oformat "tail call void @insn_return (i8** %r" (int reg) ")")
 	   (o.write "ret void"))
 
@@ -615,7 +615,7 @@
 	   (walk k))
 
       (insn:test val jumpnum then else (cont:k _ _ k))
-      -> (begin 
+      -> (begin
 	   (push-jump-continuation k jumpnum)
 	   (emit-test val then else))
 
@@ -652,11 +652,11 @@
 	   (walk k))
 
       (insn:store off arg tup i (cont:k target _ k))
-      -> (begin 
+      -> (begin
 	   (oformat "call void @insn_store ("
-		    "i8** %r" (int tup) 
-		    ", i64 " (int (+ 1 i off)) 
-		    ", i8** %r" (int arg) 
+		    "i8** %r" (int tup)
+		    ", i64 " (int (+ 1 i off))
+		    ", i8** %r" (int arg)
 		    ")")
 	   (if (not (= target -1))
 	       (oformat "%r" (int target) " = inttoptr i64 " (int TC_UNDEFINED) " to i8**"))
@@ -680,7 +680,7 @@
 	       (oformat "%r" (int target) " = inttoptr i64 " (int tag0) " to i8**")
 	       (oformat "%r" (int target) " = call i8** @allocate (i64 " (int tag0) ", i64 " (int size) ")"))
 	   (walk k))
-      
+
       (insn:fatbar lab jn k0 k1 (cont:k _ free k))
       -> (emit-fatbar lab jn k0 k1 free k)
 
@@ -700,12 +700,12 @@
       -> (emit-pvcase tr tags arities jn alts ealt k)
 
       x -> (begin (printf "cps->llvm insn= ")
-      		  (print-insn x 0) (printf "\n") 
+      		  (print-insn x 0) (printf "\n")
       		  (raise (:CPSNotImplemented x)))
       )
 
     (when the-context.options.trace
-	  (oformat "@." cname " = private unnamed_addr constant [" 
+	  (oformat "@." cname " = private unnamed_addr constant ["
 		   (int (+ 1 (string-length cname))) " x i8] c\""
 		   cname
 		   "\\00\", align 1"))
@@ -718,8 +718,8 @@
     ;; emit function body
     (o.indent)
 
-    (when the-context.options.trace 
-	  (oformat "call void @TRACE (i8* getelementptr ([" 
+    (when the-context.options.trace
+	  (oformat "call void @TRACE (i8* getelementptr (["
 		   (int (+ 1 (string-length cname)))
 		   " x i8]* @." cname ", i64 0, i64 0))"))
 
@@ -805,7 +805,7 @@
      (lambda (k v)
        (match k with
 	 (:tuple sig template)
-	 -> (begin 
+	 -> (begin
 	      (printf (lpad 5 (int v)) " " (type-repr sig) " '" template "'\n")
 	      (emit-cexp-fun co o v sig template)
 	      )
