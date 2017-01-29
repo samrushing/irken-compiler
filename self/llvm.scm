@@ -214,7 +214,7 @@
 	       -> (match (the-context.callocates::get type0) with
 		    (maybe:yes index)
 		    -> (begin
-			 (oformat "%" (int id0) " = load i64* @size_" (int index))
+			 (oformat "%" (int id0) " = load i64, i64* @size_" (int index))
 			 (oformat "%" (int id1) " = call i64 @insn_unbox (i8** %r" (int count) ")")
 			 (oformat "%r" (int target) " = call i8** @insn_callocate (i64 %" (int id0) ", i64 %" (int id1) ")")
 			 )
@@ -225,7 +225,7 @@
 	       ))
 
 	'%getcc _ ()
-	-> (o.write (format "%r" (int target) " = load i8*** @k ;; %getcc"))
+	-> (o.write (format "%r" (int target) " = load i8**, i8*** @k ;; %getcc"))
 
 	'%putcc _ (rk rv)
 	-> (begin 
@@ -352,7 +352,7 @@
 	       -> (oformat target "call i8** @cexp_" (int index) "("
 			   (join (lambda (r) (format "i8** %r" (int r))) ", " args)
 			   ")")
-	       _ -> (oformat target "load i8*** @cexp_" (int index))
+	       _ -> (oformat target "load i8**, i8*** @cexp_" (int index))
 	       )
 	  (maybe:no)
 	  -> (error1 "unknown cexp" (format (type-repr sig) " : "template))
@@ -366,7 +366,7 @@
     (define (emit-store off arg tup i)
       ;; XXX rewrite to use @insn_store
       (let ((id0 (ID)) (id1 (ID)))
-	(oformat "%" (int id0) " = getelementptr i8** %r" (int tup) ", i64 " (int (+ 1 i off)))
+	(oformat "%" (int id0) " = getelementptr i8*, i8** %r" (int tup) ", i64 " (int (+ 1 i off)))
 	(oformat "%" (int id1) " = bitcast i8** %r" (int arg) " to i8*")
 	(oformat "store i8* %" (int id1) ", i8** %" (int id0))
 	))
@@ -443,7 +443,7 @@
 			    (int (+ 4 i)) ")"))
 		(oformat "call void @pop_k()")
 		(if (>= target 0)
-		    (oformat "%r" (int target) " = load i8*** @result"))
+		    (oformat "%r" (int target) " = load i8**, i8*** @result"))
 		(walk k)
 		(o.dedent)
 		(oformat "}")
@@ -493,7 +493,7 @@
 	    (litcons::add index)
 	    (if (eq? kind 'string)
 		(oformat "%r" (int target) " = bitcast i8*** @constructed_" (int index) " to i8**")
-		(oformat "%r" (int target) " = load i8*** getelementptr (i8*** @constructed_" (int index) ", i64 0)")
+		(oformat "%r" (int target) " = load i8**, i8*** getelementptr (i8**, i8*** @constructed_" (int index) ", i64 0)")
 		)))
 
     (define split-last
