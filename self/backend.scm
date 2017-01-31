@@ -79,7 +79,7 @@
 	 (insn:jump reg target num free)
 	 -> (match (used::get num) with
 	      (maybe:yes _) -> #u
-	      (maybe:no)    -> (used::add num (if (= target -1) 
+	      (maybe:no)    -> (used::add num (if (= target -1)
 						  free
 						  (list:cons target free)
 						  )))
@@ -350,10 +350,10 @@ static void prof_dump (void)
 	)
     (printf "\n-- C output --\n")
     (printf " : " opath "\n")
-    (for-each 
+    (for-each
      (lambda (path) (o.write (format "#include <" path ">")))
      (reverse the-context.cincludes))
-    (for-each 
+    (for-each
      (lambda (path) (o.write (format "#include \"" path "\"")))
      (reverse the-context.lincludes))
     (for-each o.write (reverse the-context.cverbatim))
@@ -362,7 +362,7 @@ static void prof_dump (void)
     (emit-lookup-field o)
     (emit-datatype-table o)
     (number-profile-funs)
-    (if the-context.options.profile 
+    (if the-context.options.profile
 	(emit-profile-0 o)
 	(o.write "static void prof_dump (void) {}"))
     (if llvm?
@@ -370,7 +370,7 @@ static void prof_dump (void)
 	      (llvm-file (file/open-write llpath #t #o644))
 	      (ollvm (make-writer llvm-file)))
 	  (printf " : " llpath "\n")
-	  (ollvm.copy 
+	  (ollvm.copy
 	   (get-file-contents "include/preamble.ll"))
 	  (emit-llvm o ollvm "toplevel" cps)
 	  (ollvm.close)
@@ -390,5 +390,3 @@ static void prof_dump (void)
 	  )
     )
   )
-    
-	
