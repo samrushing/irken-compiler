@@ -25,7 +25,7 @@
     _ -> #f))
 
 ;; define a total ordering on all types
-(define type<?
+(define type*<?
   (type:tvar n0 _)  (type:tvar n1 _)  -> (< n0 n1)
   (type:tvar _ _)   (type:pred _ _ _) -> #t
   (type:pred _ _ _) (type:tvar _ _ )  -> #f
@@ -46,6 +46,10 @@
 		_ _ -> (impossible)
 		)))))
 
+(define (type<? a b)
+  (if (eq? a b)
+      #f
+      (type*<? a b)))
 
 ;; singleton base types
 (define int-type        (pred 'int '()))
@@ -87,6 +91,43 @@
   (type:tvar id _)                                -> "..."
   x                                               -> (format "<confused:" (type-repr x) ">")
   )
+
+;; put a row type into canonical order (sorted by field name).
+
+(define (row-canon* kind row rt)
+
+  (define rlabel<
+    (:tuple la _ _) (:tuple lb _ _)
+    -> (symbol<? la lb)
+    )
+
+  (define (collect row labels)
+    (match row with
+      (type:pred 'rlabel ((type:pred label _ _) ltype rest) _)
+      -> (collect rest (list:cons (:pair label ltype) labels))
+      _
+      -> (let loop ((result row)
+		    (labels (reverse (sort rlabel< labels))))
+	   (match labels with
+	     () -> result
+	     ((:pair label ltype) . tl)
+	     -> (loop (rlabel (make-label label) (row-canon ltype) result) tl)
+	     ))
+      ))
+
+  (type:pred kind (LIST (collect row '())) rt)
+  )
+
+(define (row-canon t)
+  (match t with
+    (type:tvar _ _) -> t
+    (type:pred 'rproduct (row) rt)
+    -> (row-canon* 'rproduct row rt)
+    (type:pred 'rsum (row) rt)
+    -> (row-canon* 'rsum row rt)
+    (type:pred pred args rt)
+    -> (type:pred pred (map row-canon args) rt)
+    ))
 
 (define type-repr
   (type:tvar id _)                    -> (format "t" (int id))
@@ -294,6 +335,7 @@
 ;;      (t2 (parse-type (car (read-string "'a"))))
 ;;      (t3 (parse-type (car (read-string "{x=int ...}"))))
 ;;      (t4 (parse-type (car (read-string "(((continuation 'a) -> 'a) -> 'a)"))))
+;;      (t5 (parse-type (car (read-string "{z=int x=int a=int b=int george=int}"))))
 ;;      )
 
 ;;     (printn t0)
@@ -307,11 +349,7 @@
 ;;     (newline)
 ;;     (print-string (type-repr t4))
 ;;     (newline)
+;;     (printf "t5 0: " (type-repr t5) "\n")
+;;     (printf "t5 1: " (type-repr (row-canon t5)) "\n")
 ;;     (printn (get-tvars t1))
 ;;     ))
-
-;; uncomment to test
-;; (include "self/lisp_reader.scm")
-;; (include "lib/counter.scm")
-;; (include "lib/alist2.scm")
-;; (test-types)
