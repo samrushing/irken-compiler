@@ -682,6 +682,10 @@
     (compile #t exp (cpsenv:nil) (cont:nil))
     ))
 
+;; this never completes because of an issue with type<? - a certain complex type
+;;   (an object type) ends up spinning forever.  may be related to non-canonical
+;;   record types.  needs more investigation.
+
 (define (collect-all-types root)
   (let ((ng (make-node-generator root))
 	(type-map (map-maker type<?)))
