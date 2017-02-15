@@ -152,6 +152,46 @@
 	l
 	(loop (list:cons (string-ref s (- n 1)) l) (- n 1)))))
 
+(define (char-class char-list)
+  (let ((v (make-vector 256 #f)))
+
+    (define (in-class? ch)
+      v[(char->ascii ch)])
+
+    (let loop ((l char-list))
+      (match l with
+	()        -> in-class?
+	(hd . tl) -> (begin (set! v[(char->ascii hd)] #t) (loop tl))
+	))))
+
+(define whitespace    '(#\space #\tab #\newline #\return))
+(define delimiters     (string->list "()[]{}:"))
+(define letters        (string->list "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+(define all-delimiters (append whitespace delimiters))
+(define digits         (string->list "0123456789"))
+(define printable      (append digits letters (string->list "!\"#$%&'*+,-./:;<=>?@[\\]^_`{|}~")))
+
+(define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
+(define delim?         (char-class all-delimiters))
+(define digit?         (char-class digits))
+(define letter?        (char-class letters))
+(define field?         (char-class (cons #\- (append letters digits))))
+(define printable?     (char-class printable))
+
+(define safe-char
+  #\space   -> " "
+  #\newline -> "\\n"
+  #\tab     -> "\\t"
+  #\return  -> "\\r"
+  ch        -> (if (printable? ch)
+                   (char->string ch)
+                   (format "\\x" (zpad 2 (hex (char->ascii ch)))))
+  )
+
+
+(define (repr-string s)
+  (format "\"" (join (map safe-char (string->list s))) "\""))
+
 ;; XXX should *not* use ascii conversions.
 ;; really dumb temp version, only works with [0-9]+ !!
 (define (string->int s)

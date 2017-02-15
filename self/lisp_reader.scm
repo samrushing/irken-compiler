@@ -47,18 +47,6 @@
   (sexp x ...) -> (sexp:list (LIST x ...))
   )
 
-(define (char-class char-list)
-  (let ((v (make-vector 256 #f)))
-
-    (define (in-class? ch)
-      v[(char->ascii ch)])
-
-    (let loop ((l char-list))
-      (match l with
-	()        -> in-class?
-	(hd . tl) -> (begin (set! v[(char->ascii hd)] #t) (loop tl))
-	))))
-
 (define hex-map
   (literal
    (alist/make
@@ -78,20 +66,6 @@
    (alist/make
     (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7)
     )))
-
-(define whitespace    '(#\space #\tab #\newline #\return))
-(define delimiters     (string->list "()[]{}:"))
-(define letters        (string->list "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-(define all-delimiters (append whitespace delimiters))
-(define digits         (string->list "0123456789"))
-(define printable      (append digits letters (string->list "!\"#$%&'*+,-./:;<=>?@[\\]^_`{|}~")))
-
-(define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
-(define delim?         (char-class all-delimiters))
-(define digit?         (char-class digits))
-(define letter?        (char-class letters))
-(define field?         (char-class (cons #\- (append letters digits))))
-(define printable?     (char-class printable))
 
 (define (reader path read-char)
 
@@ -462,20 +436,6 @@
 (define repr-field
   (field:t '... _)   -> "..."
   (field:t name val) -> (format (sym name) "=" (p repr val)))
-
-(define safe-char
-  #\space   -> " "
-  #\newline -> "\\n"
-  #\tab     -> "\\t"
-  #\return  -> "\\r"
-  ch        -> (if (printable? ch)
-                   (char->string ch)
-                   (format "\\x" (zpad 2 (hex (char->ascii ch)))))
-  )
-
-
-(define (repr-string s)
-  (format "\"" (join (map safe-char (string->list s))) "\""))
 
 (define repr
   (sexp:list ((sexp:symbol 'quote) x)) -> (format "'" (repr x))
