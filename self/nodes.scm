@@ -199,7 +199,7 @@
       _ -> (error "unpack-fix: no body?"))))
 
 (define literal->string
-  (literal:string s)	 -> (format (char #\") s (char #\")) ;; XXX correct string repr
+  (literal:string s)	 -> (format (string s))
   (literal:symbol s)     -> (format (sym s))
   (literal:int n)	 -> (format (int n))
   (literal:char ch)	 -> (format (char #\#) (char #\\) (char ch)) ;; printable?
