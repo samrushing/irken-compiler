@@ -238,26 +238,6 @@ dump_object (object * ob, int depth)
   return (object *) PXLL_UNDEFINED;
 }
 
-// for gdb...
-void
-DO (object * x)
-{
-  dump_object (x, 0);
-  fprintf (stdout, "\n");
-  fflush (stdout);
-}
-
-// for debugging
-static
-void
-stack_depth_indent (object * k)
-{
-  while (k != PXLL_NIL) {
-    k = (object*) k[1];
-    fprintf (stderr, "  ");
-  }
-}
-
 static
 void
 print_string (object * ob, int quoted)
@@ -400,6 +380,36 @@ object * limit; // = heap0 + (heap_size - head_room);
 object * freep; // = heap0;
 static object * t = 0; // temp - for swaps & building tuples
 
+// for gdb...
+void
+DO (object * x)
+{
+  dump_object (x, 0);
+  fprintf (stdout, "\n");
+  fflush (stdout);
+}
+
+// for debugging
+int
+get_stack_depth()
+{
+  int result = 0;
+  while (k != PXLL_NIL) {
+    result++;
+    k = (object*) k[1];
+  }
+  return result;
+}
+
+void
+stack_depth_indent()
+{
+  int depth = get_stack_depth();
+  for (int i=0; i < depth; i++) {
+    fprintf (stderr, "  ");
+  }
+}
+
 static
 object *
 varref (pxll_int depth, pxll_int index) {
@@ -524,7 +534,7 @@ void
 DENV0 (object * env)
 {
   pxll_tuple * t = (pxll_tuple *) env;
-  fprintf (stdout, "ENV: [");
+  fprintf (stdout, "ENV@%p: [", env);
   while (t != (pxll_tuple*)PXLL_NIL) {
     pxll_int n = get_tuple_size ((object *) t);
     fprintf (stdout, "%ld ", n);
@@ -535,9 +545,23 @@ DENV0 (object * env)
 
 void DENV() { DENV0 (lenv); }
 
+void
+RIB0 (object * env)
+{
+  pxll_tuple * t = (pxll_tuple *) env;
+  pxll_int n = get_tuple_size ((object *) t);
+  fprintf (stdout, " rib: ");
+  for (int i = 0; i < n-1; i++) {
+    dump_object (t->val[i], 0);
+    fprintf (stdout, " ");
+  }
+  fprintf (stdout, "\n");
+}
+
 void TRACE (const char * name)
 {
-  stack_depth_indent (lenv);
+  // this is wrong, needs to use k, not lenv.
+  stack_depth_indent();
   fprintf (stderr, "%s ", name);
   DENV();
 }
