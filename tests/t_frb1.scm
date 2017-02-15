@@ -44,8 +44,8 @@
          ))
     (assert (tree/verify t))
     (let ((t2 t))
-      (for-each 
-       (lambda (k) 
+      (for-each
+       (lambda (k)
          (set! t2 (tree/delete t2 < k))
 	 (assert (tree/verify t2))
          )
@@ -79,6 +79,3 @@
 (t0)
 (t1 10000)
 (t2 1000)
-
-
-
