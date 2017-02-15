@@ -163,8 +163,31 @@
     (name formals type . body) -> (exp-function name formals type (expand-body body))
     x			  -> (error1 "malformed FUNCTION" x))
 
+  ;; --- handy sugar ---
+  ;; (lambda (:pvar x y ...) body)
+  ;; =>
+  ;; (lambda (m) (vcase m ((:pvar x y ...) body)))
+
+  (define (expand-pvar-lambda type pvar formals body)
+    (let ((msym (sexp:symbol (new-match-var))))
+      (expand 
+       (sexp (sexp:symbol 'function)
+	     (sexp:symbol 'lambda)
+	     (sexp:list (LIST msym))
+	     type
+	     (sexp:list 
+	      (LIST (sexp:symbol 'vcase)
+		    msym
+		    (sexp:list (LIST formals body))
+		    ))
+	     ))))
+
   (define (exp-function name formals type body)
-    (sexp1 'function (LIST name formals type body)))
+    (match formals with
+      (sexp:list ((sexp:cons 'nil pvar) . _))
+      -> (expand-pvar-lambda type pvar formals body)
+      _ -> (sexp1 'function (LIST name formals type body))
+      ))
 
   ;; collect tag/alt pairs from vcase
   (define (split-alts pairs k)
@@ -368,7 +391,7 @@
   ;; XXX I think this approach is wrong... either
   ;;  1) we need to store these in *unparsed* form so when they are seen in the datatype
   ;;     alts their typevars are seen, or
-  ;;  2) we have to byte the bullet and either add a new kind of datatype or extend the
+  ;;  2) we have to bite the bullet and either add a new kind of datatype or extend the
   ;;     current datatype to support non-variant datatypes natively.
   ;;  I think we have to do #2... because otherwise we have no way to specify the typevars
   ;;    correctly, e.g.:
@@ -399,25 +422,30 @@
     ((sexp:symbol name) . body)
     -> (if (member? (sexp:symbol '->) body sexp=?)
 	   ;; pattern-matching expression
-	   (parse-pattern-matching-define name body)
+	   (parse-pattern-matching-define name body (sexp:bool #f))
 	   ;; normal definition
 	   (parse-no-formals-define name body))
     ;; (define (%typed (name arg ...) type) ...)
     ((sexp:list ((sexp:symbol '%typed) (sexp:list ((sexp:symbol name) . formals)) type)) . body)
     -> (parse-normal-definition name formals body type)
+    ;; (define name : type <body>)
+    ;; ((sexp:list ((sexp:symbol '%typed) (sexp:symbol name) type)) . body)
+    ;; -> (if (member? (sexp:symbol '->) body sexp=?)
+    ;;        (parse-pattern-matching-define name body type)
+    ;;        (error1 "type annotations of this form not yet implemented" name))
     ;; (define (name arg ...) ...)
     ((sexp:list ((sexp:symbol name) . formals)) . body)
     -> (parse-normal-definition name formals body (sexp:bool #f))
     x -> (error1 "malformed <define>" x))
 
-  (define (parse-pattern-matching-define name body)
+  (define (parse-pattern-matching-define name body type)
     (match (compile-pattern expand '() body) with
       (:pair vars body0)
       -> (:pair name
 		   (sexp (sexp:symbol 'function)
 			 (sexp:symbol name)
 			 (sexp:list (map sexp:symbol vars))
-			 (sexp:bool #f)
+                         type
 			 (expand body0)))))
 
   (define (parse-no-formals-define name body)
