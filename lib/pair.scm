@@ -178,6 +178,11 @@
 		     (list:cons hd (filter p tl))
 		     (filter p tl)))
 
+(define all
+  p ()        -> #t
+  p (hd . tl) -> (if (p hd) (all p tl) #f)
+  )
+
 ;; it's a shame that for-each puts the procedure first,
 ;;   definitely hurts readability when using a lambda.
 (define for-each
