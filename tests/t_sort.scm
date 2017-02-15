@@ -9,10 +9,9 @@
 (define nrandom
   acc 0 -> acc
   acc n -> (nrandom
-	    (list:cons (random) acc)
+	    (list:cons (mod (random) 100000) acc)
 	    (- n 1)))
 
 (let ((rl (nrandom '() 100)))
   (printn rl)
   (printn (sort < rl)))
-  
