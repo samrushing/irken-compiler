@@ -394,7 +394,9 @@
       (match fun with
 	(node:varref name)
 	-> (and (node-get-flag exp NFLAG-RECURSIVE)
-		(not (vars-get-flag (car current-funs) VFLAG-ESCAPES)))
+		(eq? name (car current-funs))
+		(not (vars-get-flag (car current-funs) VFLAG-ESCAPES))
+		)
 	_ -> #f))
 
     (define (c-trcall depth name args lenv k)
