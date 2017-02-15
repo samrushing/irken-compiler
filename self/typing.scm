@@ -244,14 +244,6 @@
      tenv)
     (printf "}\n"))
 
-  ;; (define (type-of exp tenv)
-  ;;   (let ((exp0 exp))
-  ;;     (printf "type-of* " (int (noderec->id exp0)) " " (format-node-type (noderec->t exp0)) " :\n")
-  ;;     (let ((t (type-of* exp tenv)))
-  ;;       (printf "type-of* " (int (noderec->id exp0)) " " (type-repr t) "\n")
-  ;;       (set-node-type! exp0 t)
-  ;;       t)))
-
   (define (type-of exp tenv)
     ;;(printf "type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n")
     (let ((texp (type-of* exp tenv)))
