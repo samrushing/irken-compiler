@@ -19,7 +19,7 @@
 	  (pred 'INFINITE-TYPE '())
 	  (match t with
 	    (type:tvar _ _) -> t
-	    (type:pred name subs _) 
+	    (type:pred name subs _)
 	    -> (begin
 		 (set! trec.pending #t)
 		 (let ((r (pred name (map p subs))))
@@ -244,10 +244,20 @@
      tenv)
     (printf "}\n"))
 
+  ;; (define (type-of exp tenv)
+  ;;   (let ((exp0 exp))
+  ;;     (printf "type-of* " (int (noderec->id exp0)) " " (format-node-type (noderec->t exp0)) " :\n")
+  ;;     (let ((t (type-of* exp tenv)))
+  ;;       (printf "type-of* " (int (noderec->id exp0)) " " (type-repr t) "\n")
+  ;;       (set-node-type! exp0 t)
+  ;;       t)))
+
   (define (type-of exp tenv)
-    (let ((t (type-of* exp tenv)))
-      (set-node-type! exp t)
-      t))
+    ;;(printf "type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n")
+    (let ((texp (type-of* exp tenv)))
+      ;;(printf "type-of* " (int (noderec->id exp)) " " (type-repr texp) "\n")
+      (set-node-type! exp texp)
+      texp))
 
   (define (type-of-literal lit exp tenv)
     (match lit with
@@ -354,7 +364,7 @@
 	  (arrow (type-of body tenv) (reverse arg-types)))
 	;; user-supplied type (do we need to instantiate?)
 	(let ((solved (type-of-function formals body no-type tenv)))
-	  (printf "unifying user-supplied type: " (type-repr sig) " with " (type-repr solved) "\n")
+	  ;;(printf "unifying user-supplied type: " (type-repr sig) " with " (type-repr solved) "\n")
 	  (unify body solved sig)
 	  sig
 	  )))
@@ -378,6 +388,8 @@
       t))
 
   (define (type-of-varset name exp tenv)
+    ;; XXX implement the no-generalize rule for vars that are assigned.
+    ;;     [i.e. the value restriction]
     (let ((val (car (noderec->subs exp)))
 	  (t0 (apply-tenv name tenv))
 	  (t1 (type-of val tenv)))
@@ -671,7 +683,7 @@
   (define (type-of-handle exn-val exn-match tenv)
     (let ((match-type (type-of exn-match tenv))
 	  (val-type (apply-subst (type-of exn-val tenv))))
-      (printf "type-of-handle: " (type-repr (apply-subst val-type)) "\n")
+      ;;(printf "type-of-handle: " (type-repr (apply-subst val-type)) "\n")
       (match val-type with
 	(type:pred 'rsum (row) _)
 	-> (begin
@@ -725,7 +737,9 @@
     (for-each apply-subst-to-program (noderec->subs n)))
 
   (let ((t (type-of node (alist/make))))
+    (printf "applying subst...") (flush)
     (apply-subst-to-program node)
+    (printf "done.\n")
     t))
 
 ;; (define (test-typing)
