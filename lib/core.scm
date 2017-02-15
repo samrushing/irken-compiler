@@ -242,7 +242,7 @@
   (maybe:no)    -> #f
   )
 
-;; ocaml's Obj.magic
+;; ocaml's Obj.magic (i.e., cast to any type)
 (define (magic x)
   (%%cexp ('a -> 'b) "%0" x))
 
