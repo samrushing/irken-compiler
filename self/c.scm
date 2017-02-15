@@ -437,125 +437,156 @@
 
       (let ((target (k/target k))
 	    (nargs (length args)))
-	;; these need to be broken up into separate functions...
-	(match name with
-	  '%dtcon  -> (match parm with
-			(sexp:cons dtname altname)
-			-> (match (alist/lookup the-context.datatypes dtname) with
-			     (maybe:no) -> (error1 "emit-primop: no such datatype" dtname)
-			     (maybe:yes dt)
-			     -> (let ((alt (dt.get altname)))
-				  (cond ((= nargs 0)
-					 (o.write (format "O r" (int target) " = (object*)" (get-uitag dtname altname alt.index) ";")))
-					(else
-					 (if (>= target 0)
-					     (let ((trg (format "r" (int target))))
-					       (o.write (format "O " trg " = alloc_no_clear (" (get-uotag dtname altname alt.index) "," (int nargs) ");"))
-					       (for-range
-						   i nargs
-						   (o.write (format trg "[" (int (+ i 1)) "] = r" (int (nth args i)) ";"))))
-					     (warning (format "dead target in primop " (sym name) "\n"))
-					     )))))
-			_ -> (primop-error)
-			)
-	  '%nvget   -> (match parm args with
-			 (sexp:list (_ (sexp:int index) _)) (reg)
-			 -> (o.write (format "O r" (int target) " = UOBJ_GET(r" (int reg) "," (int index) ");"))
-			 _ _ -> (primop-error))
-	  '%make-vector -> (match args with
-			     (vlen vval)
-			     -> (begin
-				  ;; since we cannot know the size at compile-time, there should
-				  ;; always be a call to ensure_heap() before any call to %make-vector
-				  (o.write (format "O r" (int target) ";"))
-				  (o.write (format "if (unbox(r" (int vlen) ") == 0) { r" (int target) " = (object *) TC_EMPTY_VECTOR; } else {"))
-				  (o.write (format "  O t = alloc_no_clear (TC_VECTOR, unbox(r" (int vlen) "));"))
-				  (o.write (format "  for (int i=0; i<unbox(r" (int vlen) "); i++) { t[i+1] = r" (int vval) "; }"))
-				  (o.write (format "  r" (int target) " = t;"))
-				  (o.write "}"))
-			     _ -> (primop-error))
-	  '%array-ref -> (match args with
-			   (vec index)
-			   -> (begin
-				(o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-				(o.write (format "O r" (int target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
-			   _ -> (primop-error))
-	  '%array-set -> (match args with
-			   (vec index val)
-			   -> (begin
-				(o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-				(o.write (format "((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";"))
-				(when (> target 0)
-				      (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
-			   _ -> (primop-error))
-	  '%record-get -> (match parm args with
-			    (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
-			    -> (let ((label-code (lookup-label-code label)))
-				 (match (guess-record-type sig) with
-				   (maybe:yes sig0)
-				   -> (o.write (format "O r" (int target) ;; compile-time lookup
-						       " = ((pxll_vector*)r" (int rec-reg)
-						       ")->val[" (int (index-eq label sig0))
-						       "];"))
-				   (maybe:no)
-				   -> (o.write (format "O r" (int target) ;; run-time lookup
-						       " = ((pxll_vector*)r" (int rec-reg)
-						       ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
-						       ")-TC_USEROBJ)>>2," (int label-code)
-						       ")]; // label=" (sym label)))))
-			    _ _ -> (primop-error))
-	  ;; XXX very similar to record-get, maybe some way to collapse the code?
-	  '%record-set -> (match parm args with
-			    (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg arg-reg)
-			    -> (let ((label-code (lookup-label-code label)))
-				 (match (guess-record-type sig) with
-				   (maybe:yes sig0)
-				   -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; compile-time lookup
-						       ")->val[" (int (index-eq label sig0))
-						       "] = r" (int arg-reg) ";"))
-				   (maybe:no)
-				   -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; run-time lookup
-						       ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
-						       ")-TC_USEROBJ)>>2," (int label-code)
-						       ")] = r" (int arg-reg) ";")))
-				 (when (>= target 0)
-				       (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
-			    _ _ -> (primop-error))
-	  '%ensure-heap -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
-	  '%callocate -> (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
-			   ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
-			   (if (>= target 0)
-			       (o.write (format "O r" (int target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
-						") * unbox(r" (int (car args)) "), sizeof (object)));"))
-			       (error1 "%callocate: dead target?" type)))
-	  '%exit -> (begin
-		      (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
-		      (when (> target 0)
-			    (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
-	  '%cget -> (match args with
-		      (rbase rindex)
-		      ;; XXX range-check (probably need to add a length param to TC_BUFFER)
-		      -> (let ((cexp (format "(((" (type-repr type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
-			   (o.write (format "O r" (int target) " = " (wrap-out type cexp) ";")))
-		      _ -> (primop-error))
-	  '%cset -> (match args type with
-		      (rbase rindex rval) (type:pred 'arrow (to-type from-type) _)
-		      ;; XXX range-check (probably need to add a length param to TC_BUFFER)
-		      -> (let ((rval-exp (lookup-cast to-type from-type (format "r" (int rval))))
-			       (lval (format "(((" (type-repr to-type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
-			   (o.write (format lval " = " rval-exp ";"))
-			   (when (> target 0)
-				 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
-		      _ _ -> (primop-error))
-	  '%getcc -> (match args with
-		       () -> (o.write (format "O r" (int target) " = k; // %getcc"))
-		       _  -> (primop-error))
-	  '%putcc -> (match args with
-		       (rk rv) -> (begin
-				    (o.write (format "k = r" (int rk) "; // %putcc"))
-				    (move rv target))
-		       _ -> (primop-error))
-	  _ -> (primop-error))))
+
+        (define prim-dtcon
+          (sexp:cons dtname altname)
+          -> (match (alist/lookup the-context.datatypes dtname) with
+               (maybe:no) -> (error1 "emit-primop: no such datatype" dtname)
+               (maybe:yes dt)
+               -> (let ((alt (dt.get altname)))
+                    (cond ((= nargs 0)
+                           (o.write (format "O r" (int target) " = (object*)"
+                                            (get-uitag dtname altname alt.index) ";")))
+                          (else
+                           (if (>= target 0)
+                               (let ((trg (format "r" (int target))))
+                                 (o.write (format "O " trg " = alloc_no_clear ("
+                                                  (get-uotag dtname altname alt.index)
+                                                  "," (int nargs) ");"))
+                                 (for-range
+                                     i nargs
+                                   (o.write (format trg "[" (int (+ i 1))
+                                                    "] = r" (int (nth args i))
+                                                    ";"))))
+                               (warning (format "dead target in primop " (sym name) "\n"))
+                               )))))
+          _ -> (primop-error))
+
+        (define prim-nvget
+          (sexp:list (_ (sexp:int index) _)) (reg)
+          -> (o.write (format "O r" (int target) " = UOBJ_GET(r" (int reg) "," (int index) ");"))
+          _ _ -> (primop-error))
+
+        (define prim-make-vector
+          (vlen vval)
+          -> (begin
+               ;; since we cannot know the size at compile-time, there should
+               ;; always be a call to ensure_heap() before any call to %make-vector
+               (o.write (format "O r" (int target) ";"))
+               (o.write (format "if (unbox(r" (int vlen) ") == 0) { r" (int target) " = (object *) TC_EMPTY_VECTOR; } else {"))
+               (o.write (format "  O t = alloc_no_clear (TC_VECTOR, unbox(r" (int vlen) "));"))
+               (o.write (format "  for (int i=0; i<unbox(r" (int vlen) "); i++) { t[i+1] = r" (int vval) "; }"))
+               (o.write (format "  r" (int target) " = t;"))
+               (o.write "}"))
+          _ -> (primop-error))
+
+        (define prim-array-ref
+          (vec index)
+          -> (begin
+               (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
+               (o.write (format "O r" (int target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
+          _ -> (primop-error))
+
+        (define prim-array-set
+          (vec index val)
+          -> (begin
+               (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
+               (o.write (format "((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";"))
+               (when (> target 0)
+                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+          _ -> (primop-error))
+
+        (define prim-record-get
+          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
+          -> (let ((label-code (lookup-label-code label)))
+               (match (guess-record-type sig) with
+                 (maybe:yes sig0)
+                 -> (o.write (format "O r" (int target) ;; compile-time lookup
+                                     " = ((pxll_vector*)r" (int rec-reg)
+                                     ")->val[" (int (index-eq label sig0))
+                                     "];"))
+                 (maybe:no)
+                 -> (o.write (format "O r" (int target) ;; run-time lookup
+                                     " = ((pxll_vector*)r" (int rec-reg)
+                                     ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
+                                     ")-TC_USEROBJ)>>2," (int label-code)
+                                     ")]; // label=" (sym label)))))
+          _ _ -> (primop-error))
+
+        ;; XXX very similar to record-get, maybe some way to collapse the code?
+        (define prim-record-set
+          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg arg-reg)
+          -> (let ((label-code (lookup-label-code label)))
+               (match (guess-record-type sig) with
+                 (maybe:yes sig0)
+                 -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; compile-time lookup
+                                     ")->val[" (int (index-eq label sig0))
+                                     "] = r" (int arg-reg) ";"))
+                 (maybe:no)
+                 -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; run-time lookup
+                                     ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
+                                     ")-TC_USEROBJ)>>2," (int label-code)
+                                     ")] = r" (int arg-reg) ";")))
+               (when (>= target 0)
+                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+          _ _ -> (primop-error))
+
+        (define (prim-callocate parm args)
+          (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
+            ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
+            (if (>= target 0)
+                (o.write (format "O r" (int target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
+                                 ") * unbox(r" (int (car args)) "), sizeof (object)));"))
+                (error1 "%callocate: dead target?" type))))
+
+        (define (prim-exit args)
+          (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
+          (when (> target 0)
+            (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+
+        (define prim-cget
+          (rbase rindex)
+          ;; XXX range-check (probably need to add a length param to TC_BUFFER)
+          -> (let ((cexp (format "(((" (type-repr type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
+               (o.write (format "O r" (int target) " = " (wrap-out type cexp) ";")))
+          _ -> (primop-error))
+
+        (define prim-cset
+          (rbase rindex rval) (type:pred 'arrow (to-type from-type) _)
+          ;; XXX range-check (probably need to add a length param to TC_BUFFER)
+          -> (let ((rval-exp (lookup-cast to-type from-type (format "r" (int rval))))
+                   (lval (format "(((" (type-repr to-type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
+               (o.write (format lval " = " rval-exp ";"))
+               (when (> target 0)
+                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+          _ _ -> (primop-error))
+
+        (define prim-getcc
+          () -> (o.write (format "O r" (int target) " = k; // %getcc"))
+          _  -> (primop-error))
+
+        (define prim-putcc
+          (rk rv) -> (begin
+                       (o.write (format "k = r" (int rk) "; // %putcc"))
+                       (move rv target))
+          _ -> (primop-error))
+
+          (match name with
+            '%dtcon       -> (prim-dtcon parm)
+            '%nvget       -> (prim-nvget parm args)
+            '%make-vector -> (prim-make-vector args)
+            '%array-ref   -> (prim-array-ref args)
+            '%array-set   -> (prim-array-set args)
+            '%record-get  -> (prim-record-get parm args)
+            '%record-set  -> (prim-record-set parm args)
+            '%callocate   -> (prim-callocate parm args)
+            '%exit        -> (prim-exit args)
+            '%cget        -> (prim-cget args)
+            '%cset        -> (prim-cset args type)
+            '%getcc       -> (prim-getcc args)
+            '%putcc       -> (prim-putcc args)
+            '%ensure-heap -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
+            _ -> (primop-error))))
 
     (define (lookup-cast to-type from-type exp)
       (match to-type from-type with
@@ -644,7 +675,7 @@
 			 (o.indent)
 			 (if (and (not use-else?) (= i (- (length tags) 1)))
 			     (o.write "default: {")
-			     (o.write (format "case (" tag "): {")))
+			     (o.write (format "case (" tag "): { // " (sym label))))
 			 (o.indent)
 			 (emit sub)
 			 (o.dedent)
