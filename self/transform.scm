@@ -155,6 +155,12 @@
 	 (sexp1 'let-splat (LIST (sexp:list bindings0) (expand-body body))))
     x -> (error1 "malformed LET-SPLAT" x))
 
+  ;; avoid macro-expanding let-subst bindings
+  (define expand-let-subst
+    (pair . body) -> (sexp1 'let_subst (LIST pair (expand-body body)))
+    x -> (error1 "malformed LET-SUBST" x)
+    )
+
   (define expand-lambda
     (formals . body) -> (exp-function (sexp:symbol 'lambda) formals (sexp:bool #f) (expand-body body))
     x		     -> (error1 "malformed LAMBDA" x))
@@ -537,6 +543,7 @@
       ('function expand-function)
       ('vcase expand-vcase)
       ('let-splat expand-let-splat)
+      ('let_subst expand-let-subst)
       ('match expand-match)
       ('cinclude expand-cinclude)
       ('local-include expand-linclude)
