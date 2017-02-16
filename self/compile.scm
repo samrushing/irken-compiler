@@ -73,7 +73,9 @@
 	  "-n" -> (set! options.noletreg #t)
 	  "-q" -> (set! options.quiet #t)
 	  "-nr" -> (set! options.no-range-check #t)
-	  "-llvm" -> (set! options.use-llvm #t)
+	  "-llvm" -> (set! options.backend (backend:llvm))
+          "-h"  -> (usage)
+          "-help" -> (usage)
 	  x -> (if (char=? #\- (string-ref x 0) )
 		   (raise (:UnknownOption "Unknown option" x))
 		   (set! filename-index i))
@@ -95,6 +97,7 @@ Usage: compile <irken-src-file> [options]
  -O : tell CC to optimize
  -p : generate profile-printing code
  -n : disable letreg optimization
+ -h : display this usage
 "))
 
 (define (warning msg)

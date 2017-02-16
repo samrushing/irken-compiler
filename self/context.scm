@@ -1,5 +1,11 @@
 ;; -*- Mode: Irken -*-
 
+(datatype backend
+  (:c)
+  (:llvm)
+  (:bytecode)
+  )
+
 (define (make-options)
   {verbose		= #f
    nocompile		= #f
@@ -13,7 +19,7 @@
    debugtyping          = #f
    quiet                = #f
    no-range-check       = #f
-   use-llvm             = #f
+   backend              = (backend:c)
    include-dirs		= (LIST "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    })
 

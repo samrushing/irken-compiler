@@ -203,8 +203,8 @@
 	    (jump-num (jump-counter.inc)))
 	(match (noderec->subs exp) with
 	  (test then else)
-	  -> (match (noderec->t test) the-context.options.use-llvm with
-	       (node:cexp _ sig template) #f
+	  -> (match (noderec->t test) the-context.options.backend with
+	       (node:cexp _ sig template) (backend:c)
 	       -> (c-simple-conditional tail? test then else sig template lenv k)
 	       _ _ 
 	       -> (compile
