@@ -14,13 +14,13 @@
   (:undefined undefined)
   (:symbol symbol)
   (:continuation continuation)
-  (:closure (vector (object)) (vector int) int (lenv))
-  (:tuple (vector (object)))
+  (:closure (vector object) (vector int) int lenv)
+  (:tuple (vector object))
   )
 
 (datatype lenv
   (:nil)
-  (:rib (object) (lenv))
+  (:rib object lenv)
   )
 
 ;; probably need a place to store LITS and CODE... perhaps
@@ -28,7 +28,7 @@
 ;; when calling an unknown function.
 (datatype vmcont
   (:nil)
-  (:k (vmcont) (lenv) int (vector (object)))
+  (:k vmcont lenv int (vector object))
   )
 
 ;; XXX need a way to declare record types!
@@ -83,29 +83,22 @@
 	    (loop (CONS (read-int) stream))))
       )))
 
-;; performance hacks - these could definitely go away with a little
-;;   more smarts in analyze.py.
-(define (+1 a)
-  (%%cexp (int -> int) "%0+1" a))
-(define (+2 a)
-  (%%cexp (int -> int) "%0+2" a))
-(define (+3 a)
-  (%%cexp (int -> int) "%0+3" a))
-(define (+4 a)
-  (%%cexp (int -> int) "%0+4" a))
-(define (sub1 a)
-  (%%cexp (int -> int) "%0-1" a))
+(define (+1 a) (+ 1 a))
+(define (+2 a) (+ 2 a))
+(define (+3 a) (+ 3 a))
+(define (+4 a) (+ 4 a))
+(define (sub1 a) (- a 1))
 
 (define print-object
-  (object:int n) -> (print n)
-  (object:char ch) -> (print ch)
-  (object:bool b) -> (print b)
-  (object:string s) -> (print s)
-  (object:undefined u) -> (print u)
-  (object:symbol s) -> (print s)
-  (object:continuation c) -> (print c)
+  (object:int n)           -> (print n)
+  (object:char ch)         -> (print ch)
+  (object:bool b)          -> (print b)
+  (object:string s)        -> (print s)
+  (object:undefined u)     -> (print u)
+  (object:symbol s)        -> (print s)
+  (object:continuation c)  -> (print c)
   (object:closure a b c d) -> (begin (print-string "<closure>") #u)
-  (object:tuple t) -> (print t)
+  (object:tuple t)         -> (print t)
   x -> #u
   )
 
@@ -169,14 +162,14 @@
     (match info with
       (opcode:t name nargs)
       -> (begin
-	   (print-string "------------***\n")
-	   (print-string "Error in VM:\n")
-	   (print pc)
-	   (print-string "\t" )
-	   (print-string name)
-	   (print-args nargs)
-	   #u
-	   ))))
+           (printf "------------***\n"
+                   "Error in VM:\n"
+                   (int pc)
+                   "\t"
+                   name)
+           (print-args nargs)
+           #u
+           ))))
 
 ;; the normal version
 (define (next-insn)
@@ -201,45 +194,23 @@
 	  (next-insn))
      ))
 
-(define (insn-add)
-  (match REGS[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]] with
-    (object:int x) (object:int y)
-    -> (begin
-	 (set! REGS[CODE[(+1 pc)]] (object:int (+ x y)))
-	 (set! pc (+4 pc))
-	 (next-insn))
-    _ _ -> (vm-error)
-    ))
+(defmacro binop
+  (binop op rtype)
+  -> (lambda ()
+       (match REGS[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]] with
+         (object:int x) (object:int y)
+         -> (begin
+              (set! REGS[CODE[(+1 pc)]] (rtype (op x y)))
+              (set! pc (+4 pc))
+              (next-insn))
+         _ _ -> (vm-error)
+         ))
+  )
 
-(define (insn-sub)
-  (match REGS[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]] with
-    (object:int x) (object:int y)
-    -> (begin
-	 (set! REGS[CODE[(+1 pc)]] (object:int (- x y)))
-	 (set! pc (+4 pc))
-	 (next-insn))
-    _ _ -> (vm-error)
-    ))
-
-(define (insn-eq)
-  (match REGS[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]] with
-    (object:int x) (object:int y)
-    -> (begin
-	 (set! REGS[CODE[(+1 pc)]] (object:bool (= x y)))
-	 (set! pc (+4 pc))
-	 (next-insn))
-    _ _ -> (vm-error)
-    ))
-
-(define (insn-ge)
-  (match REGS[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]] with
-    (object:int x) (object:int y)
-    -> (begin
-	 (set! REGS[CODE[(+1 pc)]] (object:bool (>= x y)))
-	 (set! pc (+4 pc))
-	 (next-insn))
-    _ _ -> (vm-error)
-    ))
+(define insn-add (binop + object:int))
+(define insn-sub (binop - object:int))
+(define insn-eq  (binop = object:bool))
+(define insn-ge  (binop >= object:bool))
 
 (define (insn-print)
   (printn REGS[CODE[(+1 pc)]])
@@ -422,7 +393,6 @@
     ))
 
 ;; insn data
-;(define CODE (list->vec16 '(0)))
 (define CODE (list->vector '(0)))
 ;; literals
 (define LITS #((object:int 0)))
@@ -456,8 +426,6 @@
 (defmacro OI
   (OI s n) -> (opcode:t s n)
   )
-;;(define (OI name nargs)
-;;  (opcode:t name nargs))
 
 (define opcode-info
   #((OI "lit" 2)
@@ -492,7 +460,6 @@
 
 (define (test)
   (let ((code (load-machine sys.argv[1])))
-    ;;(set! CODE (list->vec16 code.code))
     (set! CODE (list->vector code.code))
     (set! LITS (list->vector code.lits))
     (set! STACK (vmcont:nil))
