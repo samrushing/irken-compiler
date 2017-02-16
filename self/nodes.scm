@@ -417,8 +417,10 @@
        -> (match (unpack-bindings bindings) with
 	    (:pair names inits)
 	    -> (node/fix names (map walk inits) (node/sequence (map walk body))))
-       ((sexp:symbol 'let_subst) (sexp:list ((sexp:symbol from) (sexp:symbol to))) body)
+       ((sexp:symbol 'let-subst) (sexp:list ((sexp:symbol from) (sexp:symbol to))) body)
        -> (node/subst from to (walk body))
+       ((sexp:symbol 'let-subst) . _)
+       -> (error1 "syntax error" (format (join repr " " l)))
        (rator . rands)
        -> (match rator with
 	    (sexp:symbol name)

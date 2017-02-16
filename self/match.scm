@@ -175,7 +175,7 @@
       (pattern:variable var1)
       ;; record a subst to be applied during node building (unless it's a wildcard pattern)
       -> (if (not (eq? var1 '_))
-	     (sexp (sexp:symbol 'let_subst)
+	     (sexp (sexp:symbol 'let-subst)
 		   (sexp (sexp:symbol var1)
 			 (sexp:symbol var0)) code)
 	     code)

@@ -157,7 +157,7 @@
 
   ;; avoid macro-expanding let-subst bindings
   (define expand-let-subst
-    (pair . body) -> (sexp1 'let_subst (LIST pair (expand-body body)))
+    (pair . body) -> (sexp1 'let-subst (LIST pair (expand-body body)))
     x -> (error1 "malformed LET-SUBST" x)
     )
 
@@ -543,7 +543,7 @@
       ('function expand-function)
       ('vcase expand-vcase)
       ('let-splat expand-let-splat)
-      ('let_subst expand-let-subst)
+      ('let-subst expand-let-subst)
       ('match expand-match)
       ('cinclude expand-cinclude)
       ('local-include expand-linclude)
