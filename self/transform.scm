@@ -14,14 +14,33 @@
 
   (define (go exp)
     (let ((expanded
-	   (match exp with
+	   (match (splice exp) with
 	     (sexp:list ())    -> (sexp:list '())
 	     (sexp:list (one)) -> (expand one)
 	     (sexp:list exps)  -> (expand-body (find-declarations exps))
 	     _ -> (error1 "unexpected s-expression in transformer:" exp)
 	     )))
-      (wrap-with-constructors expanded)
+      (wrap-with-constructors (splice expanded))
       ))
+
+  ;; similar to UNQUOTE-SPLICING.
+  ;; (x y ... (%splice a b c) z)
+  ;; -> (x y ... a b c z)
+  
+  (define (splice-list forms acc)
+    (match forms with
+      () -> (reverse acc)
+      ((sexp:list ((sexp:symbol '%splice) . forms0)) . forms1)
+      -> (splice-list forms1 (foldr cons acc (reverse (map splice forms0))))
+      (hd . tl)
+      -> (splice-list tl (list:cons (splice hd) acc))
+      ))
+  
+  (define splice
+    (sexp:list forms)
+    -> (sexp:list (splice-list forms '()))
+    x -> x
+    )
 
   (define (wrap-fix names inits body)
     (if (> (length names) 0)
@@ -534,6 +553,21 @@
   (define (expand-%%sexp list)
     (sexp:list (cons (sexp:symbol '%%sexp) list)))
 
+  (define name->backend
+    'c        -> (backend:c)
+    'llvm     -> (backend:llvm)
+    'bytecode -> (backend:bytecode)
+    x         -> (error1 "unknown backend" x)
+    )
+
+  (define expand-%backend 
+    ((sexp:symbol backend) . forms)
+    -> (if (eq? (name->backend backend) the-context.options.backend)
+           (sexp:list (list:cons (sexp:symbol '%splice) forms))
+           (sexp:list (list:cons (sexp:symbol 'begin) '())))
+    x -> (error1 "malformed %backend form:" x)
+    )
+
   (define transform-table
      (alist/make
       ('if expand-if)
@@ -552,6 +586,7 @@
       ('%%cexp expand-%%cexp)
       ('%%ffi expand-%%ffi)
       ('%%sexp expand-%%sexp)
+      ('%backend expand-%backend)
       ))
 
   go
