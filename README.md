@@ -20,14 +20,7 @@ and a higher degree of safety than languages like C/C++.
 News:
 -----
 
-20151013: I'm working on a generational garbage collector.  Also
-  hoping to add compile-time info that will let me use untagged
-  immediates.
-
-20130301: The 'ctailfun/noreg-ssa' branch has been merged into master.  This is
-  a fairly radical rearchitecting of the compiler that will enable lots of fun
-  new stuff like an LLVM backend, JIT, separate compilation, etc...
-
+20170217: Merged the LLVM backend, plus many new fixes & features.
 
 Introduction/Tutorial:
 ----------------------
@@ -97,3 +90,13 @@ try out another compiler like this:
 
     $ CC="gcc" CFLAGS="-std=c99 -O2 -I." irken ...
 
+LLVM Backend:
+-------------
+
+To use the LLVM backend:
+
+    $ irken vm.scm -llvm
+
+Note: the llvm backend currently assumes that `-flto` can be fed to `clang`, this works
+  on OS X, but seems to fail on FreeBSD & Linux.  I think some kind of plugin is needed.
+  You can remove `-flto` from `flags.scm` if necessary.
