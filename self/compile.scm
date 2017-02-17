@@ -49,6 +49,11 @@
     (print-string (format "system: " cmd "\n"))
     (system cmd)))
 
+(define (exec-bin base)
+  (let ((cmd base))
+    (print-string (format "system: " cmd "\n"))
+    (system cmd)))
+
 (define (get-options argv options)
   (let ((filename-index 1))
     (for-range
@@ -68,6 +73,7 @@
 	  "-O" -> (set! options.optimize #t)
 	  "-p" -> (set! options.profile #t)
 	  "-n" -> (set! options.noletreg #t)
+	  "-x" -> (set! options.exec-bin #t)
 	  x -> (if (char=? #\- (string-ref x 0) )
 		   (raise (:UnknownOption "Unknown option" x))
 		   (set! filename-index i))
@@ -86,6 +92,7 @@ Usage: compile <irken-src-file> [options]
  -O : tell CC to optimize
  -p : generate profile-printing code
  -n : disable letreg optimization
+ -x : execute bin after compile
 "))
 
 (defmacro verbose
@@ -211,8 +218,13 @@ Usage: compile <irken-src-file> [options]
     (when (not the-context.options.nocompile)
 	  (print-string "compiling...\n")
 	  (invoke-cc base the-context.options)
+          (when the-context.options.exec-bin
+            (print-string "executing resulting file...\n")
+            (exec-bin base)
+            #u
+          )
 	  #u
-	  )
+	)
     )
   )
   
