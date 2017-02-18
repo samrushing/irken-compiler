@@ -169,7 +169,7 @@
 (define letters        (string->list "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
 (define all-delimiters (append whitespace delimiters))
 (define digits         (string->list "0123456789"))
-(define printable      (append digits letters (string->list "!\"#$%&'*+,-./:;<=>?@[\\]^_`{|}~")))
+(define printable      (append digits letters (string->list "!\"#$%&'*+,-./:;<=>?@\\^_`[({|})]~")))
 
 (define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
 (define delim?         (char-class all-delimiters))
@@ -183,6 +183,7 @@
   #\newline -> "\\n"
   #\tab     -> "\\t"
   #\return  -> "\\r"
+  #\"       -> "\\\""
   ch        -> (if (printable? ch)
                    (char->string ch)
                    (format "\\x" (zpad 2 (hex (char->ascii ch)))))
