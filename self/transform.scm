@@ -66,7 +66,7 @@
       (wrap-fix (reverse names) (reverse inits) (expand (wrap-begin exps)))))
 
   (define (expand-body exps)
-    (find-definitions exps wrap-definitions))
+    (find-definitions (scan-for-%backend exps) wrap-definitions))
 
   (define (find-declarations exps)
     (define recur
@@ -81,6 +81,18 @@
 	   -> (begin (parse-defmacro dtl) (recur tl acc))
 	   _ -> (recur tl (list:cons hd acc))))
     (recur exps '()))
+
+  (define (scan-for-%backend forms)
+    (define loop
+      acc () -> (reverse acc)
+      acc ((sexp:list ((sexp:symbol '%backend) (sexp:symbol backend) . subs)) . tl)
+      -> (if (eq? (name->backend backend) the-context.options.backend)
+             (loop (foldr cons subs acc) tl)
+             (loop acc tl))
+      acc (hd . tl)
+      -> (loop (list:cons hd acc) tl)
+      )
+    (loop '() forms))
 
   (define (find-definitions exps0 k)
     (define recur
@@ -123,10 +135,12 @@
       -> (match rator with
 	   (sexp:symbol sym)
 	   -> (match (alist/lookup transform-table sym) with
-		(maybe:yes fun) -> (fun rands)
-		(maybe:no)	-> (match (alist/lookup the-context.macros sym) with
-				     (maybe:yes macro) -> (expand (macro.apply (sexp:list l) the-context.options.debugmacroexpansion))
-				     (maybe:no)	       -> (sexp:list (list:cons rator (map expand rands)))))
+		(maybe:yes fun) 
+                -> (fun rands)
+		(maybe:no)	
+                -> (match (alist/lookup the-context.macros sym) with
+                     (maybe:yes macro) -> (expand (macro.apply (sexp:list l) the-context.options.debugmacroexpansion))
+                     (maybe:no)	       -> (sexp:list (list:cons rator (map expand rands)))))
 	   ;; automagically insert the <self> argument
 	   ;; (ob.o.method args0 ...) => (ob.o.method ob args0 ...)
 	   ;; XXX use something like __methods__ rather than 'o', duh.
@@ -560,14 +574,6 @@
     x         -> (error1 "unknown backend" x)
     )
 
-  (define expand-%backend 
-    ((sexp:symbol backend) . forms)
-    -> (if (eq? (name->backend backend) the-context.options.backend)
-           (sexp:list (list:cons (sexp:symbol '%splice) forms))
-           (sexp:list (list:cons (sexp:symbol 'begin) '())))
-    x -> (error1 "malformed %backend form:" x)
-    )
-
   (define transform-table
      (alist/make
       ('if expand-if)
@@ -586,7 +592,6 @@
       ('%%cexp expand-%%cexp)
       ('%%ffi expand-%%ffi)
       ('%%sexp expand-%%sexp)
-      ('%backend expand-%backend)
       ))
 
   go
