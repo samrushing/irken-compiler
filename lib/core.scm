@@ -27,56 +27,71 @@
 (define newline terpri)
 
 (define (= a b)
-  (%%cexp (int int -> bool) "%0==%1" a b))
+  (%backend c (%%cexp (int int -> bool) "%0==%1" a b))
+  (%backend llvm (%llicmp eq a b)))
 
 (define (zero? a)
   (%%cexp (int -> bool) "%0==0" a))
 
 (define (< a b)
-  (%%cexp (int int -> bool) "%0<%1" a b))
+  (%backend c (%%cexp (int int -> bool) "%0<%1" a b))
+  (%backend llvm (%llicmp slt a b)))
 
 (define (<= a b)
-  (%%cexp (int int -> bool) "%0<=%1" a b))
+  (%backend c (%%cexp (int int -> bool) "%0<=%1" a b))
+  (%backend llvm (%llicmp sle a b)))
 
 (define (> a b)
-  (%%cexp (int int -> bool) "%0>%1" a b))
+  (%backend c (%%cexp (int int -> bool) "%0>%1" a b))
+  (%backend llvm (%llicmp sgt a b)))
 
 (define (>= a b)
-  (%%cexp (int int -> bool) "%0>=%1" a b))
+  (%backend c (%%cexp (int int -> bool) "%0>=%1" a b))
+  (%backend llvm (%llicmp sge a b)))
 
 (define (>0 a)
-  (%%cexp (int -> bool) "%0>0" a))
+  (%backend c (%%cexp (int -> bool) "%0>0" a))
+  (%backend llvm (%llicmp sgt a 0)))
 
 (define (<0 a)
-  (%%cexp (int -> bool) "%0<0" a))
+  (%backend c (%%cexp (int -> bool) "%0<0" a))
+  (%backend llvm (%llicmp slt a 0)))
 
 (define (binary+ a b)
-  (%%cexp (int int -> int) "%0+%1" a b))
+  (%backend c (%%cexp (int int -> int) "%0+%1" a b))
+  (%backend llvm (%llarith add a b)))
+
+(define (binary- a b)
+  (%backend c (%%cexp (int int -> int) "%0-%1" a b))
+  (%backend llvm (%llarith sub a b)))
+
+(define (binary* a b)
+  (%backend c (%%cexp (int int -> int) "%0*%1" a b))
+  (%backend llvm (%llarith mul a b)))
 
 (defmacro +
   (+ x)       -> x
   (+ a b ...) -> (binary+ a (+ b ...)))
-
-(define (binary- a b)
-  (%%cexp (int int -> int) "%0-%1" a b))
 
 (defmacro -
   (- a)         -> (binary- 0 a)
   (- a b)	-> (binary- a b)
   (- a b c ...) -> (- (binary- a b) c ...))
 
-(define (binary* a b)
-  (%%cexp (int int -> int) "%0*%1" a b))
-
 (defmacro *
   (* x) -> x
   (* a b ...) -> (binary* a (* b ...)))
 
 (define (/ a b)
-  (%%cexp (int int -> int) "%0/%1" a b))
+  (%backend c (%%cexp (int int -> int) "%0/%1" a b))
+  (%backend llvm (%llarith sdiv a b)))
 
+;; Note: this is incorrect! mod and remainder are not the same
+;;  operation. See http://en.wikipedia.org/wiki/Modulo_operation
+;;  [specifically, the sign of the result can differ]
 (define (mod a b)
-  (%%cexp (int int -> int) "%0 %% %1" a b))
+  (%backend c (%%cexp (int int -> int) "%0 %% %1" a b))
+  (%backend llvm (%llarith srem a b)))
 
 (define remainder mod)
 
@@ -84,34 +99,44 @@
   (:tuple (/ a b) (remainder a b)))
 
 (define (<< a b)
-  (%%cexp (int int -> int) "%0<<%1" a b))
+  (%backend c (%%cexp (int int -> int) "%0<<%1" a b))
+  (%backend llvm (%llarith shl a b)))
 
 (define (>> a b)
-  (%%cexp (int int -> int) "%0>>%1" a b))
+  (%backend c (%%cexp (int int -> int) "%0>>%1" a b))
+  (%backend llvm (%llarith ashr a b)))
 
 (define (bit-get n i)
-  (%%cexp (int int -> bool) "(%0&(1<<%1))>0" n i))
+  (%backend c (%%cexp (int int -> bool) "(%0&(1<<%1))>0" n i))
+  (%backend llvm (> (logand n (<< 1 i)) 0)))
 
 (define (bit-set n i)
-  (%%cexp (int int -> int) "%0|(1<<%1)" n i))
+  (%backend c (%%cexp (int int -> int) "%0|(1<<%1)" n i))
+  (%backend llvm (logior n (<< 1 i))))
 
 ;; any reason I can't use the same characters that C does?
 ;; yeah - '|' is a comment start character in scheme.
 (define (logior a b)
-  (%%cexp (int int -> int) "%0|%1" a b))
+  (%backend c (%%cexp (int int -> int) "%0|%1" a b))
+  (%backend llvm (%llarith or a b)))
 
 (define (logxor a b)
-  (%%cexp (int int -> int) "%0^%1" a b))
+  (%backend c (%%cexp (int int -> int) "%0^%1" a b))
+  (%backend llvm (%llarith xor a b)))
 
 (define (logand a b)
-  (%%cexp (int int -> int) "%0&%1" a b))
+  (%backend c (%%cexp (int int -> int) "%0&%1" a b))
+  (%backend llvm (%llarith and a b)))
 
-(define (lognot a b)
-  (%%cexp (int int -> int) "%0~%1" a b))
+(define (lognot a)
+  (%backend c (%%cexp (int -> int) "~%0" a))
+  (%backend llvm (- -1 a)))
 
+;; note: use llvm.minnum
 (define (min x y)
   (if (< x y) x y))
 
+;; note: use llvm.maxnum
 (define (max x y)
   (if (> x y) x y))
 
