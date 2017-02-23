@@ -3,6 +3,11 @@
 ;; http://eternallyconfuzzled.com/tuts/datastructures/jsw_tut_andersson.aspx
 ;; http://en.wikipedia.org/wiki/AA_tree
 
+;; Note: for a while this was used as the main mapping data structure for Irken.
+;;  in late 2016 I removed recursive types from the compiler, added a delete!
+;;  to the red-black code, and deprecated this module.  It's possible to rewrite
+;;  this using a datatype to capture the recursion, I just haven't bothered yet.
+
 ;; this code is based on the C examples given by Julienne, and as such isn't
 ;;   very representative of an Irken/ML style.  I'd like to make a pure functional
 ;;   implementation, and if possible make skew & split tail-recursive by making
@@ -85,6 +90,7 @@
   -> (set! root (tree/delete root key < =)))
 
 ;; XXX make this pure.
+;; [see https://github.com/samrushing/faa for a working pure delete]
 
 (define (tree/delete root key key-less? key-equal?)
   (let recur ((root root) (key key))
