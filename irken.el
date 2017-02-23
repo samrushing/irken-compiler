@@ -83,6 +83,11 @@
 (put 'while 'scheme-indent-function 1)
 (put 'when 'scheme-indent-function 1)
 
+;; I want it to indent to the same place (i.e., unnatural lisp).
+;;  this doesn't do it.
+;;(put '%backend 'scheme-indent-function 0)
+
+(require 'align)
 ;; This allows "M-x align" to line up a series of pattern-matches, try it!
 (add-to-list 'align-rules-list
    '(irken-patterns
