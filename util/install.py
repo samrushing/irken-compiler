@@ -40,7 +40,7 @@ for path in os.listdir ('lib'):
         system ('cp -p %s %s' % (PJ ('lib', path), IRKENLIB))
 
 # copy headers
-headers = ['header1.c', 'gc1.c', 'pxll.h', 'rdtsc.h', 'premable.ll']
+headers = ['header1.c', 'gc1.c', 'pxll.h', 'rdtsc.h', 'preamable.ll']
 for path in headers:
     system ('cp -p include/%s %s' % (path, IRKENINC))
 
