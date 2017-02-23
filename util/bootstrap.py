@@ -56,8 +56,8 @@ open ('self/flags.scm', 'wb').write (
 (define CFLAGS "%s")
 """ % (gcc, cflags))
 
-print 'protecting bootstrap compiler'
-copy ('self/compile.c', 'self/compile.backup.c')
+print 'copying the bootstrap compiler'
+copy ('self/bootstrap.c', 'self/compile.c')
 
 print 'compiling stage0 binary:'
 system ('%s %s self/compile.c -o self/compile' % (gcc, cflags))
