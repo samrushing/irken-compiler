@@ -49,7 +49,7 @@
   (tree/insert! (kfilt filter) < ident k))
 
 (define (poller/delete-event ident filter)
-  (tree/delete! (kfilt filter) ident < =))
+  (tree/delete! (kfilt filter) < ident))
   (set! the-poller.nwait (- the-poller.nwait 1))
 
 ;; put the current thread to sleep while waiting for the kevent (ident, filter).
