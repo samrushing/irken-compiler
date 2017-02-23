@@ -1,0 +1,7 @@
+self/compile.c
+self/compile.ll
+self/compile
+doom/*.c
+doom/*.ll
+tests/*.c
+tests/*.ll
