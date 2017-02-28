@@ -16,7 +16,7 @@
 
 (define object-repr
   (object:int n)     -> (format (int n))
-  (object:char n)    -> (format (char n))
+  (object:char n)    -> (format "#\\" (char n)) ;; note: printable/non-printable, newline, etc...
   (object:bool b)    -> (format (bool b))
   (object:string s)  -> (format (string s))
   (object:undefined) -> "#u"
@@ -473,8 +473,8 @@
     (set! LITS (list->vector code.lits))
     (set! STACK (vmcont:nil))
     ;;(printn OPS)
-    (printn CODE)
-    (printn LITS)
+    ;;(printn CODE)
+    ;;(printn LITS)
     (set! pc 0)
     (next-insn)
     (printf (object-repr RETVAL) "\n")
