@@ -4,28 +4,31 @@
 
 (define opcode-info
   ;;    name   nargs    args
-  (list->vector 
+  (list->vector
    (LIST
-    (OI 'lit    2)   ;; target index       
-    (OI 'ret    1)   ;; val                
-    (OI 'add    3)   ;; target a b         
-    (OI 'sub    3)   ;; target a b         
-    (OI 'eq     3)   ;; target a b         
-    (OI 'tst    2)   ;; val offset         
-    (OI 'jmp    1)   ;; offset             
-    (OI 'fun    2)   ;; target offset      
-    (OI 'tail   2)   ;; closure args       
-    (OI 'tail0  1)   ;; closure            
-    (OI 'env    2)   ;; target size        
-    (OI 'arg    3)   ;; tuple arg index    
-    (OI 'ref    3)   ;; target depth index 
-    (OI 'mov    2)   ;; dst src            
-    (OI 'push   1)   ;; args               
-    (OI 'trcall 3)   ;; offset depth nregs 
-    (OI 'ref0   2)   ;; target index       
-    (OI 'call   3)   ;; closure args nregs 
-    (OI 'pop    1)   ;; target             
-    (OI 'ge     3)   ;; target a b         
+    (OI 'lit    2)   ;; target index
+    (OI 'ret    1)   ;; val
+    (OI 'add    3)   ;; target a b
+    (OI 'sub    3)   ;; target a b
+    (OI 'eq     3)   ;; target a b
+    (OI 'lt     3)   ;; target a b
+    (OI 'gt     3)   ;; target a b
+    (OI 'le     3)   ;; target a b
+    (OI 'ge     3)   ;; target a b
+    (OI 'tst    2)   ;; val offset
+    (OI 'jmp    1)   ;; offset
+    (OI 'fun    2)   ;; target offset
+    (OI 'tail   2)   ;; closure args
+    (OI 'tail0  1)   ;; closure
+    (OI 'env    2)   ;; target size
+    (OI 'arg    3)   ;; tuple arg index
+    (OI 'ref    3)   ;; target depth index
+    (OI 'mov    2)   ;; dst src
+    (OI 'push   1)   ;; args
+    (OI 'trcall 3)   ;; offset depth nregs
+    (OI 'ref0   2)   ;; target index
+    (OI 'call   3)   ;; closure args nregs
+    (OI 'pop    1)   ;; target
     (OI 'print  1)   ;; arg
     )))
 
@@ -198,7 +201,7 @@
          )))
 
     (define (emit-jump reg target jn free)
-      (append 
+      (append
        (LINSN 'mov target reg)
        (LINSN 'jmp (jump-label-map::get-err jn "jump number not in map"))))
 
@@ -207,7 +210,7 @@
     (define (emit-literals)
       (for-list lit (reverse lits)
         (match lit with
-          (literal:int n)   
+          (literal:int n)
           -> (if (< n 0)
                  (o.copy (format "-" (encode-int (- 0 n))))
                  (o.copy (format "+" (encode-int n))))
@@ -272,7 +275,7 @@
     (define (emit-stream s)
       (for-list item s
         (match item with
-          (stream:insn name args) 
+          (stream:insn name args)
           -> (o.copy (encode-insn name args))
           _ -> (error1 "unresolved label?" item)
           )))

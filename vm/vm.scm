@@ -23,7 +23,7 @@
   (object:symbol s)  -> (format (sym s))
   (object:closure lits code pc lenv)
   -> (format "<closure>") ;; tbd
-  (object:tuple vals) 
+  (object:tuple vals)
   -> (format "{" (join object-repr " " (vector->list vals)) "}")
   )
 
@@ -65,7 +65,7 @@
     (define (read-int)
       (let ((n (char->ascii (next))))
 	(if (= n 255)
-	    (let loop ((n 0) 
+	    (let loop ((n 0)
                        (len (char->ascii (next))))
 	      (if (zero? len)
 		  n
@@ -219,6 +219,9 @@
 (define insn-add (binop + object:int))
 (define insn-sub (binop - object:int))
 (define insn-eq  (binop = object:bool))
+(define insn-lt  (binop < object:bool))
+(define insn-gt  (binop > object:bool))
+(define insn-le  (binop <= object:bool))
 (define insn-ge  (binop >= object:bool))
 
 (define (insn-print)
@@ -253,7 +256,7 @@
   ;; extend closure's environment with args, jump
   (match REGS[CODE[(+1 pc)]] with
     (object:closure lits0 code0 pc0 lenv0)
-    -> (begin 
+    -> (begin
 	 (set! LENV (lenv:rib REGS[CODE[(+2 pc)]] lenv0))
 	 (set! LITS lits0)
 	 (set! CODE code0)
@@ -267,7 +270,7 @@
   ;; <tail0> <closure-reg>
   (match REGS[CODE[(+1 pc)]] with
     (object:closure lits0 code0 pc0 lenv0)
-    -> (begin 
+    -> (begin
 	 (set! LENV lenv0)
 	 (set! LITS lits0)
 	 (set! CODE code0)
@@ -411,9 +414,13 @@
    (LIST
     insn-lit
     insn-ret
-    insn-add ;; prim
-    insn-sub ;; prim
-    insn-eq  ;; prim
+    insn-add
+    insn-sub
+    insn-eq
+    insn-lt
+    insn-gt
+    insn-ge
+    insn-le
     insn-tst
     insn-jmp
     insn-fun
@@ -442,6 +449,10 @@
     (OI "add" 3)
     (OI "sub" 3)
     (OI "eq" 3)
+    (OI "lt" 3)
+    (OI "gt" 3)
+    (OI "le" 3)
+    (OI "ge" 3)
     (OI "tst" 2)
     (OI "jmp" 1)
     (OI "fun" 2)
@@ -456,7 +467,6 @@
     (OI "ref0" 2)
     (OI "call" 3)
     (OI "pop" 1)
-    (OI "ge" 3)
     (OI "print" 1)
     ))
 
