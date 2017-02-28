@@ -1,9 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/core.scm")
-(include "lib/string.scm")
-(include "lib/pair.scm")
-(include "lib/io.scm")
+(include "lib/basis.scm")
 (include "lib/os.scm")
 
 (datatype object
@@ -11,11 +8,23 @@
   (:char char)
   (:bool bool)
   (:string string)
-  (:undefined undefined)
+  (:undefined)
   (:symbol symbol)
-  (:continuation continuation)
   (:closure (vector object) (vector int) int lenv)
   (:tuple (vector object))
+  )
+
+(define object-repr
+  (object:int n)     -> (format (int n))
+  (object:char n)    -> (format (char n))
+  (object:bool b)    -> (format (bool b))
+  (object:string s)  -> (format (string s))
+  (object:undefined) -> "#u"
+  (object:symbol s)  -> (format (sym s))
+  (object:closure lits code pc lenv)
+  -> (format "<closure>") ;; tbd
+  (object:tuple vals) 
+  -> (format "{" (join object-repr " " (vector->list vals)) "}")
   )
 
 (datatype lenv
@@ -37,15 +46,12 @@
 ;;  (:t (vector object) (vector int))
 ;;  )
 
-(define (CONS a b) (list:cons a b))
-(define (NIL) (list:nil))
-
 (define (load-machine path)
 
   (let ((f (file/open-read path))
 	(code (file/read-buffer f))
 	(pc 0)
-	(r (NIL))
+	(r '())
 	)
 
     (define (next)
@@ -59,28 +65,32 @@
     (define (read-int)
       (let ((n (char->ascii (next))))
 	(if (= n 255)
-	    (let loop ((n 0) (len (char->ascii (next))))
+	    (let loop ((n 0) 
+                       (len (char->ascii (next))))
 	      (if (zero? len)
 		  n
-		  (loop (+ (<< n 8) (char->ascii (next))) (sub1 len))))
+		  (loop (+ (<< n 8) (char->ascii (next)))
+                        (sub1 len))))
 	    n)))
 
     (let ((lits
 	   ;; read vector of literals
-	   (let loop ((lits (NIL)))
+	   (let loop ((lits '()))
 	     (match (next) with
-	       #\+ -> (loop (CONS (object:int (read-int)) lits))
-	       #\- -> (loop (CONS (object:int (- 0 (read-int))) lits))
-	       #\T -> (loop (CONS (object:bool #t) lits))
-	       #\F -> (loop (CONS (object:bool #f) lits))
+	       #\+ -> (loop (cons (object:int (read-int)) lits))
+	       #\- -> (loop (cons (object:int (- 0 (read-int))) lits))
+	       #\T -> (loop (cons (object:bool #t) lits))
+	       #\F -> (loop (cons (object:bool #f) lits))
+               #\u -> (loop (cons (object:undefined) lits))
+               #\c -> (loop (cons (object:char (ascii->char (read-int))) lits))
 	       #\. -> (reverse lits)
 	       _ -> (error "reading lits")
 	       ))))
 
-      (let loop ((stream (NIL)))
+      (let loop ((stream '()))
 	(if (= pc (string-length code))
 	    { code = (reverse stream) lits = lits }
-	    (loop (CONS (read-int) stream))))
+	    (loop (cons (read-int) stream))))
       )))
 
 (define (+1 a) (+ 1 a))
@@ -90,13 +100,12 @@
 (define (sub1 a) (- a 1))
 
 (define print-object
-  (object:int n)           -> (print n)
-  (object:char ch)         -> (print ch)
-  (object:bool b)          -> (print b)
-  (object:string s)        -> (print s)
-  (object:undefined u)     -> (print u)
-  (object:symbol s)        -> (print s)
-  (object:continuation c)  -> (print c)
+  (object:int n)           -> (printf (int n))
+  (object:char ch)         -> (printf (char ch))
+  (object:bool b)          -> (printf (bool b))
+  (object:string s)        -> (printf (string s))
+  (object:undefined)       -> (printf "#u")
+  (object:symbol s)        -> (printf (sym s))
   (object:closure a b c d) -> (begin (print-string "<closure>") #u)
   (object:tuple t)         -> (print t)
   x -> #u
@@ -144,7 +153,7 @@
   )
 
 ;; the tracing version
-(define (next-insn0)
+(define (next-insn)
   (let ((opcode CODE[pc])
 	(info opcode-info[opcode]))
     (match info with
@@ -172,7 +181,7 @@
            ))))
 
 ;; the normal version
-(define (next-insn)
+(define (next-insn0)
   (OPS[CODE[pc]])
   )
 
@@ -213,7 +222,7 @@
 (define insn-ge  (binop >= object:bool))
 
 (define (insn-print)
-  (printn REGS[CODE[(+1 pc)]])
+  (printf (object-repr REGS[CODE[(+1 pc)]]))
   (set! pc (+2 pc))
   (next-insn))
 
@@ -402,9 +411,9 @@
    (LIST
     insn-lit
     insn-ret
-    insn-add
-    insn-sub
-    insn-eq
+    insn-add ;; prim
+    insn-sub ;; prim
+    insn-eq  ;; prim
     insn-tst
     insn-jmp
     insn-fun
@@ -420,7 +429,7 @@
     insn-call
     insn-pop
     insn-ge
-    insn-print
+    insn-print ;; prim
     )))
 
 (defmacro OI
@@ -463,12 +472,12 @@
     (set! CODE (list->vector code.code))
     (set! LITS (list->vector code.lits))
     (set! STACK (vmcont:nil))
-    (printn OPS)
+    ;;(printn OPS)
     (printn CODE)
     (printn LITS)
     (set! pc 0)
     (next-insn)
-    (printn RETVAL)
+    (printf (object-repr RETVAL) "\n")
     ))
 
 (test)
