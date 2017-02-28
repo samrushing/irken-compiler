@@ -10,7 +10,7 @@
   (:string string)
   (:undefined)
   (:symbol symbol)
-  (:closure (vector object) (vector int) int lenv)
+  (:closure (vector object) (vector int) int lenv) ;; add <name>
   (:tuple (vector object))
   )
 
@@ -138,8 +138,9 @@
 (define pc 0)
 
 (datatype opcode
-  (:t string int))
-
+  (:t string int (-> undefined))
+  )
+  
 (define (print-args n)
   (print-string "\t")
   (let loop ((i 0))
@@ -157,7 +158,7 @@
   (let ((opcode CODE[pc])
 	(info opcode-info[opcode]))
     (match info with
-       (opcode:t name nargs)
+       (opcode:t name nargs _)
        -> (begin
 	    (print pc)
 	    (print-string "\t" )
@@ -169,7 +170,7 @@
   (let ((opcode CODE[pc])
 	(info opcode-info[opcode]))
     (match info with
-      (opcode:t name nargs)
+      (opcode:t name nargs _)
       -> (begin
            (printf "------------***\n"
                    "Error in VM:\n"
@@ -295,7 +296,6 @@
     -> (begin
 	 (set! args[CODE[(+3 pc)]] REGS[CODE[(+2 pc)]])
 	 (set! pc (+4 pc))
-;	 (printn args)
 	 (next-insn))
     _ -> (vm-error)
     ))
@@ -329,7 +329,8 @@
   ;; MOV <dst-ref> <src-reg>
   (set! REGS[CODE[(+1 pc)]] REGS[CODE[(+2 pc)]])
   (set! pc (+3 pc))
-  (next-insn))
+  (next-insn)
+  )
 
 (define (insn-push)
   ;; PUSH <args-reg>
@@ -409,66 +410,44 @@
 ;; literals
 (define LITS #((object:int 0)))
 ;; opcodes
-(define OPS
-  (list->vector
-   (LIST
-    insn-lit
-    insn-ret
-    insn-add
-    insn-sub
-    insn-eq
-    insn-lt
-    insn-gt
-    insn-ge
-    insn-le
-    insn-tst
-    insn-jmp
-    insn-fun
-    insn-tail
-    insn-tail0
-    insn-env
-    insn-arg
-    insn-ref
-    insn-mov
-    insn-push
-    insn-trcall
-    insn-ref0
-    insn-call
-    insn-pop
-    insn-ge
-    insn-print ;; prim
-    )))
-
-(defmacro OI
-  (OI s n) -> (opcode:t s n)
-  )
 
 (define opcode-info
-  #((OI "lit" 2)
-    (OI "ret" 1)
-    (OI "add" 3)
-    (OI "sub" 3)
-    (OI "eq" 3)
-    (OI "lt" 3)
-    (OI "gt" 3)
-    (OI "le" 3)
-    (OI "ge" 3)
-    (OI "tst" 2)
-    (OI "jmp" 1)
-    (OI "fun" 2)
-    (OI "tail" 2)
-    (OI "tail0" 1)
-    (OI "env" 2)
-    (OI "arg" 3)
-    (OI "ref" 3)
-    (OI "mov" 2)
-    (OI "push" 1)
-    (OI "trcall" 3)
-    (OI "ref0" 2)
-    (OI "call" 3)
-    (OI "pop" 1)
-    (OI "print" 1)
-    ))
+  (list->vector
+   (LIST
+    (opcode:t "lit"     2 insn-lit)
+    (opcode:t "ret"     1 insn-ret)
+    (opcode:t "add"     3 insn-add)
+    (opcode:t "sub"     3 insn-sub)
+    (opcode:t "eq"      3 insn-eq)
+    (opcode:t "lt"      3 insn-lt)
+    (opcode:t "gt"      3 insn-gt)
+    (opcode:t "le"      3 insn-ge)
+    (opcode:t "ge"      3 insn-le)
+    (opcode:t "tst"     2 insn-tst)
+    (opcode:t "jmp"     1 insn-jmp)
+    (opcode:t "fun"     2 insn-fun)
+    (opcode:t "tail"    2 insn-tail)
+    (opcode:t "tail0"   1 insn-tail0)
+    (opcode:t "env"     2 insn-env)
+    (opcode:t "arg"     3 insn-arg)
+    (opcode:t "ref"     3 insn-ref)
+    (opcode:t "mov"     2 insn-mov)
+    (opcode:t "push"    1 insn-push)
+    (opcode:t "trcall"  3 insn-trcall)
+    (opcode:t "ref0"    2 insn-ref0)
+    (opcode:t "call"    3 insn-call)
+    (opcode:t "pop"     1 insn-pop)
+    (opcode:t "print"   1 insn-ge)
+    )))
+
+(define OPS
+  (let ((nops (vector-length opcode-info))
+        (v (make-vector nops insn-lit)))
+    (for-range i nops
+      (match opcode-info[i] with
+        (opcode:t name nargs fun) -> (set! v[i] fun)
+        ))
+    v))
 
 ;; lexical env
 (define LENV (lenv:nil))
