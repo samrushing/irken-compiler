@@ -303,23 +303,6 @@
 		      )))
 	_ -> type)))
 
-  (define (type-of-ffi gens sig exp tenv)
-    (let ((type (instantiate-type-scheme gens sig)))
-      (match type with
-	(type:pred 'arrow pargs _)
-	-> (if (not (= (- (length pargs) 1) (length (noderec->subs exp))))
-	       (error1 "wrong number of args to cexp" exp)
-	       (match pargs with
-		 () -> (error1 "malformed arrow type" sig)
-		 (result-type . parg-types)
-		 -> (let ((arg-types (map (lambda (x) (type-of x tenv)) (noderec->subs exp))))
-		      (for-each2 (lambda (a b)
-				   (unify exp (unraw a) b))
-				 parg-types arg-types)
-		      result-type
-		      )))
-	_ -> type)))
-
   (define (type-of-conditional exp tenv)
     (match (map (lambda (x) (type-of x tenv)) (noderec->subs exp)) with
       (tif tthen telse)
