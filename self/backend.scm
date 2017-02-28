@@ -336,8 +336,16 @@ static void prof_dump (void)
 
 (include "self/c.scm")
 (include "self/llvm.scm")
+(include "self/bytecode.scm")
 
 (define (compile-with-backend base cps)
+  (match the-context.options.backend with
+    (backend:bytecode)
+    -> (compile-to-bytecode base cps)
+    _ -> (compile-with-backend0 base cps)
+    ))
+
+(define (compile-with-backend0 base cps)
 
   (let ((opath (string-append base ".c"))
 	(ofile (file/open-write opath #t #o644))

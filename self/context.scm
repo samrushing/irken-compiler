@@ -31,7 +31,6 @@
     scc-graph           = '()
     vars                = (tree/empty)
     funs                = (tree/empty)
-    regalloc            = (make-register-allocator)
     standard-macros     = "lib/derived.scm"
     cincludes           = '()
     lincludes           = '()

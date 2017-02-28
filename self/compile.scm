@@ -67,13 +67,13 @@
 	  "-m" -> (set! options.debugmacroexpansion #t)
 	  "-dt" -> (set! options.debugtyping #t)
 	  "-ni" -> (set! options.noinline #t)
-	  ;; this option only applies to the C compilation phase.
-	  "-O" -> (set! options.optimize #t)
 	  "-p" -> (set! options.profile #t)
 	  "-n" -> (set! options.noletreg #t)
 	  "-q" -> (set! options.quiet #t)
 	  "-nr" -> (set! options.no-range-check #t)
+          ;; XXX make these mutually exclusive?
 	  "-llvm" -> (set! options.backend (backend:llvm))
+          "-b" -> (set! options.backend (backend:bytecode))
           "-h"  -> (usage)
           "-help" -> (usage)
 	  x -> (if (char=? #\- (string-ref x 0) )
@@ -94,10 +94,13 @@ Usage: compile <irken-src-file> [options]
  -m : debug macro expansion
  -dt : debug typing
  -ni : no inlining
- -O : tell CC to optimize
  -p : generate profile-printing code
  -n : disable letreg optimization
+ -q : quiet the compiler
+ -nr : no range check (e.g. vector access)
  -h : display this usage
+ -llvm : compile using the LLVM backend.
+ -b : compile using the bytecode backend.
 "))
 
 (define (warning msg)

@@ -63,13 +63,25 @@
   )
 
 (define (make-register-allocator)
-  (let ((max-reg -1))
-    (define (allocate free)
-      (set! max-reg (+ max-reg 1))
-      max-reg)
-    (define (get-max) max-reg)
-    (define (reset) (set! max-reg -1))
-    {alloc=allocate get-max=get-max reset=reset}
+  (match the-context.options.backend with
+    (backend:bytecode)
+    -> (let ((max-reg -1))
+         (define (allocate free)
+           (let loop ((i 0))
+             (if (member? i free =)
+                 (loop (+ i 1))
+                 (begin (set! max-reg (max i max-reg)) i))))
+         (define (get-max) max-reg)
+         {alloc=allocate get-max=get-max}
+         )
+    _
+    -> (let ((max-reg -1))
+         (define (allocate free)
+           (set! max-reg (+ max-reg 1))
+           max-reg)
+         (define (get-max) max-reg)
+         {alloc=allocate get-max=get-max}
+         )
     ))
 
 ;; perhaps name these cont/xxx could be confusing.
@@ -91,13 +103,14 @@
 
 (define (compile exp)
 
-  (let ((current-funs '(top)))
+  (let ((current-funs '(top))
+        (regalloc (make-register-allocator)))
 
     (define (set-flag! flag)
       (vars-set-flag! (car current-funs) flag))
 
     (define (cont free generator)
-      (let ((reg (the-context.regalloc.alloc free)))
+      (let ((reg (regalloc.alloc free)))
 	(cont:k reg free (generator reg))))
 
     (define (dead free k)
