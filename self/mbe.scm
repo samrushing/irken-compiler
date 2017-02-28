@@ -151,6 +151,7 @@
 (define (expand-pattern p r) ;; sexp, (list sexp) -> sexp
   (match p with
     (sexp:list pl)    -> (sexp:list (expand-list pl r))
+    (sexp:vector pl)  -> (sexp:vector (expand-list pl r))
     (sexp:symbol sym) -> (match (mbe/assoc sym r) with
 			    (maybe:yes v) -> v
 			    (maybe:no)    -> p)
