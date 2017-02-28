@@ -368,7 +368,7 @@ clear_space (object * p, pxll_int n)
 void
 clear_space (object * p, pxll_int n)
 {
-  memset (p, 0, sizeof(object) * n);
+  memset (p, (int) PXLL_NIL, sizeof(object) * n);
 }
 #endif
 
