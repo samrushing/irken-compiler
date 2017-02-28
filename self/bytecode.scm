@@ -1,38 +1,69 @@
 ;; -*- Mode: Irken -*-
 
-(define op_lit     (ascii->char 0))
-(define op_ret     (ascii->char 1))
-(define op_add     (ascii->char 2))
-(define op_sub     (ascii->char 3))
-(define op_eq      (ascii->char 4))
-(define op_tst     (ascii->char 5))
-(define op_jmp     (ascii->char 6))
-(define op_fun     (ascii->char 7))
-(define op_tail    (ascii->char 8))
-(define op_tail0   (ascii->char 9))
-(define op_env     (ascii->char 10))
-(define op_arg     (ascii->char 11))
-(define op_ref     (ascii->char 12))
-(define op_mov     (ascii->char 13))
-(define op_push    (ascii->char 14))
-(define op_trcall  (ascii->char 15))
-(define op_ref0    (ascii->char 16))
-(define op_call    (ascii->char 17))
-(define op_pop     (ascii->char 18))
-(define op_ge      (ascii->char 19))
-(define op_print   (ascii->char 20))
-    
+(define (OI name nargs) {code=0 name=name nargs=nargs})
+
+(define opcode-info
+  ;;    name   nargs    args
+  (list->vector 
+   (LIST
+    (OI 'lit    2)   ;; target index       
+    (OI 'ret    1)   ;; val                
+    (OI 'add    3)   ;; target a b         
+    (OI 'sub    3)   ;; target a b         
+    (OI 'eq     3)   ;; target a b         
+    (OI 'tst    2)   ;; val offset         
+    (OI 'jmp    1)   ;; offset             
+    (OI 'fun    2)   ;; target offset      
+    (OI 'tail   2)   ;; closure args       
+    (OI 'tail0  1)   ;; closure            
+    (OI 'env    2)   ;; target size        
+    (OI 'arg    3)   ;; tuple arg index    
+    (OI 'ref    3)   ;; target depth index 
+    (OI 'mov    2)   ;; dst src            
+    (OI 'push   1)   ;; args               
+    (OI 'trcall 3)   ;; offset depth nregs 
+    (OI 'ref0   2)   ;; target index       
+    (OI 'call   3)   ;; closure args nregs 
+    (OI 'pop    1)   ;; target             
+    (OI 'ge     3)   ;; target a b         
+    (OI 'print  1)   ;; arg
+    )))
+
+(for-range i (vector-length opcode-info)
+  (let ((info opcode-info[i]))
+    (set! info.code i)))
+
+(define (name->info name)
+  (let/cc return
+    (for-vector op opcode-info
+       (if (eq? name op.name)
+           (return op)))
+    (raise (:NoSuchOpcode name))))
+
+(define (name->opcode name)
+  (let ((info (name->info name)))
+    info.code
+    ))
+
 ;; insn stream consists of bytecodes, label defs, and label refs.
 (datatype stream
-  (:label-def int)
-  (:label-ref int)
-  (:code string)
+  (:label int)
+  (:insn symbol (list int))
   )
 
 (define stream-repr
-  (stream:label-def n) -> (format "L" (int n) ":")
-  (stream:label-ref n) -> (format " L" (int n))
-  (stream:code s)      -> (format " " (string s))
+  (stream:label n)  -> (format "L" (int n) ":")
+  (stream:insn op args) -> (format " " (sym op) " " (join int->string " " args))
+  )
+
+(defmacro INSN
+  (INSN name arg0 ...)
+  -> (stream:insn name (LIST arg0 ...))
+  )
+
+(defmacro LINSN
+  (LINSN arg0 ...)
+  -> (LIST (INSN arg0 ...))
   )
 
 ;; Note: this bytecode design assumes < 256 registers.
@@ -45,6 +76,7 @@
         (lits '())
         (nlit 0)
 	(label-counter (make-counter 1))
+        (used-jumps (find-jumps cps))
         (jump-label-map (map-maker <))
         )
 
@@ -60,11 +92,11 @@
     (define (emit insn)
       (match insn with
         (insn:literal lit k)			      -> (emitk (emit-literal lit (k/target k)) k)
-        (insn:return target)                          -> (emitk (emit-return target) (cont:nil))
+        (insn:return target)                          -> (emit-return target)
         (insn:cexp sig type template args k)          -> (emitk (emit-cexp sig type template args (k/target k)) k)
         (insn:move dst var k)                         -> (emitk (emit-move dst var (k/target k)) k)
-        (insn:test reg jn k0 k1 k)                    -> (emitk (emit-test reg jn k0 k1 k) (cont:nil))
-        ;;(insn:jump reg target jn free)                -> (emitk (emit-jump reg target jn free) (cont:nil))
+        (insn:test reg jn k0 k1 k)                    -> (emit-test reg jn k0 k1 k)
+        (insn:jump reg target jn free)                -> (emit-jump reg target jn free)
         ;; (insn:litcon i kind k)                       -> (begin (emit-litcon i kind (k/target k)) k)
         ;; (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
         ;; (insn:ffi sig type name args k)              -> (error1 "no FFI in C backend" insn)
@@ -87,22 +119,6 @@
         _ -> (error1 "NYI" insn)
         ))
 
-    ;; the toy vm worked like this: all literals (including immediates) were collected into a vector
-    ;;   that was then always referenced by index.  this was done by modifying the CPS stage slightly.
-    ;;   I'd like to avoid that now, so can we emulate it to get started?  Or do we make two different
-    ;;   'lit' insns in the vm?  Like, 'lit' and 'imm'?  How will 'imm' encode its type? [we could just
-    ;;   use the existing irken runtime encoding, read it as an integer and decode at runtime?]
-    ;;
-    ;; ok, after a second look at vm.scm, I see now that it avoids any decoding at runtime. so the
-    ;;   code stream is just integers, and we need to keep it the way it was.  Probably means to avoid
-    ;;   modifying cps.scm we need to track all immediates here.  Let's start simply, and de-duplication
-    ;;   later.
-
-;    def insn_lit (self, insn):
-;        lit_index = insn.params
-;        return [opcodes.lit, insn.target, self.encode_int (lit_index)]
-
-
     (define (encode-int n)
 
       (define E
@@ -122,51 +138,27 @@
       (let ((index nlit))
         (PUSH lits lit)
         (set! nlit (+ 1 nlit))
-        (LIST (stream:code 
-               (format (char op_lit)
-                       (char (ascii->char target))
-                       (encode-int index))))
-        ))
-    
+        (LINSN 'lit target index)))
+
     (define (emit-return reg)
-      (LIST (stream:code
-             (format (char op_ret)
-                     (encode-int reg)))))
-
-
-    (define get-primop
-      "add"   -> op_add
-      "sub"   -> op_sub
-      "eq"    -> op_eq
-      "ge"    -> op_ge
-      "print" -> op_print
-      x       -> (error1 "no such primop" x)
-      )
+      (LINSN 'ret reg))
 
     ;; %%cexp is really more like 'builtin primapp' here. [consider renaming]
     ;; current prims: add, sub, eq, ge, print
     (define (emit-cexp sig type template args target)
-      (LIST (stream:code
-             (format (char (get-primop template))
-                     (encode-int target)
-                     (join encode-int "" args)))))
+      ;; Note: is it bad that you can use this to call any insn?
+      (LIST (stream:insn (string->symbol template) (cons target args))))
 
     (define (emit-move var src target)
       ;; MOV <dst-ref> <src-reg>
-      (LIST (stream:code
-             (cond ((and (>= src 0) (not (= src var)))
-                    ;; from varset
-                    (format (char op_mov)
-                            (encode-int var)
-                            (encode-int src))
-                    ;; XXX target := #u
-                    )
-                   ((and (>= target 0) (not (= target var)))
-                    ;; from varref
-                    (format (char op_mov)
-                            (encode-int target)
-                            (encode-int var)))
-                   (else "")))))
+      (cond ((and (>= src 0) (not (= src var)))
+             ;; from varset
+             ;; XXX target := #u
+             (LINSN 'mov var src))
+            ((and (>= target 0) (not (= target var)))
+             ;; from varref
+             (LINSN 'mov target var))
+            (else '())))
 
     ;; # TST <reg> L0
     ;; # <then_code>
@@ -181,21 +173,34 @@
     ;; then_code.extend ([opcodes.jmp, label_ref (l1), l0])
     ;; return [opcodes.tst, insn.regs[0], label_ref (l0)] + then_code + else_code + [l1]
 
-    ;; XXX push-jump-continuation in the C/LLVM backends checks to see if the cont is actually used.
+    (define (emit-jump-continuation jn k)
+      (match (used-jumps::get jn) with
+        (maybe:yes free)
+        -> (let ((l0 (new-label)))
+             (jump-label-map::add jn l0)
+             (append
+              (LIST (stream:label l0))
+              (emit k)))
+        (maybe:no)
+        -> (list:nil)
+        ))
 
     (define (emit-test val jn k0 k1 cont)
       (let ((l0 (new-label))
-	    (l1 (new-label)))
-        (jump-label-map::add jn l1)
+            (jcont (emit-jump-continuation jn (k/insn cont))))
         (append
-         (LIST (stream:code (format (char op_tst) (encode-int val))) (stream:label-ref l0))
+         (LINSN 'tst val l0)
          (emit k0)
-         (LIST (stream:code (format (char op_jmp))) (stream:label-ref l0))
-         (LIST (stream:label-def l0))
+         (LINSN 'jmp l0)
+         (LIST (stream:label l0))
          (emit k1)
-         (LIST (stream:label-def l1))
-         (emit (k/insn cont))
+         jcont
          )))
+
+    (define (emit-jump reg target jn free)
+      (append 
+       (LINSN 'mov target reg)
+       (LINSN 'jmp (jump-label-map::get-err jn "jump number not in map"))))
 
     ;; --------------------------------------------------------------------------------
 
@@ -216,22 +221,100 @@
       (o.copy ".")
       )
 
+    (define (resolve-labels s)
+      (let ((pc 0)
+            (r '())
+            (label-map (map-maker <)))
+
+        (define (resolve index)
+          (match (label-map::get index) with
+            (maybe:yes val) -> val
+            (maybe:no)      -> (raise (:BadLabel index))
+            ))
+
+        ;; first pass - compute label offsets
+        (for-list insn s
+          (match insn with
+            (stream:insn name args)
+            -> (set! pc (+ pc 1 (length args)))
+            (stream:label index)
+            -> (label-map::add index pc)
+            ))
+
+        ;; second pass - replace label index with label offsets
+        (for-list insn s
+          (match insn with
+            ;; ignore label defs
+            (stream:label _)
+            -> #u
+            (stream:insn 'tst (target index))
+            -> (PUSH r (INSN 'tst target (resolve index)))
+            (stream:insn 'jmp (index))
+            -> (PUSH r (INSN 'jmp (resolve index)))
+            (stream:insn 'fun (target index))
+            -> (PUSH r (INSN 'fun target (resolve index)))
+            (stream:insn 'trcall (index depth nregs))
+            -> (PUSH r (INSN 'trcall (resolve index) depth nregs))
+            _ -> (PUSH r insn)
+            ))
+
+        ;; modified insns
+        (reverse r)
+
+        ))
+
+    (define (encode-insn name args)
+      (let ((info (name->info name)))
+        (if (= (length args) info.nargs)
+            (string-concat (map encode-int (cons info.code args)))
+            (raise (:BadArity name)))))
+
     (define (emit-stream s)
       (for-list item s
         (match item with
-          (stream:code s) -> (o.copy s)
-          _ -> (error1 "labels NYI" item)
+          (stream:insn name args) 
+          -> (o.copy (encode-insn name args))
+          _ -> (error1 "unresolved label?" item)
           )))
 
-    (let ((s (emit cps)))
+    (define (peephole s)
+      ;; only one optimization so far...
+      (match s with
+        (a b . tl)
+        -> (match a b with
+             (stream:insn 'jmp (n0)) (stream:label n1)
+             -> (if (= n0 n1)
+                    ;; remove jmp to following label
+                    (list:cons b (peephole tl))
+                    (list:cons a (peephole (list:cons b tl))))
+             _ _ -> (list:cons a (peephole (list:cons b tl))))
+        (hd . tl)
+        -> (list:cons hd (peephole tl))
+        () -> '()
+        ))
+
+    (define (print-stream s)
+      (let ((pc 0))
+        (for-list item s
+          (printf (rpad 5 (int pc)) " " (stream-repr item) "\n")
+          (match item with
+            (stream:insn name args)
+            -> (set! pc (+ pc 1 (length args)))
+            _ -> #u
+            )
+          )))
+
+    (let ((s (peephole (emit cps))))
       (printf "lits:\n")
       (for-list lit lits
         (printn lit))
-      (for-list item s
-        (printf (stream-repr item) "\n")
-        )
+      (printf "labels:\n")
+      (print-stream s)
       (emit-literals)
-      (emit-stream s)
+      (let ((resolved (resolve-labels s)))
+        (printf "resolved:\n")
+        (print-stream resolved)
+        (emit-stream resolved))
       (o.close)
       )
     #u
