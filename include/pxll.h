@@ -1,3 +1,6 @@
+#ifndef PXLL_H
+#define PXLL_H
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -221,3 +224,6 @@ get_safe_typecode (object * ob)
     return GET_TYPECODE (*ob);
   }
 }
+
+#endif // PXLL_H
+
