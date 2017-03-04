@@ -3,9 +3,9 @@
 (define (OI name nargs) {code=0 name=name nargs=nargs})
 
 (define opcode-info
-  ;;    name   nargs    args
   (list->vector
    (LIST
+    ;;  name   nargs    args
     (OI 'lit    2)   ;; target index
     (OI 'ret    1)   ;; val
     (OI 'add    3)   ;; target a b
@@ -24,12 +24,23 @@
     (OI 'arg    3)   ;; tuple arg index
     (OI 'ref    3)   ;; target depth index
     (OI 'mov    2)   ;; dst src
-    (OI 'push   1)   ;; args
-    (OI 'trcall 3)   ;; offset depth nregs
+    (OI 'epush  1)   ;; args
+    (OI 'trcall 3)   ;; offset depth nregs reg0 ...
     (OI 'ref0   2)   ;; target index
     (OI 'call   3)   ;; closure args nregs
     (OI 'pop    1)   ;; target
-    (OI 'print  1)   ;; arg
+    (OI 'print  2)   ;; target arg
+    (OI 'topis  1)   ;; env
+    (OI 'topref 2)   ;; target index
+    (OI 'topset 2)   ;; index val
+    (OI 'set    3)   ;; depth index val
+    (OI 'pop0   0)   ;;
+    (OI 'epop   0)   ;;
+    (OI 'tron   0)   ;;
+    (OI 'troff  0)   ;;
+    (OI 'gc     0)   ;;
+    (OI 'imm    2)   ;; target tag
+    (OI 'alloc  4)   ;; target tag nelem elem0 ...
     )))
 
 (for-range i (vector-length opcode-info)
@@ -69,8 +80,6 @@
   -> (LIST (INSN arg0 ...))
   )
 
-;; Note: this bytecode design assumes < 256 registers.
-
 (define (compile-to-bytecode base cps)
 
   (let ((opath (string-append base ".byc"))
@@ -81,6 +90,8 @@
 	(label-counter (make-counter 1))
         (used-jumps (find-jumps cps))
         (jump-label-map (map-maker <))
+        (fun-label-map (map-maker symbol-index<?))
+        (fatbar-map (map-maker <))
         )
 
     (define (new-label)
@@ -100,23 +111,23 @@
         (insn:move dst var k)                         -> (emitk (emit-move dst var (k/target k)) k)
         (insn:test reg jn k0 k1 k)                    -> (emit-test reg jn k0 k1 k)
         (insn:jump reg target jn free)                -> (emit-jump reg target jn free)
+        (insn:close name nreg body k)                 -> (emitk (emit-close name nreg body (k/target k)) k)
+        (insn:new-env size top? types k)              -> (emitk (emit-new-env size top? types (k/target k)) k)
+        (insn:push r k)                               -> (emitk (emit-push r) k)
+        (insn:store off arg tup i k)                  -> (emitk (emit-store off arg tup i) k)
+        (insn:varref d i k)                           -> (emitk (emit-varref d i (k/target k)) k)
+        (insn:tail name fun args)                     -> (emit-tail name fun args)
+        (insn:varset d i v k)                         -> (emitk (emit-varset d i v (k/target k)) k)
+        (insn:trcall d n args)                        -> (emit-trcall d n args)
+        (insn:invoke name fun args k)                 -> (emitk (emit-call name fun args k) k)
+        (insn:pop r k)                                -> (emitk (emit-pop r (k/target k)) k)
+        (insn:primop name parm t args k)              -> (emitk (emit-primop name parm t args k) k)
+        (insn:fatbar lab jn k0 k1 k)                  -> (emit-fatbar lab jn k0 k1 k)
+        (insn:fail label npop free)                   -> (emit-fail label npop free)
         ;; (insn:litcon i kind k)                       -> (begin (emit-litcon i kind (k/target k)) k)
         ;; (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
         ;; (insn:ffi sig type name args k)              -> (error1 "no FFI in C backend" insn)
-        ;; (insn:close name nreg body k)                -> (begin (emit-close name nreg body (k/target k)) k)
-        ;; (insn:varref d i k)                          -> (begin (emit-varref d i (k/target k)) k)
-        ;; (insn:varset d i v k)                        -> (begin (emit-varset d i v (k/target k)) k)
-        ;; (insn:new-env size top? types k)             -> (begin (emit-new-env size top? types (k/target k)) k)
         ;; (insn:alloc tag size k)                      -> (begin (emit-alloc tag size (k/target k)) k)
-        ;; (insn:store off arg tup i k)                 -> (begin (emit-store off arg tup i) k)
-        ;; (insn:invoke name fun args k)                -> (begin (emit-call name fun args k) (cont:nil))
-        ;; (insn:tail name fun args)                    -> (begin (emit-tail name fun args) (cont:nil))
-        ;; (insn:trcall d n args)                       -> (begin (emit-trcall d n args) (cont:nil))
-        ;; (insn:push r k)                              -> (begin (emit-push r) k)
-        ;; (insn:pop r k)                               -> (begin (emit-pop r (k/target k)) k)
-        ;; (insn:primop name parm t args k)             -> (begin (emit-primop name parm t args k) k)
-        ;; (insn:fatbar lab jn k0 k1 k)                 -> (begin (emit-fatbar lab jn k0 k1 k) (cont:nil))
-        ;; (insn:fail label npop free)                  -> (begin (emit-fail label npop free) (cont:nil))
         ;; (insn:nvcase tr dt tags jn alts ealt k)      -> (begin (emit-nvcase tr dt tags jn alts ealt k) (cont:nil))
         ;; (insn:pvcase tr tags arities jn alts ealt k) -> (begin (emit-pvcase tr tags arities jn alts ealt k) (cont:nil))
         _ -> (error1 "NYI" insn)
@@ -125,7 +136,10 @@
     (define (encode-int n)
 
       (define E
-        0 acc -> (list->string acc)
+        0 acc -> (list->string
+                  (cons (ascii->char 255)
+                        (cons (ascii->char (length acc))
+                              acc)))
         n acc -> (E (>> n 8) (cons (ascii->char (logand n #xff)) acc))
         )
 
@@ -137,6 +151,23 @@
                    (raise (:IntegerTooBig n))
                    r)))))
 
+    (define (UITAG n) (+ TC_USERIMM (<< n 8)))
+    (define (UOTAG n) (+ TC_USEROBJ (<< n 2)))
+
+    ;; hacks for datatypes known by the runtime
+    (define (get-uotag dtname altname index)
+      (match dtname altname with
+	'list 'cons -> TC_PAIR
+	'symbol 't  -> TC_SYMBOL
+	_ _         -> (UOTAG index)))
+
+    (define (get-uitag dtname altname index)
+      (match dtname altname with
+	'list 'nil   -> TC_NIL
+	'bool 'true  -> immediate-true
+	'bool 'false -> immediate-false
+	_ _          -> (UITAG index)))
+
     (define (emit-literal lit target)
       (let ((index nlit))
         (PUSH lits lit)
@@ -147,10 +178,17 @@
       (LINSN 'ret reg))
 
     ;; %%cexp is really more like 'builtin primapp' here. [consider renaming]
-    ;; current prims: add, sub, eq, ge, print
+    ;; Note: there's a problem with dead targets here.
+    ;; "->#u" prims will often (but not always!) be in dead positions,
+    ;;  it's their job to ignore the unused target.
+    ;; But what do we do with a dead target for a prim that does *not*
+    ;;  ignore its target?  Is it always safe to change 'dead' to '0'?
+
     (define (emit-cexp sig type template args target)
       ;; Note: is it bad that you can use this to call any insn?
-      (LIST (stream:insn (string->symbol template) (cons target args))))
+      (LIST (stream:insn
+             (string->symbol template)
+             (cons (if (= target -1) 0 target) args))))
 
     (define (emit-move var src target)
       ;; MOV <dst-ref> <src-reg>
@@ -162,19 +200,6 @@
              ;; from varref
              (LINSN 'mov target var))
             (else '())))
-
-    ;; # TST <reg> L0
-    ;; # <then_code>
-    ;; # JMP L1
-    ;; # L0:
-    ;; # <else_code>
-    ;; # L1:
-    ;; l0 = label()
-    ;; l1 = label()
-    ;; then_code = self.emit (then_code)
-    ;; else_code = self.emit (else_code)
-    ;; then_code.extend ([opcodes.jmp, label_ref (l1), l0])
-    ;; return [opcodes.tst, insn.regs[0], label_ref (l0)] + then_code + else_code + [l1]
 
     (define (emit-jump-continuation jn k)
       (match (used-jumps::get jn) with
@@ -204,6 +229,261 @@
       (append
        (LINSN 'mov target reg)
        (LINSN 'jmp (jump-label-map::get-err jn "jump number not in map"))))
+
+    (define (emit-close name nreg body target)
+      (let ((l0 (new-label))
+            (lfun (new-label))
+            (gc (if (vars-get-flag name VFLAG-ALLOCATES)
+                    (LINSN 'gc)
+                    '())))
+        (fun-label-map::add name lfun)
+        (append
+         (LINSN 'fun target l0)
+         (LIST (stream:label lfun))
+         gc
+         (emit body)
+         (LIST (stream:label l0))
+         )))
+
+    (define (emit-new-env size top? types target)
+      (append
+       (LINSN 'env target size)
+       (if top?
+           (LINSN 'topis target)
+           '())))
+
+    (define (emit-push target)
+      (LINSN 'epush target)
+      )
+
+    (define (emit-store off arg tup i)
+      ;; XXX can we compute if tup is also top and emit topset?
+      (LINSN 'arg tup arg i))
+
+    (define (emit-varref depth index target)
+      (match depth with
+         0 -> (LINSN 'ref0 target index)
+        -1 -> (LINSN 'topref target index)
+         _ -> (LINSN 'ref target depth index)
+        ))
+
+    (define (emit-varset depth index val target)
+      (match depth with
+         0 -> (LINSN 'set0 index val)
+        -1 -> (LINSN 'topset index val)
+         _ -> (LINSN 'set depth index val)
+        ))
+
+    (define (emit-tail name fun args)
+      (if (= -1 args)
+          (LINSN 'tail0 fun)
+          (LINSN 'tail fun args)))
+
+    (define (emit-trcall depth name args)
+      ;; TRCALL <label> <depth> <nregs> <reg0> ...
+      (LIST (stream:insn
+             'trcall
+             (append
+              (LIST
+               (fun-label-map::get-err name "unknown function")
+               (- depth 1)
+               (length args))
+              args))))
+
+    (define (emit-call name fun args k)
+      (let ((free (sort < (k/free k)))
+	    (nregs (length free))
+	    (target (k/target k)))
+        (printf "emit-call: free=" (join int->string " " free) "\n")
+        (append
+         (LINSN 'call fun args nregs)
+         (if (= target -1)
+             (LINSN 'pop0)
+             (LINSN 'pop target)))))
+
+    (define (emit-pop src target)
+      (if (= target -1)
+          (LINSN 'epop)
+          (append
+           (LINSN 'mov target src)
+           (LINSN 'epop))))
+
+    (define (emit-primop name parm type args k)
+
+      (define (primop-error)
+	(error1 "primop" name))
+
+      (let ((target (k/target k))
+	    (nargs (length args)))
+
+        (define prim-dtcon
+          (sexp:cons dtname altname)
+          -> (match (alist/lookup the-context.datatypes dtname) with
+               (maybe:no) -> (error1 "emit-primop: no such datatype" dtname)
+               (maybe:yes dt)
+               -> (let ((alt (dt.get altname)))
+                    (cond ((= nargs 0)
+                           (LINSN 'imm target (get-uitag dtname altname alt.index)))
+                          (else
+                           (if (>= target 0)
+                               (LIST (stream:insn
+                                      'alloc
+                                      (cons target
+                                            (cons (get-uotag dtname altname alt.index)
+                                                  (cons (length args) args)))))
+                               (begin
+                                 (warning (format "dead target in primop " (sym name) "\n"))
+                                 '())))
+                          )))
+          _ -> (primop-error))
+
+;;;        (define prim-nvget
+;;;          (sexp:list (_ (sexp:int index) _)) (reg)
+;;;          -> (o.write (format "O r" (int target) " = UOBJ_GET(r" (int reg) "," (int index) ");"))
+;;;          _ _ -> (primop-error))
+;;;
+;;;        (define prim-make-vector
+;;;          (vlen vval)
+;;;          -> (begin
+;;;               ;; since we cannot know the size at compile-time, there should
+;;;               ;; always be a call to ensure_heap() before any call to %make-vector
+;;;               (o.write (format "O r" (int target) ";"))
+;;;               (o.write (format "if (unbox(r" (int vlen) ") == 0) { r" (int target) " = (object *) TC_EMPTY_VECTOR; } else {"))
+;;;               (o.write (format "  O t = alloc_no_clear (TC_VECTOR, unbox(r" (int vlen) "));"))
+;;;               (o.write (format "  for (int i=0; i<unbox(r" (int vlen) "); i++) { t[i+1] = r" (int vval) "; }"))
+;;;               (o.write (format "  r" (int target) " = t;"))
+;;;               (o.write "}"))
+;;;          _ -> (primop-error))
+;;;
+;;;        (define prim-array-ref
+;;;          (vec index)
+;;;          -> (begin
+;;;               (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
+;;;               (o.write (format "O r" (int target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
+;;;          _ -> (primop-error))
+;;;
+;;;        (define prim-array-set
+;;;          (vec index val)
+;;;          -> (begin
+;;;               (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
+;;;               (o.write (format "((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";"))
+;;;               (when (> target 0)
+;;;                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+;;;          _ -> (primop-error))
+;;;
+;;;        (define prim-record-get
+;;;          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
+;;;          -> (let ((label-code (lookup-label-code label)))
+;;;               (match (guess-record-type sig) with
+;;;                 (maybe:yes sig0)
+;;;                 -> (o.write (format "O r" (int target) ;; compile-time lookup
+;;;                                     " = ((pxll_vector*)r" (int rec-reg)
+;;;                                     ")->val[" (int (index-eq label sig0))
+;;;                                     "];"))
+;;;                 (maybe:no)
+;;;                 -> (o.write (format "O r" (int target) ;; run-time lookup
+;;;                                     " = ((pxll_vector*)r" (int rec-reg)
+;;;                                     ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
+;;;                                     ")-TC_USEROBJ)>>2," (int label-code)
+;;;                                     ")]; // label=" (sym label)))))
+;;;          _ _ -> (primop-error))
+;;;
+;;;        ;; XXX very similar to record-get, maybe some way to collapse the code?
+;;;        (define prim-record-set
+;;;          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg arg-reg)
+;;;          -> (let ((label-code (lookup-label-code label)))
+;;;               (match (guess-record-type sig) with
+;;;                 (maybe:yes sig0)
+;;;                 -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; compile-time lookup
+;;;                                     ")->val[" (int (index-eq label sig0))
+;;;                                     "] = r" (int arg-reg) ";"))
+;;;                 (maybe:no)
+;;;                 -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; run-time lookup
+;;;                                     ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
+;;;                                     ")-TC_USEROBJ)>>2," (int label-code)
+;;;                                     ")] = r" (int arg-reg) ";")))
+;;;               (when (>= target 0)
+;;;                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+;;;          _ _ -> (primop-error))
+;;;
+;;;        (define (prim-callocate parm args)
+;;;          (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
+;;;            ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
+;;;            (if (>= target 0)
+;;;                (o.write (format "O r" (int target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
+;;;                                 ") * unbox(r" (int (car args)) "), sizeof (object)));"))
+;;;                (error1 "%callocate: dead target?" type))))
+;;;
+;;;        (define (prim-exit args)
+;;;          (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
+;;;          (when (> target 0)
+;;;            (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+;;;
+;;;        (define prim-cget
+;;;          (rbase rindex)
+;;;          ;; XXX range-check (probably need to add a length param to TC_BUFFER)
+;;;          -> (let ((cexp (format "(((" (type-repr type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
+;;;               (o.write (format "O r" (int target) " = " (wrap-out type cexp) ";")))
+;;;          _ -> (primop-error))
+;;;
+;;;        (define prim-cset
+;;;          (rbase rindex rval) (type:pred 'arrow (to-type from-type) _)
+;;;          ;; XXX range-check (probably need to add a length param to TC_BUFFER)
+;;;          -> (let ((rval-exp (lookup-cast to-type from-type (format "r" (int rval))))
+;;;                   (lval (format "(((" (type-repr to-type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
+;;;               (o.write (format lval " = " rval-exp ";"))
+;;;               (when (> target 0)
+;;;                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+;;;          _ _ -> (primop-error))
+;;;
+;;;        (define prim-getcc
+;;;          () -> (o.write (format "O r" (int target) " = k; // %getcc"))
+;;;          _  -> (primop-error))
+;;;
+;;;        (define prim-putcc
+;;;          (rk rv) -> (begin
+;;;                       (o.write (format "k = r" (int rk) "; // %putcc"))
+;;;                       (move rv target))
+;;;          _ -> (primop-error))
+
+          (match name with
+            '%dtcon       -> (prim-dtcon parm)
+            ;; '%nvget       -> (prim-nvget parm args)
+            ;; '%make-vector -> (prim-make-vector args)
+            ;; '%array-ref   -> (prim-array-ref args)
+            ;; '%array-set   -> (prim-array-set args)
+            ;; '%record-get  -> (prim-record-get parm args)
+            ;; '%record-set  -> (prim-record-set parm args)
+            ;; '%callocate   -> (prim-callocate parm args)
+            ;; '%exit        -> (prim-exit args)
+            ;; '%cget        -> (prim-cget args)
+            ;; '%cset        -> (prim-cset args type)
+            ;; '%getcc       -> (prim-getcc args)
+            ;; '%putcc       -> (prim-putcc args)
+            ;; '%ensure-heap -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
+            _ -> (primop-error))))
+
+    ;; we emit insns for k0, which may or may not jump to fail continuation in k1
+    (define (emit-fatbar label jn k0 k1 k)
+      (let ((lfail (new-label)))
+        ;; k0
+        ;; Lfail:
+        ;; k1:
+        ;; Ljump:
+        ;; k
+        (fatbar-map::add label lfail)
+        (append
+         (emit k0)
+         (LIST (stream:label lfail))
+         (emit k1)
+         (emit-jump-continuation jn (k/insn k))
+         )))
+
+    (define (emit-fail label npop free)
+      (append
+       (n-of npop (stream:insn 'epop0 '()))
+       (LINSN 'jmp (fatbar-map::get-err label "unknown label"))
+       ))
 
     ;; --------------------------------------------------------------------------------
 
@@ -256,8 +536,8 @@
             -> (PUSH r (INSN 'jmp (resolve index)))
             (stream:insn 'fun (target index))
             -> (PUSH r (INSN 'fun target (resolve index)))
-            (stream:insn 'trcall (index depth nregs))
-            -> (PUSH r (INSN 'trcall (resolve index) depth nregs))
+            (stream:insn 'trcall (index depth nregs . args))
+            -> (PUSH r (stream:insn 'trcall (append (LIST (resolve index) depth nregs) args)))
             _ -> (PUSH r insn)
             ))
 
@@ -268,7 +548,7 @@
 
     (define (encode-insn name args)
       (let ((info (name->info name)))
-        (if (= (length args) info.nargs)
+        (if (>= (length args) info.nargs)
             (string-concat (map encode-int (cons info.code args)))
             (raise (:BadArity name)))))
 
