@@ -77,14 +77,12 @@
 (define (binary+ a b)
   (%backend c (%%cexp (int int -> int) "%0+%1" a b))
   (%backend llvm (%llarith add a b))
-  ;;(%backend bytecode (%+ a b))
   (%backend bytecode (%%cexp (int int -> int) "add" a b))
   )
 
 (define (binary- a b)
   (%backend c (%%cexp (int int -> int) "%0-%1" a b))
   (%backend llvm (%llarith sub a b))
-  ;;(%backend bytecode (%- a b))
   (%backend bytecode (%%cexp (int int -> int) "sub" a b))
   )
 
@@ -205,7 +203,10 @@
 	(else (cmp:=))))
 
 (define (eq? a b)
-  (%%cexp ('a 'a -> bool) "%0==%1" a b))
+  (%backend c (%%cexp ('a 'a -> bool) "%0==%1" a b))
+  (%backend llvm (%llicmp eq a b))
+  (%backend bytecode (%%cexp ('a 'a -> bool) "eq" a b))
+  )
 
 (define (not x)
   (eq? x #f))
