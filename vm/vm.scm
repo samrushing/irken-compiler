@@ -111,29 +111,34 @@
   x -> #u
   )
 
-(define (print-rib v)
-  (print-string "(")
-  (let loop ((i 0))
-    (if (= i (vector-length v))
-	(print-string ")")
-	(begin
-	  (print-object v[i])
-	  (print-string " ")
-	  (loop (+ i 1))))))
+;; (define (print-rib v)
+;;   (print-string "(")
+;;   (let loop ((i 0))
+;;     (if (= i (vector-length v))
+;; 	(print-string ")")
+;; 	(begin
+;; 	  (print-object v[i])
+;; 	  (print-string " ")
+;; 	  (loop (+ i 1))))))
 
-(define print-lenv
-  (lenv:nil)                          -> (print-string "\n")
-  (lenv:rib (object:tuple args) next) -> (begin (printn args) (print-lenv next))
-  (lenv:rib _ _) -> (error "malformed rib")
-  )
+;; (define print-lenv
+;;   (lenv:nil)                          -> (print-string "\n")
+;;   (lenv:rib (object:tuple args) next) -> (begin (printn args) (print-lenv next))
+;;   (lenv:rib _ _) -> (error "malformed rib")
+;;   )
 
 (define bt
   (vmcont:nil) -> (print-string "<top>\n")
   (vmcont:k next lenv pc saved) -> (begin (print-string " ") (print pc) (print-string "\n") (bt next))
   )
 
+;; XXX: if we accidentally leave a large object in a register,
+;;  gc will continue to copy it. Think about how/when to clear
+;;  the register set.
+
 ;; VM registers
-(define REGS (make-vector 10 (object:int 0)))
+
+(define REGS (make-vector 20 (object:int 0)))
 
 (define pc 0)
 
@@ -141,30 +146,34 @@
   (:t string int (-> undefined))
   )
   
-(define (print-args n)
-  (print-string "\t")
-  (let loop ((i 0))
-    (if (< i n)
-	(begin
-	  (print CODE[(+1 (+ pc i))])
-	  (print-string " ")
-	  (loop (+1 i))
-	  )))
-  (print-string "\n")
-  )
+(define (get-args n)
+  (let ((r '()))
+    (for-range i n
+      (PUSH r CODE[(+1 (+ pc i))]))
+    (reverse r)))
 
-;; the tracing version
-(define (next-insn)
-  (let ((opcode CODE[pc])
-	(info opcode-info[opcode]))
-    (match info with
-       (opcode:t name nargs _)
-       -> (begin
-	    (print pc)
-	    (print-string "\t" )
-	    (print-string name)
-	    (print-args nargs)
-	    (OPS[opcode])))))
+(define (print-lenv)
+  (printf "[")
+  (let loop ((lenv LENV))
+    (match lenv with
+      (lenv:rib (object:tuple vals) next)
+      -> (begin 
+           (printf "{")
+           (for-range i (vector-length vals)
+             (printf (object-repr vals[i]) " "))
+           (printf "} ")
+           (loop next))
+      (lenv:nil)
+      -> (printf "]\n")
+      _ -> (vm-error)
+      )
+    ))
+
+(define (print-regs)
+  (printf "[")
+  (for-range i (vector-length REGS)
+    (printf (object-repr REGS[i]) " "))
+  (printf "]\n"))
 
 (define (vm-error)
   (let ((opcode CODE[pc])
@@ -175,14 +184,30 @@
            (printf "------------***\n"
                    "Error in VM:\n"
                    (int pc)
-                   "\t"
-                   name)
-           (print-args nargs)
+                   " " name "\n")
+           (print-regs)
+           ;; (print-args nargs)
            #u
            ))))
 
-;; the normal version
+;; the tracing version
 (define (next-insn0)
+  (let ((opcode CODE[pc])
+	(info opcode-info[opcode]))
+    (match info with
+       (opcode:t name nargs _)
+       -> (begin
+            (print-lenv)
+            (print-regs)
+            (printf (lpad 4 (int pc)) 
+                    "  " (rpad 8 name)
+                    " " (join int->string " " (get-args nargs))
+                    "\n")
+            (OPS[opcode]))
+      )))
+
+;; the normal version
+(define (next-insn)
   (OPS[CODE[pc]])
   )
 
@@ -226,8 +251,10 @@
 (define insn-ge  (binop >= object:bool))
 
 (define (insn-print)
-  (printf (object-repr REGS[CODE[(+1 pc)]]))
-  (set! pc (+2 pc))
+  ;; PRINT <target> <arg>
+  ;; (target is ignored)
+  (printf (object-repr REGS[CODE[(+2 pc)]]) "\n")
+  (set! pc (+3 pc))
   (next-insn))
 
 (define (insn-tst)
@@ -314,6 +341,20 @@
       _ _ -> (vm-error)
       )))
 
+(define (insn-set)
+  ;; SET <depth> <index> <value>
+  (let loop ((env LENV)
+	     (depth CODE[(+1 pc)]))
+    (match env depth with
+      (lenv:rib (object:tuple vals) next) 0
+      -> (begin
+	   (set! vals[CODE[(+2 pc)]] REGS[CODE[(+3 pc)]])
+	   (set! pc (+4 pc))
+	   (next-insn))
+      (lenv:rib _ next) n -> (loop next (sub1 depth))
+      _ _ -> (vm-error)
+      )))
+  
 (define (insn-ref0)
   ;; REF0 <target> <index>
   (match LENV with
@@ -332,8 +373,8 @@
   (next-insn)
   )
 
-(define (insn-push)
-  ;; PUSH <args-reg>
+(define (insn-epush)
+  ;; EPUSH <args-reg>
   (set! LENV (lenv:rib REGS[CODE[(+ pc 1)]] LENV))
   (set! pc (+2 pc))
   (next-insn)
@@ -364,13 +405,13 @@
   (let loop ((v (make-vector n (object:int 0)))
 	     (i 0))
     (if (= i n)
-	v
+        v
 	(begin
 	  (set! v[i] REGS[i])
 	  (loop v (+1 i))))))
 
 (define (insn-call)
-  ;; CALL closure_reg args_reg nregs POP target
+  ;; CALL closure_reg args_reg nregs
   (match REGS[CODE[(+1 pc)]] with
     (object:closure lits0 code0 pc0 lenv0)
     -> (begin
@@ -405,6 +446,73 @@
     _ -> (vm-error)
     ))
 
+;; just like insn-pop, just no target.
+(define (insn-pop0)
+  (match STACK with
+    (vmcont:k stack0 lenv0 pc0 regs0)
+    -> (begin
+	 (set-regs regs0)
+	 (set! LENV lenv0)
+	 (set! STACK stack0)
+	 (set! pc (+1 pc))
+	 (next-insn))
+    _ -> (vm-error)
+    ))
+
+(define (insn-topis)
+  ;; TOPIS <env>
+  (set! TOP REGS[CODE[(+1 pc)]])
+  (set! pc (+2 pc))
+  (next-insn))
+
+(define (insn-topref)
+  ;; TOPREF target index
+  (match TOP with
+    (object:tuple vals)
+    -> (begin
+         (set! REGS[CODE[(+1 pc)]] vals[CODE[(+2 pc)]])
+         (set! pc (+3 pc))
+         (next-insn))
+    _ -> (vm-error)
+    ))
+
+(define (insn-topset)
+  ;; TOPSET index val
+  (match TOP with
+    (object:tuple vals)
+    -> (begin
+         (set! vals[CODE[(+1 pc)]] REGS[CODE[(+2 pc)]])
+         (set! pc (+3 pc))
+         (next-insn))
+    _ -> (vm-error)
+    ))
+
+(define (insn-epop)
+  ;; EPOP
+  (match LENV with
+    (lenv:rib _ next)
+    -> (begin 
+         (set! LENV next)
+         (set! pc (+1 pc))
+         (next-insn))
+    _ -> (vm-error)
+    ))
+
+;; XXX not sure this is a good idea.  it will make calls
+;;   to next-insn an 'unknown' function, which probably 
+;;   slows things down too much.
+(define (insn-tron) 
+  (let ((tmp next-insn))
+    (set! next-insn next-insn0)
+    (set! next-insn0 tmp)
+    (next-insn)
+    ))
+
+(define (insn-gc)
+  ;; no-op
+  (next-insn)
+  )
+
 ;; insn data
 (define CODE (list->vector '(0)))
 ;; literals
@@ -421,8 +529,8 @@
     (opcode:t "eq"      3 insn-eq)
     (opcode:t "lt"      3 insn-lt)
     (opcode:t "gt"      3 insn-gt)
-    (opcode:t "le"      3 insn-ge)
-    (opcode:t "ge"      3 insn-le)
+    (opcode:t "le"      3 insn-le)
+    (opcode:t "ge"      3 insn-ge)
     (opcode:t "tst"     2 insn-tst)
     (opcode:t "jmp"     1 insn-jmp)
     (opcode:t "fun"     2 insn-fun)
@@ -432,12 +540,22 @@
     (opcode:t "arg"     3 insn-arg)
     (opcode:t "ref"     3 insn-ref)
     (opcode:t "mov"     2 insn-mov)
-    (opcode:t "push"    1 insn-push)
+    (opcode:t "epush"   1 insn-epush)
     (opcode:t "trcall"  3 insn-trcall)
     (opcode:t "ref0"    2 insn-ref0)
     (opcode:t "call"    3 insn-call)
     (opcode:t "pop"     1 insn-pop)
-    (opcode:t "print"   1 insn-ge)
+    (opcode:t "print"   2 insn-print)
+    (opcode:t "topis"   1 insn-topis)
+    (opcode:t "topref"  2 insn-topref)
+    (opcode:t "topset"  2 insn-topset)
+    (opcode:t "set"     3 insn-set)
+    (opcode:t "pop0"    0 insn-pop0)
+    (opcode:t "epop"    0 insn-epop)
+    (opcode:t "tron"    0 insn-tron)
+    (opcode:t "troff"   0 insn-tron)
+    (opcode:t "gc"      0 insn-gc)
+    ;; we stop here, not going to bother doing datatypes...
     )))
 
 (define OPS
@@ -451,6 +569,8 @@
 
 ;; lexical env
 (define LENV (lenv:nil))
+(define TOP (object:tuple #()))
+
 ;; stack
 (define STACK (vmcont:nil))
 ;; return value from functions
@@ -466,7 +586,7 @@
     ;;(printn LITS)
     (set! pc 0)
     (next-insn)
-    (printf (object-repr RETVAL) "\n")
+    (printf "result: " (object-repr RETVAL) "\n")
     ))
 
 (test)
