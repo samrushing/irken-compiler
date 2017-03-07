@@ -106,11 +106,6 @@ Usage: compile <irken-src-file> [options]
 (define (warning msg)
   (printf "warning: " msg "\n"))
 
-(define assert
-  #t -> #u
-  #f -> (error "assertion failed.")
-  )
-
 (defmacro verbose
   (verbose item ...) -> (if the-context.options.verbose (begin item ... #u)))
 

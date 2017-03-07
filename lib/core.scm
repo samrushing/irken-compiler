@@ -185,6 +185,10 @@
 
 (define (abs x) (if (< x 0) (- 0 x) x))
 
+(define (magic<? a b)
+  (%backend c (%%cexp ('a 'a -> bool) "magic_less_than (%0, %1)" a b))
+  )
+
 (datatype cmp
   (:<)
   (:>)
@@ -263,6 +267,11 @@
 
 (define (impossible)
   (error "Why, sometimes I've believed as many as six impossible things before breakfast."))
+
+(define assert
+  #t -> #u
+  #f -> (error "assertion failed.")
+  )
 
 (define (id x) x)
 
