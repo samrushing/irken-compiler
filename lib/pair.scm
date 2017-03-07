@@ -237,6 +237,16 @@
   p _ _ -> (error "every2?: unequal-length lists")
   )
 
+;; lexicographic ordering on lists
+(define list<?
+  lt? ()      () -> #f
+  lt? ()       _ -> #t
+  lt? (_ . _) () -> #f
+  lt? (a . as) (b . bs)
+  -> (cond ((lt? a b) #t)
+           ((lt? b a) #f)
+           (else (list<? lt? as bs))))
+
 ;; print a list with <proc>, and print <sep> between each item.
 (define print-sep
   proc sep ()	     -> #u
