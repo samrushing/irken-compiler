@@ -1,0 +1,3 @@
+;; -*- Mode: Irken -*-
+
+"testing"
