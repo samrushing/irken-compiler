@@ -6,6 +6,8 @@
 static object * allocate (pxll_int tc, pxll_int size);
 static object * dump_object (object * ob, int depth);
 static object do_gc (int nroots);
+static pxll_int get_case (object * ob);
+
 uint64_t gc_ticks;
 object * lenv;
 object * k;
@@ -108,7 +110,7 @@ read_literals (FILE * f)
   return 0;
 }
 
-#define NCODE_MAX 1024
+#define NCODE_MAX 16384
 int ncodes = 0;
 uint16_t bytecode[NCODE_MAX];
 
@@ -123,7 +125,7 @@ read_bytecode (FILE * f)
       return -1;
     } else {
       bytecode[ncodes++] = code;
-      //fprintf (stderr, "%d ", (int)code);
+      // fprintf (stderr, "%d ", (int)code);
     }
   }
 }
@@ -186,7 +188,11 @@ enum {
   op_troff,
   op_gc,
   op_imm,
-  op_alloc
+  op_alloc,
+  op_exit,
+  op_nvcase,
+  op_tupref,
+  op_tupset
 } opcodes;
 
 char * op_names[] = {
@@ -224,7 +230,11 @@ char * op_names[] = {
   "troff",
   "gc",
   "imm",
-  "alloc"
+  "alloc",
+  "exit",
+  "nvcase",
+  "tupref",
+  "tupset"
 };
 
 #define TC_VM_CLOSURE (63<<2)
@@ -232,27 +242,6 @@ char * op_names[] = {
 #define TC_VM_LENV    (61<<2)
 #define TC_VM_CONT    (60<<2)
 
-static
-object *
-vm_varref (pxll_int depth, pxll_int index)
-{
-  object * lenv = vm_lenv;
-  for (int i=0; i < depth; i++) {
-    lenv = (object *) vm_lenv[2];
-  }
-  return ((object*)lenv[1])[index+1];
-}
-
-static
-void
-vm_varset (pxll_int depth, pxll_int index, object * val)
-{
-  object * lenv = vm_lenv;
-  for (int i=0; i < depth; i++) {
-    lenv = (object *) vm_lenv[2];
-  }
-  ((object*)lenv[1])[index+1] = val;
-}
 
 static
 void
@@ -261,7 +250,7 @@ print_object (object * ob)
   if (IMMEDIATE (ob)) {
     dump_object (ob, 0);
   } else if (IS_TYPE (TC_VM_CLOSURE, ob[0])) {
-    fprintf (stdout, "<closure>");
+    fprintf (stdout, "<closure @%p>", ob);
   } else if (IS_TYPE (TC_VM_LENV, ob[0])) {
     fprintf (stdout, "<lenv>");
   } else if (IS_TYPE (TC_VM_CONT, ob[0])) {
@@ -298,14 +287,33 @@ print_lenv()
   fflush (stdout);
   while (lenv != PXLL_NIL) {
     object * rib = (object *)lenv[1];
-    fprintf (stdout, "(");
-    for (int i=0; i < GET_TUPLE_LENGTH (*rib); i++) {
-      print_object (rib[i+1]);
-    }
-    fprintf (stdout, ")");
+    print_object (rib);
     lenv = lenv[2];
   }
   fprintf (stdout, "]\n");
+}
+
+static
+object *
+vm_varref (pxll_int depth, pxll_int index)
+{
+  object * lenv = vm_lenv;
+  pxll_int d0 = depth;
+  for (int i=0; i < depth; i++) {
+    lenv = (object *) lenv[2];
+  }
+  return ((object*)lenv[1])[index+1];
+}
+
+static
+void
+vm_varset (pxll_int depth, pxll_int index, object * val)
+{
+  object * lenv = vm_lenv;
+  for (int i=0; i < depth; i++) {
+    lenv = (object *) lenv[2];
+  }
+  ((object*)lenv[1])[index+1] = val;
 }
 
 #define BC1 bytecode[pc+1]
@@ -595,6 +603,37 @@ vm_go (void)
       REG1 = ob;
       pc += 4 + nelem;
     }
+      break;
+    case op_exit:
+      vm_result = REG1;
+      done = 1;
+      break;
+    case op_nvcase: {
+      // NVCASE ob elabel nalts tag0 label0 tag1 label1 ...
+      pxll_int tag = get_case (REG1);
+      pxll_int nalts = BC3;
+      pxll_int pc0 = BC2;
+      //fprintf (stderr, " tag=%d nalts=%d pc=%d\n", tag, nalts, pc);
+      for (int i=0; i < nalts; i++) {
+        //fprintf (stderr, "  testing %d\n", bytecode[pc+4+(i*2)]);
+        if (tag == bytecode[pc+4+(i*2)]) {
+          pc0 = bytecode[pc+4+(i*2)+1];
+          break;
+        }
+      }
+      pc = pc0;
+    }
+      break;
+    case op_tupref:
+      // TUPREF target ob index
+      REG1 = REG2[BC3+1];
+      pc += 4;
+      break;
+    case op_tupset:
+      // XXX nearly the same as op_arg, combine.
+      // TUPSET ob index val
+      REG1[BC2+1] = REG3;
+      pc += 4;
       break;
     default:
       fprintf (stderr, "unknown opcode: %d\n", bytecode[pc]);

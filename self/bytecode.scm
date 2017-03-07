@@ -41,6 +41,10 @@
     (OI 'gc     0)   ;;
     (OI 'imm    2)   ;; target tag
     (OI 'alloc  4)   ;; target tag nelem elem0 ...
+    (OI 'exit   1)   ;; arg
+    (OI 'nvcase 5)   ;; ob elabel nalts tag0 off0 tag1 off1 ...
+    (OI 'tupref 3)   ;; target ob index
+    (OI 'tupset 3)   ;; ob index val
     )))
 
 (for-range i (vector-length opcode-info)
@@ -98,6 +102,12 @@
       (label-counter.inc)
       )
 
+    (define (make-labels n)
+      (let ((v (make-vector n 0)))
+	(for-range i n
+	   (set! v[i] (new-label)))
+	v))
+
     (define emitk
       acc (cont:k _ _ k) -> (append acc (emit k))
       acc (cont:nil)     -> acc
@@ -124,11 +134,11 @@
         (insn:primop name parm t args k)              -> (emitk (emit-primop name parm t args k) k)
         (insn:fatbar lab jn k0 k1 k)                  -> (emit-fatbar lab jn k0 k1 k)
         (insn:fail label npop free)                   -> (emit-fail label npop free)
-        ;; (insn:litcon i kind k)                       -> (begin (emit-litcon i kind (k/target k)) k)
+        (insn:nvcase tr dt tags jn alts ealt k)       -> (emit-nvcase tr dt tags jn alts ealt k)
+        (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind (k/target k)) k)
         ;; (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
         ;; (insn:ffi sig type name args k)              -> (error1 "no FFI in C backend" insn)
         ;; (insn:alloc tag size k)                      -> (begin (emit-alloc tag size (k/target k)) k)
-        ;; (insn:nvcase tr dt tags jn alts ealt k)      -> (begin (emit-nvcase tr dt tags jn alts ealt k) (cont:nil))
         ;; (insn:pvcase tr tags arities jn alts ealt k) -> (begin (emit-pvcase tr tags arities jn alts ealt k) (cont:nil))
         _ -> (error1 "NYI" insn)
         ))
@@ -337,11 +347,14 @@
                           )))
           _ -> (primop-error))
 
-;;;        (define prim-nvget
-;;;          (sexp:list (_ (sexp:int index) _)) (reg)
-;;;          -> (o.write (format "O r" (int target) " = UOBJ_GET(r" (int reg) "," (int index) ");"))
-;;;          _ _ -> (primop-error))
-;;;
+        (define (prim-exit args)
+          (LINSN 'exit (car args)))
+
+        (define prim-nvget
+          (sexp:list (_ (sexp:int index) _)) (reg)
+          -> (LINSN 'tupref target reg index)
+          _ _ -> (primop-error))
+
 ;;;        (define prim-make-vector
 ;;;          (vlen vval)
 ;;;          -> (begin
@@ -414,10 +427,6 @@
 ;;;                                 ") * unbox(r" (int (car args)) "), sizeof (object)));"))
 ;;;                (error1 "%callocate: dead target?" type))))
 ;;;
-;;;        (define (prim-exit args)
-;;;          (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
-;;;          (when (> target 0)
-;;;            (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 ;;;
 ;;;        (define prim-cget
 ;;;          (rbase rindex)
@@ -448,14 +457,14 @@
 
           (match name with
             '%dtcon       -> (prim-dtcon parm)
-            ;; '%nvget       -> (prim-nvget parm args)
+            '%nvget       -> (prim-nvget parm args)
             ;; '%make-vector -> (prim-make-vector args)
             ;; '%array-ref   -> (prim-array-ref args)
             ;; '%array-set   -> (prim-array-set args)
             ;; '%record-get  -> (prim-record-get parm args)
             ;; '%record-set  -> (prim-record-set parm args)
             ;; '%callocate   -> (prim-callocate parm args)
-            ;; '%exit        -> (prim-exit args)
+            '%exit        -> (prim-exit args)
             ;; '%cget        -> (prim-cget args)
             ;; '%cset        -> (prim-cset args type)
             ;; '%getcc       -> (prim-getcc args)
@@ -484,6 +493,57 @@
        (n-of npop (stream:insn 'epop0 '()))
        (LINSN 'jmp (fatbar-map::get-err label "unknown label"))
        ))
+
+    ;; XXX these two funs are also in llvm.scm, maybe move them to backend.scm?
+    (define split-last
+      ()        acc -> (impossible)
+      (last)    acc -> (:tuple (reverse acc) last)
+      (hd . tl) acc -> (split-last tl (list:cons hd acc))
+      )
+
+    (define (nvcase-frob-else tags subs ealt)
+      ;; if there's no else clause, we need to pull out the last
+      ;;   branch of the nvcase and make it one, because with llvm switch
+      ;;   the else block is not optional.
+      (match ealt with
+	(maybe:yes elsek) -> (:tuple tags subs elsek)
+	(maybe:no)
+	-> (let-values (((tags0 tagn) (split-last tags '()))
+			((subs0 subn) (split-last subs '())))
+	     (:tuple tags0 subs0 subn))
+	))
+
+    ;; NVCASE ob elabel nalts tag0 label0 tag1 label1 ...
+    (define (emit-nvcase test dtname tags jump-num subs ealt k)
+      (let-values (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
+	(match (alist/lookup the-context.datatypes dtname) with
+	  (maybe:no) -> (error1 "emit-nvcase" dtname)
+	  (maybe:yes dt)
+	  -> (let ((ntags (length tags))
+		   (lelse (new-label))
+		   (labs (make-labels ntags))
+                   (result (cons (stream:label lelse) (emit elsek)))
+                   (pairs '())
+                   )
+	       (for-range i ntags
+                 (let ((label (nth tags i))
+                       (alt (dt.get label))
+                       (tag (if (= alt.arity 0) ;; immediate/unit constructor
+                                (get-uitag dtname label alt.index)
+                                (get-uotag dtname label alt.index))))
+                   (set! pairs (append pairs (LIST tag labs[i])))
+                   (set! result (append 
+                                 result
+                                 (LIST (stream:label labs[i]))
+                                 (emit (nth subs i))))))
+               (append 
+                (LIST (stream:insn 'nvcase (append (LIST test lelse ntags) pairs)))
+                result
+                (emit-jump-continuation jump-num (k/insn k)))
+               ))))
+
+    ;; (define (emit-litcon index kind target)
+    ;;   (LINSN 'lit target index))
 
     ;; --------------------------------------------------------------------------------
 
@@ -515,6 +575,13 @@
             (maybe:no)      -> (raise (:BadLabel index))
             ))
 
+        (define resolve-tag-pairs
+          (tag lab . rest)
+          -> (cons tag (cons (resolve lab) (resolve-tag-pairs rest)))
+          () -> '()
+          x -> (error1 "odd-length tag pairs" x)
+          )
+
         ;; first pass - compute label offsets
         (for-list insn s
           (match insn with
@@ -538,6 +605,9 @@
             -> (PUSH r (INSN 'fun target (resolve index)))
             (stream:insn 'trcall (index depth nregs . args))
             -> (PUSH r (stream:insn 'trcall (append (LIST (resolve index) depth nregs) args)))
+            (stream:insn 'nvcase (ob elabel nalts . pairs))
+            -> (let ((pairs0 (resolve-tag-pairs pairs)))
+                 (PUSH r (stream:insn 'nvcase (append (LIST ob (resolve elabel) nalts) pairs0))))
             _ -> (PUSH r insn)
             ))
 
