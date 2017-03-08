@@ -4,7 +4,9 @@
 #include "rdtsc.h"
 
 static object * allocate (pxll_int tc, pxll_int size);
+static object * alloc_no_clear (pxll_int tc, pxll_int size);
 static object * dump_object (object * ob, int depth);
+static void print_object (object * ob);
 static object do_gc (int nroots);
 static pxll_int get_case (object * ob);
 
@@ -59,55 +61,113 @@ read_int (FILE * f, pxll_int * r)
   }
 }
 
+int
+read_string (FILE * f, void * b, pxll_int n)
+{
+  size_t r = fread (b, 1, n, f);
+  if (r == n) {
+    return 0;
+  } else {
+    return -1;
+  }
+}
+
+// XXX need to heap-allocate this and make it a vector.
+//     need to prefix list of literals with a length.
 #define NLITS_MAX 20
 int nlits = 0;
 object * bytecode_literals[NLITS_MAX];
 
 pxll_int
-read_literals (FILE * f)
+read_literal (FILE * f, object * ob)
 {
-  int done = 0;
-  while (!done) {
-    pxll_int code = 0;
-    pxll_int n = 0;
-    CHECK (next (f, &code));
-    if (nlits > NLITS_MAX) {
-      return -1;
+  pxll_int code = 0;
+  pxll_int n = 0;
+  CHECK (next (f, &code));
+  switch (code) {
+  case '+':
+    CHECK (read_int (f, &n));
+    *ob = BOX_INTEGER(n);
+    break;
+  case '-':
+    CHECK (read_int (f, &n));
+    *ob =  BOX_INTEGER(-n);
+    break;
+  case 'T':
+    *ob =  PXLL_TRUE;
+    break;
+  case 'F':
+    *ob =  PXLL_FALSE;      
+    break;
+  case 'u':
+    *ob =  PXLL_UNDEFINED;
+    break;
+  case 'c':
+    CHECK (read_int (f, &n));
+    *ob =  TO_CHAR (n);
+    break;
+  case 'S': {
+    CHECK (read_int (f, &n));
+    pxll_string * t = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (n));
+    t->len = n;
+    CHECK (read_string (f, t->data, n));
+    *ob = (object *) t;
+  }
+    break;
+  case 'P': // pointer to another literal.
+    CHECK (read_int (f, &n));
+    fprintf (stderr, "P %d\n", n);
+    // XXXXXXXXXXXXXXXXXXXXXXXXXx
+    // The problem: at this point bytecode_literals[n] has not been set.
+    // XXXXXXXXXXXXXXXXXXXXXXXXXx
+    *ob = bytecode_literals[n];
+    break;
+  case 'I': // immediate (e.g., (list:nil))
+    CHECK (read_int (f, &n));
+    *ob = (object) n;
+    break;
+  case 'C': { // tuple (e.g., (list:cons ...))
+    pxll_int tag;
+    pxll_int nargs;
+    CHECK (read_int (f, &tag));
+    CHECK (read_int (f, &nargs));
+    object * ob0 = allocate (tag, nargs);
+    for (int i=0; i < nargs; i++) {
+      CHECK (read_literal (f, &(ob0[i+1])));
     }
-    switch (code) {
-    case '+':
-      CHECK (read_int (f, &n));
-      bytecode_literals[nlits++] =  BOX_INTEGER(n);
-      break;
-    case '-':
-      CHECK (read_int (f, &n));
-      bytecode_literals[nlits++] =  BOX_INTEGER(-n);
-      break;
-    case 'T':
-      bytecode_literals[nlits++] =  PXLL_TRUE;
-      break;
-    case 'F':
-      bytecode_literals[nlits++] =  PXLL_FALSE;      
-      break;
-    case 'u':
-      bytecode_literals[nlits++] =  PXLL_UNDEFINED;
-      break;
-    case 'c':
-      CHECK (read_int (f, &n));
-      bytecode_literals[nlits++] =  TO_CHAR (n);
-      break;
-    case '.':
-      done = 1;
-      break;
-    default:
-      return -1;
+    *ob = ob0;
+  }
+    break;
+  case 'V': { // vector
+    pxll_int nargs;
+    CHECK (read_int (f, &nargs));
+    if (nargs > 0) {
+      object * ob0 = allocate (TC_VECTOR, nargs);
+      for (int i=0; i < nargs; i++) {
+        CHECK (read_literal (f, &(ob0[i+1])));
+      }
+      *ob = ob0;
+    } else {
+      *ob = (object) TC_EMPTY_VECTOR;
     }
   }
-  // for (int i=0; i < nlits; i++) {
-  //   fprintf (stderr, "%d: ", i);
-  //   DO (bytecode_literals[i]);
-  // }
+    break;
+  default:
+    fprintf (stderr, "bad literal code: %ld\n", code);
+    return -1;
+  }
   return 0;
+}
+
+pxll_int
+read_literals (FILE * f)
+{
+  object lits0;
+  CHECK (read_literal (f, &lits0));
+  fprintf (stdout, "v0 ");
+  print_object (lits0);
+  fprintf (stdout, "\n");
+  return -1;
 }
 
 #define NCODE_MAX 16384
