@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(include "lib/cmap.scm")
+
 (datatype backend
   (:c)
   (:llvm)
@@ -37,7 +39,7 @@
     cverbatim           = '()
     records             = '()
     labels              = '()
-    literals            = '()
+    literals            = (cmap/make magic<?)
     literal-ids         = (tree/empty)
     symbols             = (alist/make)
     variant-labels      = (alist/make)

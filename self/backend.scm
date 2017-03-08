@@ -5,6 +5,7 @@
 (include "self/graph.scm")
 (include "self/analyze.scm")
 
+;; XXX add buffering!
 (define (make-writer file)
   (let ((level 0))
     (define (write-string s)
@@ -12,7 +13,8 @@
 	     (format (repeat level "  ") s "\n"))
       #u)
     (define (copy s)
-      (write file.fd s))
+      (write file.fd s)
+      #u)
     (define (indent) (set! level (+ level 1)))
     (define (dedent) (set! level (- level 1)))
     (define (close-file) (close file.fd))
@@ -172,8 +174,7 @@ static void prof_dump (void)
 
 ;; we support three types of non-immediate literals:
 ;;
-;; 1) strings.  identical strings are *not* merged, since
-;;      modifying strings is a reasonable choice.
+;; 1) strings.  identical strings are merged. do not modify literal strings.
 ;; 2) symbols.  this emits a string followed by a symbol tuple.
 ;;      these are collected so each is unique.  any runtime
 ;;      symbol table should be populated with these first.
@@ -184,11 +185,9 @@ static void prof_dump (void)
 ;;      object.
 
 (define (emit-constructed o)
-  (let ((lits (reverse the-context.literals))
-	(nlits (length lits))
-	(strings (alist/make))
+  (let ((lits the-context.literals)
+	(nlits lits.count)
 	(output '())
-	(current-index 0)
 	(symbol-counter 0)
 	)
 
@@ -203,7 +202,7 @@ static void prof_dump (void)
 	'list 'nil -> "TC_NIL"
 	_ _ -> (format "UITAG(" (int index) ")")))
 
-    (define (walk exp)
+    (define (walk exp litnum)
       (match exp with
 	;; data constructor
 	(literal:cons dt variant args)
@@ -212,59 +211,57 @@ static void prof_dump (void)
 		 (nargs (length args)))
 	     (if (> nargs 0)
 		 ;; constructor with args
-		 (let ((args0 (map walk args))
+		 (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
 		       (addr (+ 1 (length output))))
 		   (PUSH output (uohead nargs dt variant alt.index))
 		   (for-each (lambda (x) (PUSH output x)) args0)
-		   (format "UPTR(" (int current-index) "," (int addr) ")"))
+		   (format "UPTR(" (int litnum) "," (int addr) ")"))
 		 ;; nullary constructor - immediate
 		 (uitag dt variant alt.index)))
 	(literal:vector args)
-	-> (let ((args0 (map walk args))
+	-> (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
 		 (nargs (length args))
 		 (addr (+ 1 (length output))))
 	     (PUSH output (format "(" (int nargs) "<<8)|TC_VECTOR"))
 	     (for-each (lambda (x) (PUSH output x)) args0)
-	     (format "UPTR(" (int current-index) "," (int addr) ")"))
+	     (format "UPTR(" (int litnum) "," (int addr) ")"))
 	(literal:symbol sym)
 	-> (let ((index (alist/get the-context.symbols sym "unknown symbol?")))
 	     (format "UPTR(" (int index) ",1)"))
 	(literal:string s)
-	-> (match (alist/lookup strings s) with
-	     (maybe:yes index) -> (format "UPTR0(" (int index) ")")
-	     (maybe:no) -> (error "emit-constructed: lost string"))
+	->  (format "UPTR0(" (int (cmap->index lits exp)) ")")
+        ;; NOTE: sexp is missing from here.  without that, no sexp literals.
 	_ -> (int->string (encode-immediate exp))
 	))
     (o.dedent) ;; XXX fix this by defaulting to zero indent
-    (for-range
-	i nlits
+    (for-map i lit lits.rev
 	(set! output '())
-	(set! current-index i)
-	(let ((lit (nth lits i)))
-	  (match lit with
-	    ;; strings are a special case here because they have a non-uniform structure: the existence of
-	    ;;   the uint32_t <length> field means it's hard for us to put a UPTR in the front.
-	    (literal:string s)
-	    -> (let ((slen (string-length s)))
-		 ;; this works because we want strings compared for eq? identity...
-		 (alist/push strings s i)
-		 (o.write (format "pxll_string constructed_" (int i) " = {STRING_HEADER(" (int slen) "), " (int slen) ", \"" (c-string s) "\" };")))
-	    ;; there's a temptation to skip the extra pointer at the front, but that would require additional smarts
-	    ;;   in insn_constructed (as already exist for strings).
-	    ;; NOTE: this reference to the string object only works because it comes before the symbol in the-context.constructed.
-	    (literal:symbol s)
-	    -> (begin
-		 (o.write (format "// symbol " (sym s)))
-		 (o.write (format "pxll_int constructed_" (int i)
-				  "[] = {UPTR(" (int i)
-				  ",1), SYMBOL_HEADER, UPTR0(" (int (- current-index 1))
-				  "), INTCON(" (int symbol-counter) ")};"))
-		 (set! symbol-counter (+ 1 symbol-counter))
-		 )
-	    _ -> (let ((val (walk (nth lits i)))
-		       (rout (list:cons val (reverse output))))
-		   (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
-	    )))
+        (match lit with
+          ;; strings are a special case here because they have a non-uniform structure: the existence of
+          ;;   the uint32_t <length> field means it's hard for us to put a UPTR in the front.
+          (literal:string s)
+          -> (let ((slen (string-length s)))
+               ;; this works because we want strings compared for eq? identity...
+               (o.write (format "pxll_string constructed_" (int i)
+                                " = {STRING_HEADER(" (int slen)
+                                "), " (int slen)
+                                ", \"" (c-string s) "\" };")))
+          ;; there's a temptation to skip the extra pointer at the front, but that would require additional smarts
+          ;;   in insn_constructed (as already exist for strings).
+          (literal:symbol s)
+          -> (begin
+               (o.write (format "// symbol " (sym s)))
+               (o.write (format "pxll_int constructed_" (int i)
+                                "[] = {UPTR(" (int i)
+                                ",1), SYMBOL_HEADER, UPTR0("
+                                (int (cmap->index lits (literal:string (symbol->string s))))
+                                "), INTCON(" (int symbol-counter) ")};"))
+               (set! symbol-counter (+ 1 symbol-counter))
+               )
+          _ -> (let ((val (walk lit i))
+                     (rout (list:cons val (reverse output))))
+                 (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
+          ))
     (let ((symptrs '()))
       (alist/iterate
        (lambda (symbol index)
@@ -281,11 +278,11 @@ static void prof_dump (void)
    (string->list
     "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ")))
 
-;; fix when we get zero-padding format capability...
 (define (char->oct-encoding ch)
   (let ((in-oct (format (oct (char->ascii ch)))))
     (format
      "\\"
+     ;; can't use zpad here because we want to catch out-of-range chars.
      (match (string-length in-oct) with
        0 -> "000"
        1 -> "00"
@@ -371,6 +368,8 @@ static void prof_dump (void)
     -> (compile-to-bytecode base cps)
     _ -> (compile-with-backend0 base cps)
     ))
+
+;; note: the llvm backend relies on the C backend to some extent.
 
 (define (compile-with-backend0 base cps)
 

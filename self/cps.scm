@@ -144,9 +144,8 @@
       )
 
     (define (add-literal lit)
-      (let ((index (length the-context.literals)))
-	(PUSH the-context.literals lit)
-	index))
+      (cmap/add the-context.literals lit)
+      )
 
     ;; inlining often causes literals to be copied all over the place.
     ;;   we can detect this because their node id's are the same.  So keep
