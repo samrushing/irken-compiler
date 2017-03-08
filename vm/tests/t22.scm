@@ -1,3 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-"testing"
+(let ((a "testing")
+      (b "testing"))
+  b)
+
+
