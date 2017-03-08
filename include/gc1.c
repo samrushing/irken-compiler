@@ -100,7 +100,6 @@ do_gc (int nroots)
 
       case TC_STRING:
       case TC_BUFFER:
-      case TC_VEC16:
 	// skip it all
 	scan += length + 1;
 	break;
@@ -231,7 +230,6 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
       break;
     case TC_STRING:
     case TC_BUFFER:
-    case TC_VEC16:
       // skip it all
       scan += length+1;
       break;

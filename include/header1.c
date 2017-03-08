@@ -186,20 +186,6 @@ dump_object (object * ob, int depth)
         fprintf (stdout, ")");
       }
 	break;
-      case TC_VEC16: {
-        pxll_vec16 * t = (pxll_vec16 *) ob;
-        pxll_int n = t->len;
-        int i;
-	fprintf (stdout, "#16(");
-        for (i=0; i < n; i++) {
-	  fprintf (stdout, "%d", t->data[i]);
-	  if (i < n-1) {
-	    fprintf (stdout, " ");
-	  }
-        }
-        fprintf (stdout, ")");
-      }
-	break;
       case TC_PAIR:
 	print_list ((pxll_pair *) ob);
         break;
@@ -254,10 +240,21 @@ pxll_int min_int (pxll_int a, pxll_int b)
 // XXX infinite objects?
 // XXX consider 'magic_cmp'. (i.e., the 'cmp' datatype).
 // XXX consider how this may interact with the avoid-boxing optimization.
+
+pxll_int magic_less_than (object * a, object * b);
+
+// XXX grok why this goes FUCKING INSANE with a moderately complex
+//   object when the eq? test is missing.  I think it's because we
+//   make two comparisons for each level of sub-object.  The only
+//   real fix for this is to use 3-way comparison everywhere.
+//   probably means rewriting frb.scm as well (!).
+
 pxll_int
 magic_less_than (object * a, object * b)
 {
-  if (is_int (a) && is_int (b)) {
+  if (a == b) {
+    return 0;
+  } else if (is_int (a) && is_int (b)) {
     return ((pxll_int) a < (pxll_int) b);
   } else if (is_immediate (a) && is_immediate (b)) {
     return ((pxll_int) a < (pxll_int) b);
