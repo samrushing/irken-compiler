@@ -186,7 +186,9 @@
 (define (abs x) (if (< x 0) (- 0 x) x))
 
 (define (magic<? a b)
-  (%backend c (%%cexp ('a 'a -> bool) "magic_less_than (%0, %1)" a b))
+  (%backend c        (%%cexp ('a 'a -> bool) "magic_less_than (%0, %1)" a b))
+  (%backend llvm     (%%cexp ('a 'a -> bool) "magic_less_than (%0, %1)" a b))
+  (%backend bytecode (%%cexp ('a 'a -> bool) "magic<" a b))
   )
 
 (datatype cmp
