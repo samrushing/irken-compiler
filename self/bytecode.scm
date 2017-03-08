@@ -96,6 +96,7 @@
         (jump-label-map (map-maker <))
         (fun-label-map (map-maker symbol-index<?))
         (fatbar-map (map-maker <))
+        (litcon-map (map-maker magic<?))
         )
 
     (define (new-label)
@@ -179,10 +180,9 @@
 	_ _          -> (UITAG index)))
 
     (define (emit-literal lit target)
-      (let ((index nlit))
-        (PUSH lits lit)
-        (set! nlit (+ 1 nlit))
-        (LINSN 'lit target index)))
+      (LINSN 'lit target 
+             (litcon-map::get-err
+              lit "unknown immediate literal")))
 
     (define (emit-return reg)
       (LINSN 'ret reg))
@@ -542,26 +542,85 @@
                 (emit-jump-continuation jump-num (k/insn k)))
                ))))
 
-    ;; (define (emit-litcon index kind target)
-    ;;   (LINSN 'lit target index))
+    (define (emit-litcon index kind target)
+      ;; XXX the-context.literals should be a counting-map, not a list.
+      (let ((lit (nth the-context.literals index))
+            (pos (litcon-map::get-err lit "unknown literal")))
+        (LINSN 'lit target pos)))
 
     ;; --------------------------------------------------------------------------------
 
-    (define (emit-literals)
-      (for-list lit (reverse lits)
-        (match lit with
+    (define (emit-literals literals)
+      ;; encode literals into the bytecode stream.
+
+      (define (walk ob)
+        (match ob with
           (literal:int n)
           -> (if (< n 0)
                  (o.copy (format "-" (encode-int (- 0 n))))
                  (o.copy (format "+" (encode-int n))))
           (literal:char ch) -> (o.copy (format "c" (encode-int (char->ascii ch))))
           (literal:undef)   -> (o.copy "u")
+          (literal:string s)
+          -> (begin
+               (o.copy (format "S" (encode-int (string-length s))))
+               (o.copy s))
           (literal:cons 'bool 'true _) -> (o.copy "T")
           (literal:cons 'bool 'false _) -> (o.copy "F")
-          _ -> (error1 "non-immediate literal?" lit)
-          )
-        )
-      (o.copy ".")
+          (literal:cons dt variant args)
+          -> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
+                   (alt (dto.get variant))
+                   (nargs (length args)))
+               (if (= nargs 0)
+                   ;; immediate constructor
+                   (o.copy (format "I" (encode-int (get-uitag dt variant alt.index))))
+                   ;; constructor with args
+                   (begin
+                     (o.copy (format "C" 
+                                     (encode-int (get-uotag dt variant alt.index))
+                                     (encode-int nargs)))
+                     (for-list arg args
+                       (walk arg)))))
+          (literal:vector args)
+          -> (begin
+               (o.copy (format "V" (encode-int (length args))))
+               (for-list arg args
+                 (walk arg)))
+          _ -> (error1 "NYI literal type" (literal->string ob))
+          ))
+
+      ;; XXX ok, think we need to rethink how this is done.
+      ;;  probably need a 'walk' fun like in backend.scm, and we need
+      ;;  to consider how we emit the components: in forward or reverse
+      ;;  order, do we try to share sub-structure, etc....
+
+      ;; ok, 'forward' order. this is just like they're laid out in memory.
+      ;; we emit 'dtcon', and if the first element is complex we immediately
+      ;; emit that object.  So in this case we _can_ just walk the object and
+      ;; not have to worry about 'backpointers', etc.  It's much simpler than
+      ;; backend.scm's need to emit sub-components first.
+      ;;
+      ;; the only complexity is this: we have a forest of objects, and we need
+      ;;   to know the roots of the trees, and place them into an array at runtime.
+      ;;   maybe the easiest way to do that is to emit a special code that says,
+      ;;   'the next object is a root'?  Or wait, is that really necessary?  The
+      ;;   reading loop will know exactly where the root of each object is, because
+      ;;   it uses a recursive reading procedure.  Ok, very simple then.
+
+      ;; emit constructed literals as a vector
+      (printf "emitting vector of " (int (length literals)) " literals\n")
+      (printn literals)
+      (o.copy (format "V" (encode-int (length literals))))
+      (for-list lit literals
+        (match (litcon-map::get lit) with
+          (maybe:yes pos) 
+          -> (o.copy (format "P" (encode-int pos)))
+          (maybe:no)
+          -> (begin
+               (printf "adding lit pos=" (int nlit) " lit=" (literal->string lit) "\n")
+               (litcon-map::add lit nlit)
+               (set! nlit (+ 1 nlit))
+               (walk lit))))
       )
 
     (define (resolve-labels s)
@@ -657,13 +716,24 @@
             )
           )))
 
+    (define (find-immediate-literals cps)
+      (walk-insns
+       (lambda (insn depth)
+         (match insn with
+           (insn:literal lit _)
+           -> (PUSH the-context.literals lit)
+           _ -> #u))
+       cps))
+
+    ;; the-context.literals is accumulated in reverse, and the index
+    ;;   in insn:litcon refers to the position in that list.
+    ;; we need to also treat immediate literals the same way.
+
+    (find-immediate-literals cps)
+    (emit-literals (reverse the-context.literals))
     (let ((s (peephole (emit cps))))
-      (printf "lits:\n")
-      (for-list lit lits
-        (printn lit))
       (printf "labels:\n")
       (print-stream s)
-      (emit-literals)
       (let ((resolved (resolve-labels s)))
         (printf "resolved:\n")
         (print-stream resolved)
