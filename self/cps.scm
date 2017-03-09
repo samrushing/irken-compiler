@@ -2,6 +2,7 @@
 
 (include "self/nodes.scm")
 
+;; XXX tag:bare appears to be unused, get rid of this datatype.
 (datatype tag
   (:bare int)
   (:uobj int)

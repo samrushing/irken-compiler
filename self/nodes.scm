@@ -365,6 +365,7 @@
     (:sorted-fix (append (reverse names0) (reverse names1))
 		 (append (reverse inits0) (reverse inits1)))))
 
+;; translate sexp => node.
 (define walk
   (sexp:symbol s)  -> (node/varref s)
   (sexp:string s)  -> (node/literal (literal:string s))
