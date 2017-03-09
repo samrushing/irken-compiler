@@ -21,7 +21,7 @@
     (OI 'tail   2)   ;; closure args
     (OI 'tail0  1)   ;; closure
     (OI 'env    2)   ;; target size
-    (OI 'arg    3)   ;; tuple arg index
+    (OI 'stor   3)   ;; tuple arg index
     (OI 'ref    3)   ;; target depth index
     (OI 'mov    2)   ;; dst src
     (OI 'epush  1)   ;; args
@@ -40,11 +40,15 @@
     (OI 'troff  0)   ;;
     (OI 'gc     0)   ;;
     (OI 'imm    2)   ;; target tag
-    (OI 'alloc  4)   ;; target tag nelem elem0 ...
+    (OI 'make   4)   ;; target tag nelem elem0 ...
     (OI 'exit   1)   ;; arg
     (OI 'nvcase 5)   ;; ob elabel nalts tag0 off0 tag1 off1 ...
     (OI 'tupref 3)   ;; target ob index
-    (OI 'tupset 3)   ;; ob index val
+    (OI 'vref   3)   ;; target vec index-reg
+    (OI 'vset   3)   ;; vec index-reg val
+    (OI 'vmake  3)   ;; target size val
+    (OI 'alloc  3)   ;; target tag size
+    (OI 'rref   3)   ;; target rec label-code
     )))
 
 (for-range i (vector-length opcode-info)
@@ -89,14 +93,11 @@
   (let ((opath (string-append base ".byc"))
         (ofile (file/open-write opath #t #o644))
 	(o (make-writer ofile))
-        (lits '())
-        (nlit 0)
 	(label-counter (make-counter 1))
         (used-jumps (find-jumps cps))
         (jump-label-map (map-maker <))
         (fun-label-map (map-maker symbol-index<?))
         (fatbar-map (map-maker <))
-        (litcon-map (map-maker magic<?))
         )
 
     (define (new-label)
@@ -137,9 +138,9 @@
         (insn:fail label npop free)                   -> (emit-fail label npop free)
         (insn:nvcase tr dt tags jn alts ealt k)       -> (emit-nvcase tr dt tags jn alts ealt k)
         (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind (k/target k)) k)
+        (insn:alloc tag size k)                       -> (emitk (emit-alloc tag size (k/target k)) k)
         ;; (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
         ;; (insn:ffi sig type name args k)              -> (error1 "no FFI in C backend" insn)
-        ;; (insn:alloc tag size k)                      -> (begin (emit-alloc tag size (k/target k)) k)
         ;; (insn:pvcase tr tags arities jn alts ealt k) -> (begin (emit-pvcase tr tags arities jn alts ealt k) (cont:nil))
         _ -> (error1 "NYI" insn)
         ))
@@ -181,8 +182,7 @@
 
     (define (emit-literal lit target)
       (LINSN 'lit target 
-             (litcon-map::get-err
-              lit "unknown immediate literal")))
+             (cmap->index the-context.literals lit)))
 
     (define (emit-return reg)
       (LINSN 'ret reg))
@@ -268,7 +268,7 @@
 
     (define (emit-store off arg tup i)
       ;; XXX can we compute if tup is also top and emit topset?
-      (LINSN 'arg tup arg i))
+      (LINSN 'stor tup i arg))
 
     (define (emit-varref depth index target)
       (match depth with
@@ -337,10 +337,12 @@
                           (else
                            (if (>= target 0)
                                (LIST (stream:insn
-                                      'alloc
-                                      (cons target
-                                            (cons (get-uotag dtname altname alt.index)
-                                                  (cons (length args) args)))))
+                                      'make
+                                      (append 
+                                       (LIST target 
+                                             (get-uotag dtname altname alt.index) 
+                                             (length args))
+                                       args)))
                                (begin
                                  (warning (format "dead target in primop " (sym name) "\n"))
                                  '())))
@@ -355,51 +357,31 @@
           -> (LINSN 'tupref target reg index)
           _ _ -> (primop-error))
 
-;;;        (define prim-make-vector
-;;;          (vlen vval)
-;;;          -> (begin
-;;;               ;; since we cannot know the size at compile-time, there should
-;;;               ;; always be a call to ensure_heap() before any call to %make-vector
-;;;               (o.write (format "O r" (int target) ";"))
-;;;               (o.write (format "if (unbox(r" (int vlen) ") == 0) { r" (int target) " = (object *) TC_EMPTY_VECTOR; } else {"))
-;;;               (o.write (format "  O t = alloc_no_clear (TC_VECTOR, unbox(r" (int vlen) "));"))
-;;;               (o.write (format "  for (int i=0; i<unbox(r" (int vlen) "); i++) { t[i+1] = r" (int vval) "; }"))
-;;;               (o.write (format "  r" (int target) " = t;"))
-;;;               (o.write "}"))
-;;;          _ -> (primop-error))
-;;;
-;;;        (define prim-array-ref
-;;;          (vec index)
-;;;          -> (begin
-;;;               (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-;;;               (o.write (format "O r" (int target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
-;;;          _ -> (primop-error))
-;;;
-;;;        (define prim-array-set
-;;;          (vec index val)
-;;;          -> (begin
-;;;               (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-;;;               (o.write (format "((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";"))
-;;;               (when (> target 0)
-;;;                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
-;;;          _ -> (primop-error))
-;;;
-;;;        (define prim-record-get
-;;;          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
-;;;          -> (let ((label-code (lookup-label-code label)))
-;;;               (match (guess-record-type sig) with
-;;;                 (maybe:yes sig0)
-;;;                 -> (o.write (format "O r" (int target) ;; compile-time lookup
-;;;                                     " = ((pxll_vector*)r" (int rec-reg)
-;;;                                     ")->val[" (int (index-eq label sig0))
-;;;                                     "];"))
-;;;                 (maybe:no)
-;;;                 -> (o.write (format "O r" (int target) ;; run-time lookup
-;;;                                     " = ((pxll_vector*)r" (int rec-reg)
-;;;                                     ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
-;;;                                     ")-TC_USEROBJ)>>2," (int label-code)
-;;;                                     ")]; // label=" (sym label)))))
-;;;          _ _ -> (primop-error))
+        (define prim-make-vector
+          (vlen vval)
+          -> (LINSN 'vmake target vlen vval)
+          _ -> (primop-error))
+
+       (define prim-array-ref
+         (vec index-reg)
+         -> (LINSN 'vref target vec index-reg)
+         _ -> (primop-error))
+
+       (define prim-array-set
+         (vec index-reg val)
+         -> (LINSN 'vset vec index-reg val)
+         _ -> (primop-error))
+
+       (define prim-record-get
+         (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
+         -> (let ((label-code (lookup-label-code label)))
+              (match (guess-record-type sig) with
+                (maybe:yes sig0)
+                -> (LINSN 'tupref target rec-reg (index-eq label sig0))
+                (maybe:no)
+                -> (LINSN 'rref target rec-reg label-code)
+                ))
+         _ _ -> (primop-error))
 ;;;
 ;;;        ;; XXX very similar to record-get, maybe some way to collapse the code?
 ;;;        (define prim-record-set
@@ -458,10 +440,10 @@
           (match name with
             '%dtcon       -> (prim-dtcon parm)
             '%nvget       -> (prim-nvget parm args)
-            ;; '%make-vector -> (prim-make-vector args)
-            ;; '%array-ref   -> (prim-array-ref args)
-            ;; '%array-set   -> (prim-array-set args)
-            ;; '%record-get  -> (prim-record-get parm args)
+            '%make-vector -> (prim-make-vector args)
+            '%array-ref   -> (prim-array-ref args)
+            '%array-set   -> (prim-array-set args)
+            '%record-get  -> (prim-record-get parm args)
             ;; '%record-set  -> (prim-record-set parm args)
             ;; '%callocate   -> (prim-callocate parm args)
             '%exit        -> (prim-exit args)
@@ -543,14 +525,39 @@
                ))))
 
     (define (emit-litcon index kind target)
-      ;; XXX the-context.literals should be a counting-map, not a list.
-      (let ((lit (nth the-context.literals index))
-            (pos (litcon-map::get-err lit "unknown literal")))
-        (LINSN 'lit target pos)))
+      (LINSN 'lit target index))
+
+    (define (emit-alloc tag size target)
+      ;; XXX get rid of `tag:bare`
+      (let ((v (match tag with
+                 (tag:bare v) -> v
+                 (tag:uobj v) -> (if (= size 0) (UITAG v) (UOTAG v)))))
+        (LINSN 'alloc target v size)
+        ))
 
     ;; --------------------------------------------------------------------------------
 
-    (define (emit-literals literals)
+    (define (build-field-lookup-table)
+      ;; Note: this is built as a literal, which at runtime will
+      ;;  have the type `(vector (vector int))`
+      (let ((recs (reverse the-context.records))
+            (nrecs (length recs)))
+        (if (> nrecs 0)
+            (let ((v0 '()))
+              (for-list pair recs
+                (match pair with
+                  (:pair sig index)
+                  -> (let ((v1 '()))
+                       (for-list x sig
+                         (PUSH v1 (literal:int (lookup-label-code x))))
+                       (PUSH v0 (literal:vector (reverse v1))))
+                  ))
+              (literal:vector (reverse v0)))
+            ;; no records used in this program.
+            (literal:vector '())
+            )))
+
+    (define (emit-literals)
       ;; encode literals into the bytecode stream.
 
       (define (walk ob)
@@ -586,44 +593,28 @@
                (o.copy (format "V" (encode-int (length args))))
                (for-list arg args
                  (walk arg)))
+          ;; XXX sexp, symbol.
           _ -> (error1 "NYI literal type" (literal->string ob))
           ))
 
-      ;; XXX ok, think we need to rethink how this is done.
-      ;;  probably need a 'walk' fun like in backend.scm, and we need
-      ;;  to consider how we emit the components: in forward or reverse
-      ;;  order, do we try to share sub-structure, etc....
-
-      ;; ok, 'forward' order. this is just like they're laid out in memory.
-      ;; we emit 'dtcon', and if the first element is complex we immediately
-      ;; emit that object.  So in this case we _can_ just walk the object and
-      ;; not have to worry about 'backpointers', etc.  It's much simpler than
-      ;; backend.scm's need to emit sub-components first.
-      ;;
-      ;; the only complexity is this: we have a forest of objects, and we need
-      ;;   to know the roots of the trees, and place them into an array at runtime.
-      ;;   maybe the easiest way to do that is to emit a special code that says,
-      ;;   'the next object is a root'?  Or wait, is that really necessary?  The
-      ;;   reading loop will know exactly where the root of each object is, because
-      ;;   it uses a recursive reading procedure.  Ok, very simple then.
-
       ;; emit constructed literals as a vector
-      (printf "emitting vector of " (int (length literals)) " literals\n")
-      (printn literals)
-      (o.copy (format "V" (encode-int (length literals))))
-      (for-list lit literals
-        (match (litcon-map::get lit) with
-          (maybe:yes pos) 
-          -> (o.copy (format "P" (encode-int pos)))
-          (maybe:no)
-          -> (begin
-               (printf "adding lit pos=" (int nlit) " lit=" (literal->string lit) "\n")
-               (litcon-map::add lit nlit)
-               (set! nlit (+ 1 nlit))
-               (walk lit))))
+      (let ((lits0 the-context.literals)
+            (nlits lits0.count))
+        (printf "emitting vector of " (int nlits) " literals\n")
+        (o.copy (format "V" (encode-int nlits)))
+        (for-range i nlits
+          (let ((lit (cmap->item lits0 i)))
+            (printf "adding lit pos=" (int i) " lit=" (literal->string lit) "\n")
+            (flush)
+            (walk lit))))
       )
 
     (define (resolve-labels s)
+
+      ;; XXX think about using relative offsets rather than absolute ones.
+      ;;     this will matter more when code size gets larger, and will allow
+      ;;     us to cling to uint16_t longer.
+
       (let ((pc 0)
             (r '())
             (label-map (map-maker <)))
@@ -682,11 +673,21 @@
             (raise (:BadArity name)))))
 
     (define (emit-stream s)
+      ;; first, compute the length (in words) of this stream.
+      (let ((len 0))
+        (for-list item s
+          (match item with
+            (stream:insn name args)
+            -> (set! len (+ len 1 (length args)))
+            _ -> (error1 "unresolved label?" item)
+            ))
+        ;; let the VM know how many words are coming...
+        (o.copy (encode-int len)))
       (for-list item s
         (match item with
           (stream:insn name args)
           -> (o.copy (encode-insn name args))
-          _ -> (error1 "unresolved label?" item)
+          _ -> (impossible)
           )))
 
     (define (peephole s)
@@ -721,8 +722,8 @@
        (lambda (insn depth)
          (match insn with
            (insn:literal lit _)
-           -> (PUSH the-context.literals lit)
-           _ -> #u))
+           -> (cmap/add the-context.literals lit)
+           _ -> 0))
        cps))
 
     ;; the-context.literals is accumulated in reverse, and the index
@@ -730,7 +731,13 @@
     ;; we need to also treat immediate literals the same way.
 
     (find-immediate-literals cps)
-    (emit-literals (reverse the-context.literals))
+    ;; place the field lookup table as the last literal.
+    (let ((field-table (build-field-lookup-table)))
+      (printf "field lookup table:\n")
+      (printf (literal->string field-table) "\n")
+      (cmap/add the-context.literals field-table)
+      )
+    (emit-literals)
     (let ((s (peephole (emit cps))))
       (printf "labels:\n")
       (print-stream s)
