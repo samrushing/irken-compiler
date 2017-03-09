@@ -216,8 +216,8 @@
         (maybe:yes free)
         -> (let ((l0 (new-label)))
              (jump-label-map::add jn l0)
-             (append
-              (LIST (stream:label l0))
+             (cons
+              (stream:label l0)
               (emit k)))
         (maybe:no)
         -> (list:nil)
@@ -293,12 +293,11 @@
       ;; TRCALL <label> <depth> <nregs> <reg0> ...
       (LIST (stream:insn
              'trcall
-             (append
-              (LIST
+             (prepend
                (fun-label-map::get-err name "unknown function")
                (- depth 1)
-               (length args))
-              args))))
+               (length args)
+               args))))
 
     (define (emit-call name fun args k)
       (let ((free (sort < (k/free k)))
@@ -338,11 +337,12 @@
                            (if (>= target 0)
                                (LIST (stream:insn
                                       'make
-                                      (append 
-                                       (LIST target 
-                                             (get-uotag dtname altname alt.index) 
-                                             (length args))
-                                       args)))
+                                      (prepend
+                                       target
+                                       (get-uotag dtname altname alt.index) 
+                                       (length args)
+                                       args)
+                                      ))
                                (begin
                                  (warning (format "dead target in primop " (sym name) "\n"))
                                  '())))
@@ -519,7 +519,7 @@
                                  (LIST (stream:label labs[i]))
                                  (emit (nth subs i))))))
                (append 
-                (LIST (stream:insn 'nvcase (append (LIST test lelse ntags) pairs)))
+                (LIST (stream:insn 'nvcase (prepend test lelse ntags pairs)))
                 result
                 (emit-jump-continuation jump-num (k/insn k)))
                ))))
@@ -654,10 +654,10 @@
             (stream:insn 'fun (target index))
             -> (PUSH r (INSN 'fun target (resolve index)))
             (stream:insn 'trcall (index depth nregs . args))
-            -> (PUSH r (stream:insn 'trcall (append (LIST (resolve index) depth nregs) args)))
+            -> (PUSH r (stream:insn 'trcall (prepend (resolve index) depth nregs args)))
             (stream:insn 'nvcase (ob elabel nalts . pairs))
             -> (let ((pairs0 (resolve-tag-pairs pairs)))
-                 (PUSH r (stream:insn 'nvcase (append (LIST ob (resolve elabel) nalts) pairs0))))
+                 (PUSH r (stream:insn 'nvcase (prepend ob (resolve elabel) nalts pairs0))))
             _ -> (PUSH r insn)
             ))
 
