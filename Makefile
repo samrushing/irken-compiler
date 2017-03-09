@@ -14,3 +14,6 @@ semi:
 
 dist:
 	python util/dist.py
+
+tags:
+	find ./self ./lib -name "*.scm" | etags -
