@@ -1,3 +1,4 @@
+// -*- Mode: C -*-
 
 #include "pxll.h"
 #include <stdio.h>
@@ -72,11 +73,8 @@ read_string (FILE * f, void * b, pxll_int n)
   }
 }
 
-// XXX need to heap-allocate this and make it a vector.
-//     need to prefix list of literals with a length.
-#define NLITS_MAX 20
-int nlits = 0;
-object * bytecode_literals[NLITS_MAX];
+object * bytecode_literals;
+object * vm_field_lookup_table;
 
 pxll_int
 read_literal (FILE * f, object * ob)
@@ -113,14 +111,6 @@ read_literal (FILE * f, object * ob)
     CHECK (read_string (f, t->data, n));
     *ob = (object *) t;
   }
-    break;
-  case 'P': // pointer to another literal.
-    CHECK (read_int (f, &n));
-    fprintf (stderr, "P %d\n", n);
-    // XXXXXXXXXXXXXXXXXXXXXXXXXx
-    // The problem: at this point bytecode_literals[n] has not been set.
-    // XXXXXXXXXXXXXXXXXXXXXXXXXx
-    *ob = bytecode_literals[n];
     break;
   case 'I': // immediate (e.g., (list:nil))
     CHECK (read_int (f, &n));
@@ -159,6 +149,7 @@ read_literal (FILE * f, object * ob)
   return 0;
 }
 
+static
 pxll_int
 read_literals (FILE * f)
 {
@@ -167,29 +158,45 @@ read_literals (FILE * f)
   fprintf (stdout, "v0 ");
   print_object (lits0);
   fprintf (stdout, "\n");
-  return -1;
+  bytecode_literals = lits0;
+  // the last literal is the field lookup table.
+  pxll_int nlits = GET_TUPLE_LENGTH (*(object*)lits0);
+  vm_field_lookup_table = bytecode_literals[nlits];
+  return 0;
 }
 
-#define NCODE_MAX 16384
-int ncodes = 0;
-uint16_t bytecode[NCODE_MAX];
+typedef uint16_t bytecode_t;
+#define BYTECODE_MAX UINT16_MAX
 
+static bytecode_t * bytecode;
+
+static
 pxll_int
 read_bytecode (FILE * f)
 {
-  while (1) {
-    pxll_int code = 0;
-    if (read_int (f, &code) == -1) {
-      return 0;
-    } else if (code > 0xffff) {
-      return -1;
-    } else {
-      bytecode[ncodes++] = code;
-      // fprintf (stderr, "%d ", (int)code);
+  pxll_int codelen = 0;
+  CHECK (read_int (f, &codelen));
+  bytecode = (bytecode_t *) malloc (sizeof(bytecode_t) * codelen);
+  if (!bytecode) {
+    fprintf (stderr, "unable to allocate bytecode array.\n");
+    return -1;
+  } else {
+    for (int i=0; i < codelen; i++) {
+      pxll_int code = 0;
+      CHECK (read_int (f, &code));
+      if (code > BYTECODE_MAX) {
+        return -1;
+      } else {
+        bytecode[i] = code;
+      }
     }
+    // fprintf (stderr, "read %ld bytecodes. (eof? %d)\n", codelen, feof (f));
+    // fprintf (stderr, "ftell = %ld\n", ftell (f));
+    return 0;
   }
 }
 
+static
 pxll_int
 read_bytecode_file (char * path)
 {
@@ -204,14 +211,14 @@ read_bytecode_file (char * path)
   }
 }
 
-pxll_int pc = 0;
+// XXX can we make these register variables in vm_go?
 object * vm_lenv = PXLL_NIL;
 object * vm_k = PXLL_NIL;
 object * vm_top = PXLL_NIL;
 object * vm_result = PXLL_NIL;
 
-#define NREGS 20
-object * vm_regs[NREGS];
+// #define NREGS 20
+// object * vm_regs[NREGS];
 
 enum {
   op_lit,
@@ -229,7 +236,7 @@ enum {
   op_tail,
   op_tail0,
   op_env,
-  op_arg,
+  op_stor,
   op_ref,
   op_mov,
   op_epush,
@@ -248,11 +255,15 @@ enum {
   op_troff,
   op_gc,
   op_imm,
-  op_alloc,
+  op_make,
   op_exit,
   op_nvcase,
   op_tupref,
-  op_tupset
+  op_vref,
+  op_vset,
+  op_vmake,
+  op_alloc,
+  op_rref
 } opcodes;
 
 char * op_names[] = {
@@ -294,9 +305,14 @@ char * op_names[] = {
   "exit",
   "nvcase",
   "tupref",
-  "tupset"
+  "vref",
+  "vset",
+  "vmake",
+  "alloc",
+  "rref"
 };
 
+// Use the higher, (likely) unused user tags for these.
 #define TC_VM_CLOSURE (63<<2)
 #define TC_VM_TUPLE   (62<<2)
 #define TC_VM_LENV    (61<<2)
@@ -328,10 +344,10 @@ print_object (object * ob)
 }
 
 void
-print_regs()
+print_regs (object * vm_regs, int nregs)
 {
   fprintf (stdout, "regs: ");
-  for (int i=0; i < NREGS; i++) {
+  for (int i=0; i < nregs; i++) {
     print_object (vm_regs[i]);
     fprintf (stdout, " ");
   }
@@ -376,6 +392,21 @@ vm_varset (pxll_int depth, pxll_int index, object * val)
   ((object*)lenv[1])[index+1] = val;
 }
 
+static
+pxll_int
+vm_get_field_offset (pxll_int index, pxll_int label_code)
+{
+  object * table = vm_field_lookup_table[index+1];
+  pxll_int tlen = GET_TUPLE_LENGTH (*table);
+  for (int i=0; i < tlen; i++) {
+    if (label_code == UNBOX_INTEGER(table[i+1])) {
+      return i;
+    }
+  }
+  fprintf (stderr, "vm_get_field_offset() failed\n");
+  abort();
+}
+
 #define BC1 bytecode[pc+1]
 #define BC2 bytecode[pc+2]
 #define BC3 bytecode[pc+3]
@@ -391,6 +422,7 @@ vm_gc (void)
 {
   uint64_t t0, t1;
   object nwords;
+
   t0 = rdtsc();
   // copy roots
   heap1[0] = (object) lenv;
@@ -414,22 +446,28 @@ vm_gc (void)
   return nwords;
 }
 
+#define NREGS 20
 
 object
 vm_go (void)
 {
+  register pxll_int pc = 0;
+  register object * vm_regs[NREGS];
   int done = 0;
-  pc = 0;
   for (int i=0; i < NREGS; i++) {
     vm_regs[i] = PXLL_NIL;
   }
   while (!done) {
-    //print_lenv();
-    //print_regs();
-    //fprintf (stderr, "--- %d %s\n", pc, op_names[bytecode[pc]]);
+    // print_lenv();
+    // print_regs();
+    // fprintf (stderr, "--- %ld %s ", pc, op_names[bytecode[pc]]);
+    // for (int i=0; i < 4; i++) {
+    //  fprintf (stderr, "%d ", bytecode[pc+1+i]);
+    // }
+    // fprintf (stderr, "\n");
     switch (bytecode[pc]) {
     case op_lit:
-      REG1 = bytecode_literals[BC2];
+      REG1 = bytecode_literals[BC2+1];
       pc += 3;
       break;
     case op_ret:
@@ -516,9 +554,9 @@ vm_go (void)
       REG1 = allocate (TC_VM_TUPLE, BC2);
       pc += 3;
       break;
-    case op_arg:
-      // ARG tuple arg index
-      REG1[BC3+1] = REG2;
+    case op_stor:
+      // STOR tuple index arg
+      REG1[BC2+1] = REG3;
       pc += 4;
       break;
     case op_ref:
@@ -595,7 +633,9 @@ vm_go (void)
     }
       break;
     case op_print:
-      DO (REG1);
+      // PRINT target arg
+      DO (REG2);
+      REG1 = PXLL_UNDEFINED;
       pc += 3;
       break;
     case op_topis:
@@ -653,8 +693,8 @@ vm_go (void)
       REG1 = (object *) (pxll_int) BC2;
       pc += 3;
       break;
-    case op_alloc: {
-      // ALLOC target tag nelem elem0 ...
+    case op_make: {
+      // MAKE target tag nelem elem0 ...
       pxll_int nelem = BC3;
       object * ob = allocate (BC2, nelem);
       for (int i=0; i < nelem; i++) {
@@ -689,11 +729,44 @@ vm_go (void)
       REG1 = REG2[BC3+1];
       pc += 4;
       break;
-    case op_tupset:
-      // XXX nearly the same as op_arg, combine.
-      // TUPSET ob index val
-      REG1[BC2+1] = REG3;
+    case op_vref:
+      // VREF target vec index-reg
+      REG1 = REG2[UNBOX_INTEGER(REG3)+1];
       pc += 4;
+      break;
+    case op_vset:
+      // VSET vec index-reg val
+      REG1[UNBOX_INTEGER(REG2)+1] = REG3;
+      pc += 4;
+      break;
+    case op_vmake: {
+      // VMAKE target size val
+      // XXX heap check.
+      pxll_int nelems = UNBOX_INTEGER(REG2);
+      if (nelems == 0) {
+        REG1 = (object *) TC_EMPTY_VECTOR;
+      } else {
+        object * ob = alloc_no_clear (TC_VECTOR, nelems);
+        for (int i=0; i < nelems; i++) {
+          ob[i+1] = REG3;
+        }
+        REG1 = ob;
+      }
+      pc += 4;
+    }
+      break;
+    case op_alloc:
+      // ALLOC <target> <tag> <size>
+      REG1 = allocate (BC2, BC3);
+      pc += 4;
+      break;
+    case op_rref: {
+      // RREF target rec label-code
+      pxll_int tag = (GET_TYPECODE (REG2[0]) - TC_USEROBJ) >> 2;
+      pxll_int index = vm_get_field_offset (tag, BC3);
+      REG1 = REG2[index+1];
+      pc += 4;
+    }
       break;
     default:
       fprintf (stderr, "unknown opcode: %d\n", bytecode[pc]);
