@@ -1,7 +1,12 @@
 self/compile.c
 self/compile.ll
 self/compile
+self/compile.dSYM/
+self/compile[0-9]
 doom/*.c
 doom/*.ll
 tests/*.c
 tests/*.ll
+vm/low/irkvm
+vm/low/irkvm.c
+
