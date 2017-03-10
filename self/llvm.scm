@@ -153,6 +153,7 @@
       (match name params args with
 	'%llarith (sexp:symbol op) (arg0 arg1)             -> (emit-arith op arg0 arg1 target)
 	'%llicmp  (sexp:symbol op) (arg0 arg1)             -> (emit-icmp op arg0 arg1 target)
+	'%lleq    _                (arg0 arg1)             -> (emit-icmp 'eq arg0 arg1 target)
 	'%dtcon   (sexp:cons dtname altname) args          -> (emit-dtcon dtname altname args target)
 	'%nvget   (sexp:list (_ (sexp:int index) _)) (reg) -> (emit-nvget target reg index)
 	'%make-vector _ (vlen vval)                        -> (emit-make-vector vlen vval target)

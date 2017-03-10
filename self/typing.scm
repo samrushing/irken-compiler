@@ -617,6 +617,7 @@
       ;; llvm prims
       '%llarith    -> (:scheme '() (arrow int-type (LIST int-type int-type)))
       '%llicmp     -> (:scheme '() (arrow bool-type (LIST int-type int-type)))
+      '%lleq       -> (:scheme (LIST T0) (arrow bool-type (LIST T0 T0)))
       _ -> (error1 "lookup-primapp" name)))
 
   ;; each exception is stored in a global table along with a tvar

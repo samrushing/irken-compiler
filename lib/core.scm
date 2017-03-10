@@ -210,7 +210,7 @@
 
 (define (eq? a b)
   (%backend c (%%cexp ('a 'a -> bool) "%0==%1" a b))
-  (%backend llvm (%llicmp eq a b))
+  (%backend llvm (%lleq #f a b))
   (%backend bytecode (%%cexp ('a 'a -> bool) "eq" a b))
   )
 
