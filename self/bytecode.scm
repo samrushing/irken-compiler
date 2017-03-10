@@ -310,8 +310,6 @@
       (let ((free (sort < (k/free k)))
 	    (nregs (length free))
 	    (target (k/target k)))
-        (printf "emit-call: free=" (join int->string " " free) "\n")
-        (printn name)
         (append
          (if (= args -1)
              (LINSN 'call0 fun nregs)
