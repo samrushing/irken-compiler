@@ -155,9 +155,9 @@ read_literals (FILE * f)
 {
   object lits0;
   CHECK (read_literal (f, &lits0));
-  fprintf (stdout, "v0 ");
-  print_object (lits0);
-  fprintf (stdout, "\n");
+  // fprintf (stdout, "v0 ");
+  // print_object (lits0);
+  // fprintf (stdout, "\n");
   bytecode_literals = lits0;
   // the last literal is the field lookup table.
   pxll_int nlits = GET_TUPLE_LENGTH (*(object*)lits0);
@@ -220,7 +220,7 @@ object * vm_result = PXLL_NIL;
 // #define NREGS 20
 // object * vm_regs[NREGS];
 
-enum {
+typedef enum {
   op_lit,
   op_ret,
   op_add,
@@ -241,8 +241,10 @@ enum {
   op_mov,
   op_epush,
   op_trcall,
+  op_trcall0,
   op_ref0,
   op_call,
+  op_call0,
   op_pop,
   op_print,
   op_topis,
@@ -263,8 +265,11 @@ enum {
   op_vset,
   op_vmake,
   op_alloc,
-  op_rref
-} opcodes;
+  op_rref,
+  op_rset,
+  op_getcc,
+  op_putcc
+} opcode_t;
 
 char * op_names[] = {
   "lit",
@@ -282,13 +287,15 @@ char * op_names[] = {
   "tail",
   "tail0",
   "env",
-  "arg",
+  "stor",
   "ref",
   "mov",
   "epush",
   "trcall",
+  "trcall0",
   "ref0",
   "call",
+  "call0",
   "pop",
   "print",
   "topis",
@@ -309,7 +316,10 @@ char * op_names[] = {
   "vset",
   "vmake",
   "alloc",
-  "rref"
+  "rref",
+  "rset",
+  "getcc",
+  "putcc"
 };
 
 // Use the higher, (likely) unused user tags for these.
@@ -343,6 +353,26 @@ print_object (object * ob)
   }
 }
 
+static
+void
+print_stack (object * k)
+{
+  // VMCONT := stack lenv pc reg0 reg1 ...
+  fprintf (stderr, "{");
+  while (k != PXLL_NIL) {
+    pxll_int n = GET_TUPLE_LENGTH(k[0]) - 3;
+    fprintf (stderr, "%ld.%ld(", UNBOX_INTEGER(k[3]), n);
+    for (int i=0; i < n; i++) {
+      fprintf (stderr, "%d:", i);
+      print_object (k[4+i]);
+      fprintf (stderr, " ");
+    }
+    fprintf (stderr, ") ");
+    k = k[1];
+  }
+  fprintf (stderr, "}\n");
+}
+
 void
 print_regs (object * vm_regs, int nregs)
 {
@@ -374,7 +404,6 @@ object *
 vm_varref (pxll_int depth, pxll_int index)
 {
   object * lenv = vm_lenv;
-  pxll_int d0 = depth;
   for (int i=0; i < depth; i++) {
     lenv = (object *) lenv[2];
   }
@@ -407,16 +436,6 @@ vm_get_field_offset (pxll_int index, pxll_int label_code)
   abort();
 }
 
-#define BC1 bytecode[pc+1]
-#define BC2 bytecode[pc+2]
-#define BC3 bytecode[pc+3]
-#define BC4 bytecode[pc+4]
-
-#define REG1 vm_regs[BC1]
-#define REG2 vm_regs[BC2]
-#define REG3 vm_regs[BC3]
-#define REG4 vm_regs[BC4]
-
 object
 vm_gc (void)
 {
@@ -447,25 +466,36 @@ vm_gc (void)
 }
 
 #define NREGS 20
+#define BC1 code[pc+1]
+#define BC2 code[pc+2]
+#define BC3 code[pc+3]
+#define BC4 code[pc+4]
+
+#define REG1 vm_regs[BC1]
+#define REG2 vm_regs[BC2]
+#define REG3 vm_regs[BC3]
+#define REG4 vm_regs[BC4]
 
 object
 vm_go (void)
 {
   register pxll_int pc = 0;
   register object * vm_regs[NREGS];
+  register bytecode_t * code = bytecode;
   int done = 0;
   for (int i=0; i < NREGS; i++) {
     vm_regs[i] = PXLL_NIL;
   }
   while (!done) {
     // print_lenv();
-    // print_regs();
-    // fprintf (stderr, "--- %ld %s ", pc, op_names[bytecode[pc]]);
+    // print_regs ((object*)vm_regs, 10);
+    // print_stack (vm_k);
+    // fprintf (stderr, "--- %ld %s ", pc, op_names[code[pc]]);
     // for (int i=0; i < 4; i++) {
-    //  fprintf (stderr, "%d ", bytecode[pc+1+i]);
+    //  fprintf (stderr, "%d ", code[pc+1+i]);
     // }
     // fprintf (stderr, "\n");
-    switch (bytecode[pc]) {
+    switch (code[pc]) {
     case op_lit:
       REG1 = bytecode_literals[BC2+1];
       pc += 3;
@@ -586,7 +616,16 @@ vm_go (void)
       pxll_int nregs = BC3;
       object * args = (object *) vm_lenv[1];
       for (int i=0; i < nregs; i++) {
-        args[i+1] = vm_regs[bytecode[pc+4+i]];
+        args[i+1] = vm_regs[code[pc+4+i]];
+      }
+      pc = BC1;
+    }
+      break;
+    case op_trcall0: {
+      // TRCALL0 pc depth
+      pxll_int depth = BC2;
+      for (int i=0; i < depth; i++) {
+        vm_lenv = (object *) vm_lenv[2];
       }
       pc = BC1;
     }
@@ -619,6 +658,26 @@ vm_go (void)
       pc = UNBOX_INTEGER (closure[3]);
     }
       break;
+    case op_call0: {
+      // CALL0 closure nregs
+      // VMCONT := stack lenv pc reg0 reg1 ...
+      pxll_int nregs = BC2;
+      object * k = allocate (TC_VM_CONT, 3 + nregs);
+      k[1] = vm_k;
+      k[2] = vm_lenv;
+      k[3] = BOX_INTEGER (pc + 3);
+      for (int i=0; i < nregs; i++) {
+        k[4+i] = vm_regs[i];
+      }
+      vm_k = k;
+      // CLOSURE := lits code pc lenv
+      object * closure = REG1;
+      vm_lenv = closure[4];
+      // vm_lits = closure[1];
+      // vm_code = closure[2];
+      pc = UNBOX_INTEGER (closure[3]);
+    }
+      break;
     case op_pop: {
       // POP target
       // VMCONT := stack lenv pc reg0 reg1 ...
@@ -630,6 +689,16 @@ vm_go (void)
       vm_k = vm_k[1];
       REG1 = vm_result;
       pc += 2;
+    }
+      break;
+    case op_pop0: {
+      pxll_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
+      for (int i=0; i < nregs; i++) {
+        vm_regs[i] = vm_k[4+i];
+      }
+      vm_lenv = vm_k[2];
+      vm_k = vm_k[1];
+      pc += 1;
     }
       break;
     case op_print:
@@ -657,16 +726,6 @@ vm_go (void)
       // SET depth index val
       vm_varset (BC1, BC2, REG3);
       pc += 4;
-      break;
-    case op_pop0: {
-      pxll_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
-      for (int i=0; i < nregs; i++) {
-        vm_regs[i] = vm_k[4+i];
-      }
-      vm_lenv = vm_k[2];
-      vm_k = vm_k[1];
-      pc += 1;
-    }
       break;
     case op_epop:
       // EPOP
@@ -698,7 +757,7 @@ vm_go (void)
       pxll_int nelem = BC3;
       object * ob = allocate (BC2, nelem);
       for (int i=0; i < nelem; i++) {
-        ob[i+1] = vm_regs[bytecode[pc+4+i]];
+        ob[i+1] = vm_regs[code[pc+4+i]];
       }
       REG1 = ob;
       pc += 4 + nelem;
@@ -715,9 +774,9 @@ vm_go (void)
       pxll_int pc0 = BC2;
       //fprintf (stderr, " tag=%d nalts=%d pc=%d\n", tag, nalts, pc);
       for (int i=0; i < nalts; i++) {
-        //fprintf (stderr, "  testing %d\n", bytecode[pc+4+(i*2)]);
-        if (tag == bytecode[pc+4+(i*2)]) {
-          pc0 = bytecode[pc+4+(i*2)+1];
+        //fprintf (stderr, "  testing %d\n", code[pc+4+(i*2)]);
+        if (tag == code[pc+4+(i*2)]) {
+          pc0 = code[pc+4+(i*2)+1];
           break;
         }
       }
@@ -768,9 +827,28 @@ vm_go (void)
       pc += 4;
     }
       break;
+    case op_rset: {
+      // RSET rec label-code val
+      pxll_int tag = (GET_TYPECODE (REG1[0]) - TC_USEROBJ) >> 2;
+      pxll_int index = vm_get_field_offset (tag, BC2);
+      REG1[index+1] = REG3;
+      pc += 4;
+    }
+      break;
+    case op_getcc:
+      // GETCC target
+      REG1 = vm_k;
+      pc += 2;
+      break;
+    case op_putcc:
+      // PUTCC target k v
+      vm_k = REG2;
+      REG1 = REG3;
+      pc += 4;
+      break;
     default:
-      fprintf (stderr, "unknown opcode: %d\n", bytecode[pc]);
-      return PXLL_NIL;
+      fprintf (stderr, "illegal bytecode. (%d)\n", bytecode[pc]);
+      break;
     }
   }
   return vm_result;
