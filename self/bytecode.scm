@@ -359,7 +359,7 @@
                           )))
           _ -> (primop-error))
 
-        (define (prim-exit args) emit-jump-continuation
+        (define (prim-exit args)
           (LINSN 'exit (car args)))
 
         (define prim-nvget
