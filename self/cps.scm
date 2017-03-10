@@ -699,6 +699,12 @@
 ;;   (an object type) ends up spinning forever.  may be related to non-canonical
 ;;   record types.  needs more investigation.
 
+;; XXX update: this is almost certainly a problem with exponential growth
+;;   when using a `<` function to do deep compares: each level of comparison
+;;   makes *two* calls (to eliminate the equality case).
+;;   magic<? may help with this problem, but the only true fix is to change 
+;;   *everything* to use 3-way comparisons.
+
 (define (collect-all-types root)
   (let ((ng (make-node-generator root))
 	(type-map (map-maker type<?)))
