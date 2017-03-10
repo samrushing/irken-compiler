@@ -415,7 +415,7 @@ pxll_int vm (int argc, char * argv[]);
 
 uint64_t gc_ticks = 0;
 
-#if 0
+#if 1
 static
 void
 clear_space (object * p, pxll_int n)
