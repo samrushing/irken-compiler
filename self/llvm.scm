@@ -208,9 +208,7 @@
 	     )
 
 	;; '%cget
-	;; '%cset XXX dont' forget call to dead-set
-	;; '%getcc
-	;; '%putcc
+	;; '%cset XXX don't forget call to dead-set
 	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x (repr params) args))
 	))
 
