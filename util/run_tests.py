@@ -50,9 +50,14 @@ def test_t22():
     r6 = [ str(x) for x in range (6) ]
     assert (lines[1:] == (r6 + r6 + ['#u', '']))
 
+if not os.path.isfile ('parse/lexstep.scm'):
+    print 'generating parse/lexstep.scm...'
+    os.system ('(cd parse; python lexer.py)')
+
 def test_t_lex():
+    # needs to generate parse/lexstep.scm for this test to run.
     out = run_test ('t_lex')
-    assert (out.split('\n')[-4:] == ['{u0 NUMBER "42"}', '{u0 NEWLINE "\\0x0a"}', '"done"', ''])
+    assert (out.split('\n')[-4:] == ['{u0 whitespace " "}', '{u0 string1 "\\"\\""}', '"done"', ''])
 
 def test_t_vm():
     out = run_test ('t_vm', 'vm/tests/t11.byc')
@@ -85,8 +90,9 @@ for size, file in files:
         print 'compiling', path
         fail = file.startswith ('f')
         code = system ('self/compile %s' % (path,))
+        print 'code=', code
         # need to address the return codes from the compiler...
-        if code == 3584:
+        if code == 0:
             if fail:
                 failed.append ((base, 'compile did not fail like expected'))
             else:
