@@ -1,5 +1,9 @@
 (include "lib/core.scm")
-(local-include "t_stl.cc")
+
+(cverbatim "
+#include <list>
+std::list<int> my_list;
+")
 
 (define (push-back n)
   (%%cexp (int -> undefined) "my_list.push_back(%0)" n))
