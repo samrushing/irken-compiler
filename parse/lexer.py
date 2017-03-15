@@ -197,13 +197,13 @@ class lexer:
         for t in tables:
             indirect.append (unique[t])
         W ("(define dfa \n")
-        W ("  (let* (\n")
+        W ("  (let (\n")
         items = unique.items()
         items.sort (lambda a,b: cmp (a[1], b[1]))
         for table, index in items:
             W ("         (t%d \"%s\")\n" % (index, ''.join (["\\x%02x" % (ord (x),) for x in table])))
         W ("        )\n")
-        W ("   #(%s)))\n" % (" ".join (["t%d" % (x,) for x in indirect])))
+        W ("   (list->vector (LIST %s))))\n" % (" ".join (["t%d" % (x,) for x in indirect])))
 
         # find the sink state
         sink = self.find_sink()

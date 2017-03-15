@@ -13,6 +13,9 @@
 
 (define eof-token (token:t 'eof "eof"))
 
+;; defines the <step> function (DFA) from the lexer generator
+(include "parse/lexstep.scm")
+
 (define (lex producer consumer)
   ;; producer gives us characters
   ;; consumer takes tokens
@@ -20,31 +23,28 @@
   (let ((action 'not-final)
 	(state 0))
 
-      (define (final? action)
-	(not (eq? action 'not-final)))
+    (define (final? action)
+      (not (eq? action 'not-final)))
 
-      ;; defines the <step> function (DFA) from the lexer generator
-      (include "parse/lexstep.scm")
-
-      (let loop ((ch (producer))
-		 (last 'not-final)
-		 (current (list:nil)))
-	(cond ((char=? ch #\eof) (consumer eof-token) #t)
-	      (else
-	       (set! state (step ch state))
-	       (set! action finals[state])
-	       (cond ((and (not (final? last)) (final? action))
-		      ;; we've entered a new final state
-		      (loop (producer) action (list:cons ch current)))
-		     ((and (final? last) (not (final? action)))
-		      ;; we've left a final state - longest match - emit token
-		      (consumer (token:t last (list->string (reverse current))))
-		      (set! state 0)
-		      (loop ch 'not-final (list:nil)))
-		     (else
-		      ;; accumulate this character
-		      (loop (producer) action (list:cons ch current)))))))
-      ))
+    (let loop ((ch (producer))
+               (last 'not-final)
+               (current (list:nil)))
+      (cond ((char=? ch #\eof) (consumer eof-token) #t)
+            (else
+             (set! state (step ch state))
+             (set! action finals[state])
+             (cond ((and (not (final? last)) (final? action))
+                    ;; we've entered a new final state
+                    (loop (producer) action (list:cons ch current)))
+                   ((and (final? last) (not (final? action)))
+                    ;; we've left a final state - longest match - emit token
+                    (consumer (token:t last (list->string (reverse current))))
+                    (set! state 0)
+                    (loop ch 'not-final (list:nil)))
+                   (else
+                    ;; accumulate this character
+                    (loop (producer) action (list:cons ch current)))))))
+    ))
 
 (define (make-lex-generator file)
 
@@ -54,12 +54,10 @@
   (make-generator
    (lambda (consumer)
      (lex producer consumer)
-     (let forever ()
-       (consumer eof-token)
-       (forever))
+     (forever (consumer eof-token))
      )))
 
-(let ((f (file/open-read "nodes.py")))
+(let ((f (file/open-read "parse/gen_irken.py")))
   (define g (make-lex-generator f))
   (let loop ((tok (g)))
     (cond ((eq? tok eof-token) "done")
