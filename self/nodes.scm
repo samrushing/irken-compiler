@@ -326,7 +326,7 @@
       () -> (:pair (reverse names) (reverse inits))
       ((sexp:list ((sexp:symbol name) init)) . l)
       -> (loop l (list:cons name names) (list:cons init inits))
-      _ -> (error1 "unpack-bindings" l)
+      _ -> (error1 "unpack-bindings" (format (join repr " " l)))
       )))
 
 (define (parse-cexp-sig sig)
@@ -392,6 +392,11 @@
        ((sexp:symbol 'literal) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'if) test then else)	    -> (node/if (walk test) (walk then) (walk else))
        ((sexp:symbol '%%sexp) exp)                  -> (node/literal (unsexp exp))
+       ((sexp:symbol '%typed) type exp)
+       -> (let ((exp0 (walk exp)))
+            (printf "user type in expression: " (repr type) "\n")
+            (set-node-type! exp0 (parse-type type))
+            exp0)
        ((sexp:symbol '%%cexp) sig template . args)
        -> (let ((scheme (parse-cexp-sig sig)))
 	    (match scheme with
