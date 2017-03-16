@@ -98,8 +98,8 @@ object * heap1 = NULL;
 #define UOBJ_SET(o,i,v)         (((pxll_vector*)(o))->val[i] = v)
 
 // code output for literals
-#define UOTAG(n)                (TC_USEROBJ+(n<<2))
-#define UITAG(n)                (TC_USERIMM+(n<<8))
+#define UOTAG(n)                (TC_USEROBJ+((n)<<2))
+#define UITAG(n)                (TC_USERIMM+((n)<<8))
 #define UPTR(n,o)               ((pxll_int)(constructed_##n+o))
 #define UPTR0(n)                ((pxll_int)(&constructed_##n))
 #define UOHEAD(l,n)             ((l<<8)|UOTAG(n))
