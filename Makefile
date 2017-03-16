@@ -17,3 +17,6 @@ dist:
 
 tags:
 	find ./self ./lib -name "*.scm" | etags -
+
+safe:
+	python util/safe.py
