@@ -23,6 +23,7 @@
    no-range-check       = #f
    backend              = (backend:c)
    include-dirs		= (LIST "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
+   libraries            = '()
    })
 
 (define (make-context)

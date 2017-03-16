@@ -46,9 +46,12 @@
   (let ((cc (getenv-or "CC" CC))
 	(cflags (getenv-or "CFLAGS" CFLAGS))
 	(cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
-	(cmd (format cc " " cflags " " (join " " paths) " " extra " -o " base)))
+        (libs (format (join " " (map (lambda (lib) (format "-l" lib)) options.libraries))))
+	(cmd (format cc " " cflags " " (join " " paths) " " extra " " libs " -o " base)))
     (print-string (format "system: " cmd "\n"))
-    (system cmd)))
+    (if (not (= 0 (system cmd)))
+        (raise (:CCFailed cmd))
+        #u)))
 
 (define (get-options argv options)
   (let ((filename-index 1))
@@ -64,6 +67,9 @@
 	  "-I" -> (begin
 		    (set! i (+ i 1))
 		    (PUSH options.include-dirs argv[i]))
+          "-l" -> (begin
+                    (set! i (+ i 1))
+                    (PUSH options.libraries argv[i]))
 	  "-m" -> (set! options.debugmacroexpansion #t)
 	  "-dt" -> (set! options.debugtyping #t)
 	  "-ni" -> (set! options.noinline #t)
@@ -91,6 +97,7 @@ Usage: compile <irken-src-file> [options]
  -t : generate trace-printing code (currently unimplemented)
  -f : set CFLAGS for C compiler
  -I : add include search directory
+ -l : add a link library
  -m : debug macro expansion
  -dt : debug typing
  -ni : no inlining
