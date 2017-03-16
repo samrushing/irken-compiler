@@ -43,12 +43,18 @@
   (copy-string (if b "#t" "#f") 2))
 
 (define (string-ref s n)
-  (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
-  (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
+  (%backend (c llvm)
+    (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
+    (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
+  (%backend bytecode
+    (%%cexp (string int -> char) "sref" s n)))
 
 (define (string-set! s n c)
-  (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
-  (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c))
+  (%backend (c llvm)
+    (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
+    (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c))
+  (%backend bytecode
+    (%%cexp (string int char -> undefined) "sset" s n c)))
 
 (define (string-concat l)
   ;; merge a list of strings into one string
