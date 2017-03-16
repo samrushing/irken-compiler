@@ -86,8 +86,12 @@
     (define loop
       acc () -> (reverse acc)
       acc ((sexp:list ((sexp:symbol '%backend) (sexp:symbol backend) . subs)) . tl)
-      -> (if (eq? (name->backend backend) the-context.options.backend)
-             (loop (foldr cons subs acc) tl)
+      -> (if (eq? backend (backend->name the-context.options.backend))
+             (loop (foldr cons (reverse subs) acc) tl)
+             (loop acc tl))
+      acc ((sexp:list ((sexp:symbol '%backend) (sexp:list backends) . subs)) . tl)
+      -> (if (member? (sexp:symbol (backend->name the-context.options.backend)) backends sexp=?)
+             (loop (foldr cons (reverse subs) acc) tl)
              (loop acc tl))
       acc (hd . tl)
       -> (loop (list:cons hd acc) tl)
@@ -463,7 +467,10 @@
 	   ;; pattern-matching expression
 	   (parse-pattern-matching-define name body (sexp:bool #f))
 	   ;; normal definition
-	   (parse-no-formals-define name body))
+	   (parse-no-formals-define name body (maybe:no)))
+    ;; (define (%typed name type) ...)
+    ((sexp:list ((sexp:symbol '%typed) (sexp:symbol name) type)) . body)
+    -> (parse-no-formals-define name body (maybe:yes type))
     ;; (define (%typed (name arg ...) type) ...)
     ((sexp:list ((sexp:symbol '%typed) (sexp:list ((sexp:symbol name) . formals)) type)) . body)
     -> (parse-normal-definition name formals body type)
@@ -487,17 +494,19 @@
                          type
 			 (expand body0)))))
 
-  (define (parse-no-formals-define name body)
-    (if (not (= 1 (length body)))
-	(error1 "malformed definition" name)
-	(:pair name (car body))))
+  (define parse-no-formals-define
+    ;; XXX should we run expand-body on body?
+    name (body) (maybe:no)       -> (:pair name body)
+    name (body) (maybe:yes type) -> (:pair name (sexp (sexp:symbol '%typed) type body))
+    name _ _ -> (error1 "malformed definition" name)
+    )
 
   (define (parse-normal-definition name formals body type)
     (match type with
       (sexp:bool _) -> #u
       _ -> (begin
-	     (print-string (format "user type in define: " (p repr type) "\n"))
-	     (print-string (format "  parsed: " (p type-repr (parse-type type)) "\n"))))
+	     (print-string (format "user type in define: " (repr type) "\n"))
+	     (print-string (format "  parsed: " (type-repr (parse-type type)) "\n"))))
     (:pair name (sexp (sexp:symbol 'function)
 		      (sexp:symbol name)
 		      (sexp:list formals)
@@ -567,11 +576,10 @@
   (define (expand-%%sexp list)
     (sexp:list (cons (sexp:symbol '%%sexp) list)))
 
-  (define name->backend
-    'c        -> (backend:c)
-    'llvm     -> (backend:llvm)
-    'bytecode -> (backend:bytecode)
-    x         -> (error1 "unknown backend" x)
+  (define backend->name
+    (backend:c)        -> 'c
+    (backend:llvm)     -> 'llvm
+    (backend:bytecode) -> 'bytecode
     )
 
   (define transform-table
