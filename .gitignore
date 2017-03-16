@@ -9,4 +9,3 @@ tests/*.c
 tests/*.ll
 vm/low/irkvm
 vm/low/irkvm.c
-
