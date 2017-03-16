@@ -89,9 +89,10 @@ for size, file in files:
         path = os.path.join ('tests', file)
         print 'compiling', path
         fail = file.startswith ('f')
+        # XXX need to make 'special' tests such that they can compile with
+        #   custom flags (e.g. t_stl).
         code = system ('self/compile %s' % (path,))
         print 'code=', code
-        # need to address the return codes from the compiler...
         if code == 0:
             if fail:
                 failed.append ((base, 'compile did not fail like expected'))
