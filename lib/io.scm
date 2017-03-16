@@ -1,9 +1,7 @@
-;; -*- Mode: Scheme -*-
+;; -*- Mode: Irken -*-
 
 (cinclude "fcntl.h")
 (cinclude "unistd.h")
-
-;; redo the file object using records (i.e., with methods).
 
 (define O_RDONLY (%%cexp int "O_RDONLY"))
 (define O_WRONLY (%%cexp int "O_WRONLY"))
@@ -33,7 +31,6 @@
   (syscall
    (%%cexp (int string int -> int)
 	   "read (%0, %1, %2)"
-	   ;; XXX range check
 	   fd buffer (string-length buffer)
 	   )))
 
