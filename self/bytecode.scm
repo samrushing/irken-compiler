@@ -1,71 +1,93 @@
 ;; -*- Mode: Irken -*-
 
-(define (OI name nargs) {code=0 name=name nargs=nargs})
+(define (OI name nargs varargs target?) {code=0 name=name nargs=nargs varargs=varargs target=target?})
 
 (define opcode-info
   (list->vector
    (LIST
-    ;;  name   nargs    args
-    (OI 'lit     2)   ;; target index
-    (OI 'ret     1)   ;; val
-    (OI 'add     3)   ;; target a b
-    (OI 'sub     3)   ;; target a b
-    (OI 'eq      3)   ;; target a b
-    (OI 'lt      3)   ;; target a b
-    (OI 'gt      3)   ;; target a b
-    (OI 'le      3)   ;; target a b
-    (OI 'ge      3)   ;; target a b
-    (OI 'tst     2)   ;; val offset
-    (OI 'jmp     1)   ;; offset
-    (OI 'fun     2)   ;; target offset
-    (OI 'tail    2)   ;; closure args
-    (OI 'tail0   1)   ;; closure
-    (OI 'env     2)   ;; target size
-    (OI 'stor    3)   ;; tuple arg index
-    (OI 'ref     3)   ;; target depth index
-    (OI 'mov     2)   ;; dst src
-    (OI 'epush   1)   ;; args
-    (OI 'trcall  3)   ;; offset depth nregs reg0 ...
-    (OI 'trcall0 2)   ;; offset depth
-    (OI 'ref0    2)   ;; target index
-    (OI 'call    3)   ;; closure args nregs
-    (OI 'call0   2)   ;; closure nregs
-    (OI 'pop     1)   ;; target
-    (OI 'print   2)   ;; target arg
-    (OI 'topis   1)   ;; env
-    (OI 'topref  2)   ;; target index
-    (OI 'topset  2)   ;; index val
-    (OI 'set     3)   ;; depth index val
-    (OI 'pop0    0)   ;;
-    (OI 'epop    0)   ;;
-    (OI 'tron    0)   ;;
-    (OI 'troff   0)   ;;
-    (OI 'gc      0)   ;;
-    (OI 'imm     2)   ;; target tag
-    (OI 'make    4)   ;; target tag nelem elem0 ...
-    (OI 'exit    1)   ;; arg
-    (OI 'nvcase  5)   ;; ob elabel nalts tag0 off0 tag1 off1 ...
-    (OI 'tupref  3)   ;; target ob index
-    (OI 'vref    3)   ;; target vec index-reg
-    (OI 'vset    3)   ;; vec index-reg val
-    (OI 'vmake   3)   ;; target size val
-    (OI 'alloc   3)   ;; target tag size
-    (OI 'rref    3)   ;; target rec label-code
-    (OI 'rset    3)   ;; rec label-code val
-    (OI 'getcc   1)   ;; target
-    (OI 'putcc   3)   ;; target k val
+    ;;  name   nargs varargs target? args
+    (OI 'lit     2      #f     #t)   ;; target index
+    (OI 'ret     1      #f     #f)   ;; val
+    (OI 'add     3      #f     #t)   ;; target a b
+    (OI 'sub     3      #f     #t)   ;; target a b
+    (OI 'eq      3      #f     #t)   ;; target a b
+    (OI 'lt      3      #f     #t)   ;; target a b
+    (OI 'gt      3      #f     #t)   ;; target a b
+    (OI 'le      3      #f     #t)   ;; target a b
+    (OI 'ge      3      #f     #t)   ;; target a b
+    (OI 'cmp     3      #f     #t)   ;; target a b
+    (OI 'tst     2      #f     #f)   ;; val offset
+    (OI 'jmp     1      #f     #f)   ;; offset
+    (OI 'fun     2      #f     #t)   ;; target offset
+    (OI 'tail    2      #f     #f)   ;; closure args
+    (OI 'tail0   1      #f     #f)   ;; closure
+    (OI 'env     2      #f     #t)   ;; target size
+    (OI 'stor    3      #f     #f)   ;; tuple arg index
+    (OI 'ref     3      #f     #t)   ;; target depth index
+    (OI 'mov     2      #f     #f)   ;; dst src
+    (OI 'epush   1      #f     #f)   ;; args
+    (OI 'trcall  3      #t     #f)   ;; offset depth nregs reg0 ...
+    (OI 'trcall0 2      #f     #f)   ;; offset depth
+    (OI 'ref0    2      #f     #t)   ;; target index
+    (OI 'call    3      #f     #f)   ;; closure args nregs
+    (OI 'call0   2      #f     #f)   ;; closure nregs
+    (OI 'pop     1      #f     #t)   ;; target
+    (OI 'printo  1      #f     #f)   ;; arg
+    (OI 'prints  1      #f     #f)   ;; arg
+    (OI 'topis   1      #f     #f)   ;; env
+    (OI 'topref  2      #f     #t)   ;; target index
+    (OI 'topset  2      #f     #f)   ;; index val
+    (OI 'set     3      #f     #f)   ;; depth index val
+    (OI 'pop0    0      #f     #f)   ;;
+    (OI 'epop    0      #f     #f)   ;;
+    (OI 'tron    0      #f     #f)   ;;
+    (OI 'troff   0      #f     #f)   ;;
+    (OI 'gc      0      #f     #f)   ;;
+    (OI 'imm     2      #f     #t)   ;; target tag
+    (OI 'make    4      #t     #t)   ;; target tag nelem elem0 ...
+    (OI 'exit    1      #f     #f)   ;; arg
+    (OI 'nvcase  5      #t     #f)   ;; ob elabel nalts tag0 off0 tag1 off1 ...
+    (OI 'tupref  3      #f     #t)   ;; target ob index
+    (OI 'vref    3      #f     #t)   ;; target vec index-reg
+    (OI 'vset    3      #f     #f)   ;; vec index-reg val
+    (OI 'vmake   3      #f     #t)   ;; target size val
+    (OI 'alloc   3      #f     #t)   ;; target tag size
+    (OI 'rref    3      #f     #t)   ;; target rec label-code
+    (OI 'rset    3      #f     #f)   ;; rec label-code val
+    (OI 'getcc   1      #f     #t)   ;; target
+    (OI 'putcc   3      #f     #t)   ;; target k val
+    (OI 'irk     3      #t     #t)   ;; target closure nargs arg0 ...
+    (OI 'getc    1      #f     #t)   ;; target
+    (OI 'dlsym   2      #f     #t)   ;; target name
+    (OI 'ffi     4      #t     #t)   ;; target fun nargs arg0 ...
+    (OI 'slen    2      #f     #t)   ;; target string
+    (OI 'sref    3      #f     #t)   ;; target string index
+    (OI 'sset    3      #f     #f)   ;; string index char
+    (OI 'plat    1      #f     #t)   ;; target
     )))
 
 (for-range i (vector-length opcode-info)
   (let ((info opcode-info[i]))
     (set! info.code i)))
 
+(define opmap
+  (let ((m (map-maker symbol<?)))
+    (for-vector info opcode-info
+      (m::add info.name info))
+    m))
+
 (define (name->info name)
-  (let/cc return
-    (for-vector op opcode-info
-       (if (eq? name op.name)
-           (return op)))
-    (raise (:NoSuchOpcode name))))
+  (match (opmap::get name) with
+    (maybe:yes info) -> info
+    (maybe:no) -> (raise (:NoSuchOpcode name))
+    ))
+
+;; (define (name->info name)
+;;   (let/cc return
+;;     (for-vector op opcode-info
+;;        (if (eq? name op.name)
+;;            (return op)))
+;;     (raise (:NoSuchOpcode name))))
 
 (define (name->opcode name)
   (let ((info (name->info name)))
@@ -145,9 +167,8 @@
         (insn:pvcase tr tags arities jn alts ealt k)  -> (emit-pvcase tr tags arities jn alts ealt k)
         (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind (k/target k)) k)
         (insn:alloc tag size k)                       -> (emitk (emit-alloc tag size (k/target k)) k)
-        ;; (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
-        ;; (insn:ffi sig type name args k)              -> (error1 "no FFI in C backend" insn)
-        _ -> (error1 "NYI" insn)
+        (insn:ffi sig type name args k)               -> (error1 "no FFI in bytecode backend" insn)
+        (insn:testcexp regs sig tmpl jn k0 k1 k)      -> (impossible)
         ))
 
     (define (encode-int n)
@@ -186,24 +207,26 @@
 	_ _          -> (UITAG index)))
 
     (define (emit-literal lit target)
-      (LINSN 'lit target
-             (cmap->index the-context.literals lit)))
+      (if (= target -1)
+          '() ;; pointless dead literal.
+          (LINSN 'lit target
+                 (cmap->index the-context.literals lit))))
 
     (define (emit-return reg)
       (LINSN 'ret reg))
 
     ;; %%cexp is really more like 'builtin primapp' here. [consider renaming]
-    ;; Note: there's a problem with dead targets here.
-    ;; "->#u" prims will often (but not always!) be in dead positions,
-    ;;  it's their job to ignore the unused target.
-    ;; But what do we do with a dead target for a prim that does *not*
-    ;;  ignore its target?  Is it always safe to change 'dead' to '0'?
 
     (define (emit-cexp sig type template args target)
       ;; Note: is it bad that you can use this to call any insn?
-      (LIST (stream:insn
-             (string->symbol template)
-             (cons (if (= target -1) 0 target) args))))
+      (let ((opcode (string->symbol template))
+            (info (name->info opcode)))
+        (LIST (stream:insn
+               (string->symbol template)
+               (if info.target
+                   (cons target args)
+                   args)))
+        ))
 
     (define (emit-move var src target)
       ;; MOV <dst-ref> <src-reg>
@@ -588,6 +611,10 @@
                (for-list arg args
                  (walk arg)))
           ;; XXX sexp, symbol.
+          (literal:symbol s)
+          -> (let ((s0 (symbol->string s)))
+               (o.copy (format "Y" (encode-int (string-length s0))))
+               (o.copy s0))
           _ -> (error1 "NYI literal type" (literal->string ob))
           ))
 
