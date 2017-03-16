@@ -1,14 +1,17 @@
 # -*- Mode: Makefile; tab-width: 4 -*-
 
+# build from bootstrap.
 bootstrap:
 	python util/bootstrap.py
 
 test:
 	python util/run_tests.py
 
+# remove nearly everything
 clean:
 	python util/clean.py
 
+# leave self/compile[0-9]? binaries.
 semi:
 	python util/clean.py -s
 
@@ -18,5 +21,6 @@ dist:
 tags:
 	find ./self ./lib -name "*.scm" | etags -
 
+# build self/compile with binary rotation.
 safe:
 	python util/safe.py
