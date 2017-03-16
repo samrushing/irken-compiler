@@ -241,8 +241,6 @@ pxll_int min_int (pxll_int a, pxll_int b)
 // XXX consider 'magic_cmp'. (i.e., the 'cmp' datatype).
 // XXX consider how this may interact with the avoid-boxing optimization.
 
-pxll_int magic_less_than (object * a, object * b);
-
 // XXX grok why this goes FUCKING INSANE with a moderately complex
 //   object when the eq? test is missing.  I think it's because we
 //   make two comparisons for each level of sub-object.  The only
@@ -284,9 +282,9 @@ magic_less_than (object * a, object * b)
       pxll_int len_a = GET_TUPLE_LENGTH (*a);
       pxll_int len_b = GET_TUPLE_LENGTH (*b);
       for (int i=0; i < min_int (len_a, len_b); i++) {
-        if (magic_less_than (a[i+1], b[i+1])) {
+        if (magic_less_than ((object*)a[i+1], (object*)b[i+1])) {
           return 1;
-        } else if (magic_less_than (b[i+1], a[i+1])) {
+        } else if (magic_less_than ((object*)b[i+1], (object*)a[i+1])) {
           return 0;
         } else {
           // a[i] == b[i], continue to the next...
@@ -294,6 +292,65 @@ magic_less_than (object * a, object * b)
       }
       // if we are here, items are equal up to min-length.
       return (len_a < len_b);
+    }
+  }
+}
+
+pxll_int
+magic_cmp_int (pxll_int a, pxll_int b)
+{
+  if (a == b) {
+    return 0;
+  } else if (a < b) {
+    return -1;
+  } else {
+    return 1;
+  }
+}
+
+pxll_int
+magic_cmp (object * a, object * b)
+{
+  if (a == b) {
+    return 0;
+  } else if (is_immediate (a) && is_immediate (b)) {
+    return magic_cmp_int ((pxll_int)a, (pxll_int)b);
+  } else if (is_immediate (a)) {
+    return -1; // immediates < tuples.
+  } else if (is_immediate (b)) {
+    return +1; // tuples > immediates.
+  } else {
+    pxll_int tca = GET_TYPECODE (*a);
+    pxll_int tcb = GET_TYPECODE (*b);
+    if (tca < tcb) {
+      return -1;
+    } else if (tcb < tca) {
+      return +1;
+    } else if (tca == TC_STRING) {
+      pxll_string * sa = (pxll_string *) a;
+      pxll_string * sb = (pxll_string *) b;
+      int cmp = memcmp (sa->data, sb->data, min_int (sa->len, sb->len));
+      if (cmp == 0) {
+        return magic_cmp_int (sa->len, sb->len);
+      } else if (cmp < 0) {
+        return -1;
+      } else {
+        return 1;
+      }
+    } else {
+      // tags are the same: do per-element comparison.
+      // XXX check special internal types like TC_CLOSURE!
+      pxll_int len_a = GET_TUPLE_LENGTH (*a);
+      pxll_int len_b = GET_TUPLE_LENGTH (*b);
+      for (int i=0; i < min_int (len_a, len_b); i++) {
+        pxll_int cmp = magic_cmp ((object*)a[i+1], (object*)b[i+1]);
+        if (cmp != 0) {
+          return cmp;
+        }
+        // a[i] == b[i], continue to the next...
+      }
+      // if we are here, items are equal up to min-length.
+      return magic_cmp_int (len_a, len_b);
     }
   }
 }
@@ -317,7 +374,7 @@ print_string (object * ob, int quoted)
       if (isprint(*ps)) {
 	fputc (*ps, stdout);
       } else {
-	fprintf (stdout, "\\0x%02x", *ps);
+	fprintf (stdout, "\\0x%02x", (unsigned char) *ps);
       }
     }
     if (i > 50) {
@@ -641,10 +698,52 @@ void exit_continuation (void)
   program_end_time = rdtsc();
   dump_object ((object *) result, 0);
   fprintf (stdout, "\n");
-  fprintf (stderr, "{total ticks: %" PRIu64 " gc ticks: %" PRIu64 "}\n", program_end_time - program_start_time, gc_ticks);
+  fprintf (
+    stderr, "{total ticks: %" PRIu64 " gc ticks: %" PRIu64 "}\n", 
+    program_end_time - program_start_time, 
+    gc_ticks
+  );
   prof_dump();
-  exit((int)(intptr_t)result);
+  if (is_int (result)) {
+    exit ((int)(intptr_t)UNBOX_INTEGER(result));
+  } else {
+    exit (0);
+  }
 }
+
+// --------------------------------------------------------------------------------
+// invoke-closure is used by the bytecode VM to call back into Irken.
+// It could theoretically used by any C code that needed e.g. a
+// callback facility.
+
+void invoke_closure_1 (void);
+
+object
+invoke_closure (object * closure, object * args)
+{
+  object * t = allocate (TC_SAVE, 3);
+  t[1] = k;
+  t[2] = lenv;
+  t[3] = (object *) invoke_closure_1; // see below
+  k = t;
+  args[1] = closure[2];
+  lenv = args;
+  ((kfun)(closure[1]))();
+  return result;
+}
+
+// continuation function for invoke_closure.
+void invoke_closure_1 (void)
+{
+  lenv = (object*) k[2]; k = (object *)k[1];
+  // Note: no PXLL_RETURN here. that's because we want to return (in the C sense)
+  //  to invoke_closure so the result can be returned to the original C caller,
+  //  e.g. vm_go().
+  // if there *was* a PXLL_RETURN here, it would actually call exit_continuation(),
+  //  and exit the entire program.
+}
+
+// --------------------------------------------------------------------------------
 
 void toplevel (void);
 
