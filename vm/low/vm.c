@@ -1,8 +1,18 @@
 // -*- Mode: C -*-
 
+// XXX just like in irken proper, collapse TC_VM_TUPLE and TC_VM_LENV
+
 #include "pxll.h"
 #include <stdio.h>
 #include "rdtsc.h"
+#include <dlfcn.h>
+#include <sys/utsname.h>
+
+#ifdef __APPLE__
+#include <ffi/ffi.h>
+#else
+#include <ffi.h>
+#endif
 
 static object * allocate (pxll_int tc, pxll_int size);
 static object * alloc_no_clear (pxll_int tc, pxll_int size);
@@ -10,6 +20,10 @@ static object * dump_object (object * ob, int depth);
 static void print_object (object * ob);
 static object do_gc (int nroots);
 static pxll_int get_case (object * ob);
+object invoke_closure (object * closure, object * args);
+pxll_int magic_cmp (object * a, object * b);
+
+typedef void(*kfun0)(void);
 
 uint64_t gc_ticks;
 object * lenv;
@@ -17,6 +31,7 @@ object * k;
 object * top;
 object * limit;
 object * freep;
+object * result;
 
 // XXX typedefs for vm_lenv, vm_tuple, etc...
 
@@ -112,6 +127,10 @@ read_literal (FILE * f, object * ob)
     *ob = (object *) t;
   }
     break;
+  case 'Y': { // symbol
+    // XXX what to do here...
+  }
+    break;
   case 'I': // immediate (e.g., (list:nil))
     CHECK (read_int (f, &n));
     *ob = (object) n;
@@ -196,15 +215,18 @@ read_bytecode (FILE * f)
   }
 }
 
+pxll_int symbol_counter = 0;
+
 static
 pxll_int
-read_bytecode_file (char * path)
+read_bytecode_file (char * path, pxll_int symbol_table_size)
 {
   FILE * f = fopen (path, "rb");
   if (!f) {
     fprintf (stderr, "unable to open '%s'\n", path);
     return -1;
   } else {
+    symbol_counter = symbol_table_size;
     CHECK (read_literals (f));
     CHECK (read_bytecode (f));
     return 0;
@@ -230,6 +252,7 @@ typedef enum {
   op_gt,
   op_le,
   op_ge,
+  op_cmp,
   op_tst,
   op_jmp,
   op_fun,
@@ -246,7 +269,8 @@ typedef enum {
   op_call,
   op_call0,
   op_pop,
-  op_print,
+  op_printo,
+  op_prints,
   op_topis,
   op_topref,
   op_topset,
@@ -268,7 +292,15 @@ typedef enum {
   op_rref,
   op_rset,
   op_getcc,
-  op_putcc
+  op_putcc,
+  op_irk,
+  op_getc,
+  op_dlsym,
+  op_ffi,
+  op_slen,
+  op_sref,
+  op_sset,
+  op_plat,
 } opcode_t;
 
 char * op_names[] = {
@@ -281,6 +313,7 @@ char * op_names[] = {
   "gt",
   "le",
   "ge",
+  "cmp",
   "tst",
   "jmp",
   "fun",
@@ -297,7 +330,8 @@ char * op_names[] = {
   "call",
   "call0",
   "pop",
-  "print",
+  "printo",
+  "prints",
   "topis",
   "topref",
   "topset",
@@ -319,7 +353,15 @@ char * op_names[] = {
   "rref",
   "rset",
   "getcc",
-  "putcc"
+  "putcc",
+  "irk",
+  "getc",
+  "dlsym",
+  "ffi",
+  "slen",
+  "sref",
+  "sset",
+  "plat",
 };
 
 // Use the higher, (likely) unused user tags for these.
@@ -327,7 +369,6 @@ char * op_names[] = {
 #define TC_VM_TUPLE   (62<<2)
 #define TC_VM_LENV    (61<<2)
 #define TC_VM_CONT    (60<<2)
-
 
 static
 void
@@ -436,6 +477,15 @@ vm_get_field_offset (pxll_int index, pxll_int label_code)
   abort();
 }
 
+object * vm_the_closure = PXLL_NIL;
+
+pxll_int
+vm_set_closure (object * closure)
+{
+  vm_the_closure = closure;
+  return 0;
+}
+
 object
 vm_gc (void)
 {
@@ -464,6 +514,83 @@ vm_gc (void)
   gc_ticks += (t1 - t0);
   return nwords;
 }
+
+object
+vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs) 
+{
+  ffi_cif cif;
+  ffi_type *args[nargs];
+  // libffi requires an extra level of indirection for args, because
+  //   not all argument types can fit into a `void *` (or register).
+  void * vals[nargs];
+  void * pvals[nargs];
+  int good = 1;
+  for (int i=0; i < nargs; i++) {
+    object * ob = vm_regs[bytecode[pc+4+i]];
+    switch (get_case (ob)) {
+    case TC_INT:
+      args[i] = &ffi_type_sint;
+      vals[i] = (void*) UNBOX_INTEGER (ob);
+      pvals[i] = vals + i;
+      break;
+    case TC_BOOL:
+      args[i] = &ffi_type_sint;
+      vals[i] = (void*) (pxll_int) (ob == PXLL_TRUE);
+      pvals[i] = vals + i;
+      break;
+    case TC_STRING:
+      args[i] = &ffi_type_pointer;
+      vals[i] = (void*) GET_STRING_POINTER (ob);
+      pvals[i] = vals + i;
+      break;
+    case TC_CHAR:
+      args[i] = &ffi_type_uchar;
+      vals[i] = (void*) GET_CHAR (ob);
+      pvals[i] = vals + i;
+      break;
+    default:
+      fprintf (stderr, "illegal argument type:");
+      dump_object (ob, 0);
+      fprintf (stderr, "\n");
+      good = 0;
+      break;
+    }
+  }
+  if (good) {
+    if (FFI_OK == ffi_prep_cif (&cif, FFI_DEFAULT_ABI, nargs, &ffi_type_sint, args)) {
+      void * pfun = (void*)UNBOX_INTEGER (vm_regs[bytecode[pc+2]]);
+      ffi_arg rc;
+      ffi_call (&cif, pfun, &rc, pvals);
+      return BOX_INTEGER (rc);
+    } else {
+      fprintf (stderr, "ffi_prep_cif failed\n");
+      return BOX_INTEGER ((uint64_t) -1); // XXX not 32-bit clean!
+    }
+  } else {
+    return BOX_INTEGER ((uint64_t) -1);
+  }
+}
+
+object *
+vm_copy_string (char * s)
+{
+  int slen = strlen (s);
+  pxll_string * r = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
+  r->len = slen;
+  memcpy (GET_STRING_POINTER (r), s, slen);
+  return (object *) r;
+}
+
+object *
+vm_list_cons (object * car, object * cdr)
+{
+  object * cell = allocate (TC_PAIR, 2);
+  cell[1] = car;
+  cell[2] = cdr;
+  return cell;
+}
+
+
 
 #define NREGS 20
 #define BC1 code[pc+1]
@@ -536,6 +663,13 @@ vm_go (void)
       break;
     case op_ge:
       REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) >= UNBOX_INTEGER (REG3));
+      pc += 4;
+      break;
+    case op_cmp:
+      // CMP target a b
+      // note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
+      //   to match the 'cmp' datatype from core.scm.
+      REG1 = (object*) UITAG (1 + magic_cmp (REG2, REG3));
       pc += 4;
       break;
     case op_tst:
@@ -701,11 +835,17 @@ vm_go (void)
       pc += 1;
     }
       break;
-    case op_print:
-      // PRINT target arg
-      DO (REG2);
-      REG1 = PXLL_UNDEFINED;
-      pc += 3;
+    case op_printo:
+      // PRINTO arg
+      DO (REG1);
+      pc += 2;
+      break;
+    case op_prints: {
+      // PRINTS arg
+      pxll_string * s = (pxll_string *) REG1;
+      fwrite (s->data, 1, s->len, stdout);
+      pc += 2;
+    }
       break;
     case op_topis:
       // TOPIS <env>
@@ -845,6 +985,98 @@ vm_go (void)
       vm_k = REG2;
       REG1 = REG3;
       pc += 4;
+      break;
+    case op_irk: {
+      // IRK target closure nargs arg0 ...
+      pxll_int nargs = UNBOX_INTEGER (REG3);
+      object * rib = allocate (TC_ENV, nargs + 1);
+      object * closure = REG2;
+      for (int i=0; i < nargs; i++) {
+        rib[i+2] = vm_regs[code[pc+4+i]];
+      }
+      invoke_closure (closure, rib);
+      REG1 = result;
+      pc += 4 + nargs;
+    }
+      break;
+    case op_getc:
+      // GETC target
+      REG1 = vm_the_closure;
+      pc += 2;
+      break;
+    case op_dlsym:
+      // DLSYM target name
+      REG1 = BOX_INTEGER ((pxll_int)dlsym (RTLD_DEFAULT, GET_STRING_POINTER (REG2)));
+      pc += 3;
+      break;
+    case op_ffi: {
+      // FFI target pfun nargs arg0 ...
+      pxll_int nargs = UNBOX_INTEGER (REG3);
+      // XXX concerned that passing vm_regs defeats the register decl above.
+      object result = vm_do_ffi ((object *) vm_regs, pc, nargs);
+      REG1 = result;
+      pc += nargs + 4;
+    }
+      break;
+    case op_slen:
+      // SLEN target string
+      REG1 = BOX_INTEGER ((pxll_int)((pxll_string *) REG2)->len);
+      pc += 3;
+      break;
+    case op_sref: {
+      // SREF target string index
+      pxll_string * s = (pxll_string *)REG2;
+      pxll_int index = UNBOX_INTEGER (REG3);
+      if ((index >= 0) && (index < s->len)) {
+        REG1 = TO_CHAR (s->data[index]);
+      } else {
+        // XXX error handler
+        fprintf (stderr, "string ref out of range\n");
+        done = 1;
+      }
+      pc += 4;
+    }
+      break;
+    case op_sset: {
+      // SSET string index char
+      pxll_string * s = (pxll_string *)REG1;
+      pxll_int index = UNBOX_INTEGER (REG2);
+      pxll_int ch = GET_CHAR (REG3);
+      if (ch > 255) {
+        fprintf (stderr, "char out of range\n");
+        done = 1;
+      } else if ((index >= 0) && (index < s->len)) {
+        s->data[index] = (char) ch;
+      } else {
+        // XXX error handler
+        fprintf (stderr, "string ref out of range\n");
+        done = 1;
+      }
+      pc += 4;
+    }
+      break;
+    case op_plat: {
+      // PLAT target
+      struct utsname plat;
+      if (0 == uname (&plat)) {
+        REG1 = vm_list_cons (
+          vm_copy_string (plat.sysname),
+          vm_list_cons (
+            vm_copy_string (plat.nodename),
+            vm_list_cons (
+              vm_copy_string (plat.release),
+              vm_list_cons (
+                vm_copy_string (plat.version),
+                vm_list_cons (
+                  vm_copy_string (plat.machine), 
+                  PXLL_NIL
+                )))));
+      } else {
+        // XXX error handler
+        REG1 = PXLL_NIL;
+      }
+      pc += 2;
+    }
       break;
     default:
       fprintf (stderr, "illegal bytecode. (%d)\n", bytecode[pc]);
