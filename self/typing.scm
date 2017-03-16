@@ -246,10 +246,15 @@
 
   (define (type-of exp tenv)
     ;;(printf "type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n")
-    (let ((texp (type-of* exp tenv)))
+    (let ((texp0 (noderec->type exp))
+          (texp1 (type-of* exp tenv)))
+      ;; XXX the intent of this is to unify with user-assigned types,
+      ;;  but it is breaking polymorphic types somehow. (try poly-append).
+      ;;(when (not (no-type? texp0))
+      ;;  (unify exp texp0 texp1))
+      (set-node-type! exp texp1)
       ;;(printf "type-of* " (int (noderec->id exp)) " " (type-repr texp) "\n")
-      (set-node-type! exp texp)
-      texp))
+      texp1))
 
   (define (type-of-literal lit exp tenv)
     (match lit with
