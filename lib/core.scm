@@ -4,19 +4,15 @@
   (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
 
 (define (print x)
-  (%backend c (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
-  (%backend llvm (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
-  (%backend bytecode (%%cexp ('a -> undefined) "print" x))
+  (%backend (c llvm) (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
+  (%backend bytecode (%%cexp ('a -> undefined) "printo" x))
   )
 
+;; note: discards return value.
 (define (print-string s)
-  (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s))
-  #u
+  (%backend (c llvm) (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)) #u)
+  (%backend bytecode (%%cexp (string -> int) "prints" s) #u)
   )
-
-;; original version returns how many chars were written...
-(define (print-string* s)
-  (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)))
 
 (define (flush)
   (%%cexp (-> int) "fflush (stdout)"))
@@ -193,13 +189,13 @@
 
 (datatype cmp
   (:<)
-  (:>)
   (:=)
+  (:>)
   )
 
 (define cmp-repr
-  (cmp:=) -> "="
   (cmp:<) -> "<"
+  (cmp:=) -> "="
   (cmp:>) -> ">"
   )
 
@@ -207,6 +203,15 @@
   (cond ((< a b) (cmp:<))
 	((> a b) (cmp:>))
 	(else (cmp:=))))
+
+(define (magic-cmp a b)
+  ;; note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
+  ;;  to match the 'cmp' datatype.
+  (%backend (c llvm)
+    (%%cexp ('a 'a -> cmp) "(object*)UITAG(1+magic_cmp(%0, %1))" a b))
+  (%backend bytecode
+    (%%cexp ('a 'a -> cmp) "cmp" a b))
+  )
 
 (define (eq? a b)
   (%backend c (%%cexp ('a 'a -> bool) "%0==%1" a b))
@@ -218,13 +223,15 @@
   (eq? x #f))
 
 (define (char=? a b)
-  (%%cexp (char char -> bool) "%0==%1" a b))
+  (eq? a b))
 
 (define (char< a b)
   (%%cexp (char char -> bool) "%0<%1" a b))
 
 (define (string-length s)
-  (%%cexp ((raw string) -> int) "%0->len" s))
+  (%backend (c llvm) (%%cexp ((raw string) -> int) "%0->len" s))
+  (%backend bytecode (%%cexp (string -> int) "slen" s))
+  )
 
 (define (make-vector n val)
   (%ensure-heap #f n)
@@ -247,7 +254,7 @@
 (define (error x)
   (print-string "\n***\nRuntime Error, halting: ")
   (printn x)
-  (%exit #f x)
+  (%exit #f -1)
   )
 
 (define (error1 msg ob)
@@ -264,7 +271,7 @@
   (print-string "\n\t")
   (print ob1)
   (print-string "\n")
-  (%exit #f #u)
+  (%exit #f -1)
   )
 
 (define (impossible)
@@ -442,6 +449,8 @@
 
 (define (syscall retval)
   (if (< retval 0)
+      ;; this requires string.scm.  need to place syscall elsewhere.
+      ;; (raise (:OSError (copy-cstring (%%cexp (-> cstring) "strerror(errno)"))))
       (raise (:OSError (%%cexp (-> int) "errno")))
       retval))
 
