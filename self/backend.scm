@@ -106,7 +106,7 @@
 (define TC_USEROBJ (%%cexp int "TC_USEROBJ")) ;;  (<< 9 2)) ;; 00100100  24
 
 (define (find-jumps insns)
-  (let ((used (map-maker <)))
+  (let ((used (map-maker int-cmp)))
     (walk-insns
      (lambda (insn _)
        (match insn with

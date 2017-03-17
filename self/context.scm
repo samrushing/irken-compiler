@@ -30,7 +30,7 @@
   {datatypes            = (alist/make)
     aliases             = (alist/make)
     macros              = (alist/make)
-    dep-graph           = (map-maker symbol-index<?)
+    dep-graph           = (map-maker symbol-cmp)
     scc-graph           = '()
     vars                = (tree/empty)
     funs                = (tree/empty)
@@ -40,22 +40,22 @@
     cverbatim           = '()
     records             = '()
     labels              = '()
-    literals            = (cmap/make magic<?)
+    literals            = (cmap/make magic-cmp)
     literal-ids         = (tree/empty)
     symbols             = (alist/make)
     variant-labels      = (alist/make)
     options             = (make-options)
     exceptions          = (alist/make)
     profile-funs        = (tree/empty)
-    cexps               = (map-maker cexp<?)
-    callocates          = (map-maker type<?)
+    cexps               = (map-maker magic-cmp)
+    callocates          = (map-maker magic-cmp)
     }
   )
 
 ;; XXX a builtin flags object would be nice...
 
 (define (vars-get-var name)
-  (match (tree/member the-context.vars symbol-index<? name) with
+  (match (tree/member the-context.vars symbol-index-cmp name) with
     (maybe:no) -> (error1 "vars-get-var: no such var" name)
     (maybe:yes v) -> v))
 
@@ -84,10 +84,10 @@
 
 ;; urgh, needs to be an object
 (define (add-var name)
-  (match (tree/member the-context.vars symbol-index<? name) with
+  (match (tree/member the-context.vars symbol-index-cmp name) with
     (maybe:no) -> (set! the-context.vars
 			(tree/insert the-context.vars
-				     symbol-index<? name {flags=0 calls=0 refs=0 sets=0 mult=0}))
+				     symbol-index-cmp name {flags=0 calls=0 refs=0 sets=0 mult=0}))
     ;; <fix> then <function>, shows up twice, ignore.
     (maybe:yes _) -> #u))
 

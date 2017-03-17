@@ -84,8 +84,8 @@
 	(env-counter (make-counter 0))
 	(env-stack '())
 	(used-jumps (find-jumps insns))
-	(fatbar-free (map-maker <))
-	(declared (set2-maker string<?))
+	(fatbar-free (map-maker int-cmp))
+	(declared (set2-maker string-compare))
 	)
 
     (define emitk
@@ -234,7 +234,7 @@
       (o.indent)
       (when the-context.options.trace (o.write (format "TRACE(\"" cname "\");")))
       (when the-context.options.profile
-	(match (tree/member the-context.profile-funs symbol<? name) with
+	(match (tree/member the-context.profile-funs symbol-index-cmp name) with
 	  (maybe:yes {index=index names=_})
 	  -> (begin
 	       (o.write "prof_mark1 = rdtsc();")

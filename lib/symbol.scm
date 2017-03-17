@@ -14,7 +14,7 @@
 (define (intern-symbol sym)
   (set! the-symbol-table
 	(tree/insert the-symbol-table
-		     string<?
+		     string-compare
 		     (symbol->string sym)
 		     sym))
   (set! symbol-table-size (+ 1 symbol-table-size))
@@ -22,7 +22,7 @@
   )
 
 (define (string->symbol str)
-  (let ((probe (tree/member the-symbol-table string<? str)))
+  (let ((probe (tree/member the-symbol-table string-compare str)))
     (match probe with
       (maybe:no) -> (intern-symbol (symbol:t str symbol-table-size))
       (maybe:yes sym) -> sym
@@ -31,8 +31,14 @@
 (define (symbol<? s1 s2)
   (string<? (symbol->string s1) (symbol->string s2)))
 
+(define (symbol-cmp s1 s2)
+  (string-compare (symbol->string s1) (symbol->string s2)))
+
 (define (symbol-index<? s1 s2)
   (< (symbol->index s1) (symbol->index s2)))
+
+(define (symbol-index-cmp s1 s2)
+  (int-cmp (symbol->index s1) (symbol->index s2)))
 
 (define (initialize-symbol-table)
   (let ((v (%%cexp (vector symbol) "(object *) pxll_internal_symbols")))

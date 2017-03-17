@@ -153,11 +153,11 @@
     ;;   a map from id->litindex so we can reference via litcon.
 
     (define (get-literal-index lit id)
-      (match (tree/member the-context.literal-ids < id) with
+      (match (tree/member the-context.literal-ids int-cmp id) with
 	(maybe:yes v) -> v
 	(maybe:no)
 	-> (let ((index (add-literal lit)))
-	     (tree/insert! the-context.literal-ids < id index)
+	     (tree/insert! the-context.literal-ids int-cmp id index)
 	     index)))
 
     (define (get-symbol-index sym)
@@ -267,7 +267,7 @@
 		       (cont regvars gen-return)
 		       )
 	      k)))
-	(tree/insert! the-context.profile-funs symbol<? name {index=0 names=current-funs})
+	(tree/insert! the-context.profile-funs symbol-index-cmp name {index=0 names=current-funs})
 	(pop current-funs)
 	r))
 
@@ -707,7 +707,7 @@
 
 (define (collect-all-types root)
   (let ((ng (make-node-generator root))
-	(type-map (map-maker type<?)))
+	(type-map (map-maker magic-cmp)))
     (let loop ()
       (match (ng) with
 	(maybe:no) -> #u

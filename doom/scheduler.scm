@@ -42,14 +42,14 @@
 (defmacro kfilt (kfilt f) -> the-poller.filters[(- 0 f)])
 
 (define (poller/lookup-event ident filter)
-  (tree/member (kfilt filter) < ident))
+  (tree/member (kfilt filter) int-cmp ident))
 
 (define (poller/add-event ident filter k)
   (set! the-poller.nwait (+ 1 the-poller.nwait))
-  (tree/insert! (kfilt filter) < ident k))
+  (tree/insert! (kfilt filter) int-cmp ident k))
 
 (define (poller/delete-event ident filter)
-  (tree/delete! (kfilt filter) < ident))
+  (tree/delete! (kfilt filter) int-cmp ident))
   (set! the-poller.nwait (- the-poller.nwait 1))
 
 ;; put the current thread to sleep while waiting for the kevent (ident, filter).

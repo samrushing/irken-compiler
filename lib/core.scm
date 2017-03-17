@@ -199,7 +199,7 @@
   (cmp:>) -> ">"
   )
 
-(define (cmp a b)
+(define (int-cmp a b)
   (cond ((< a b) (cmp:<))
 	((> a b) (cmp:>))
 	(else (cmp:=))))

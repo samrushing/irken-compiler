@@ -97,10 +97,8 @@
 	(blen (string-length b))
 	(cmp (%%cexp (string string int -> int) "memcmp (%0, %1, %2)" a b (min alen blen))))
     (cond ((= cmp 0)
-	   (if (= alen blen)
-	       0
-	       (if (< alen blen) -1 1)))
-	  (else cmp))))
+           (int-cmp alen blen))
+	  (else (int-cmp cmp 0)))))
 
 (define (string-find a b)
   ;; find <a> in <b>
@@ -129,11 +127,11 @@
 		(else #f))))))
 
 (define (string=? s1 s2)
-  (= (string-compare s1 s2) 0))
+  (eq? (string-compare s1 s2) (cmp:=)))
 (define (string<? s1 s2)
-  (< (string-compare s1 s2) 0))
+  (eq? (string-compare s1 s2) (cmp:<)))
 (define (string>? s1 s2)
-  (> (string-compare s1 s2) 0))
+  (eq? (string-compare s1 s2) (cmp:>)))
 
 (define (zero-terminate s)
   (if (char=? (string-ref s (- (string-length s) 1)) #\nul)

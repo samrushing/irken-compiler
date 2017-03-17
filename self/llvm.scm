@@ -2,8 +2,8 @@
 
 
 ;; XXX shouldn't be global (or should be kept in the-context).
-(define fatbar-free (map-maker <))
-(define litcons (set2-maker <))
+(define fatbar-free (map-maker int-cmp))
+(define litcons (set2-maker int-cmp))
 
 ;; CPS registers are mapped to LLVM idents like this:
 ;;  r5 -> "%r5"
@@ -25,7 +25,7 @@
 	(fun-stack '())
 	(label-counter (make-counter 1))
 	(arg-counter (make-counter 0))
-	(renamed (map-maker <))
+	(renamed (map-maker int-cmp))
 	)
 
     (define (ID)

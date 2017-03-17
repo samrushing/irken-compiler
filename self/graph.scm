@@ -7,7 +7,7 @@
 (define (symbol-set-class)
 
   (define (in self sym)
-    (match (tree/member self.t < (symbol->index sym)) with
+    (match (tree/member self.t int-cmp (symbol->index sym)) with
       (maybe:yes _) -> #t
       (maybe:no)    -> #f
       ))
@@ -17,7 +17,7 @@
 	#u
 	;; bug in mbe for <literal-symbols>?
 	;;(tree/insert! self.t < (symbol->index sym) sym)
-	(set! self.t (tree/insert self.t < (symbol->index sym) sym))
+	(set! self.t (tree/insert self.t int-cmp (symbol->index sym) sym))
 	))
   
   (define (get self)
@@ -44,7 +44,7 @@
 
 (define (build-dependency-graph root)
   ;;(let ((g (alist-maker)))
-  (let ((g (map-maker symbol-index<?)))
+  (let ((g (map-maker symbol-cmp)))
     (define (search exp current-fun)
       (match (noderec->t exp) with
 	(node:varref name)
@@ -72,7 +72,7 @@
 
 (define (transpose g)
   ;;(let ((gt (alist-maker)))
-  (let ((gt (map-maker symbol-index<?)))
+  (let ((gt (map-maker symbol-cmp)))
     (g::iterate
      (lambda (k _)
        (gt::add k (symbol-set-maker '()))))
@@ -154,7 +154,7 @@
   ;; partition the functions of this fix into sets of mutually-recursive functions
   (let ((n (length names))
 	;(name-map (alist-maker))
-	(name-map (map-maker symbol-index<?))
+	(name-map (map-maker symbol-cmp))
 	(leftover (range n))
 	(parts '())
 	(part '()))

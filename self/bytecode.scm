@@ -71,7 +71,7 @@
     (set! info.code i)))
 
 (define opmap
-  (let ((m (map-maker symbol<?)))
+  (let ((m (map-maker symbol-index-cmp)))
     (for-vector info opcode-info
       (m::add info.name info))
     m))
@@ -122,9 +122,9 @@
 	(o (make-writer ofile))
 	(label-counter (make-counter 1))
         (used-jumps (find-jumps cps))
-        (jump-label-map (map-maker <))
-        (fun-label-map (map-maker symbol-index<?))
-        (fatbar-map (map-maker <))
+        (jump-label-map (map-maker int-cmp))
+        (fun-label-map (map-maker symbol-index-cmp))
+        (fatbar-map (map-maker int-cmp))
         )
 
     (define (new-label)
@@ -634,7 +634,7 @@
 
       (let ((pc 0)
             (r '())
-            (label-map (map-maker <)))
+            (label-map (map-maker int-cmp)))
 
         (define (resolve index)
           (match (label-map::get index) with

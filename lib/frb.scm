@@ -25,38 +25,37 @@
   A (tree:red B (tree:red C D k2 v2) k1 v1) k0 v0 -> (tree:red (tree:black A B k0 v0) (tree:black C D k2 v2) k1 v1)
                                           A B k v -> (tree:black A B k v))
 
-(define (tree/insert root < k v)
+(define (tree/insert root cmp k v)
 
   (define (ins n)
     (match n with
-       (tree:empty)
-       -> (tree:red (tree:empty) (tree:empty) k v)
-
-       (tree:red l r k2 v2)
-       -> (cond ((< k k2)
-                 (tree:red (ins l) r k2 v2))
-                ((< k2 k)
-                 (tree:red l (ins r) k2 v2))
-                (else n))
-
-       (tree:black l r k2 v2)
-       -> (cond ((< k k2)
-                 (lbalance (ins l) r k2 v2))
-                ((< k2 k)
-                 (rbalance l (ins r) k2 v2))
-                (else n))))
-
+      (tree:empty)
+      -> (tree:red (tree:empty) (tree:empty) k v)
+      
+      (tree:red l r k2 v2)
+      -> (match (cmp k k2) with
+           (cmp:<) -> (tree:red (ins l) r k2 v2)
+           (cmp:>) -> (tree:red l (ins r) k2 v2)
+           (cmp:=) -> n
+           )
+      (tree:black l r k2 v2)
+      -> (match (cmp k k2) with
+           (cmp:<) -> (lbalance (ins l) r k2 v2)
+           (cmp:>) -> (rbalance l (ins r) k2 v2)
+           (cmp:=) -> n
+           )))
+  
   (let ((s (ins root)))
     (match s with
       (tree:red l r k0 v0) -> (tree:black l r k0 v0)
       _ -> s
       ))
-
+  
   )
 
 ;; deletion translated from https://github.com/bmeurer/ocaml-rbtrees
 
-(define (tree/delete-check root < k)
+(define (tree/delete-check root cmp k)
 
   (define lunbalanced
     (tree:red (tree:black A B k0 v0) C k1 v1)
@@ -115,47 +114,41 @@
     (tree:empty)
     -> (:tuple (tree:empty) #f)
     (tree:black L R k0 v0)
-    -> (cond ((< k k0)
-              (let-values (((L d) (remove-aux L)))
-                (let ((m (tree:black L R k0 v0)))
-                  (if d (runbalanced m) (:tuple m #f)))))
-             ((< k0 k)
-              (let-values (((R d) (remove-aux R)))
-                (let ((m (tree:black L R k0 v0)))
-                  (if d (lunbalanced m) (:tuple m #f)))))
-             (else
-              (match R with
-                (tree:empty) -> (blackify L)
-                _ -> (let-values (((R k0 v0 d) (remove-min R)))
-                       (let ((m (tree:black L R k0 v0)))
-                         (if d (lunbalanced m) (:tuple m #f)))))))
+    -> (match (cmp k k0) with
+         (cmp:<) -> (let-values (((L d) (remove-aux L)))
+                      (let ((m (tree:black L R k0 v0)))
+                        (if d (runbalanced m) (:tuple m #f))))
+         (cmp:>) -> (let-values (((R d) (remove-aux R)))
+                      (let ((m (tree:black L R k0 v0)))
+                        (if d (lunbalanced m) (:tuple m #f))))
+         (cmp:=) -> (match R with
+                      (tree:empty) -> (blackify L)
+                      _ -> (let-values (((R k0 v0 d) (remove-min R)))
+                             (let ((m (tree:black L R k0 v0)))
+                               (if d (lunbalanced m) (:tuple m #f))))))
     (tree:red L R k0 v0)
-    -> (cond ((< k k0)
-              (let-values (((L d) (remove-aux L)))
-                (let ((m (tree:red L R k0 v0)))
-                  (if d (runbalanced m) (:tuple m #f)))))
-             ((< k0 k)
-              (let-values (((R d) (remove-aux R)))
-                (let ((m (tree:red L R k0 v0)))
-                  (if d (lunbalanced m) (:tuple m #f)))))
-             (else
-              (match R with
-                (tree:empty) -> (:tuple L #f)
-                _ -> (let-values (((R k0 v0 d) (remove-min R)))
-                       (let ((m (tree:red L R k0 v0)))
-                         (if d (lunbalanced m) (:tuple m #f)))))))
-    )
-
+    -> (match (cmp k k0) with
+         (cmp:<) -> (let-values (((L d) (remove-aux L)))
+                      (let ((m (tree:red L R k0 v0)))
+                        (if d (runbalanced m) (:tuple m #f))))
+         (cmp:>) -> (let-values (((R d) (remove-aux R)))
+                      (let ((m (tree:red L R k0 v0)))
+                        (if d (lunbalanced m) (:tuple m #f))))
+         (cmp:=) -> (match R with
+                      (tree:empty) -> (:tuple L #f)
+                      _ -> (let-values (((R k0 v0 d) (remove-min R)))
+                             (let ((m (tree:red L R k0 v0)))
+                               (if d (lunbalanced m) (:tuple m #f)))))))
   (remove-aux root)
   )
 
-(define (tree/delete root < k)
-  (match (tree/delete-check root < k) with
+(define (tree/delete root cmp k)
+  (match (tree/delete-check root cmp k) with
     (:tuple result _) -> result))
 
 (defmacro tree/delete!
-  (tree/delete! root < k)
-  -> (set! root (tree/delete root < k))
+  (tree/delete! root cmp k)
+  -> (set! root (tree/delete root cmp k))
   )
 
 (define tree/black-height
@@ -174,25 +167,27 @@
     )
   (V t (tree/black-height t 0) 0))
 
-(define (tree/member root < key)
+(define (tree/member root cmp key)
   (let member0 ((n root))
     (match n with
       (tree:empty)
       -> (maybe:no)
 
       (tree:red l r k v)
-      -> (cond ((< key k) (member0 l))
-               ((< k key) (member0 r))
-               (else (maybe:yes v)))
+      -> (match (cmp key k) with
+           (cmp:<) -> (member0 l)
+           (cmp:>) -> (member0 r)
+           (cmp:=) -> (maybe:yes v))
 
       (tree:black l r k v)
-      -> (cond ((< key k) (member0 l))
-               ((< k key) (member0 r))
-               (else (maybe:yes v)))
+      -> (match (cmp key k) with
+           (cmp:<) -> (member0 l)
+           (cmp:>) -> (member0 r)
+           (cmp:=) -> (maybe:yes v))
       )))
 
-(define (tree/get root < key)
-  (match (tree/member root < key) with
+(define (tree/get root cmp key)
+  (match (tree/member root cmp key) with
     (maybe:yes val) -> val
     (maybe:no) -> (raise (:KeyError))
     ))
@@ -236,12 +231,12 @@
   )
 
 (defmacro tree/make
-  (tree/make <)                     -> (tree:empty)
-  (tree/make < (k0 v0) (k1 v1) ...) -> (tree/insert (tree/make < (k1 v1) ...) < k0 v0)
+  (tree/make cmp)                     -> (tree:empty)
+  (tree/make cmp (k0 v0) (k1 v1) ...) -> (tree/insert (tree/make cmp (k1 v1) ...) cmp k0 v0)
   )
 
 (defmacro tree/insert!
-  (tree/insert! root lt k v) -> (set! root (tree/insert root lt k v)))
+  (tree/insert! root cmp k v) -> (set! root (tree/insert root cmp k v)))
 
 (defmacro for-map
   (for-map k v map body ...) 
@@ -318,12 +313,12 @@
   (tree:black l _ _ _)             -> (tree/least l)
   )
 
-(define (tree/pop-least s <)
+(define (tree/pop-least s cmp)
   (let-values (((k v) (tree/least s)))
-    (:tuple (:tuple k v) (tree/delete s < k))))
+    (:tuple (:tuple k v) (tree/delete s cmp k))))
 
 (defmacro tree/pop-least!
-  (tree/pop-least! s <)
-  -> (let-values (((least s0) (tree/pop-least s <)))
+  (tree/pop-least! s cmp)
+  -> (let-values (((least s0) (tree/pop-least s cmp)))
        (set! s s0)
        least))

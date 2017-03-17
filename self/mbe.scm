@@ -190,12 +190,12 @@
 
     (define (T s)
       ;; replace a single symbol.
-      (match (tree/member sym-map symbol<? s) with
+      (match (tree/member sym-map symbol-index-cmp s) with
 	(maybe:yes replacement) 
 	-> replacement
 	(maybe:no) 
 	-> (let ((new (string->symbol (format (sym s) (int (gensym-counter.inc))))))
-	     (tree/insert! sym-map symbol<? s new)
+	     (tree/insert! sym-map symbol-index-cmp s new)
 	     new)))
 
     (define walk
