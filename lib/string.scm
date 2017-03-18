@@ -4,22 +4,31 @@
   (%%cexp (int -> int) "string_tuple_length (%0)" n))
 
 (define (make-string n)
-  (%ensure-heap #f (string-tuple-length n))
-  (%%cexp
-   (int -> string)
-   "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((pxll_string*)(t))->len = %0, t)"
-   n))
+  (%backend (c llvm)
+    (%ensure-heap #f (string-tuple-length n))
+    (%%cexp
+     (int -> string)
+     "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((pxll_string*)(t))->len = %0, t)"
+     n))
+  (%backend bytecode
+    (%%cexp (int -> string) "smake" n))
+  )
+
+(define (buffer-copy src src-start n dst dst-start)
+  (%backend (c llvm)
+    ;; XXX range check
+    (%%cexp
+     (string int string int int -> undefined)
+     "memcpy (%0+%1, %2+%3, %4)" dst dst-start src src-start n))
+  (%backend bytecode
+    (%%cexp (string int int string int -> undefined)
+            "scopy"
+            src src-start n dst dst-start)))
 
 (define (copy-string s1 n)
   (let ((s2 (make-string n)))
-    (%%cexp (string string int -> undefined) "memcpy (%0, %1, %2)" s2 s1 n)
+    (buffer-copy s1 0 n s2 0)
     s2))
-
-(define (buffer-copy src src-start n dst dst-start)
-  ;; XXX range check
-  (%%cexp
-   (string int string int int -> undefined)
-   "memcpy (%0+%1, %2+%3, %4)" dst dst-start src src-start n))
 
 (define (substring src start end)
   ;; XXX range check
@@ -29,10 +38,18 @@
     r))
 
 (define (ascii->char n)
-  (%%cexp (int -> char) "TO_CHAR(%0)" n))
+  (%backend (c llvm)
+    (%%cexp (int -> char) "TO_CHAR(%0)" n))
+  (%backend bytecode
+    (%%cexp (int int -> char) "makei" #x02 n))
+  )
 
 (define (char->ascii c)
-  (%%cexp (char -> int) "GET_CHAR(%0)" c))
+  (%backend (c llvm)
+    (%%cexp (char -> int) "GET_CHAR(%0)" c))
+  (%backend bytecode
+    (%%cexp (char -> int) "unchar" c))
+  )
 
 (define (char->string ch)
   (let ((r (make-string 1)))
@@ -40,6 +57,7 @@
     r))
 
 (define (bool->string b)
+  ;; XXX wait, why am I copying this?
   (copy-string (if b "#t" "#f") 2))
 
 (define (string-ref s n)
@@ -92,13 +110,17 @@
 	  (else
 	   (loop (+ i 1) j acc)))))
 
-(define (string-compare a b)
-  (let ((alen (string-length a))
-	(blen (string-length b))
-	(cmp (%%cexp (string string int -> int) "memcmp (%0, %1, %2)" a b (min alen blen))))
-    (cond ((= cmp 0)
-           (int-cmp alen blen))
-	  (else (int-cmp cmp 0)))))
+(define (string-compare a b) : (string string -> cmp)
+  (%backend (c llvm)
+    (let ((alen (string-length a))
+          (blen (string-length b))
+          (cmp (%%cexp (string string int -> int) "memcmp (%0, %1, %2)" a b (min alen blen))))
+      (cond ((= cmp 0)
+             (int-cmp alen blen))
+            (else (int-cmp cmp 0)))))
+  (%backend bytecode
+    (magic-cmp a b))
+  )
 
 (define (string-find a b)
   ;; find <a> in <b>
