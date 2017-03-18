@@ -14,6 +14,157 @@
 #include <ffi.h>
 #endif
 
+typedef enum {
+  op_lit,
+  op_ret,
+  op_add,
+  op_sub,
+  op_mul,
+  op_div,
+  op_srem,
+  op_shl,
+  op_ashr,
+  op_or,
+  op_xor,
+  op_and,
+  op_eq,
+  op_lt,
+  op_gt,
+  op_le,
+  op_ge,
+  op_cmp,
+  op_tst,
+  op_jmp,
+  op_fun,
+  op_tail,
+  op_tail0,
+  op_env,
+  op_stor,
+  op_ref,
+  op_mov,
+  op_epush,
+  op_trcall,
+  op_trcall0,
+  op_ref0,
+  op_call,
+  op_call0,
+  op_pop,
+  op_printo,
+  op_prints,
+  op_topis,
+  op_topref,
+  op_topset,
+  op_set,
+  op_pop0,
+  op_epop,
+  op_tron,
+  op_troff,
+  op_gc,
+  op_imm,
+  op_make,
+  op_makei,
+  op_exit,
+  op_nvcase,
+  op_tupref,
+  op_vlen,
+  op_vref,
+  op_vset,
+  op_vmake,
+  op_alloc,
+  op_rref,
+  op_rset,
+  op_getcc,
+  op_putcc,
+  op_irk,
+  op_getc,
+  op_dlsym,
+  op_ffi,
+  op_smake,
+  op_slen,
+  op_sref,
+  op_sset,
+  op_scopy,
+  op_unchar,
+  op_plat,
+  op_gist,
+  op_heap,
+} opcode_t;
+
+char * op_names[] = {
+  "lit",
+  "ret",
+  "add",
+  "sub",
+  "mul",
+  "div",
+  "srem",
+  "shl",
+  "ashr",
+  "or",
+  "xor",
+  "and",
+  "eq",
+  "lt",
+  "gt",
+  "le",
+  "ge",
+  "cmp",
+  "tst",
+  "jmp",
+  "fun",
+  "tail",
+  "tail0",
+  "env",
+  "stor",
+  "ref",
+  "mov",
+  "epush",
+  "trcall",
+  "trcall0",
+  "ref0",
+  "call",
+  "call0",
+  "pop",
+  "printo",
+  "prints",
+  "topis",
+  "topref",
+  "topset",
+  "set",
+  "pop0",
+  "epop",
+  "tron",
+  "troff",
+  "gc",
+  "imm",
+  "alloc",
+  "exit",
+  "nvcase",
+  "tupref",
+  "vlen",
+  "vref",
+  "vset",
+  "vmake",
+  "alloc",
+  "rref",
+  "rset",
+  "getcc",
+  "putcc",
+  "irk",
+  "getc",
+  "dlsym",
+  "ffi",
+  "smake",
+  "slen",
+  "sref",
+  "sset",
+  "scopy",
+  "unchar",
+  "plat",
+  "gist",
+  "heap",
+};
+
 static object * allocate (pxll_int tc, pxll_int size);
 static object * alloc_no_clear (pxll_int tc, pxll_int size);
 static object * dump_object (object * ob, int depth);
@@ -88,8 +239,19 @@ read_string (FILE * f, void * b, pxll_int n)
   }
 }
 
+object *
+vm_list_cons (object * car, object * cdr)
+{
+  object * cell = allocate (TC_PAIR, 2);
+  cell[1] = car;
+  cell[2] = cdr;
+  return cell;
+}
+
 object * bytecode_literals;
 object * vm_field_lookup_table;
+pxll_int vm_internal_symbol_counter = 0;
+object * vm_internal_symbol_list = PXLL_NIL;
 
 pxll_int
 read_literal (FILE * f, object * ob)
@@ -128,7 +290,18 @@ read_literal (FILE * f, object * ob)
   }
     break;
   case 'Y': { // symbol
-    // XXX what to do here...
+    // first create the string
+    CHECK (read_int (f, &n));
+    pxll_string * t = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (n));
+    t->len = n;
+    CHECK (read_string (f, t->data, n));
+    // now wrap as a symbol
+    object * sym = allocate (TC_SYMBOL, 2);
+    sym[1] = t;
+    sym[2] = BOX_INTEGER (vm_internal_symbol_counter++);
+    // push onto the global list (for lib/symbol.scm)
+    vm_internal_symbol_list = vm_list_cons (sym, vm_internal_symbol_list);
+    *ob = sym;
   }
     break;
   case 'I': // immediate (e.g., (list:nil))
@@ -215,18 +388,15 @@ read_bytecode (FILE * f)
   }
 }
 
-pxll_int symbol_counter = 0;
-
 static
 pxll_int
-read_bytecode_file (char * path, pxll_int symbol_table_size)
+read_bytecode_file (char * path)
 {
   FILE * f = fopen (path, "rb");
   if (!f) {
     fprintf (stderr, "unable to open '%s'\n", path);
     return -1;
   } else {
-    symbol_counter = symbol_table_size;
     CHECK (read_literals (f));
     CHECK (read_bytecode (f));
     return 0;
@@ -238,131 +408,6 @@ object * vm_lenv = PXLL_NIL;
 object * vm_k = PXLL_NIL;
 object * vm_top = PXLL_NIL;
 object * vm_result = PXLL_NIL;
-
-// #define NREGS 20
-// object * vm_regs[NREGS];
-
-typedef enum {
-  op_lit,
-  op_ret,
-  op_add,
-  op_sub,
-  op_eq,
-  op_lt,
-  op_gt,
-  op_le,
-  op_ge,
-  op_cmp,
-  op_tst,
-  op_jmp,
-  op_fun,
-  op_tail,
-  op_tail0,
-  op_env,
-  op_stor,
-  op_ref,
-  op_mov,
-  op_epush,
-  op_trcall,
-  op_trcall0,
-  op_ref0,
-  op_call,
-  op_call0,
-  op_pop,
-  op_printo,
-  op_prints,
-  op_topis,
-  op_topref,
-  op_topset,
-  op_set,
-  op_pop0,
-  op_epop,
-  op_tron,
-  op_troff,
-  op_gc,
-  op_imm,
-  op_make,
-  op_exit,
-  op_nvcase,
-  op_tupref,
-  op_vref,
-  op_vset,
-  op_vmake,
-  op_alloc,
-  op_rref,
-  op_rset,
-  op_getcc,
-  op_putcc,
-  op_irk,
-  op_getc,
-  op_dlsym,
-  op_ffi,
-  op_slen,
-  op_sref,
-  op_sset,
-  op_plat,
-} opcode_t;
-
-char * op_names[] = {
-  "lit",
-  "ret",
-  "add",
-  "sub",
-  "eq",
-  "lt",
-  "gt",
-  "le",
-  "ge",
-  "cmp",
-  "tst",
-  "jmp",
-  "fun",
-  "tail",
-  "tail0",
-  "env",
-  "stor",
-  "ref",
-  "mov",
-  "epush",
-  "trcall",
-  "trcall0",
-  "ref0",
-  "call",
-  "call0",
-  "pop",
-  "printo",
-  "prints",
-  "topis",
-  "topref",
-  "topset",
-  "set",
-  "pop0",
-  "epop",
-  "tron",
-  "troff",
-  "gc",
-  "imm",
-  "alloc",
-  "exit",
-  "nvcase",
-  "tupref",
-  "vref",
-  "vset",
-  "vmake",
-  "alloc",
-  "rref",
-  "rset",
-  "getcc",
-  "putcc",
-  "irk",
-  "getc",
-  "dlsym",
-  "ffi",
-  "slen",
-  "sref",
-  "sset",
-  "plat",
-};
 
 // Use the higher, (likely) unused user tags for these.
 #define TC_VM_CLOSURE (63<<2)
@@ -515,9 +560,20 @@ vm_gc (void)
   return nwords;
 }
 
-object
-vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs) 
+object *
+vm_copy_string (char * s)
 {
+  int slen = strlen (s);
+  pxll_string * r = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
+  r->len = slen;
+  memcpy (GET_STRING_POINTER (r), s, slen);
+  return (object *) r;
+}
+
+pxll_int
+vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result) 
+{
+  // FFI target pfun rtype nargs arg0 ...
   ffi_cif cif;
   ffi_type *args[nargs];
   // libffi requires an extra level of indirection for args, because
@@ -526,7 +582,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs)
   void * pvals[nargs];
   int good = 1;
   for (int i=0; i < nargs; i++) {
-    object * ob = vm_regs[bytecode[pc+4+i]];
+    object * ob = vm_regs[bytecode[pc+5+i]];
     switch (get_case (ob)) {
     case TC_INT:
       args[i] = &ffi_type_sint;
@@ -550,58 +606,73 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs)
       break;
     default:
       fprintf (stderr, "illegal argument type:");
-      dump_object (ob, 0);
+      print_object (ob);
       fprintf (stderr, "\n");
-      good = 0;
+      return -1;
       break;
     }
   }
   if (good) {
-    if (FFI_OK == ffi_prep_cif (&cif, FFI_DEFAULT_ABI, nargs, &ffi_type_sint, args)) {
+    ffi_type * rtype;
+    // parse rtype
+    unsigned char rcode = (unsigned char) GET_CHAR (vm_regs[bytecode[pc+3]]);
+    switch (rcode) {
+    case 'i':
+      rtype = &ffi_type_sint;
+      break;
+    case 'p':
+    case 's':
+      rtype = &ffi_type_pointer;
+      break;
+    default:
+      fprintf (stderr, "unknown return type\n");
+      return -1;
+    }
+    if (FFI_OK == ffi_prep_cif (&cif, FFI_DEFAULT_ABI, nargs, rtype, args)) {
       void * pfun = (void*)UNBOX_INTEGER (vm_regs[bytecode[pc+2]]);
       ffi_arg rc;
       ffi_call (&cif, pfun, &rc, pvals);
-      return BOX_INTEGER (rc);
+      switch (rcode) {
+      case 'i':
+        *result = BOX_INTEGER (rc);
+        break;
+      case 's':
+        *result = vm_copy_string ((char*)rc);
+        break;
+      case 'p':
+        *result = BOX_INTEGER ((pxll_int)rc);
+        break;
+      }
+      return 0;
     } else {
       fprintf (stderr, "ffi_prep_cif failed\n");
-      return BOX_INTEGER ((uint64_t) -1); // XXX not 32-bit clean!
+      return -1;
     }
   } else {
-    return BOX_INTEGER ((uint64_t) -1);
+    return -1;
   }
 }
-
-object *
-vm_copy_string (char * s)
-{
-  int slen = strlen (s);
-  pxll_string * r = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
-  r->len = slen;
-  memcpy (GET_STRING_POINTER (r), s, slen);
-  return (object *) r;
-}
-
-object *
-vm_list_cons (object * car, object * cdr)
-{
-  object * cell = allocate (TC_PAIR, 2);
-  cell[1] = car;
-  cell[2] = cdr;
-  return cell;
-}
-
-
 
 #define NREGS 20
 #define BC1 code[pc+1]
 #define BC2 code[pc+2]
 #define BC3 code[pc+3]
 #define BC4 code[pc+4]
+#define BC5 code[pc+5]
 
 #define REG1 vm_regs[BC1]
 #define REG2 vm_regs[BC2]
 #define REG3 vm_regs[BC3]
 #define REG4 vm_regs[BC4]
+#define REG5 vm_regs[BC5]
+
+// XXX consider splitting the bytecodes into opcodes and prims.  this
+//   will mean an extra word in all prim invocations, but should keep
+//   the core VM loop small enough to fit in the insn cache. maybe.
+//   another possibility: since the insn stream is (currently) 16-bit,
+//   we could simply encode prims in the higher byte?
+//   this would also be a cleaner way of handling %%cexp stuff, so 
+//   %%cexp can only work with prims.
 
 object
 vm_go (void)
@@ -643,6 +714,38 @@ vm_go (void)
       break;
     case op_sub:
       REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) - UNBOX_INTEGER (REG3));
+      pc += 4;
+      break;
+    case op_mul:
+      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) * UNBOX_INTEGER (REG3));
+      pc += 4;
+      break;
+    case op_div:
+      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) / UNBOX_INTEGER (REG3));
+      pc += 4;
+      break;
+    case op_srem:
+      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) % UNBOX_INTEGER (REG3));
+      pc += 4;
+      break;
+    case op_shl:
+      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) << UNBOX_INTEGER (REG3));
+      pc += 4;
+      break;
+    case op_ashr:
+      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) >> UNBOX_INTEGER (REG3));
+      pc += 4;
+      break;
+    case op_or:
+      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) | UNBOX_INTEGER (REG3));
+      pc += 4;
+      break;
+    case op_xor:
+      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) ^ UNBOX_INTEGER (REG3));
+      pc += 4;
+      break;
+    case op_and:
+      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) & UNBOX_INTEGER (REG3));
       pc += 4;
       break;
     case op_eq:
@@ -837,7 +940,7 @@ vm_go (void)
       break;
     case op_printo:
       // PRINTO arg
-      DO (REG1);
+      print_object (REG1);
       pc += 2;
       break;
     case op_prints: {
@@ -903,6 +1006,11 @@ vm_go (void)
       pc += 4 + nelem;
     }
       break;
+    case op_makei:
+      // MAKEI target tag payload
+      REG1 = (object*)((UNBOX_INTEGER(REG3)<<8) | (UNBOX_INTEGER(REG2) & 0xff));
+      pc += 4;
+      break;
     case op_exit:
       vm_result = REG1;
       done = 1;
@@ -927,6 +1035,11 @@ vm_go (void)
       // TUPREF target ob index
       REG1 = REG2[BC3+1];
       pc += 4;
+      break;
+    case op_vlen:
+      // VLEN target vec
+      REG1 = BOX_INTEGER (GET_TUPLE_LENGTH (*REG2));
+      pc += 3;
       break;
     case op_vref:
       // VREF target vec index-reg
@@ -1010,13 +1123,29 @@ vm_go (void)
       pc += 3;
       break;
     case op_ffi: {
-      // FFI target pfun nargs arg0 ...
-      pxll_int nargs = UNBOX_INTEGER (REG3);
+      // FFI target pfun rtype nargs arg0 ...
+      pxll_int nargs = UNBOX_INTEGER (REG4);
       // XXX concerned that passing vm_regs defeats the register decl above.
-      object result = vm_do_ffi ((object *) vm_regs, pc, nargs);
-      REG1 = result;
-      pc += nargs + 4;
+      object result;
+      pxll_int success = vm_do_ffi ((object *) vm_regs, pc, nargs, &result);
+      if (success == 0) {
+        REG1 = result;
+      } else {
+        fprintf (stderr, "op_ffi failed\n");
+        done = 1;
+      }
+      pc += nargs + 5;
     }
+      break;
+    case op_smake: {
+      // SMAKE target size
+      // XXX heap check.
+      pxll_int slen = UNBOX_INTEGER (REG2);
+      pxll_string * s = (pxll_string*)alloc_no_clear (TC_STRING, string_tuple_length (slen));
+      s->len = slen;
+      REG1 = (object*)s;
+    }
+      pc += 3;
       break;
     case op_slen:
       // SLEN target string
@@ -1055,6 +1184,30 @@ vm_go (void)
       pc += 4;
     }
       break;
+    case op_scopy: {
+      // SCOPY src sstart n dst dstart
+      pxll_string * src = (pxll_string *) REG1;
+      pxll_string * dst = (pxll_string *) REG4;
+      pxll_int sstart = UNBOX_INTEGER (REG2);
+      pxll_int dstart = UNBOX_INTEGER (REG5);
+      pxll_int n = UNBOX_INTEGER (REG3);
+      // range check
+      if ((sstart >= 0) && (sstart + n <= src->len) &&
+          (dstart >= 0) && (dstart + n <= dst->len)) {
+        memcpy (dst->data + dstart, src->data + sstart, n);
+      } else {
+        // XXX error handling
+        fprintf (stderr, "scopy out of range\n");
+        done = 1;
+      }
+      pc += 6;
+    }
+      break;
+    case op_unchar:
+      // UNCHAR target char
+      REG1 = (object*) BOX_INTEGER (GET_CHAR (REG2));
+      pc += 3;
+      break;
     case op_plat: {
       // PLAT target
       struct utsname plat;
@@ -1077,6 +1230,11 @@ vm_go (void)
       }
       pc += 2;
     }
+      break;
+    case op_gist:
+      // GIST target
+      REG1 = vm_internal_symbol_list;
+      pc += 2;
       break;
     default:
       fprintf (stderr, "illegal bytecode. (%d)\n", bytecode[pc]);
