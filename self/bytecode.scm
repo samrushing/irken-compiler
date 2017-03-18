@@ -2,6 +2,9 @@
 
 (define (OI name nargs varargs target?) {code=0 name=name nargs=nargs varargs=varargs target=target?})
 
+;; XXX some bunches of these opcodes could be collapsed.
+;; e.g. vlen/vref/vset == rlen/rref/rset (and maybe slen/sref/sset with a quick TC_STRING check)
+
 (define opcode-info
   (list->vector
    (LIST
@@ -10,6 +13,14 @@
     (OI 'ret     1      #f     #f)   ;; val
     (OI 'add     3      #f     #t)   ;; target a b
     (OI 'sub     3      #f     #t)   ;; target a b
+    (OI 'mul     3      #f     #t)   ;; target a b
+    (OI 'div     3      #f     #t)   ;; target a b
+    (OI 'srem    3      #f     #t)   ;; target a b
+    (OI 'shl     3      #f     #t)   ;; target a b
+    (OI 'ashr    3      #f     #t)   ;; target a b
+    (OI 'or      3      #f     #t)   ;; target a b    
+    (OI 'xor     3      #f     #t)   ;; target a b    
+    (OI 'and     3      #f     #t)   ;; target a b    
     (OI 'eq      3      #f     #t)   ;; target a b
     (OI 'lt      3      #f     #t)   ;; target a b
     (OI 'gt      3      #f     #t)   ;; target a b
@@ -45,9 +56,11 @@
     (OI 'gc      0      #f     #f)   ;;
     (OI 'imm     2      #f     #t)   ;; target tag
     (OI 'make    4      #t     #t)   ;; target tag nelem elem0 ...
+    (OI 'makei   3      #f     #t)   ;; target tag payload
     (OI 'exit    1      #f     #f)   ;; arg
     (OI 'nvcase  5      #t     #f)   ;; ob elabel nalts tag0 off0 tag1 off1 ...
     (OI 'tupref  3      #f     #t)   ;; target ob index
+    (OI 'vlen    2      #f     #t)   ;; target vec
     (OI 'vref    3      #f     #t)   ;; target vec index-reg
     (OI 'vset    3      #f     #f)   ;; vec index-reg val
     (OI 'vmake   3      #f     #t)   ;; target size val
@@ -60,10 +73,14 @@
     (OI 'getc    1      #f     #t)   ;; target
     (OI 'dlsym   2      #f     #t)   ;; target name
     (OI 'ffi     4      #t     #t)   ;; target fun nargs arg0 ...
+    (OI 'smake   2      #f     #t)   ;; target size
     (OI 'slen    2      #f     #t)   ;; target string
     (OI 'sref    3      #f     #t)   ;; target string index
     (OI 'sset    3      #f     #f)   ;; string index char
+    (OI 'scopy   5      #f     #f)   ;; src src-start n dst dst-start
+    (OI 'unchar  2      #f     #t)   ;; target char
     (OI 'plat    1      #f     #t)   ;; target
+    (OI 'gist    1      #f     #t)   ;; target
     )))
 
 (for-range i (vector-length opcode-info)
@@ -443,8 +460,9 @@
          '%exit        -> (prim-exit args)
          '%getcc       -> (prim-getcc args)
          '%putcc       -> (prim-putcc args)
-         ;; '%callocate   -> (prim-callocate parm args)
+         ;; XXX ensure-heap: we need to handle free regs in gc.
          ;; '%ensure-heap -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
+         ;; '%callocate   -> (prim-callocate parm args)
          _ -> (primop-error))))
 
     ;; we emit insns for k0, which may or may not jump to fail continuation in k1
