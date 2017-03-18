@@ -1,7 +1,11 @@
 ;; -*- Mode: Irken -*-
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
+  (%backend (c llvm)
+    (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
+  (%backend bytecode
+    (print x)
+    (newline)))
 
 (define (print x)
   (%backend (c llvm) (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
@@ -23,7 +27,9 @@
 (define (terpri)
   (print-char #\newline))
 
-(define newline terpri)
+(define (newline)
+  (%backend (c llvm) (print-char #\newline))
+  (%backend bytecode (print-string "\n")))
 
 (define (= a b)
   (%backend c (%%cexp (int int -> bool) "%0==%1" a b))
@@ -61,13 +67,13 @@
 (define (>0 a)
   (%backend c (%%cexp (int -> bool) "%0>0" a))
   (%backend llvm (%llicmp sgt a 0))
-  (%backend bytecode (%%cexp (int -> bool) "gt" a 0))
+  (%backend bytecode (%%cexp (int int -> bool) "gt" a 0))
   )
 
 (define (<0 a)
   (%backend c (%%cexp (int -> bool) "%0<0" a))
   (%backend llvm (%llicmp slt a 0))
-  (%backend bytecode (%%cexp (int -> bool) "lt" a 0))
+  (%backend bytecode (%%cexp (int int -> bool) "lt" a 0))
   )
 
 (define (binary+ a b)
@@ -181,12 +187,6 @@
 
 (define (abs x) (if (< x 0) (- 0 x) x))
 
-(define (magic<? a b)
-  (%backend c        (%%cexp ('a 'a -> bool) "magic_less_than (%0, %1)" a b))
-  (%backend llvm     (%%cexp ('a 'a -> bool) "magic_less_than (%0, %1)" a b))
-  (%backend bytecode (%%cexp ('a 'a -> bool) "magic<" a b))
-  )
-
 (datatype cmp
   (:<)
   (:=)
@@ -213,6 +213,9 @@
     (%%cexp ('a 'a -> cmp) "cmp" a b))
   )
 
+(define (magic<? a b)
+  (eq? (cmp:<) (magic-cmp a b)))
+
 (define (eq? a b)
   (%backend c (%%cexp ('a 'a -> bool) "%0==%1" a b))
   (%backend llvm (%lleq #f a b))
@@ -234,17 +237,23 @@
   )
 
 (define (make-vector n val)
-  (%ensure-heap #f n)
-  (%make-vector #f n val))
-
-;; (define (make-vec16 n)
-;;   ;; XXX ensure-heap here
-;;   (%make-vec16 #f n))
+  (%backend (c llvm)
+    (%ensure-heap #f n)
+    (%make-vector #f n val))
+  (%backend bytecode
+    (%%cexp (int 'a -> (vector 'a))
+            "vmake"
+            n val))
+  )
 
 (define (vector-length v)
-  (%%cexp
-   ((vector 'a) -> int)
-   "(%0 == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%0)" v))
+  (%backend (c llvm)
+    (%%cexp
+     ((vector 'a) -> int)
+     "(%0 == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%0)" v))
+  (%backend bytecode
+    (%%cexp ((vector 'a) -> int) "vlen" v))
+  )
 
 (define (address-of ob)
   (%%cexp ('a -> int) "(pxll_int)%0" ob))
