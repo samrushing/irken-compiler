@@ -390,6 +390,21 @@ read_bytecode (FILE * f)
 
 static
 pxll_int
+read_magic (FILE * f)
+{
+  char magic0[] = "IRKVM0";
+  char magic1[] = "      ";
+  CHECK (read_string (f, magic1, strlen(magic0)));
+  if (0 == strncmp (magic0, magic1, strlen(magic0))) {
+    return 0;
+  } else {
+    fprintf (stderr, "not a bytecode file.\n");
+    return -1;
+  }
+}
+
+static
+pxll_int
 read_bytecode_file (char * path)
 {
   FILE * f = fopen (path, "rb");
@@ -397,6 +412,7 @@ read_bytecode_file (char * path)
     fprintf (stderr, "unable to open '%s'\n", path);
     return -1;
   } else {
+    CHECK (read_magic (f));
     CHECK (read_literals (f));
     CHECK (read_bytecode (f));
     return 0;
@@ -637,7 +653,12 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
         *result = BOX_INTEGER (rc);
         break;
       case 's':
-        *result = vm_copy_string ((char*)rc);
+        if ((char*)rc == NULL) {
+          // XXX silent error.
+          *result = vm_copy_string ("");
+        } else {
+          *result = vm_copy_string ((char*)rc);
+        }
         break;
       case 'p':
         *result = BOX_INTEGER ((pxll_int)rc);

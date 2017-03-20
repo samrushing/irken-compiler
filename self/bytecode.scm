@@ -766,6 +766,8 @@
 
     ;; --------------------------------------------------------------------------------
 
+    (o.copy "IRKVM0") ;; magic
+
     ;; assign a label to every used jump.
     (for-list jn (used-jumps::keys)
       (jump-label-map::add jn (new-label)))
