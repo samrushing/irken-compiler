@@ -17,7 +17,7 @@
 	   (match (splice exp) with
 	     (sexp:list ())    -> (sexp:list '())
 	     (sexp:list (one)) -> (expand one)
-	     (sexp:list exps)  -> (expand-body (find-declarations exps))
+	     (sexp:list exps)  -> (expand-body exps)
 	     _ -> (error1 "unexpected s-expression in transformer:" exp)
 	     )))
       (wrap-with-constructors (splice expanded))
@@ -51,7 +51,7 @@
 	body))
 
   (define (wrap-begin exps)
-    (sexp:list (list:cons (sexp:symbol 'begin) exps)))
+    (sexp1 'begin exps))
 
   (define (wrap-definitions defs exps)
     (let ((names '())
@@ -66,7 +66,7 @@
       (wrap-fix (reverse names) (reverse inits) (expand (wrap-begin exps)))))
 
   (define (expand-body exps)
-    (find-definitions (scan-for-%backend exps) wrap-definitions))
+    (find-definitions (find-declarations (scan-for-meta exps)) wrap-definitions))
 
   (define (find-declarations exps)
     (define recur
@@ -82,17 +82,20 @@
 	   _ -> (recur tl (list:cons hd acc))))
     (recur exps '()))
 
-  (define (scan-for-%backend forms)
+  ;; scan for forms that make compile-time decisions about how/what code to include.
+  (define (scan-for-meta forms)
     (define loop
       acc () -> (reverse acc)
       acc ((sexp:list ((sexp:symbol '%backend) (sexp:symbol backend) . subs)) . tl)
       -> (if (eq? backend (backend->name the-context.options.backend))
-             (loop (foldr cons (reverse subs) acc) tl)
+             (loop (foldr cons acc (reverse (scan-for-meta subs))) tl)
              (loop acc tl))
       acc ((sexp:list ((sexp:symbol '%backend) (sexp:list backends) . subs)) . tl)
       -> (if (member? (sexp:symbol (backend->name the-context.options.backend)) backends sexp=?)
-             (loop (foldr cons (reverse subs) acc) tl)
+             (loop (foldr cons acc (reverse (scan-for-meta subs))) tl)
              (loop acc tl))
+      acc ((sexp:list ((sexp:symbol 'include) (sexp:string path))) . tl)
+      -> (loop (foldr cons acc (reverse (scan-for-meta (find-and-read-file path)))) tl)
       acc (hd . tl)
       -> (loop (list:cons hd acc) tl)
       )
