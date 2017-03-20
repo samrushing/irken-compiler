@@ -25,6 +25,7 @@
             "scopy"
             src src-start n dst dst-start)))
 
+;; XXX why not use substring?
 (define (copy-string s1 n)
   (let ((s2 (make-string n)))
     (buffer-copy s1 0 n s2 0)
@@ -289,7 +290,6 @@
   (fitem (<join> sep l))	-> (string-join l sep)         ;; separate each string in <l> with <sep>
   (fitem (<join> p sep l))	-> (string-join (map p l) sep) ;; map <p> over list <l>, separate each with <sep>
   (fitem (<string> s))          -> (repr-string s)
-  (fitem (<p> p x))		-> (p x) ;; fun <p> converts <x> to a string
   (fitem (<lpad> n item ...))	-> (lpad n (format item ...) #\space) ;; left-pad
   (fitem (<rpad> n item ...))	-> (rpad n (format item ...) #\space) ;; right-pad
   (fitem (<cpad> n item ...))	-> (cpad n (format item ...) #\space) ;; center-pad
