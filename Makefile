@@ -1,5 +1,7 @@
 # -*- Mode: Makefile; tab-width: 4 -*-
 
+all: safe
+
 # build from bootstrap.
 bootstrap:
 	python util/bootstrap.py
