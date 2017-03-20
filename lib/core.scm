@@ -19,7 +19,9 @@
   )
 
 (define (flush)
-  (%%cexp (-> int) "fflush (stdout)"))
+  (%backend (c llvm) (%%cexp (-> int) "fflush (stdout)"))
+  ;; not using stdio
+  (%backend bytecode #u))
 
 (define (print-char ch)
   (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" ch))
@@ -454,18 +456,37 @@
   (try body0 body1 ...)                   -> (try (begin body0) body1 ...)
   )
 
-(cinclude "sys/errno.h")
+(%backend (c llvm)
+  (cinclude "sys/errno.h")
 
-(define (syscall retval)
-  (if (< retval 0)
-      ;; this requires string.scm.  need to place syscall elsewhere.
-      ;; (raise (:OSError (copy-cstring (%%cexp (-> cstring) "strerror(errno)"))))
-      (raise (:OSError (%%cexp (-> int) "errno")))
-      retval))
+  (define (syscall retval)
+    (if (< retval 0)
+        ;; this requires string.scm.  need to place syscall elsewhere.
+        ;; (raise (:OSError (copy-cstring (%%cexp (-> cstring) "strerror(errno)"))))
+        (raise (:OSError (%%cexp (-> int) "errno")))
+        retval))
 
-(define (set-verbose-gc b)
-  (%%cexp (bool -> undefined) "verbose_gc = %0" b)
+  (define (set-verbose-gc b)
+    (%%cexp (bool -> undefined) "verbose_gc = %0" b))
+
+  (define (get-word-size)
+    (%%cexp (-> int) "sizeof(pxll_int)"))
   )
 
-(define (get-word-size)
-  (%%cexp (-> int) "sizeof(pxll_int)"))
+(%backend bytecode
+
+  (define (syscall retval)
+    (if (< retval 0)
+        (raise (:OSError -1)) ;; XXX temp
+        retval))
+
+  (define (set-verbose-gc b)
+    ;; XXX no-op
+    #u)
+
+  ;; could probably calculate this from int math.
+  (define (get-word-size)
+    8 ;; XXX bogus
+    )
+  )
+  
