@@ -121,7 +121,7 @@ Usage: compile <irken-src-file> [options]
 (define (main)
   (when (< sys.argc 2)
 	(usage)
-	(raise (:args)))
+	(raise (:NotEnoughArgs)))
   (let ((filearg (get-options sys.argv the-context.options))
 	(transform (transformer))
 	(path sys.argv[filearg])
