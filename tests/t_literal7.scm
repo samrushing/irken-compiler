@@ -1,2 +1,2 @@
-(datatype symbol (:t string))
+;(datatype symbol (:t string))
 'testing
