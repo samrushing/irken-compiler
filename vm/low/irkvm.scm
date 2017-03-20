@@ -6,8 +6,7 @@
 (local-include "vm.c")
 
 (define (read-bytecode-file path)
-  (%%cexp (string -> int) "read_bytecode_file (%0)" path)
-  )
+  (%%cexp (string -> int) "read_bytecode_file (%0)" path))
 
 ;; this is an (admittedly kludgy) way of bootstrapping the vm->irken
 ;;  call interface: we provide a single "object-getting closure"...
@@ -23,6 +22,7 @@
   "open"          -> (magic open)
   "close"         -> (magic close)
   "write"         -> (magic write)
+  "argv"          -> (magic sys.argv)
   x               -> (error1 "boot-get-object" x)
   )
 
