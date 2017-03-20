@@ -411,7 +411,7 @@
 
 (define repr-field
   (field:t '... _)   -> "..."
-  (field:t name val) -> (format (sym name) "=" (p repr val)))
+  (field:t name val) -> (format (sym name) "=" (repr val)))
 
 (define repr
   (sexp:list ((sexp:symbol 'quote) x)) -> (format "'" (repr x))
@@ -426,7 +426,7 @@
   (sexp:vector v)   -> (format "#(" (join repr " " v) ")")
   (sexp:record fl)  -> (format "{" (join repr-field " " fl) "}")
   (sexp:cons dt c)  -> (format (if (eq? dt 'nil) "" (symbol->string dt)) ":" (sym c))
-  (sexp:attr lhs a) -> (format (p repr lhs) "." (sym a))
+  (sexp:attr lhs a) -> (format (repr lhs) "." (sym a))
   )
 
 (define indent
