@@ -86,24 +86,24 @@
 (define immediate-false (encode-immediate (literal:cons 'bool 'false '())))
 
 ;; immediate types (multiples of 2 (but not 4!))
-(define TC_CHAR         (%%cexp int "TC_CHAR"))         ;; (<<  1 1)) ;; 00000010 02
-(define TC_BOOL         (%%cexp int "TC_BOOL"))         ;; (<<  3 1)) ;; 00000110 06
-(define TC_NIL          (%%cexp int "TC_NIL"))          ;; (<<  5 1)) ;; 00001010 0a
-(define TC_UNDEFINED    (%%cexp int "TC_UNDEFINED"))    ;; (<<  7 1)) ;; 00001110 0e
-(define TC_EMPTY_VECTOR (%%cexp int "TC_EMPTY_VECTOR")) ;; (<<  9 1)) ;; 00010010 12
-(define TC_USERIMM      (%%cexp int "TC_USERIMM"))      ;; (<< 11 1)) ;; 00010110 16
+(define TC_CHAR         (<<  1 1)) ;; 00000010 02
+(define TC_BOOL         (<<  3 1)) ;; 00000110 06
+(define TC_NIL          (<<  5 1)) ;; 00001010 0a
+(define TC_UNDEFINED    (<<  7 1)) ;; 00001110 0e
+(define TC_EMPTY_VECTOR (<<  9 1)) ;; 00010010 12
+(define TC_USERIMM      (<< 11 1)) ;; 00010110 16
 
 ;; pointer types (multiples of 4)
-(define TC_SAVE    (%%cexp int "TC_SAVE"))    ;;  (<< 1 2)) ;; 00000100  04
-(define TC_CLOSURE (%%cexp int "TC_CLOSURE")) ;;  (<< 2 2)) ;; 00001000  08
-(define TC_TUPLE   (%%cexp int "TC_TUPLE"))   ;;  (<< 3 2)) ;; 00001100  0c
-(define TC_ENV     (%%cexp int "TC_ENV"))     ;;  (<< 3 2)) ;; 00001100  0c alias
-(define TC_STRING  (%%cexp int "TC_STRING"))  ;;  (<< 4 2)) ;; 00010000  10
-(define TC_VECTOR  (%%cexp int "TC_VECTOR"))  ;;  (<< 5 2)) ;; 00010100  14
-(define TC_PAIR    (%%cexp int "TC_PAIR"))    ;;  (<< 6 2)) ;; 00011000  18
-(define TC_SYMBOL  (%%cexp int "TC_SYMBOL"))  ;;  (<< 7 2)) ;; 00011100  1c
-(define TC_BUFFER  (%%cexp int "TC_BUFFER"))  ;;  (<< 8 2)) ;; 00100000  20
-(define TC_USEROBJ (%%cexp int "TC_USEROBJ")) ;;  (<< 9 2)) ;; 00100100  24
+(define TC_SAVE         (<< 1 2)) ;; 00000100  04
+(define TC_CLOSURE      (<< 2 2)) ;; 00001000  08
+(define TC_TUPLE        (<< 3 2)) ;; 00001100  0c
+(define TC_ENV          (<< 3 2)) ;; 00001100  0c alias
+(define TC_STRING       (<< 4 2)) ;; 00010000  10
+(define TC_VECTOR       (<< 5 2)) ;; 00010100  14
+(define TC_PAIR         (<< 6 2)) ;; 00011000  18
+(define TC_SYMBOL       (<< 7 2)) ;; 00011100  1c
+(define TC_BUFFER       (<< 8 2)) ;; 00100000  20
+(define TC_USEROBJ      (<< 9 2)) ;; 00100100  24
 
 (define (find-jumps insns)
   (let ((used (map-maker int-cmp)))
