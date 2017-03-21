@@ -554,21 +554,29 @@
 		   (insn:nvcase test-reg dtname alt-formals jump-num alts ealt1 k)))
 	       (compile #f value lenv (cont free finish))))))
 
+    (define match-error?
+      (node:primapp '%match-error _) -> #t
+      _ -> #f)
+
     (define (c-pvcase tail? alt-formals arities subs lenv k)
+      ;; pvcase subs = <value>, <else-clause>, <alt0>, ...
       (let ((free (k/free k))
-	    (jump-num (jump-counter.inc)))
-	;; pvcase subs = <value>, <else-clause>, <alt0>, ...
-	 (let ((value (nth subs 0))
-	       (eclause (nth subs 1))
-	       (alts (cdr (cdr subs))))
-	   (define (make-jump-k)
-	     (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
-	   (define (finish test-reg)
-	     (let ((alts (map (lambda (alt) (compile tail? alt lenv (make-jump-k))) alts))
-		   (else? (match (noderec->t eclause) with (node:primapp '%match-error _) -> #f _ -> #t))
-		   (ealt (if else? (maybe:yes (compile tail? eclause lenv (make-jump-k))) (maybe:no))))
-	       (insn:pvcase test-reg alt-formals arities jump-num alts ealt k)))
-	   (compile #f value lenv (cont free finish)))))
+	    (jump-num (jump-counter.inc))
+            (value (nth subs 0))
+            (eclause (nth subs 1))
+            (alts (cdr (cdr subs)))
+            (has-else (not (match-error? (noderec->t eclause)))))
+        (define (make-jump-k)
+          (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
+        (define (finish test-reg)
+          (let ((alts (map (lambda (alt) (compile tail? alt lenv (make-jump-k))) alts))
+                (ealt (if has-else
+                          (maybe:yes (compile tail? eclause lenv (make-jump-k)))
+                          (maybe:no))))
+            (insn:pvcase test-reg alt-formals arities jump-num alts ealt k)))
+        (if (and (= (length alts) 1) (not has-else))
+            (compile tail? (nth alts 0) lenv k)
+            (compile #f value lenv (cont free finish)))))
 
     (define fatbar-counter (make-counter 0))
 
@@ -577,12 +585,13 @@
 	    (lenv0 (cpsenv:fat label lenv))
 	    (free (k/free k))
 	    (target (k/target k))
-	    (jump-num (jump-counter.inc)))
+	    (jump-num (jump-counter.inc))
+            (jump-cont (cont free (lambda (reg) (insn:jump reg target jump-num free)))))
 	(insn:fatbar
 	 label
 	 jump-num
-	 (compile tail? (nth subs 0) lenv0 (cont free (lambda (reg) (insn:jump reg target jump-num free))))
-	 (compile tail? (nth subs 1) lenv  (cont free (lambda (reg) (insn:jump reg target jump-num free))))
+	 (compile tail? (nth subs 0) lenv0 jump-cont)
+	 (compile tail? (nth subs 1) lenv  jump-cont)
 	 k)))
 
     (define (c-fail tail? lenv k)
