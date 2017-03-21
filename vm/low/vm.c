@@ -55,6 +55,7 @@ typedef enum {
   op_topref,
   op_topset,
   op_set,
+  op_set0,
   op_pop0,
   op_epop,
   op_tron,
@@ -131,6 +132,7 @@ char * op_names[] = {
   "topref",
   "topset",
   "set",
+  "set0",
   "pop0",
   "epop",
   "tron",
@@ -357,8 +359,10 @@ read_literals (FILE * f)
   return 0;
 }
 
-typedef uint16_t bytecode_t;
-#define BYTECODE_MAX UINT16_MAX
+//typedef uint16_t bytecode_t;
+//#define BYTECODE_MAX UINT16_MAX
+typedef uint32_t bytecode_t;
+#define BYTECODE_MAX UINT32_MAX
 
 static bytecode_t * bytecode;
 
@@ -991,6 +995,11 @@ vm_go (void)
       vm_varset (BC1, BC2, REG3);
       pc += 4;
       break;
+    case op_set0:
+      // SET0 index val
+      vm_varset (0, BC2, REG3);
+      pc += 3;
+      break;
     case op_epop:
       // EPOP
       // lenv := tuple next
@@ -1059,7 +1068,11 @@ vm_go (void)
       break;
     case op_vlen:
       // VLEN target vec
-      REG1 = BOX_INTEGER (GET_TUPLE_LENGTH (*REG2));
+      if (REG2 == (object*) TC_EMPTY_VECTOR) {
+        REG1 = BOX_INTEGER (0);
+      } else {
+        REG1 = BOX_INTEGER (GET_TUPLE_LENGTH (*REG2));
+      }
       pc += 3;
       break;
     case op_vref:

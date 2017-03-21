@@ -49,6 +49,7 @@
     (OI 'topref  2      #f     #t)   ;; target index
     (OI 'topset  2      #f     #f)   ;; index val
     (OI 'set     3      #f     #f)   ;; depth index val
+    (OI 'set0    2      #f     #f)   ;; index val
     (OI 'pop0    0      #f     #f)   ;;
     (OI 'epop    0      #f     #f)   ;;
     (OI 'tron    0      #f     #f)   ;;
@@ -245,15 +246,20 @@
                    args)))
         ))
 
+    (define (move src dst)
+      (if (and (>= dst 0) (not (= src dst)))
+          (LINSN 'mov dst src)
+          '()))
+
     (define (emit-move var src target)
       ;; MOV <dst-ref> <src-reg>
       (cond ((and (>= src 0) (not (= src var)))
              ;; from varset
              ;; XXX target := #u
-             (LINSN 'mov var src))
+             (move src var))
             ((and (>= target 0) (not (= target var)))
              ;; from varref
-             (LINSN 'mov target var))
+             (move var target))
             (else '())))
 
     (define (emit-jump-continuation jn k)
@@ -280,7 +286,7 @@
 
     (define (emit-jump reg target jn free)
       (append
-       (LINSN 'mov target reg)
+       (move reg target)
        (LINSN 'jmp (jump-label-map::get-err jn "jump number not in map"))))
 
     (define (emit-close name nreg body target)
@@ -359,11 +365,7 @@
              (LINSN 'pop target)))))
 
     (define (emit-pop src target)
-      (if (= target -1)
-          (LINSN 'epop)
-          (append
-           (LINSN 'mov target src)
-           (LINSN 'epop))))
+      (append (move src target) (LINSN 'epop)))
 
     (define (emit-primop name parm type args k)
 
@@ -542,6 +544,9 @@
 	      (labs (make-labels ntags))
               (result (cons (stream:label lelse) (emit elsek)))
               (pairs '()))
+          (if (= ntags 0)
+              (printf "zero tags in pvcase\n")
+              #u)
 	  (for-range i ntags
 	     (let ((label (nth tags i))
 		   (tag0 (match (alist/lookup the-context.variant-labels label) with
