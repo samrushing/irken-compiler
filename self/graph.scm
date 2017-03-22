@@ -44,7 +44,7 @@
 
 (define (build-dependency-graph root)
   ;;(let ((g (alist-maker)))
-  (let ((g (map-maker symbol-cmp)))
+  (let ((g (map-maker symbol-index-cmp)))
     (define (search exp current-fun)
       (match (noderec->t exp) with
 	(node:varref name)
