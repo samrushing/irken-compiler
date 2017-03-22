@@ -75,7 +75,8 @@
   (make-ffi "open\x00" #\i 3 (path oflag mode) (string int int -> int)))
 
 (define (open path oflag mode)
-  (syscall (posix-open path oflag mode)))
+  (let ((path (zero-terminate path)))
+    (syscall (posix-open path oflag mode))))
 
 (define posix-read
   (make-ffi "read\x00" #\i 3 (fd buffer size) (int string int -> int)))
