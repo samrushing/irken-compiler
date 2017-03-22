@@ -597,55 +597,64 @@
 
     (define (emit-literals)
       ;; encode literals into the bytecode stream.
+      (let ((already (map-maker magic-cmp)))
 
-      (define (walk ob)
-        (match ob with
-          (literal:int n)
-          -> (if (< n 0)
-                 (o.copy (format "-" (encode-int (- 0 n))))
-                 (o.copy (format "+" (encode-int n))))
-          (literal:char ch) -> (o.copy (format "c" (encode-int (char->ascii ch))))
-          (literal:undef)   -> (o.copy "u")
-          (literal:string s)
-          -> (begin
-               (o.copy (format "S" (encode-int (string-length s))))
-               (o.copy s))
-          (literal:cons 'bool 'true _) -> (o.copy "T")
-          (literal:cons 'bool 'false _) -> (o.copy "F")
-          (literal:cons dt variant args)
-          -> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
-                   (alt (dto.get variant))
-                   (nargs (length args)))
-               (if (= nargs 0)
-                   ;; immediate constructor
-                   (o.copy (format "I" (encode-int (get-uitag dt variant alt.index))))
-                   ;; constructor with args
-                   (begin
-                     (o.copy (format "C"
-                                     (encode-int (get-uotag dt variant alt.index))
-                                     (encode-int nargs)))
-                     (for-list arg args
-                       (walk arg)))))
-          (literal:vector args)
-          -> (begin
-               (o.copy (format "V" (encode-int (length args))))
-               (for-list arg args
-                 (walk arg)))
-          ;; XXX sexp, symbol.
-          (literal:symbol s)
-          -> (let ((s0 (symbol->string s)))
-               (o.copy (format "Y" (encode-int (string-length s0))))
-               (o.copy s0))
-          _ -> (error1 "NYI literal type" (literal->string ob))
-          ))
+        (define (walk ob)
+          (match (already::get ob) with
+            (maybe:yes index) 
+            -> (o.copy (format "P" (encode-int index)))
+            (maybe:no)
+            -> (match ob with
+                 (literal:int n)
+                 -> (if (< n 0)
+                        (o.copy (format "-" (encode-int (- 0 n))))
+                        (o.copy (format "+" (encode-int n))))
+                 (literal:char ch) -> (o.copy (format "c" (encode-int (char->ascii ch))))
+                 (literal:undef)   -> (o.copy "u")
+                 (literal:string s)
+                 -> (begin
+                      (o.copy (format "S" (encode-int (string-length s))))
+                      (o.copy s))
+                 (literal:cons 'bool 'true _) -> (o.copy "T")
+                 (literal:cons 'bool 'false _) -> (o.copy "F")
+                 (literal:cons dt variant args)
+                 -> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
+                          (alt (dto.get variant))
+                          (nargs (length args)))
+                      (if (= nargs 0)
+                          ;; immediate constructor
+                          (o.copy (format "I" (encode-int (get-uitag dt variant alt.index))))
+                          ;; constructor with args
+                          (begin
+                            (o.copy (format "C"
+                                            (encode-int (get-uotag dt variant alt.index))
+                                            (encode-int nargs)))
+                            (for-list arg args
+                              (walk arg)))))
+                 (literal:vector args)
+                 -> (begin
+                      (o.copy (format "V" (encode-int (length args))))
+                      (for-list arg args
+                        (walk arg)))
+                 ;; XXX sexp.
+                 (literal:symbol s)
+                 -> (let ((s0 (symbol->string s)))
+                      (o.copy (format "Y" (encode-int (string-length s0))))
+                      (o.copy s0))
+                 _ -> (error1 "NYI literal type" (literal->string ob))
+                 )))
 
-      ;; emit constructed literals as a vector
-      (let ((lits0 the-context.literals)
-            (nlits lits0.count))
-        (o.copy (format "V" (encode-int nlits)))
-        (for-range i nlits
-          (walk (cmap->item lits0 i))))
-      )
+        ;; emit constructed literals as a vector
+        (let ((lits0 the-context.literals)
+              (nlits lits0.count))
+          (o.copy (format "V" (encode-int nlits)))
+          (for-range i nlits
+            (let ((item (cmap->item lits0 i)))
+              (walk item)
+              (already::add item i))
+            )
+          )
+        ))
 
     (define (resolve-labels s)
 
@@ -795,6 +804,7 @@
          (print-stream resolved))
         (emit-stream resolved))
       (o.close)
+      (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n")
       )
     #u
     ))

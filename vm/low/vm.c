@@ -335,6 +335,12 @@ read_literal (FILE * f, object * ob)
     }
   }
     break;
+  case 'P': { // reference to previous literal
+    pxll_int index;
+    CHECK (read_int (f, &index));
+    *ob = bytecode_literals[index+1];
+  }
+    break;
   default:
     fprintf (stderr, "bad literal code: %ld\n", code);
     return -1;
@@ -346,16 +352,24 @@ static
 pxll_int
 read_literals (FILE * f)
 {
-  object lits0;
-  CHECK (read_literal (f, &lits0));
-  // fprintf (stdout, "v0 ");
-  // print_object (lits0);
-  // fprintf (stdout, "\n");
-  bytecode_literals = lits0;
-  // the last literal is the field lookup table.
-  pxll_int nlits = GET_TUPLE_LENGTH (*(object*)lits0);
-  vm_field_lookup_table = bytecode_literals[nlits];
-  return 0;
+  // read the outer vector specially so we can resolve
+  //   internal pointer references.
+  pxll_int code = 0;
+  CHECK (next (f, &code));
+  if (code == 'V') {
+    pxll_int nlits = 0;
+    CHECK (read_int (f, &nlits));
+    object * lits0 = allocate (TC_VECTOR, nlits);
+    bytecode_literals = lits0;
+    for (int i=0; i < nlits; i++) {
+      CHECK (read_literal (f, &(lits0[i+1])));
+    }
+    vm_field_lookup_table = bytecode_literals[nlits];
+    return 0;
+  } else {
+    fprintf (stderr, "bytecode file does not start with vector.\n");
+    return -1;
+  }
 }
 
 //typedef uint16_t bytecode_t;
