@@ -87,8 +87,7 @@ typedef enum {
   op_scopy,
   op_unchar,
   op_plat,
-  op_gist,
-  op_heap,
+  op_gist,       
 } opcode_t;
 
 char * op_names[] = {
@@ -139,7 +138,8 @@ char * op_names[] = {
   "troff",
   "gc",
   "imm",
-  "alloc",
+  "make",
+  "makei",
   "exit",
   "nvcase",
   "tupref",
@@ -164,7 +164,6 @@ char * op_names[] = {
   "unchar",
   "plat",
   "gist",
-  "heap",
 };
 
 static object * allocate (pxll_int tc, pxll_int size);
@@ -565,7 +564,8 @@ vm_gc (void)
   heap1[3] = (object) vm_lenv;
   heap1[4] = (object) vm_k;  
   heap1[5] = (object) vm_top;
-  nwords = do_gc (6);
+  heap1[6] = (object) bytecode_literals;
+  nwords = do_gc (7);
   // replace roots
   lenv    = (object *) heap0[0];
   k       = (object *) heap0[1];
@@ -573,6 +573,10 @@ vm_gc (void)
   vm_lenv = (object *) heap0[3];
   vm_k    = (object *) heap0[4];
   vm_top  = (object *) heap0[5];
+  bytecode_literals = (object*) heap0[6];
+  // XXX kludge
+  pxll_int nlits = GET_TUPLE_LENGTH (*(object*)bytecode_literals);
+  vm_field_lookup_table = bytecode_literals[nlits];
   // set new limit
   limit = heap0 + (heap_size - 1024);
   t1 = rdtsc();
@@ -997,7 +1001,7 @@ vm_go (void)
       break;
     case op_set0:
       // SET0 index val
-      vm_varset (0, BC2, REG3);
+      vm_varset (0, BC1, REG2);
       pc += 3;
       break;
     case op_epop:
@@ -1206,7 +1210,7 @@ vm_go (void)
       pxll_int index = UNBOX_INTEGER (REG2);
       pxll_int ch = GET_CHAR (REG3);
       if (ch > 255) {
-        fprintf (stderr, "char out of range\n");
+        fprintf (stderr, "char out of range: %ld\n", ch);
         done = 1;
       } else if ((index >= 0) && (index < s->len)) {
         s->data[index] = (char) ch;
