@@ -413,12 +413,22 @@
   (field:t '... _)   -> "..."
   (field:t name val) -> (format (sym name) "=" (repr val)))
 
+(define repr-char
+  #\newline -> "#\\newline"
+  #\space   -> "#\\space"
+  #\return  -> "#\\return"
+  #\tab     -> "#\\tab"
+  #\eof     -> "#\\eof"
+  #\nul     -> "#\\nul"
+  ch        -> (format "#\\" (char ch))
+  )
+
 (define repr
   (sexp:list ((sexp:symbol 'quote) x)) -> (format "'" (repr x))
   (sexp:list l)     -> (format "(" (join repr " " l) ")")
   (sexp:symbol s)   -> (format (sym s))
   (sexp:string s)   -> (repr-string s)
-  (sexp:char ch)    -> (format "#\\" (char ch))
+  (sexp:char ch)    -> (repr-char ch)
   (sexp:bool #t)    -> "#t"
   (sexp:bool #f)    -> "#f"
   (sexp:int n)      -> (format (int n))
