@@ -1,5 +1,6 @@
 self/compile.c
 self/compile.ll
+self/compile.byc
 self/compile
 self/compile.dSYM/
 self/compile[0-9]
@@ -10,3 +11,6 @@ tests/*.ll
 tests/*.byc
 vm/low/irkvm
 vm/low/irkvm.c
+/TAGS
+/.tramp_history
+/self/.tramp_history
