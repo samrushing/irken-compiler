@@ -202,7 +202,7 @@
   (literal:string s)	 -> (format (string s))
   (literal:symbol s)     -> (format (sym s))
   (literal:int n)	 -> (format (int n))
-  (literal:char ch)	 -> (format (char #\#) (char #\\) (char ch)) ;; printable?
+  (literal:char ch)	 -> (format (repr-char ch))
   (literal:undef)	 -> (format "#u")
   (literal:cons dt v ()) -> (format "(" (sym dt) ":" (sym v) ")")
   (literal:cons dt v l)	 -> (format "(" (sym dt) ":" (sym v) " " (join literal->string " " l) ")")
