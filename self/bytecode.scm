@@ -341,16 +341,14 @@
     (define (emit-trcall depth name args)
       ;; TRCALL <label> <depth> <nregs> <reg0> ...
       (let ((label (fun-label-map::get-err name "unknown function"))
+            (npop (- depth 1))
             (nargs (length args)))
         (if (= 0 nargs)
-            (LINSN 'trcall0 label depth)
+            (LINSN 'trcall0 label (+ 1 npop))
             (LIST (stream:insn
                    'trcall
-                   (prepend
-                    label
-                    (- depth 1)
-                    (length args)
-                    args))))))
+                   (prepend label npop (length args) args)
+                   )))))
 
     (define (emit-call name fun args k)
       (let ((free (sort < (k/free k)))
@@ -695,6 +693,8 @@
             -> (PUSH r (INSN 'fun target (resolve index)))
             (stream:insn 'trcall (index depth nregs . args))
             -> (PUSH r (stream:insn 'trcall (prepend (resolve index) depth nregs args)))
+            (stream:insn 'trcall0 (index depth))
+            -> (PUSH r (INSN 'trcall0 (resolve index) depth))
             (stream:insn 'nvcase (ob elabel nalts . pairs))
             -> (let ((pairs0 (resolve-tag-pairs pairs)))
                  (PUSH r (stream:insn 'nvcase (prepend ob (resolve elabel) nalts pairs0))))
