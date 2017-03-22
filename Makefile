@@ -26,3 +26,6 @@ tags:
 # build self/compile with binary rotation.
 safe:
 	python util/safe.py
+
+vmself:
+	self/compile self/compile.scm -b
