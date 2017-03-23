@@ -453,9 +453,8 @@ object * vm_result = PXLL_NIL;
 
 // Use the higher, (likely) unused user tags for these.
 #define TC_VM_CLOSURE (63<<2)
-#define TC_VM_TUPLE   (62<<2)
-#define TC_VM_LENV    (61<<2)
-#define TC_VM_CONT    (60<<2)
+#define TC_VM_LENV    (62<<2)
+#define TC_VM_CONT    (61<<2)
 
 static
 void
@@ -469,13 +468,13 @@ print_object (object * ob)
     fprintf (stdout, "<lenv>");
   } else if (IS_TYPE (TC_VM_CONT, ob[0])) {
     fprintf (stdout, "<cont>");
-  } else if (IS_TYPE (TC_VM_TUPLE, ob[0])) {
-    fprintf (stdout, "{");
-    for (int i=0; i < GET_TUPLE_LENGTH (ob[0]); i++) {
-      print_object (ob[i+1]);
-      fprintf (stdout, " ");
-    }
-    fprintf (stdout, "}");
+  // } else if (IS_TYPE (TC_VM_TUPLE, ob[0])) {
+  //   fprintf (stdout, "{");
+  //   for (int i=0; i < GET_TUPLE_LENGTH (ob[0]); i++) {
+  //     print_object (ob[i+1]);
+  //     fprintf (stdout, " ");
+  //   }
+  //   fprintf (stdout, "}");
   } else {    
     dump_object (ob, 0);
   }
@@ -513,29 +512,15 @@ print_regs (object * vm_regs, int nregs)
   fflush (stdout);
 }
 
-void
-print_lenv()
-{
-  object * lenv = vm_lenv;
-  fprintf (stdout, "lenv: [");
-  fflush (stdout);
-  while (lenv != PXLL_NIL) {
-    object * rib = (object *)lenv[1];
-    print_object (rib);
-    lenv = lenv[2];
-  }
-  fprintf (stdout, "]\n");
-}
-
 static
 object *
 vm_varref (pxll_int depth, pxll_int index)
 {
   object * lenv = vm_lenv;
   for (int i=0; i < depth; i++) {
-    lenv = (object *) lenv[2];
+    lenv = (object *) lenv[1];
   }
-  return ((object*)lenv[1])[index+1];
+  return lenv[index+2];
 }
 
 static
@@ -544,10 +529,19 @@ vm_varset (pxll_int depth, pxll_int index, object * val)
 {
   object * lenv = vm_lenv;
   for (int i=0; i < depth; i++) {
-    lenv = (object *) lenv[2];
+    lenv = (object *) lenv[1];
   }
-  ((object*)lenv[1])[index+1] = val;
+  lenv[index+2] = val;
 }
+
+static
+void
+vm_push_lenv (object * rib)
+{
+  rib[1] = vm_lenv;
+  vm_lenv = rib;
+}
+
 
 static
 pxll_int
@@ -748,7 +742,6 @@ vm_go (void)
     vm_regs[i] = PXLL_NIL;
   }
   while (!done) {
-    // print_lenv();
     // print_regs ((object*)vm_regs, 10);
     // print_stack (vm_k);
     // fprintf (stderr, "--- %ld %s ", pc, op_names[code[pc]]);
@@ -865,11 +858,10 @@ vm_go (void)
       break;
     case op_tail: {
       // TAIL closure args
-      object * rib = allocate (TC_VM_LENV, 2);
-      // env := tuple next
       // closure:= lits code pc lenv
-      rib[1] = REG2;
-      rib[2] = REG1[4];
+      // link args into lenv.
+      object * rib = REG2;
+      rib[1] = REG1[4];
       vm_lenv = rib;
       pc = UNBOX_INTEGER (REG1[3]);
     }
@@ -881,7 +873,7 @@ vm_go (void)
       break;
     case op_env:
       // ENV <target> <size>
-      REG1 = allocate (TC_VM_TUPLE, BC2);
+      REG1 = allocate (TC_VM_LENV, BC2+1);
       pc += 3;
       break;
     case op_stor:
@@ -900,9 +892,9 @@ vm_go (void)
       break;
     case op_epush: {
       // EPUSH args
-      object * rib = allocate (TC_VM_LENV, 2);
-      rib[1] = REG1;
-      rib[2] = vm_lenv;
+      object * rib = REG1;
+      // lenv := next arg0 arg1 ...
+      rib[1] = vm_lenv;
       vm_lenv = rib;
       pc += 2;
     }
@@ -911,12 +903,13 @@ vm_go (void)
       // TRCALL pc depth nregs reg0 ...
       pxll_int depth = BC2;
       for (int i=0; i < depth; i++) {
-        vm_lenv = (object *) vm_lenv[2];
+        vm_lenv = (object *) vm_lenv[1];
       }
       pxll_int nregs = BC3;
-      object * args = (object *) vm_lenv[1];
+      object * rib = (object *) vm_lenv;
+      // lenv := next arg0 arg1 ...
       for (int i=0; i < nregs; i++) {
-        args[i+1] = vm_regs[code[pc+4+i]];
+        rib[i+2] = vm_regs[code[pc+4+i]];
       }
       pc = BC1;
     }
@@ -925,14 +918,14 @@ vm_go (void)
       // TRCALL0 pc depth
       pxll_int depth = BC2;
       for (int i=0; i < depth; i++) {
-        vm_lenv = (object *) vm_lenv[2];
+        vm_lenv = (object *) vm_lenv[1];
       }
       pc = BC1;
     }
       break;
     case op_ref0:
       // REF0 target index
-      REG1 = ((object*)vm_lenv[1])[BC2+1];
+      REG1 = vm_lenv[BC2+2];
       pc += 3;
       break;
     case op_call: {
@@ -949,9 +942,8 @@ vm_go (void)
       vm_k = k;
       // CLOSURE := lits code pc lenv
       object * closure = REG1;
-      object * rib = allocate (TC_VM_LENV, 2);
-      rib[1] = REG2;
-      rib[2] = closure[4];
+      object * rib = REG2;
+      rib[1] = closure[4];
       vm_lenv = rib;
       // vm_lits = closure[1];
       // vm_code = closure[2];
@@ -1020,12 +1012,12 @@ vm_go (void)
       break;
     case op_topref:
       // TOPREF target index
-      REG1 = vm_top[BC2+1];
+      REG1 = vm_top[BC2+2];
       pc += 3;
       break;
     case op_topset:
       // TOPSET index val
-      vm_top[BC1+1] = REG2;
+      vm_top[BC1+2] = REG2;
       pc += 3;
       break;
     case op_set:
@@ -1040,8 +1032,8 @@ vm_go (void)
       break;
     case op_epop:
       // EPOP
-      // lenv := tuple next
-      vm_lenv = vm_lenv[2];
+      // lenv := next val0 val1 ...
+      vm_lenv = vm_lenv[1];
       pc += 1;
       break;
     case op_tron:

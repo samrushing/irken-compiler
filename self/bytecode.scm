@@ -318,7 +318,9 @@
 
     (define (emit-store off arg tup i)
       ;; XXX can we compute if tup is also top and emit topset?
-      (LINSN 'stor tup i arg))
+      ;; Note: add one to index for tc_vm_lenv which uses the first
+      ;;  location for lenv next link.
+      (LINSN 'stor tup (+ i off) arg))
 
     (define (emit-varref depth index target)
       (match depth with
