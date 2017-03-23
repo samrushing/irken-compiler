@@ -2,6 +2,10 @@
 
 // XXX just like in irken proper, collapse TC_VM_TUPLE and TC_VM_LENV
 
+#ifdef VM_AS_MAIN
+#include "header1.c"
+#endif
+
 #include "pxll.h"
 #include <stdio.h>
 #include "rdtsc.h"
@@ -87,7 +91,8 @@ typedef enum {
   op_scopy,
   op_unchar,
   op_plat,
-  op_gist,       
+  op_gist,
+  op_argv,
 } opcode_t;
 
 char * op_names[] = {
@@ -164,7 +169,11 @@ char * op_names[] = {
   "unchar",
   "plat",
   "gist",
+  "argv",
 };
+
+static int argc;
+static char ** argv;
 
 static object * allocate (pxll_int tc, pxll_int size);
 static object * alloc_no_clear (pxll_int tc, pxll_int size);
@@ -606,6 +615,17 @@ vm_copy_string (char * s)
   r->len = slen;
   memcpy (GET_STRING_POINTER (r), s, slen);
   return (object *) r;
+}
+
+object *
+vm_make_argv (void)
+{
+  // Note: skipping first arg.
+  object * r = allocate (TC_VECTOR, argc - 1);
+  for (int i=0; i < argc - 1; i++) {
+    r[i+1] = vm_copy_string (argv[i+1]);
+  }
+  return r;
 }
 
 pxll_int
@@ -1152,6 +1172,8 @@ vm_go (void)
       pc += 4;
       break;
     case op_irk: {
+      fprintf (stderr, "NOT\n");
+      abort();
       // IRK target closure nargs arg0 ...
       pxll_int nargs = UNBOX_INTEGER (REG3);
       object * rib = allocate (TC_ENV, nargs + 1);
@@ -1288,6 +1310,11 @@ vm_go (void)
       REG1 = vm_internal_symbol_list;
       pc += 2;
       break;
+    case op_argv:
+      // ARGV target
+      REG1 = vm_make_argv();
+      pc += 2;
+      break;
     default:
       fprintf (stderr, "illegal bytecode. (%d)\n", bytecode[pc]);
       break;
@@ -1295,3 +1322,24 @@ vm_go (void)
   }
   return vm_result;
 }
+
+
+#ifdef VM_AS_MAIN
+void 
+toplevel (void) {
+  if (argc < 2) {
+    fprintf (stderr, "Usage: %s <bytecode-file> <arg0> <arg1> ...\n", argv[0]);
+  } else if (-1 == read_bytecode_file (argv[1])) {
+    fprintf (stderr, "failed to read bytecode file: %s\n", argv[1]);
+  } else {
+    fprintf (stderr, "starting vm.\n");
+    object * result = vm_go();
+    print_object (result);
+    fprintf (stdout, "\n");
+  }
+}
+
+static int lookup_field (int tag, int label) {return 0;}
+static void prof_dump() { }
+
+#endif

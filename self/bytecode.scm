@@ -82,6 +82,7 @@
     (OI 'unchar  2      #f     #t)   ;; target char
     (OI 'plat    1      #f     #t)   ;; target
     (OI 'gist    1      #f     #t)   ;; target
+    (OI 'argv    1      #f     #t)   ;; target
     )))
 
 (for-range i (vector-length opcode-info)
@@ -779,6 +780,8 @@
        cps))
 
     ;; --------------------------------------------------------------------------------
+
+    (printf "output...\n")
 
     (o.copy "IRKVM0") ;; magic
 

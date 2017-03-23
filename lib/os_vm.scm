@@ -25,20 +25,16 @@
 (define (unlink name)
   ((make-ffi "unlink\x00" #\i 1 (name) (string -> int)) name))
 
-(define vm-get-object
-  (let ((object-getter (%%cexp (-> (string -> 'a)) "getc")))
-    (lambda (name)
-      (%%cexp ((string -> 'a) int string -> 'a) "irk" object-getter 1 name))))
+;; (define vm-get-object
+;;   (let ((object-getter (%%cexp (-> (string -> 'a)) "getc")))
+;;     (lambda (name)
+;;       (%%cexp ((string -> 'a) int string -> 'a) "irk" object-getter 1 name))))
 
-(define irken-argv : (vector string) (vm-get-object "argv"))
+;; (define irken-argv : (vector string) (vm-get-object "argv"))
 
 (define sys
-  ;; strip the first arg (the vm binary).
-  (let ((argc (vector-length irken-argv))
-        (argc0 (- argc 1))
-        (argv0 (make-vector argc0 "")))
-    (for-range i argc0
-      (set! argv0[i] irken-argv[(+ i 1)]))
-    { argc=argc0 argv=argv0 }
+  (let ((argv0 (%%cexp (-> (vector string)) "argv"))
+        (argc (vector-length argv0)))
+    { argc=argc argv=argv0 }
     ))
 
