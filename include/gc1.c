@@ -150,7 +150,7 @@ gc_flip (int nregs)
   k    = (object *) heap0[1];
   top  = (object *) heap0[2];
   // set new limit
-  limit = heap0 + (heap_size - 1024);
+  limit = heap0 + (heap_size - 4096);
   t1 = rdtsc();
   gc_ticks += (t1 - t0);
   return nwords;
