@@ -9,8 +9,7 @@ doom/*.ll
 tests/*.c
 tests/*.ll
 tests/*.byc
-vm/low/irkvm
-vm/low/irkvm.c
 /TAGS
 /.tramp_history
 /self/.tramp_history
+/vm/irkvm
