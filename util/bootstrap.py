@@ -57,7 +57,10 @@ open ('self/flags.scm', 'wb').write (
 """ % (gcc, cflags))
 
 print 'copying the bootstrap compiler'
-copy ('self/bootstrap.c', 'self/compile.c')
+copy ('self/bootstrap.byc', 'self/compile.byc')
+
+print 'compiling with vm...'
+system ('vm/irkvm self/compile.byc self/compile.scm')
 
 print 'compiling stage0 binary:'
 system ('%s %s self/compile.c -o self/compile' % (gcc, cflags))

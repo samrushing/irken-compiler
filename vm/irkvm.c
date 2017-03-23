@@ -2,9 +2,7 @@
 
 // XXX just like in irken proper, collapse TC_VM_TUPLE and TC_VM_LENV
 
-#ifdef VM_AS_MAIN
 #include "header1.c"
-#endif
 
 #include "pxll.h"
 #include <stdio.h>
@@ -1315,8 +1313,6 @@ vm_go (void)
   return vm_result;
 }
 
-
-#ifdef VM_AS_MAIN
 void 
 toplevel (void) {
   if (argc < 2) {
@@ -1333,5 +1329,3 @@ toplevel (void) {
 
 static int lookup_field (int tag, int label) {return 0;}
 static void prof_dump() { }
-
-#endif

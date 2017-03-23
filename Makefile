@@ -3,8 +3,13 @@
 all: safe
 
 # build from bootstrap.
-bootstrap:
+bootstrap: vm
 	python util/bootstrap.py
+
+vm: vm/irkvm
+
+vm/irkvm: vm/irkvm.c
+	$(CC) -O3 -fomit-frame-pointer -I./include vm/irkvm.c -o vm/irkvm -l ffi
 
 test:
 	python util/run_tests.py
@@ -29,3 +34,4 @@ safe:
 
 vmself:
 	self/compile self/compile.scm -b
+
