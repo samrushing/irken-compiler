@@ -85,6 +85,18 @@
          )
     ))
 
+(define (add-to-set reg set)
+  (if (not (member? reg set =))
+      (list:cons reg set)
+      set))
+
+(define (merge-sets a b)
+  (let ((r b))
+    (for-list ai a
+      (if (not (member? ai b =))
+          (PUSH r ai)))
+    r))
+
 ;; perhaps name these cont/xxx could be confusing.
 (define k/free
   (cont:k _ free _)   -> free
@@ -99,7 +111,7 @@
   (cont:nil) -> (error "k/insn"))
 
 (define add-free-regs
-  (cont:k target free k) regs -> (cont:k target (append free regs) k)
+  (cont:k target free k) regs -> (cont:k target (merge-sets free regs) k)
   (cont:nil) _		      -> (error "add-free-regs"))
 
 (define (compile exp)
@@ -385,7 +397,7 @@
 				(nth regs (index-eq i perm)))))
 		       (ck perm-regs))
 	(hd . tl) -> (compile #f hd lenv
-			      (cont (append (k/free k) regs)
+			      (cont (merge-sets (k/free k) regs)
 				    (lambda (reg) (collect-primargs* tl (cons reg regs) perm lenv k ck))))
 	))
 
@@ -399,8 +411,7 @@
 	   (< (length names) 5)
 	   (not (some?
 		 (lambda (name)
-		   (vars-get-flag name VFLAG-FREEREF)
-		   )
+		   (vars-get-flag name VFLAG-FREEREF))
 		 names))))
 
     (define (safe-for-tr-call exp fun)
@@ -463,7 +474,7 @@
 		 types
 		 (cont:k target free
 			 (compile-store-args 0 1 args target
-					     (list:cons target free) lenv k))))
+                                             (add-to-set target free) lenv k))))
 	))
 
     (define (compile-store-args i offset args tuple-reg free-regs lenv k)
@@ -485,12 +496,16 @@
 	(if (= 0 (length names))
 	    ;; note: the last 'init' is the body
 	    ;; build a new version of the continuation with <regs> listed as free regs.
-	    (compile tail? (car inits) lenv (add-free-regs k regs))
+            ;;(compile tail? (car inits) lenv (add-free-regs k regs))
+            (compile tail? (car inits) lenv 
+                     (cont (merge-sets regs (k/free k))
+                           (lambda (reg)
+                             (insn:move reg -1 k))))
 	    (compile #f
 		     (car inits)
 		     lenv
 		     (cont
-		      (append regs (k/free k))
+		      (merge-sets regs (k/free k))
 		      (lambda (reg)
 			(loop (cdr names)
 			      (cdr inits)
@@ -519,7 +534,7 @@
 		  tuple-reg
 		  (dead free
 			(compile-store-args 0 1 inits tuple-reg
-					    (list:cons tuple-reg free)
+                                            (add-to-set tuple-reg free)
 					    (extend-lenv formals lenv)
 					    k-body))))))))
 
@@ -622,7 +637,7 @@
 			     (cont:k target free
 				     (compile-store-args
 				      0 0 args target
-				      (list:cons target free)
+                                      (add-to-set target free)
 				      lenv k)))
 		 (insn:alloc (tag:uobj tag) 0 k)))
 	_ -> (error1 "bad %vcon params" params)))
@@ -636,8 +651,8 @@
 	  -> (match (noderec->subs exp) with
 	       (exp0 val) -> (loop exp0 (list:cons (:pair field val) fields))
 	       _	  -> (error1 "malformed %rextend" exp))
-	  (node:primapp '%rmake _) ;; done - put the names in canonical order
-	  -> (let ((fields0 (sort
+	  (node:primapp '%rmake _)
+	  -> (let ((fields0 (sort ;; done - put the names in canonical order
 			    (lambda (a b)
 			      (match a b with
 				(:pair f0 _) (:pair f1 _)
@@ -655,10 +670,11 @@
 			   ;;   the allocation... compile-store-args is broken in that it assigns
 			   ;;   a target for a <stor> [rather than a dead cont].
 			   (cont:k target free
-				   (compile-store-args
-				    0 0 args target
-				    (list:cons target free)
-				    lenv k))))
+			           (compile-store-args
+			            0 0 args target
+                                    (add-to-set target free)
+			            lenv k))
+                           ))
 	  _ -> (c-record-extension fields exp lenv k))))
 
     (define (c-record-extension fields exp lenv k)
