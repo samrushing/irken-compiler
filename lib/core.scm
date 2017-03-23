@@ -467,7 +467,7 @@
         retval))
 
   (define (set-verbose-gc b)
-    (%%cexp (bool -> undefined) "verbose_gc = %0" b))
+    (%%cexp (bool -> undefined) "(verbose_gc = %0, PXLL_UNDEFINED)" b))
 
   (define (get-word-size)
     (%%cexp (-> int) "sizeof(pxll_int)"))
