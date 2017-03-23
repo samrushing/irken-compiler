@@ -9,7 +9,7 @@ bootstrap: vm
 vm: vm/irkvm
 
 vm/irkvm: vm/irkvm.c
-	$(CC) -O3 -fomit-frame-pointer -I./include vm/irkvm.c -o vm/irkvm -l ffi
+	python util/build_vm.py
 
 test:
 	python util/run_tests.py
