@@ -698,11 +698,13 @@ void exit_continuation (void)
   program_end_time = rdtsc();
   dump_object ((object *) result, 0);
   fprintf (stdout, "\n");
-  fprintf (
-    stderr, "{total ticks: %" PRIu64 " gc ticks: %" PRIu64 "}\n", 
-    program_end_time - program_start_time, 
-    gc_ticks
-  );
+  if (verbose_gc) {
+    fprintf (
+      stderr, "{total ticks: %" PRIu64 " gc ticks: %" PRIu64 "}\n",
+      program_end_time - program_start_time,
+      gc_ticks
+    );
+  }
   prof_dump();
   if (is_int (result)) {
     exit ((int)(intptr_t)UNBOX_INTEGER(result));
@@ -713,7 +715,7 @@ void exit_continuation (void)
 
 // --------------------------------------------------------------------------------
 // invoke-closure is used by the bytecode VM to call back into Irken.
-// It could theoretically used by any C code that needed e.g. a
+// It could theoretically be used by any C code that needed e.g. a
 // callback facility.
 
 void invoke_closure_1 (void);

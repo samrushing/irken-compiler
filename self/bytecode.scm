@@ -789,6 +789,9 @@
     ;; 'immediate' literals are no longer immediate in the bytecode,
     ;;   since this would require encoding them into a size that would
     ;;   not be able to hold all their data (i.e., pxll_int != uint16_t)
+    ;;
+    ;; XXX consider supporting 'small' immediate literals.
+    ;;
     (define (find-immediate-literals cps)
       (walk-insns
        (lambda (insn depth)
@@ -800,7 +803,7 @@
 
     ;; --------------------------------------------------------------------------------
 
-    (printf "output...\n")
+    (notquiet (printf "output...\n"))
 
     (o.copy "IRKVM0") ;; magic
 
@@ -826,7 +829,7 @@
          (print-stream resolved))
         (emit-stream resolved))
       (o.close)
-      (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n")
+      (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
       )
     #u
     ))

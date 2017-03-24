@@ -380,10 +380,10 @@
 	(format a "/" b))))
 
 (define (read-file path)
-  (printf "reading file '" path "'\n")
+  ;;(printf "reading file '" path "'\n")
   (let ((file (file/open-read path))
 	(result (reader path (lambda () (file/read-char file)))))
-    (printf "done.\n")
+    ;;(printf "done.\n")
     result))
 
 (define (read-string s)

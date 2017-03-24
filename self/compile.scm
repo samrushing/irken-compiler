@@ -30,7 +30,7 @@
       ))
 
 (define (find-and-read-file path)
-  (printf "reading file '" path "'\n")
+  ;;(printf "reading file '" path "'\n")
   (let ((file (find-file the-context.options.include-dirs path)))
     (reader path (lambda () (file/read-char file)))))
 
@@ -48,7 +48,7 @@
 	(cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
         (libs (format (join " " (map (lambda (lib) (format "-l" lib)) options.libraries))))
 	(cmd (format cc " " cflags " " (join " " paths) " " extra " " libs " -o " base)))
-    (print-string (format "system: " cmd "\n"))
+    (notquiet (print-string (format "system: " cmd "\n")))
     (if (not (= 0 (system cmd)))
         (raise (:CCFailed cmd))
         #u)))
@@ -116,6 +116,9 @@ Usage: compile <irken-src-file> [options]
 (defmacro verbose
   (verbose item ...) -> (if the-context.options.verbose (begin item ... #u)))
 
+(defmacro notquiet
+  (notquiet item ...) -> (if (not the-context.options.quiet) (begin item ... #u)))
+
 (define the-context (make-context))
 
 (define (main)
@@ -126,10 +129,12 @@ Usage: compile <irken-src-file> [options]
 	(transform (transformer))
 	(path sys.argv[filearg])
 	(base (find-base path))
+        (_ (notquiet (printf "read...\n")))
 	(forms0 (read-file path))
 	(forms1 (prepend-standard-macros forms0))
 	(exp0 (sexp:list forms1))
 	(_ (verbose (pp exp0 80) (newline)))
+        (_ (notquiet (printf "transform...\n")))
 	(exp1 (transform exp0))
 	(_ (verbose (pp exp1 80) (newline)))
 	(node0 (walk exp1))
@@ -139,12 +144,13 @@ Usage: compile <irken-src-file> [options]
 	(_ (set! exp1 (sexp:int 0)))
 	(_ (set! forms0 '()))
 	(_ (set! forms1 '()))
-	;;(_ (begin (print-string "after subst:\n") (pp-node node0)))
 	(_ (rename-variables node1))
 	;;(_ (begin (pp-node node0) (newline)))
 	(_ (optimize-nvcase node1))
+        (_ (notquiet (printf "opt1...\n")))
 	(node2 (do-one-round node1))
 	;;(_ (begin (print-string "after first round:\n") (pp-node node1)))
+        (_ (notquiet (printf "opt2...\n")))
 	(noden (do-one-round node2))
 	;; try to free up some memory
 	(_ (set! node0 (node/sequence '())))
@@ -156,20 +162,21 @@ Usage: compile <irken-src-file> [options]
 	(_ (find-free-refs noden))
 	(_ (verbose (print-string "after second round:\n") (pp-node noden)))
 	;; rebuild the graph yet again, so strongly will work.
+        (_ (notquiet (printf "depgraph...\n")))
 	(_ (build-dependency-graph noden))
 	;;(_ (print-graph the-context.dep-graph))
 	;; strongly-connected components is needed by the typing phase
-	(_ (print-string "strongly-connected components:\n"))
+	;;(_ (print-string "strongly-connected components:\n"))
 	(strong (strongly the-context.dep-graph))
 	(_ (verbose (printn strong)))
 	(_ (set! the-context.scc-graph strong))
-	(_ (print-string "typing...\n"))
+        (_ (notquiet (printf "typing...\n")))
 	(type0 (type-program noden))
 	;;(type-map (collect-all-types noden))
 	;;(_ (print-type-tree noden))
 	(_ (verbose (print-string "\n-- after typing --\n") (pp-node noden) (newline)))
 	(_ (remove-onearmed-nvcase noden)) ;; safe after typing
-	(_ (print-string "cps...\n"))
+        (_ (notquiet (printf "cps...\n")))
 	(cps (compile noden))
 	(_ (set! noden (node/sequence '()))) ;; go easier on memory
 	)
@@ -209,6 +216,8 @@ Usage: compile <irken-src-file> [options]
 	(print-string (format "  " (sym name) " : " (type-repr (apply-subst type)) "\n")))
 	the-context.exceptions)
      )
+
+    (notquiet (printf "backend...\n"))
 
     (compile-with-backend base cps)
     )

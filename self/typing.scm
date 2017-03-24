@@ -718,9 +718,9 @@
     (for-each apply-subst-to-program (noderec->subs n)))
 
   (let ((t (type-of node (alist/make))))
-    (printf "applying subst...") (flush)
+    ;;(printf "applying subst...") (flush)
     (apply-subst-to-program node)
-    (printf "done.\n")
+    ;;(printf "done.\n")
     t))
 
 ;; (define (test-typing)

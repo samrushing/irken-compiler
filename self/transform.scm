@@ -505,11 +505,11 @@
     )
 
   (define (parse-normal-definition name formals body type)
-    (match type with
-      (sexp:bool _) -> #u
-      _ -> (begin
-	     (print-string (format "user type in define: " (repr type) "\n"))
-	     (print-string (format "  parsed: " (type-repr (parse-type type)) "\n"))))
+    ;; (match type with
+    ;;   (sexp:bool _) -> #u
+    ;;   _ -> (begin
+    ;;          (print-string (format "user type in define: " (repr type) "\n"))
+    ;;          (print-string (format "  parsed: " (type-repr (parse-type type)) "\n"))))
     (:pair name (sexp (sexp:symbol 'function)
 		      (sexp:symbol name)
 		      (sexp:list formals)
