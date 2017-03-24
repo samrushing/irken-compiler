@@ -18,6 +18,8 @@ cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -I./include')
 #   you *must* add -fno-var-tracking as well or your compiles will never finish.
 #   See: http://gcc.gnu.org/bugzilla/show_bug.cgi?id=56510
 
+class CommandFailed (Exception):
+    pass
 
 # NOTE: to make the bootstrap self/compile.c, make sure self/flags is untouched,
 #  then self-compile.  The result should be sent to github.
@@ -36,7 +38,8 @@ def system (cmd):
     if windows:
         cmd = tweak (cmd)
     print cmd
-    os.system (cmd)
+    if 0 != os.system (cmd):
+        raise CommandFailed (cmd)
 
 def move (p0, p1):
     if windows:

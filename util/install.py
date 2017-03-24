@@ -59,3 +59,5 @@ os.system ('self/compile self/compile.scm')
 
 # copy binary
 system ('cp -p self/compile %s/irken' % (IRKENBIN,))
+# copy vm
+system ('cp -p vm/irkvm %s/irkvm' % (IRKENBIN,))
