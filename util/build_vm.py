@@ -1,6 +1,6 @@
 # -*- Mode: Python -*-
 
-# bootstrap the compiler.
+# build the vm.
 
 import os
 import platform
