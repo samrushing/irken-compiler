@@ -90,7 +90,7 @@
     filename-index))
 
 (define (usage)
-  (print-string "
+  (printf "
 Usage: compile <irken-src-file> [options]
  -c : don't compile .c file
  -v : verbose (very!) output
@@ -108,7 +108,12 @@ Usage: compile <irken-src-file> [options]
  -h : display this usage
  -llvm : compile using the LLVM backend.
  -b : compile using the bytecode backend.
-"))
+
+default flags:
+  CC='" CC "'
+  CFLAGS='" CFLAGS "'
+"
+))
 
 (define (warning msg)
   (printf "warning: " msg "\n"))
