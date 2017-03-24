@@ -218,7 +218,12 @@ read_int (FILE * f, pxll_int * r)
 {
   pxll_int n = 0;
   CHECK (next (f, &n));
-  if (n == 255) {
+  if (n == 254) {
+    pxll_int r0;
+    CHECK (read_int (f, &r0));
+    *r = -r0;
+    return 0;
+  } else if (n == 255) {
     pxll_int bytes;
     n = 0;
     CHECK (next (f, &bytes));
@@ -379,8 +384,8 @@ read_literals (FILE * f)
 
 //typedef uint16_t bytecode_t;
 //#define BYTECODE_MAX UINT16_MAX
-typedef uint32_t bytecode_t;
-#define BYTECODE_MAX UINT32_MAX
+typedef int32_t bytecode_t;
+#define BYTECODE_MAX INT32_MAX
 
 static bytecode_t * bytecode;
 
@@ -404,8 +409,6 @@ read_bytecode (FILE * f)
         bytecode[i] = code;
       }
     }
-    // fprintf (stderr, "read %ld bytecodes. (eof? %d)\n", codelen, feof (f));
-    // fprintf (stderr, "ftell = %ld\n", ftell (f));
     return 0;
   }
 }
@@ -831,11 +834,11 @@ vm_go (void)
       if (REG1 == PXLL_TRUE) {
         pc += 3;
       } else {
-        pc = BC2;
+        pc += BC2;
       }
       break;
     case op_jmp:
-      pc = BC1;
+      pc += BC1;
       break;
     case op_fun: {
       // FUN target pc
@@ -849,7 +852,7 @@ vm_go (void)
       closure[3] = BOX_INTEGER (pc + 3);
       closure[4] = vm_lenv;
       REG1 = closure;
-      pc = BC2;
+      pc += BC2;
     }
       break;
     case op_tail: {
@@ -907,7 +910,7 @@ vm_go (void)
       for (int i=0; i < nregs; i++) {
         rib[i+2] = vm_regs[code[pc+4+i]];
       }
-      pc = BC1;
+      pc += BC1;
     }
       break;
     case op_trcall0: {
@@ -916,7 +919,7 @@ vm_go (void)
       for (int i=0; i < depth; i++) {
         vm_lenv = (object *) vm_lenv[1];
       }
-      pc = BC1;
+      pc += BC1;
     }
       break;
     case op_ref0:
@@ -1084,7 +1087,7 @@ vm_go (void)
           break;
         }
       }
-      pc = pc0;
+      pc += pc0;
     }
       break;
     case op_tupref:

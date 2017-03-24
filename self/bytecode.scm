@@ -18,9 +18,9 @@
     (OI 'srem    3      #f     #t)   ;; target a b
     (OI 'shl     3      #f     #t)   ;; target a b
     (OI 'ashr    3      #f     #t)   ;; target a b
-    (OI 'or      3      #f     #t)   ;; target a b    
-    (OI 'xor     3      #f     #t)   ;; target a b    
-    (OI 'and     3      #f     #t)   ;; target a b    
+    (OI 'or      3      #f     #t)   ;; target a b
+    (OI 'xor     3      #f     #t)   ;; target a b
+    (OI 'and     3      #f     #t)   ;; target a b
     (OI 'eq      3      #f     #t)   ;; target a b
     (OI 'lt      3      #f     #t)   ;; target a b
     (OI 'gt      3      #f     #t)   ;; target a b
@@ -200,8 +200,13 @@
         n acc -> (E (>> n 8) (cons (ascii->char (logand n #xff)) acc))
         )
 
-      (cond ((< n 0) (raise (:NegativeIntInBytecode n)))
-            ((< n 255) (char->string (ascii->char n)))
+      ;; encoding:
+      ;; n  < 254 := n
+      ;; n == 254 := -encoded
+      ;; n == 255 := <nbytes> <byte n> <byte n-1> ... <byte 0>
+
+      (cond ((< n 0) (format "\xfe" (encode-int (- n))))
+            ((< n 254) (char->string (ascii->char n)))
             (else
              (let ((r (E n '())))
                (if (> (string-length r) 254)
@@ -604,7 +609,7 @@
 
         (define (walk ob)
           (match (already::get ob) with
-            (maybe:yes index) 
+            (maybe:yes index)
             -> (o.copy (format "P" (encode-int index)))
             (maybe:no)
             -> (match ob with
@@ -671,7 +676,7 @@
 
         (define (resolve index)
           (match (label-map::get index) with
-            (maybe:yes val) -> val
+            (maybe:yes val) -> (- val pc)
             (maybe:no)      -> (raise (:BadLabel index))
             ))
 
@@ -682,15 +687,19 @@
           x -> (error1 "odd-length tag pairs" x)
           )
 
-        ;; first pass - compute label offsets
+        ;; first pass - compute label offsets (and make sure no negative args)
         (for-list insn s
           (match insn with
             (stream:insn name args)
-            -> (set! pc (+ pc 1 (length args)))
+            -> (begin
+                 (set! pc (+ pc 1 (length args)))
+                 (if (some? <0 args)
+                     (raise (:BadBytecodeArg pc))))
             (stream:label index)
             -> (label-map::add index pc)
             ))
 
+        (set! pc 0)
         ;; second pass - replace label index with label offsets
         (for-list insn s
           (match insn with
@@ -711,6 +720,13 @@
             -> (let ((pairs0 (resolve-tag-pairs pairs)))
                  (PUSH r (stream:insn 'nvcase (prepend ob (resolve elabel) nalts pairs0))))
             _ -> (PUSH r insn)
+            )
+          ;; bump pc *after* offsets resolved.
+          (match insn with
+            (stream:label _)
+            -> #u
+            (stream:insn _ args)
+            -> (set! pc (+ pc 1 (length args)))
             ))
 
         ;; modified insns
