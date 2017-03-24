@@ -736,582 +736,599 @@ vm_go (void)
   register pxll_int pc = 0;
   register object * vm_regs[NREGS];
   register bytecode_t * code = bytecode;
-  int done = 0;
   for (int i=0; i < NREGS; i++) {
     vm_regs[i] = PXLL_NIL;
   }
-  while (!done) {
-    // print_regs ((object*)vm_regs, 10);
-    // print_stack (vm_k);
-    // fprintf (stderr, "--- %ld %s ", pc, op_names[code[pc]]);
-    // for (int i=0; i < 4; i++) {
-    //  fprintf (stderr, "%d ", code[pc+1+i]);
-    // }
-    // fprintf (stderr, "\n");
-    switch (code[pc]) {
-    case op_lit:
-      REG1 = bytecode_literals[BC2+1];
-      pc += 3;
-      break;
-    case op_ret:
-      vm_result = REG1;
-      if (vm_k == PXLL_NIL) {
-        pc += 1;
-        done = 1;
-      } else {
-        // VMCONT := stack lenv pc reg0 reg1 ...
-        pc = UNBOX_INTEGER (vm_k[3]);
-      }
-      break;
-    case op_add:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) + UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_sub:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) - UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_mul:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) * UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_div:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) / UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_srem:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) % UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_shl:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) << UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_ashr:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) >> UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_or:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) | UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_xor:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) ^ UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_and:
-      REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) & UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_eq:
-      REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) == UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_lt:
-      REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) < UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_gt:
-      REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) > UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_le:
-      REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) <= UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_ge:
-      REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) >= UNBOX_INTEGER (REG3));
-      pc += 4;
-      break;
-    case op_cmp:
-      // CMP target a b
-      // note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
-      //   to match the 'cmp' datatype from core.scm.
-      REG1 = (object*) UITAG (1 + magic_cmp (REG2, REG3));
-      pc += 4;
-      break;
-    case op_tst:
-      if (REG1 == PXLL_TRUE) {
-        pc += 3;
-      } else {
-        pc += BC2;
-      }
-      break;
-    case op_jmp:
-      pc += BC1;
-      break;
-    case op_fun: {
-      // FUN target pc
-      // closure := {uN lits code pc lenv}
-      // 252 := max pointer type tag (temp)
-      // fprintf (stderr, "fun target=%d pc=%d\n", BC1, BC2);
-      object * closure = allocate (TC_VM_CLOSURE, 4);
-      // temp: lits and code are ignored
-      closure[1] = PXLL_NIL;
-      closure[2] = PXLL_NIL;
-      closure[3] = BOX_INTEGER (pc + 3);
-      closure[4] = vm_lenv;
-      REG1 = closure;
-      pc += BC2;
+
+  // using direct threading results in a 37% speedup over switch-based dispatch.
+  // for more info see:
+  // https://en.wikipedia.org/wiki/Threaded_code
+  // http://eli.thegreenplace.net/2012/07/12/computed-goto-for-efficient-dispatch-tables
+
+  static void* dispatch_table[] = {
+    &&l_lit, &&l_ret, &&l_add, &&l_sub, &&l_mul, &&l_div, &&l_srem,
+    &&l_shl, &&l_ashr, &&l_or, &&l_xor, &&l_and, &&l_eq, &&l_lt,
+    &&l_gt, &&l_le, &&l_ge, &&l_cmp, &&l_tst, &&l_jmp, &&l_fun,
+    &&l_tail, &&l_tail0, &&l_env, &&l_stor, &&l_ref, &&l_mov,
+    &&l_epush, &&l_trcall, &&l_trcall0, &&l_ref0, &&l_call,
+    &&l_call0, &&l_pop, &&l_printo, &&l_prints, &&l_topis,
+    &&l_topref, &&l_topset, &&l_set, &&l_set0, &&l_pop0, &&l_epop,
+    &&l_tron, &&l_troff, &&l_gc, &&l_imm, &&l_make, &&l_makei,
+    &&l_exit, &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref, &&l_vset,
+    &&l_vmake, &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc,
+    &&l_irk, &&l_getc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_slen,
+    &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_plat, &&l_gist,
+    &&l_argv,
+  };
+
+  // XXX what happens when the opcode is out of range?
+#define DISPATCH() goto *dispatch_table[code[pc]]
+
+  // print_regs ((object*)vm_regs, 10);
+  // print_stack (vm_k);
+  // fprintf (stderr, "--- %ld %s ", pc, op_names[code[pc]]);
+  // for (int i=0; i < 4; i++) {
+  //  fprintf (stderr, "%d ", code[pc+1+i]);
+  // }
+  // fprintf (stderr, "\n");
+  DISPATCH();
+
+ l_lit:
+  REG1 = bytecode_literals[BC2+1];
+  pc += 3;
+  DISPATCH();
+ l_ret:
+  vm_result = REG1;
+  if (vm_k == PXLL_NIL) {
+    pc += 1;
+    return vm_result;
+  } else {
+    // VMCONT := stack lenv pc reg0 reg1 ...
+    pc = UNBOX_INTEGER (vm_k[3]);
+  }
+  DISPATCH();
+ l_add:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) + UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_sub:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) - UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_mul:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) * UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_div:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) / UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_srem:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) % UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_shl:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) << UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_ashr:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) >> UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_or:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) | UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_xor:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) ^ UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_and:
+  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) & UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_eq:
+  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) == UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_lt:
+  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) < UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_gt:
+  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) > UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_le:
+  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) <= UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_ge:
+  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) >= UNBOX_INTEGER (REG3));
+  pc += 4;
+  DISPATCH();
+ l_cmp:
+  // CMP target a b
+  // note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
+  //   to match the 'cmp' datatype from core.scm.
+  REG1 = (object*) UITAG (1 + magic_cmp (REG2, REG3));
+  pc += 4;
+  DISPATCH();
+ l_tst:
+  if (REG1 == PXLL_TRUE) {
+    pc += 3;
+  } else {
+    pc += BC2;
+  }
+  DISPATCH();
+ l_jmp:
+  pc += BC1;
+  DISPATCH();
+ l_fun: {
+    // FUN target pc
+    // closure := {uN lits code pc lenv}
+    // 252 := max pointer type tag (temp)
+    // fprintf (stderr, "fun target=%d pc=%d\n", BC1, BC2);
+    object * closure = allocate (TC_VM_CLOSURE, 4);
+    // temp: lits and code are ignored
+    closure[1] = PXLL_NIL;
+    closure[2] = PXLL_NIL;
+    closure[3] = BOX_INTEGER (pc + 3);
+    closure[4] = vm_lenv;
+    REG1 = closure;
+    pc += BC2;
+  }
+  DISPATCH();
+ l_tail: {
+    // TAIL closure args
+    // closure:= lits code pc lenv
+    // link args into lenv.
+    object * rib = REG2;
+    rib[1] = REG1[4];
+    vm_lenv = rib;
+    pc = UNBOX_INTEGER (REG1[3]);
+  }
+  DISPATCH();
+ l_tail0:
+  // TAIL0 closure
+  vm_lenv = REG1[4];
+  pc = UNBOX_INTEGER (REG1[3]);
+  DISPATCH();
+ l_env:
+  // ENV <target> <size>
+  REG1 = allocate (TC_VM_LENV, BC2+1);
+  pc += 3;
+  DISPATCH();
+ l_stor:
+  // STOR tuple index arg
+  REG1[BC2+1] = REG3;
+  pc += 4;
+  DISPATCH();
+ l_ref:
+  // REF <target> <depth> <index>
+  REG1 = vm_varref (BC2, BC3);
+  pc += 4;
+  DISPATCH();
+ l_mov:
+  REG1 = REG2;
+  pc += 3;
+  DISPATCH();
+ l_epush: {
+    // EPUSH args
+    object * rib = REG1;
+    // lenv := next arg0 arg1 ...
+    rib[1] = vm_lenv;
+    vm_lenv = rib;
+    pc += 2;
+  }
+  DISPATCH();
+ l_trcall: {
+    // TRCALL pc depth nregs reg0 ...
+    pxll_int depth = BC2;
+    for (int i=0; i < depth; i++) {
+      vm_lenv = (object *) vm_lenv[1];
     }
-      break;
-    case op_tail: {
-      // TAIL closure args
-      // closure:= lits code pc lenv
-      // link args into lenv.
-      object * rib = REG2;
-      rib[1] = REG1[4];
-      vm_lenv = rib;
-      pc = UNBOX_INTEGER (REG1[3]);
+    pxll_int nregs = BC3;
+    object * rib = (object *) vm_lenv;
+    // lenv := next arg0 arg1 ...
+    for (int i=0; i < nregs; i++) {
+      rib[i+2] = vm_regs[code[pc+4+i]];
     }
-      break;
-    case op_tail0:
-      // TAIL0 closure
-      vm_lenv = REG1[4];
-      pc = UNBOX_INTEGER (REG1[3]);
-      break;
-    case op_env:
-      // ENV <target> <size>
-      REG1 = allocate (TC_VM_LENV, BC2+1);
-      pc += 3;
-      break;
-    case op_stor:
-      // STOR tuple index arg
-      REG1[BC2+1] = REG3;
-      pc += 4;
-      break;
-    case op_ref:
-      // REF <target> <depth> <index>
-      REG1 = vm_varref (BC2, BC3);
-      pc += 4;
-      break;
-    case op_mov:
-      REG1 = REG2;
-      pc += 3;
-      break;
-    case op_epush: {
-      // EPUSH args
-      object * rib = REG1;
-      // lenv := next arg0 arg1 ...
-      rib[1] = vm_lenv;
-      vm_lenv = rib;
-      pc += 2;
+    pc += BC1;
+  }
+  DISPATCH();
+ l_trcall0: {
+    // TRCALL0 pc depth
+    pxll_int depth = BC2;
+    for (int i=0; i < depth; i++) {
+      vm_lenv = (object *) vm_lenv[1];
     }
-      break;
-    case op_trcall: {
-      // TRCALL pc depth nregs reg0 ...
-      pxll_int depth = BC2;
-      for (int i=0; i < depth; i++) {
-        vm_lenv = (object *) vm_lenv[1];
+    pc += BC1;
+  }
+  DISPATCH();
+ l_ref0:
+  // REF0 target index
+  REG1 = vm_lenv[BC2+2];
+  pc += 3;
+  DISPATCH();
+ l_call: {
+    // CALL closure args nregs
+    // VMCONT := stack lenv pc reg0 reg1 ...
+    pxll_int nregs = BC3;
+    object * k = allocate (TC_VM_CONT, 3 + nregs);
+    k[1] = vm_k;
+    k[2] = vm_lenv;
+    k[3] = BOX_INTEGER (pc + 4);
+    for (int i=0; i < nregs; i++) {
+      k[4+i] = vm_regs[i];
+    }
+    vm_k = k;
+    // CLOSURE := lits code pc lenv
+    object * closure = REG1;
+    object * rib = REG2;
+    rib[1] = closure[4];
+    vm_lenv = rib;
+    // vm_lits = closure[1];
+    // vm_code = closure[2];
+    pc = UNBOX_INTEGER (closure[3]);
+  }
+  DISPATCH();
+ l_call0: {
+    // CALL0 closure nregs
+    // VMCONT := stack lenv pc reg0 reg1 ...
+    pxll_int nregs = BC2;
+    object * k = allocate (TC_VM_CONT, 3 + nregs);
+    k[1] = vm_k;
+    k[2] = vm_lenv;
+    k[3] = BOX_INTEGER (pc + 3);
+    for (int i=0; i < nregs; i++) {
+      k[4+i] = vm_regs[i];
+    }
+    vm_k = k;
+    // CLOSURE := lits code pc lenv
+    object * closure = REG1;
+    vm_lenv = closure[4];
+    // vm_lits = closure[1];
+    // vm_code = closure[2];
+    pc = UNBOX_INTEGER (closure[3]);
+  }
+  DISPATCH();
+ l_pop: {
+    // POP target
+    // VMCONT := stack lenv pc reg0 reg1 ...
+    pxll_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
+    for (int i=0; i < nregs; i++) {
+      vm_regs[i] = vm_k[4+i];
+    }
+    vm_lenv = vm_k[2];
+    vm_k = vm_k[1];
+    REG1 = vm_result;
+    pc += 2;
+  }
+  DISPATCH();
+ l_pop0: {
+    pxll_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
+    for (int i=0; i < nregs; i++) {
+      vm_regs[i] = vm_k[4+i];
+    }
+    vm_lenv = vm_k[2];
+    vm_k = vm_k[1];
+    pc += 1;
+  }
+  DISPATCH();
+ l_printo:
+  // PRINTO arg
+  print_object (REG1);
+  pc += 2;
+  DISPATCH();
+ l_prints: {
+    // PRINTS arg
+    pxll_string * s = (pxll_string *) REG1;
+    fwrite (s->data, 1, s->len, stdout);
+    pc += 2;
+  }
+  DISPATCH();
+ l_topis:
+  // TOPIS <env>
+  vm_top = (object *) REG1;
+  pc += 2;
+  DISPATCH();
+ l_topref:
+  // TOPREF target index
+  REG1 = vm_top[BC2+2];
+  pc += 3;
+  DISPATCH();
+ l_topset:
+  // TOPSET index val
+  vm_top[BC1+2] = REG2;
+  pc += 3;
+  DISPATCH();
+ l_set:
+  // SET depth index val
+  vm_varset (BC1, BC2, REG3);
+  pc += 4;
+  DISPATCH();
+ l_set0:
+  // SET0 index val
+  vm_varset (0, BC1, REG2);
+  pc += 3;
+  DISPATCH();
+ l_epop:
+  // EPOP
+  // lenv := next val0 val1 ...
+  vm_lenv = vm_lenv[1];
+  pc += 1;
+  DISPATCH();
+ l_tron:
+  // NYI
+  pc += 1;
+  DISPATCH();
+ l_troff:
+  // NYI
+  pc += 1;
+  DISPATCH();
+ l_gc:
+  if (freep >= limit) {
+    vm_gc();
+  }
+  pc += 1;
+  DISPATCH();
+ l_imm:
+  // IMM target tag
+  REG1 = (object *) (pxll_int) BC2;
+  pc += 3;
+  DISPATCH();
+ l_make: {
+    // MAKE target tag nelem elem0 ...
+    pxll_int nelem = BC3;
+    object * ob = allocate (BC2, nelem);
+    for (int i=0; i < nelem; i++) {
+      ob[i+1] = vm_regs[code[pc+4+i]];
+    }
+    REG1 = ob;
+    pc += 4 + nelem;
+  }
+  DISPATCH();
+ l_makei:
+  // MAKEI target tag payload
+  REG1 = (object*)((UNBOX_INTEGER(REG3)<<8) | (UNBOX_INTEGER(REG2) & 0xff));
+  pc += 4;
+  DISPATCH();
+ l_exit:
+  vm_result = REG1;
+  return vm_result;
+ l_nvcase: {
+    // NVCASE ob elabel nalts tag0 label0 tag1 label1 ...
+    pxll_int tag = get_case (REG1);
+    pxll_int nalts = BC3;
+    pxll_int pc0 = BC2;
+    //fprintf (stderr, " tag=%d nalts=%d pc=%d\n", tag, nalts, pc);
+    for (int i=0; i < nalts; i++) {
+      //fprintf (stderr, "  testing %d\n", code[pc+4+(i*2)]);
+      if (tag == code[pc+4+(i*2)]) {
+        pc0 = code[pc+4+(i*2)+1];
+        break;
       }
-      pxll_int nregs = BC3;
-      object * rib = (object *) vm_lenv;
-      // lenv := next arg0 arg1 ...
-      for (int i=0; i < nregs; i++) {
-        rib[i+2] = vm_regs[code[pc+4+i]];
-      }
-      pc += BC1;
     }
-      break;
-    case op_trcall0: {
-      // TRCALL0 pc depth
-      pxll_int depth = BC2;
-      for (int i=0; i < depth; i++) {
-        vm_lenv = (object *) vm_lenv[1];
-      }
-      pc += BC1;
-    }
-      break;
-    case op_ref0:
-      // REF0 target index
-      REG1 = vm_lenv[BC2+2];
-      pc += 3;
-      break;
-    case op_call: {
-      // CALL closure args nregs
-      // VMCONT := stack lenv pc reg0 reg1 ...
-      pxll_int nregs = BC3;
-      object * k = allocate (TC_VM_CONT, 3 + nregs);
-      k[1] = vm_k;
-      k[2] = vm_lenv;
-      k[3] = BOX_INTEGER (pc + 4);
-      for (int i=0; i < nregs; i++) {
-        k[4+i] = vm_regs[i];
-      }
-      vm_k = k;
-      // CLOSURE := lits code pc lenv
-      object * closure = REG1;
-      object * rib = REG2;
-      rib[1] = closure[4];
-      vm_lenv = rib;
-      // vm_lits = closure[1];
-      // vm_code = closure[2];
-      pc = UNBOX_INTEGER (closure[3]);
-    }
-      break;
-    case op_call0: {
-      // CALL0 closure nregs
-      // VMCONT := stack lenv pc reg0 reg1 ...
-      pxll_int nregs = BC2;
-      object * k = allocate (TC_VM_CONT, 3 + nregs);
-      k[1] = vm_k;
-      k[2] = vm_lenv;
-      k[3] = BOX_INTEGER (pc + 3);
-      for (int i=0; i < nregs; i++) {
-        k[4+i] = vm_regs[i];
-      }
-      vm_k = k;
-      // CLOSURE := lits code pc lenv
-      object * closure = REG1;
-      vm_lenv = closure[4];
-      // vm_lits = closure[1];
-      // vm_code = closure[2];
-      pc = UNBOX_INTEGER (closure[3]);
-    }
-      break;
-    case op_pop: {
-      // POP target
-      // VMCONT := stack lenv pc reg0 reg1 ...
-      pxll_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
-      for (int i=0; i < nregs; i++) {
-        vm_regs[i] = vm_k[4+i];
-      }
-      vm_lenv = vm_k[2];
-      vm_k = vm_k[1];
-      REG1 = vm_result;
-      pc += 2;
-    }
-      break;
-    case op_pop0: {
-      pxll_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
-      for (int i=0; i < nregs; i++) {
-        vm_regs[i] = vm_k[4+i];
-      }
-      vm_lenv = vm_k[2];
-      vm_k = vm_k[1];
-      pc += 1;
-    }
-      break;
-    case op_printo:
-      // PRINTO arg
-      print_object (REG1);
-      pc += 2;
-      break;
-    case op_prints: {
-      // PRINTS arg
-      pxll_string * s = (pxll_string *) REG1;
-      fwrite (s->data, 1, s->len, stdout);
-      pc += 2;
-    }
-      break;
-    case op_topis:
-      // TOPIS <env>
-      vm_top = (object *) REG1;
-      pc += 2;
-      break;
-    case op_topref:
-      // TOPREF target index
-      REG1 = vm_top[BC2+2];
-      pc += 3;
-      break;
-    case op_topset:
-      // TOPSET index val
-      vm_top[BC1+2] = REG2;
-      pc += 3;
-      break;
-    case op_set:
-      // SET depth index val
-      vm_varset (BC1, BC2, REG3);
-      pc += 4;
-      break;
-    case op_set0:
-      // SET0 index val
-      vm_varset (0, BC1, REG2);
-      pc += 3;
-      break;
-    case op_epop:
-      // EPOP
-      // lenv := next val0 val1 ...
-      vm_lenv = vm_lenv[1];
-      pc += 1;
-      break;
-    case op_tron:
-      // NYI
-      pc += 1;
-      break;
-    case op_troff:
-      // NYI
-      pc += 1;
-      break;
-    case op_gc:
-      if (freep >= limit) {
-        vm_gc();
-      }
-      pc += 1;
-      break;
-    case op_imm:
-      // IMM target tag
-      REG1 = (object *) (pxll_int) BC2;
-      pc += 3;
-      break;
-    case op_make: {
-      // MAKE target tag nelem elem0 ...
-      pxll_int nelem = BC3;
-      object * ob = allocate (BC2, nelem);
-      for (int i=0; i < nelem; i++) {
-        ob[i+1] = vm_regs[code[pc+4+i]];
+    pc += pc0;
+  }
+  DISPATCH();
+ l_tupref:
+  // TUPREF target ob index
+  REG1 = REG2[BC3+1];
+  pc += 4;
+  DISPATCH();
+ l_vlen:
+  // VLEN target vec
+  if (REG2 == (object*) TC_EMPTY_VECTOR) {
+    REG1 = BOX_INTEGER (0);
+  } else {
+    REG1 = BOX_INTEGER (GET_TUPLE_LENGTH (*REG2));
+  }
+  pc += 3;
+  DISPATCH();
+ l_vref:
+  // VREF target vec index-reg
+  REG1 = REG2[UNBOX_INTEGER(REG3)+1];
+  pc += 4;
+  DISPATCH();
+ l_vset:
+  // VSET vec index-reg val
+  REG1[UNBOX_INTEGER(REG2)+1] = REG3;
+  pc += 4;
+  DISPATCH();
+ l_vmake: {
+    // VMAKE target size val
+    // XXX heap check.
+    pxll_int nelems = UNBOX_INTEGER(REG2);
+    if (nelems == 0) {
+      REG1 = (object *) TC_EMPTY_VECTOR;
+    } else {
+      object * ob = alloc_no_clear (TC_VECTOR, nelems);
+      for (int i=0; i < nelems; i++) {
+        ob[i+1] = REG3;
       }
       REG1 = ob;
-      pc += 4 + nelem;
     }
-      break;
-    case op_makei:
-      // MAKEI target tag payload
-      REG1 = (object*)((UNBOX_INTEGER(REG3)<<8) | (UNBOX_INTEGER(REG2) & 0xff));
-      pc += 4;
-      break;
-    case op_exit:
-      vm_result = REG1;
-      done = 1;
-      break;
-    case op_nvcase: {
-      // NVCASE ob elabel nalts tag0 label0 tag1 label1 ...
-      pxll_int tag = get_case (REG1);
-      pxll_int nalts = BC3;
-      pxll_int pc0 = BC2;
-      //fprintf (stderr, " tag=%d nalts=%d pc=%d\n", tag, nalts, pc);
-      for (int i=0; i < nalts; i++) {
-        //fprintf (stderr, "  testing %d\n", code[pc+4+(i*2)]);
-        if (tag == code[pc+4+(i*2)]) {
-          pc0 = code[pc+4+(i*2)+1];
-          break;
-        }
-      }
-      pc += pc0;
-    }
-      break;
-    case op_tupref:
-      // TUPREF target ob index
-      REG1 = REG2[BC3+1];
-      pc += 4;
-      break;
-    case op_vlen:
-      // VLEN target vec
-      if (REG2 == (object*) TC_EMPTY_VECTOR) {
-        REG1 = BOX_INTEGER (0);
-      } else {
-        REG1 = BOX_INTEGER (GET_TUPLE_LENGTH (*REG2));
-      }
-      pc += 3;
-      break;
-    case op_vref:
-      // VREF target vec index-reg
-      REG1 = REG2[UNBOX_INTEGER(REG3)+1];
-      pc += 4;
-      break;
-    case op_vset:
-      // VSET vec index-reg val
-      REG1[UNBOX_INTEGER(REG2)+1] = REG3;
-      pc += 4;
-      break;
-    case op_vmake: {
-      // VMAKE target size val
-      // XXX heap check.
-      pxll_int nelems = UNBOX_INTEGER(REG2);
-      if (nelems == 0) {
-        REG1 = (object *) TC_EMPTY_VECTOR;
-      } else {
-        object * ob = alloc_no_clear (TC_VECTOR, nelems);
-        for (int i=0; i < nelems; i++) {
-          ob[i+1] = REG3;
-        }
-        REG1 = ob;
-      }
-      pc += 4;
-    }
-      break;
-    case op_alloc:
-      // ALLOC <target> <tag> <size>
-      REG1 = allocate (BC2, BC3);
-      pc += 4;
-      break;
-    case op_rref: {
-      // RREF target rec label-code
-      pxll_int tag = (GET_TYPECODE (REG2[0]) - TC_USEROBJ) >> 2;
-      pxll_int index = vm_get_field_offset (tag, BC3);
-      REG1 = REG2[index+1];
-      pc += 4;
-    }
-      break;
-    case op_rset: {
-      // RSET rec label-code val
-      pxll_int tag = (GET_TYPECODE (REG1[0]) - TC_USEROBJ) >> 2;
-      pxll_int index = vm_get_field_offset (tag, BC2);
-      REG1[index+1] = REG3;
-      pc += 4;
-    }
-      break;
-    case op_getcc:
-      // GETCC target
-      REG1 = vm_k;
-      pc += 2;
-      break;
-    case op_putcc:
-      // PUTCC target k v
-      vm_k = REG2;
-      REG1 = REG3;
-      pc += 4;
-      break;
-    case op_irk: {
-      fprintf (stderr, "NOT\n");
-      abort();
-      // IRK target closure nargs arg0 ...
-      pxll_int nargs = UNBOX_INTEGER (REG3);
-      object * rib = allocate (TC_ENV, nargs + 1);
-      object * closure = REG2;
-      for (int i=0; i < nargs; i++) {
-        rib[i+2] = vm_regs[code[pc+4+i]];
-      }
-      invoke_closure (closure, rib);
-      REG1 = result;
-      pc += 4 + nargs;
-    }
-      break;
-    case op_getc:
-      // GETC target
-      REG1 = vm_the_closure;
-      pc += 2;
-      break;
-    case op_dlsym:
-      // DLSYM target name
-      REG1 = BOX_INTEGER ((pxll_int)dlsym (RTLD_DEFAULT, GET_STRING_POINTER (REG2)));
-      pc += 3;
-      break;
-    case op_ffi: {
-      // FFI target pfun rtype nargs arg0 ...
-      pxll_int nargs = UNBOX_INTEGER (REG4);
-      // XXX concerned that passing vm_regs defeats the register decl above.
-      object result;
-      pxll_int success = vm_do_ffi ((object *) vm_regs, pc, nargs, &result);
-      if (success == 0) {
-        REG1 = result;
-      } else {
-        fprintf (stderr, "op_ffi failed\n");
-        done = 1;
-      }
-      pc += nargs + 5;
-    }
-      break;
-    case op_smake: {
-      // SMAKE target size
-      // XXX heap check.
-      pxll_int slen = UNBOX_INTEGER (REG2);
-      pxll_string * s = (pxll_string*)alloc_no_clear (TC_STRING, string_tuple_length (slen));
-      s->len = slen;
-      REG1 = (object*)s;
-    }
-      pc += 3;
-      break;
-    case op_slen:
-      // SLEN target string
-      REG1 = BOX_INTEGER ((pxll_int)((pxll_string *) REG2)->len);
-      pc += 3;
-      break;
-    case op_sref: {
-      // SREF target string index
-      pxll_string * s = (pxll_string *)REG2;
-      pxll_int index = UNBOX_INTEGER (REG3);
-      if ((index >= 0) && (index < s->len)) {
-        REG1 = TO_CHAR (s->data[index]);
-      } else {
-        // XXX error handler
-        fprintf (stderr, "string ref out of range\n");
-        done = 1;
-      }
-      pc += 4;
-    }
-      break;
-    case op_sset: {
-      // SSET string index char
-      pxll_string * s = (pxll_string *)REG1;
-      pxll_int index = UNBOX_INTEGER (REG2);
-      pxll_int ch = GET_CHAR (REG3);
-      if (ch > 255) {
-        fprintf (stderr, "char out of range: %ld\n", ch);
-        done = 1;
-      } else if ((index >= 0) && (index < s->len)) {
-        s->data[index] = (char) ch;
-      } else {
-        // XXX error handler
-        fprintf (stderr, "string ref out of range\n");
-        done = 1;
-      }
-      pc += 4;
-    }
-      break;
-    case op_scopy: {
-      // SCOPY src sstart n dst dstart
-      pxll_string * src = (pxll_string *) REG1;
-      pxll_string * dst = (pxll_string *) REG4;
-      pxll_int sstart = UNBOX_INTEGER (REG2);
-      pxll_int dstart = UNBOX_INTEGER (REG5);
-      pxll_int n = UNBOX_INTEGER (REG3);
-      // range check
-      if ((sstart >= 0) && (sstart + n <= src->len) &&
-          (dstart >= 0) && (dstart + n <= dst->len)) {
-        memcpy (dst->data + dstart, src->data + sstart, n);
-      } else {
-        // XXX error handling
-        fprintf (stderr, "scopy out of range\n");
-        done = 1;
-      }
-      pc += 6;
-    }
-      break;
-    case op_unchar:
-      // UNCHAR target char
-      REG1 = (object*) BOX_INTEGER (GET_CHAR (REG2));
-      pc += 3;
-      break;
-    case op_plat: {
-      // PLAT target
-      struct utsname plat;
-      if (0 == uname (&plat)) {
-        REG1 = vm_list_cons (
-          vm_copy_string (plat.sysname),
-          vm_list_cons (
-            vm_copy_string (plat.nodename),
-            vm_list_cons (
-              vm_copy_string (plat.release),
-              vm_list_cons (
-                vm_copy_string (plat.version),
-                vm_list_cons (
-                  vm_copy_string (plat.machine), 
-                  PXLL_NIL
-                )))));
-      } else {
-        // XXX error handler
-        REG1 = PXLL_NIL;
-      }
-      pc += 2;
-    }
-      break;
-    case op_gist:
-      // GIST target
-      REG1 = vm_internal_symbol_list;
-      pc += 2;
-      break;
-    case op_argv:
-      // ARGV target
-      REG1 = vm_make_argv();
-      pc += 2;
-      break;
-    default:
-      fprintf (stderr, "illegal bytecode. (%d)\n", bytecode[pc]);
-      break;
-    }
+    pc += 4;
   }
-  return vm_result;
+  DISPATCH();
+ l_alloc:
+  // ALLOC <target> <tag> <size>
+  REG1 = allocate (BC2, BC3);
+  pc += 4;
+  DISPATCH();
+ l_rref: {
+    // RREF target rec label-code
+    pxll_int tag = (GET_TYPECODE (REG2[0]) - TC_USEROBJ) >> 2;
+    pxll_int index = vm_get_field_offset (tag, BC3);
+    REG1 = REG2[index+1];
+    pc += 4;
+  }
+  DISPATCH();
+ l_rset: {
+    // RSET rec label-code val
+    pxll_int tag = (GET_TYPECODE (REG1[0]) - TC_USEROBJ) >> 2;
+    pxll_int index = vm_get_field_offset (tag, BC2);
+    REG1[index+1] = REG3;
+    pc += 4;
+  }
+  DISPATCH();
+ l_getcc:
+  // GETCC target
+  REG1 = vm_k;
+  pc += 2;
+  DISPATCH();
+ l_putcc:
+  // PUTCC target k v
+  vm_k = REG2;
+  REG1 = REG3;
+  pc += 4;
+  DISPATCH();
+ l_irk: {
+    fprintf (stderr, "NOT\n");
+    abort();
+    // IRK target closure nargs arg0 ...
+    pxll_int nargs = UNBOX_INTEGER (REG3);
+    object * rib = allocate (TC_ENV, nargs + 1);
+    object * closure = REG2;
+    for (int i=0; i < nargs; i++) {
+      rib[i+2] = vm_regs[code[pc+4+i]];
+    }
+    invoke_closure (closure, rib);
+    REG1 = result;
+    pc += 4 + nargs;
+  }
+  DISPATCH();
+ l_getc:
+  // GETC target
+  REG1 = vm_the_closure;
+  pc += 2;
+  DISPATCH();
+ l_dlsym:
+  // DLSYM target name
+  REG1 = BOX_INTEGER ((pxll_int)dlsym (RTLD_DEFAULT, GET_STRING_POINTER (REG2)));
+  pc += 3;
+  DISPATCH();
+ l_ffi: {
+    // FFI target pfun rtype nargs arg0 ...
+    pxll_int nargs = UNBOX_INTEGER (REG4);
+    // XXX concerned that passing vm_regs defeats the register decl above.
+    object result;
+    pxll_int success = vm_do_ffi ((object *) vm_regs, pc, nargs, &result);
+    if (success == 0) {
+      REG1 = result;
+    } else {
+      fprintf (stderr, "op_ffi failed\n");
+      return BOX_INTEGER ((unsigned)-1);
+    }
+    pc += nargs + 5;
+  }
+  DISPATCH();
+ l_smake: {
+    // SMAKE target size
+    // XXX heap check.
+    pxll_int slen = UNBOX_INTEGER (REG2);
+    pxll_string * s = (pxll_string*)alloc_no_clear (TC_STRING, string_tuple_length (slen));
+    s->len = slen;
+    REG1 = (object*)s;
+  }
+  pc += 3;
+  DISPATCH();
+ l_slen:
+  // SLEN target string
+  REG1 = BOX_INTEGER ((pxll_int)((pxll_string *) REG2)->len);
+  pc += 3;
+  DISPATCH();
+ l_sref: {
+    // SREF target string index
+    pxll_string * s = (pxll_string *)REG2;
+    pxll_int index = UNBOX_INTEGER (REG3);
+    if ((index >= 0) && (index < s->len)) {
+      REG1 = TO_CHAR (s->data[index]);
+    } else {
+      // XXX error handler
+      fprintf (stderr, "string ref out of range\n");
+      return BOX_INTEGER ((unsigned)-1);
+    }
+    pc += 4;
+  }
+  DISPATCH();
+ l_sset: {
+    // SSET string index char
+    pxll_string * s = (pxll_string *)REG1;
+    pxll_int index = UNBOX_INTEGER (REG2);
+    pxll_int ch = GET_CHAR (REG3);
+    if (ch > 255) {
+      fprintf (stderr, "char out of range: %ld\n", ch);
+      return BOX_INTEGER ((unsigned)-1);
+    } else if ((index >= 0) && (index < s->len)) {
+      s->data[index] = (char) ch;
+    } else {
+      // XXX error handler
+      fprintf (stderr, "string ref out of range\n");
+      return BOX_INTEGER ((unsigned)-1);
+    }
+    pc += 4;
+  }
+  DISPATCH();
+ l_scopy: {
+    // SCOPY src sstart n dst dstart
+    pxll_string * src = (pxll_string *) REG1;
+    pxll_string * dst = (pxll_string *) REG4;
+    pxll_int sstart = UNBOX_INTEGER (REG2);
+    pxll_int dstart = UNBOX_INTEGER (REG5);
+    pxll_int n = UNBOX_INTEGER (REG3);
+    // range check
+    if ((sstart >= 0) && (sstart + n <= src->len) &&
+        (dstart >= 0) && (dstart + n <= dst->len)) {
+      memcpy (dst->data + dstart, src->data + sstart, n);
+    } else {
+      // XXX error handling
+      fprintf (stderr, "scopy out of range\n");
+      return BOX_INTEGER ((unsigned)-1);
+    }
+    pc += 6;
+  }
+  DISPATCH();
+ l_unchar:
+  // UNCHAR target char
+  REG1 = (object*) BOX_INTEGER (GET_CHAR (REG2));
+  pc += 3;
+  DISPATCH();
+ l_plat: {
+    // PLAT target
+    struct utsname plat;
+    if (0 == uname (&plat)) {
+      REG1 = vm_list_cons (
+        vm_copy_string (plat.sysname),
+        vm_list_cons (
+          vm_copy_string (plat.nodename),
+          vm_list_cons (
+            vm_copy_string (plat.release),
+            vm_list_cons (
+              vm_copy_string (plat.version),
+              vm_list_cons (
+                vm_copy_string (plat.machine), 
+                PXLL_NIL
+              )))));
+    } else {
+      // XXX error handler
+      REG1 = PXLL_NIL;
+    }
+    pc += 2;
+  }
+  DISPATCH();
+ l_gist:
+  // GIST target
+  REG1 = vm_internal_symbol_list;
+  pc += 2;
+  DISPATCH();
+ l_argv:
+  // ARGV target
+  REG1 = vm_make_argv();
+  pc += 2;
+  DISPATCH();
 }
 
 void 
