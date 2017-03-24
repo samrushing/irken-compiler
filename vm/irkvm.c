@@ -1342,6 +1342,11 @@ toplevel (void) {
     object * result = vm_go();
     print_object (result);
     fprintf (stdout, "\n");
+    if (is_int (result)) {
+      exit ((int)(intptr_t)UNBOX_INTEGER(result));
+    } else {
+      exit (0);
+    }
   }
 }
 
