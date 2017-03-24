@@ -574,22 +574,16 @@ vm_gc (void)
 
   t0 = rdtsc();
   // copy roots
-  heap1[0] = (object) lenv;
-  heap1[1] = (object) k;
-  heap1[2] = (object) top;
-  heap1[3] = (object) vm_lenv;
-  heap1[4] = (object) vm_k;  
-  heap1[5] = (object) vm_top;
-  heap1[6] = (object) bytecode_literals;
-  nwords = do_gc (7);
+  heap1[0] = (object) vm_lenv;
+  heap1[1] = (object) vm_k;  
+  heap1[2] = (object) vm_top;
+  heap1[3] = (object) bytecode_literals;
+  nwords = do_gc (4);
   // replace roots
-  lenv    = (object *) heap0[0];
-  k       = (object *) heap0[1];
-  top     = (object *) heap0[2];
-  vm_lenv = (object *) heap0[3];
-  vm_k    = (object *) heap0[4];
-  vm_top  = (object *) heap0[5];
-  bytecode_literals = (object*) heap0[6];
+  vm_lenv = (object *) heap0[0];
+  vm_k    = (object *) heap0[1];
+  vm_top  = (object *) heap0[2];
+  bytecode_literals = (object*) heap0[3];
   // XXX kludge
   pxll_int nlits = GET_TUPLE_LENGTH (*(object*)bytecode_literals);
   vm_field_lookup_table = bytecode_literals[nlits];
@@ -1338,7 +1332,6 @@ toplevel (void) {
   } else if (-1 == read_bytecode_file (argv[1])) {
     fprintf (stderr, "failed to read bytecode file: %s\n", argv[1]);
   } else {
-    fprintf (stderr, "starting vm.\n");
     object * result = vm_go();
     print_object (result);
     fprintf (stdout, "\n");
