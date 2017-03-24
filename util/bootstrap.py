@@ -53,6 +53,13 @@ def copy (p0, p1):
     else:
         system ('cp %s %s' % (p0, p1))
 
+def unlink (p):
+    try:
+        os.unlink (tweak (p))
+    except OSError:
+        pass
+
+
 open ('self/flags.scm', 'wb').write (
 """
 (define CC "%s")
@@ -63,17 +70,17 @@ print 'copying the bootstrap compiler'
 copy ('self/bootstrap.byc', 'self/compile.byc')
 
 print 'compiling with vm...'
-system ('vm/irkvm self/compile.byc self/compile.scm')
+system ('vm/irkvm self/compile.byc self/compile.scm -q')
 
 print 'compiling stage0 binary:'
 system ('%s %s self/compile.c -o self/compile' % (gcc, cflags))
 
 print 'compiling stage1 binary:'
-system ('self/compile self/compile.scm')
+system ('self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.1.c')
 
 print 'compiling stage2 binary:'
-system ('self/compile self/compile.scm')
+system ('self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.2.c')
 
 def diff (p0, p1):
@@ -99,12 +106,5 @@ if samesame:
 else:
     print 'stage1 and stage2 output differs'
 
-def unlink (p):
-    try:
-        os.unlink (tweak (p))
-    except:
-        pass
-
 unlink ('self/compile.1.c')
 move ('self/compile.2.c', 'self/compile.c')
-unlink ('self/compile.backup.c')
