@@ -773,7 +773,7 @@ main (int _argc, char * _argv[])
     k[3] = (object *) exit_continuation;
     program_start_time = rdtsc();
     toplevel();
-    return 1;
+    return 0;
   }
 }
 
