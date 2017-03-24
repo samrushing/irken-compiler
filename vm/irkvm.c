@@ -752,7 +752,7 @@ vm_go (void)
     &&l_vmake, &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc,
     &&l_irk, &&l_getc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_plat, &&l_gist,
-    &&l_argv,
+    &&l_argv, &&l_quiet,
   };
 
   // XXX what happens when the opcode is out of range?
@@ -1321,6 +1321,11 @@ vm_go (void)
  l_argv:
   // ARGV target
   REG1 = vm_make_argv();
+  pc += 2;
+  DISPATCH();
+ l_quiet:
+  // QUIET yesno
+  verbose_gc = (REG1 == PXLL_TRUE);
   pc += 2;
   DISPATCH();
 }

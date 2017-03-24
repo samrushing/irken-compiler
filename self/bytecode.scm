@@ -83,6 +83,7 @@
     (OI 'plat    1      #f     #t)   ;; target
     (OI 'gist    1      #f     #t)   ;; target
     (OI 'argv    1      #f     #t)   ;; target
+    (OI 'quiet   1      #f     #f)   ;; bool
     )))
 
 (for-range i (vector-length opcode-info)
