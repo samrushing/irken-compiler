@@ -481,8 +481,7 @@
         retval))
 
   (define (set-verbose-gc b)
-    ;; XXX no-op
-    #u)
+    (%%cexp (bool -> undefined) "quiet" b))
 
   ;; could probably calculate this from int math.
   (define (get-word-size)
