@@ -1,14 +1,12 @@
 // -*- Mode: C -*-
 
-// XXX just like in irken proper, collapse TC_VM_TUPLE and TC_VM_LENV
-
 #include "header1.c"
 
 #include "pxll.h"
 #include <stdio.h>
 #include "rdtsc.h"
-#include <dlfcn.h>
 #include <sys/utsname.h>
+#include <dlfcn.h>
 
 #ifdef __APPLE__
 #include <ffi/ffi.h>
