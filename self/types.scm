@@ -180,6 +180,13 @@
     ;; -> (match (alist/lookup the-context.aliases p) with
     ;; 	 (maybe:yes alias) -> (apply-alias p alias rest)
     ;; 	 (maybe:no) -> (pred p (map parse rest)))
+    ((sexp:cons 'nil pvar) . rest)
+    -> (begin
+         (printf "pvar in type: (:" (sym pvar) " " (join repr " " rest) ")\n")
+         ;; (rsum (rlabel plabel (rpre T0) T1))
+         (rsum (rlabel (make-label pvar)
+                       (rpre (pred 'product (map parse-type rest)))
+                       (rdefault (rabs)))))
     x -> (error1 "malformed predicate" x))
 
   ;; ;; similarities here with typing.scm/instantiate-type-scheme

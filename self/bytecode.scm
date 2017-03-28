@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(define (OI name nargs varargs target?) {code=0 name=name nargs=nargs varargs=varargs target=target?})
+(define (OI name nargs varargs target?)
+  {code=0 name=name nargs=nargs varargs=varargs target=target?})
 
 ;; XXX some bunches of these opcodes could be collapsed.
 ;; e.g. vlen/vref/vset == rlen/rref/rset (and maybe slen/sref/sset with a quick TC_STRING check)
@@ -101,13 +102,6 @@
     (maybe:yes info) -> info
     (maybe:no) -> (raise (:NoSuchOpcode name))
     ))
-
-;; (define (name->info name)
-;;   (let/cc return
-;;     (for-vector op opcode-info
-;;        (if (eq? name op.name)
-;;            (return op)))
-;;     (raise (:NoSuchOpcode name))))
 
 (define (name->opcode name)
   (let ((info (name->info name)))
@@ -323,9 +317,6 @@
       )
 
     (define (emit-store off arg tup i)
-      ;; XXX can we compute if tup is also top and emit topset?
-      ;; Note: add one to index for tc_vm_lenv which uses the first
-      ;;  location for lenv next link.
       (LINSN 'stor tup (+ i off) arg))
 
     (define (emit-varref depth index target)
@@ -667,9 +658,7 @@
 
     (define (resolve-labels s)
 
-      ;; XXX think about using relative offsets rather than absolute ones.
-      ;;     this will matter more when code size gets larger, and will allow
-      ;;     us to cling to uint16_t longer.
+      ;; we use pc-relative offsets here, trying to keep the code size small.
 
       (let ((pc 0)
             (r '())
