@@ -379,11 +379,10 @@
     ))
 
 (define (digits->big x pos?)
-  (let ((x0 (canon x)))
-    (match x0 pos? with
-      () _ -> (big:zero)
-      _  #t -> (big:pos x0)
-      _  #f -> (big:neg x0))))
+  (match (canon x) pos? with
+    () _ -> (big:zero)
+    y  #t -> (big:pos y)
+    y  #f -> (big:neg y))))
 
 (define (digits-div da db pos?)
   ;; XXX test for zero
@@ -625,4 +624,6 @@
 ;(test2)
 ;(test3)
 ;(test4)
+(printf "(big-fact 1000) => \n" (big->dec (big-fact 1000)) "\n")
+
 

@@ -69,7 +69,7 @@
   (g B1 (IB 180) (IB 60) B2)
   )
 
-(printf "Note: if this crashes upon restart you probably need to disable ASLR.")
+(printf "Note: if this crashes upon restart you probably need to disable ASLR.\n")
 
 ;; invoke without an argument to start generating,
 ;; and with an argument to load it and run it.
