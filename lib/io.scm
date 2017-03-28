@@ -88,3 +88,12 @@
 	  (let ((r (string-ref s pos)))
 	    (set! pos (+ 1 pos))
 	    r)))))
+
+(define (make-file-generator ifile)
+  (make-generator
+   (lambda (consumer)
+     (let loop ((buf (file/read-buffer ifile)))
+       (if (= 0 (string-length buf))
+           (consumer (maybe:no))
+           (consumer (maybe:yes buf)))
+       (loop (file/read-buffer ifile))))))

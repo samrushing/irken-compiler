@@ -358,6 +358,12 @@ static void prof_dump (void)
   (read-file-contents
    (find-file the-context.options.include-dirs path)))
 
+(define (copy-file-contents ofile path)
+  (let ((ifile (file/open-read path)))
+    (for (make-file-generator ifile) block
+         (ofile.copy block))
+    (file/close ifile)))
+
 ;; give a unique index to each function.
 (define (number-profile-funs)
   (let ((i 0))
@@ -422,7 +428,7 @@ static void prof_dump (void)
     (notquiet (print-string "done.\n"))
     (o0.close)
     ;; copy code after declarations
-    (o.copy (read-file-contents (file/open-read tmp-path)))
+    (copy-file-contents o tmp-path)
     (o.close)
     (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
     (unlink tmp-path)
