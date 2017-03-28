@@ -89,6 +89,8 @@ typedef enum {
   op_plat,
   op_gist,
   op_argv,
+  op_quiet,
+  op_heap,
 } opcode_t;
 
 char * op_names[] = {
@@ -166,6 +168,8 @@ char * op_names[] = {
   "plat",
   "gist",
   "argv",
+  "quiet",
+  "heap",
 };
 
 static int argc;
@@ -567,7 +571,7 @@ vm_set_closure (object * closure)
 }
 
 object
-vm_gc (void)
+vm_gc (int nreg)
 {
   uint64_t t0, t1;
   object nwords;
@@ -578,7 +582,7 @@ vm_gc (void)
   heap1[1] = (object) vm_k;  
   heap1[2] = (object) vm_top;
   heap1[3] = (object) bytecode_literals;
-  nwords = do_gc (4);
+  nwords = do_gc (4 + nreg);
   // replace roots
   vm_lenv = (object *) heap0[0];
   vm_k    = (object *) heap0[1];
@@ -752,10 +756,10 @@ vm_go (void)
     &&l_vmake, &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc,
     &&l_irk, &&l_getc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_plat, &&l_gist,
-    &&l_argv, &&l_quiet,
+    &&l_argv, &&l_quiet, &&l_heap,
   };
 
-  // XXX what happens when the opcode is out of range?
+  // XXX what happens when the opcode is out of range? (segfault)
 #define DISPATCH() goto *dispatch_table[code[pc]]
 
   // print_regs ((object*)vm_regs, 10);
@@ -1063,7 +1067,7 @@ vm_go (void)
   DISPATCH();
  l_gc:
   if (freep >= limit) {
-    vm_gc();
+    vm_gc(0);
   }
   pc += 1;
   DISPATCH();
@@ -1327,6 +1331,22 @@ vm_go (void)
   // QUIET yesno
   verbose_gc = (REG1 == PXLL_TRUE);
   pc += 2;
+  DISPATCH();
+ l_heap: {
+    // HEAP size nreg
+    pxll_int size = UNBOX_INTEGER (REG1);
+    if (freep + size >= limit) {
+      pxll_int nreg = BC2;
+      for (int i=0; i < nreg; i++) {
+        heap1[4+i] = vm_regs[i];
+      }
+      vm_gc (nreg);
+      for (int i=0; i < nreg; i++) {
+        vm_regs[i] = heap0[4+i];
+      }
+    }
+  }
+  pc += 3;
   DISPATCH();
 }
 

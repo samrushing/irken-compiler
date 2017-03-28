@@ -488,5 +488,9 @@
   (define (get-word-size)
     8 ;; XXX bogus
     )
+
+  (define (how-many x n)
+    (/ (- (+ x n) 1) n))
+
   )
   
