@@ -13,3 +13,4 @@ tests/*.byc
 /.tramp_history
 /self/.tramp_history
 /vm/irkvm
+/vm/irkc
