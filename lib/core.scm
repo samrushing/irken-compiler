@@ -40,7 +40,8 @@
   )
 
 (define (zero? a)
-  (%%cexp (int -> bool) "%0==0" a))
+  (%backend c (%%cexp (int -> bool) "%0==0" a))
+  (%backend (bytecode llvm) (= a 0)))
 
 (define (< a b)
   (%backend c (%%cexp (int int -> bool) "%0<%1" a b))
