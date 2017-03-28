@@ -21,13 +21,13 @@ def clean_c (path, precious):
                     stat = os.stat (jp)
                     if stat.st_mode & 1:
                         # an executable
-                        if semi and name == 'compile':
+                        if semi and name.startswith ('compile'):
                             pass
                         else:
                             os.remove (jp)
 
 for path in ('tests vm self demo doom'.split()):
-    clean_c (path, ['compile.c'])
+    clean_c (path, ['compile.c', 'bootstrap.c', 'vm.c'])
 
 def unlink (p):
     try:

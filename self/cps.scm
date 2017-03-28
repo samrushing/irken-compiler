@@ -2,6 +2,7 @@
 
 (include "self/nodes.scm")
 
+;; XXX tag:bare appears to be unused, get rid of this datatype.
 (datatype tag
   (:bare int)
   (:uobj int)
@@ -63,14 +64,38 @@
   )
 
 (define (make-register-allocator)
-  (let ((max-reg -1))
-    (define (allocate free)
-      (set! max-reg (+ max-reg 1))
-      max-reg)
-    (define (get-max) max-reg)
-    (define (reset) (set! max-reg -1))
-    {alloc=allocate get-max=get-max reset=reset}
+  (match the-context.options.backend with
+    (backend:bytecode)
+    -> (let ((max-reg -1))
+         (define (allocate free)
+           (let loop ((i 0))
+             (if (member? i free =)
+                 (loop (+ i 1))
+                 (begin (set! max-reg (max i max-reg)) i))))
+         (define (get-max) max-reg)
+         {alloc=allocate get-max=get-max}
+         )
+    _
+    -> (let ((max-reg -1))
+         (define (allocate free)
+           (set! max-reg (+ max-reg 1))
+           max-reg)
+         (define (get-max) max-reg)
+         {alloc=allocate get-max=get-max}
+         )
     ))
+
+(define (add-to-set reg set)
+  (if (not (member? reg set =))
+      (list:cons reg set)
+      set))
+
+(define (merge-sets a b)
+  (let ((r b))
+    (for-list ai a
+      (if (not (member? ai b =))
+          (PUSH r ai)))
+    r))
 
 ;; perhaps name these cont/xxx could be confusing.
 (define k/free
@@ -86,18 +111,19 @@
   (cont:nil) -> (error "k/insn"))
 
 (define add-free-regs
-  (cont:k target free k) regs -> (cont:k target (append free regs) k)
+  (cont:k target free k) regs -> (cont:k target (merge-sets free regs) k)
   (cont:nil) _		      -> (error "add-free-regs"))
 
 (define (compile exp)
 
-  (let ((current-funs '(top)))
+  (let ((current-funs '(top))
+        (regalloc (make-register-allocator)))
 
     (define (set-flag! flag)
       (vars-set-flag! (car current-funs) flag))
 
     (define (cont free generator)
-      (let ((reg (the-context.regalloc.alloc free)))
+      (let ((reg (regalloc.alloc free)))
 	(cont:k reg free (generator reg))))
 
     (define (dead free k)
@@ -131,20 +157,19 @@
       )
 
     (define (add-literal lit)
-      (let ((index (length the-context.literals)))
-	(PUSH the-context.literals lit)
-	index))
+      (cmap/add the-context.literals lit)
+      )
 
     ;; inlining often causes literals to be copied all over the place.
     ;;   we can detect this because their node id's are the same.  So keep
     ;;   a map from id->litindex so we can reference via litcon.
 
     (define (get-literal-index lit id)
-      (match (tree/member the-context.literal-ids < id) with
+      (match (tree/member the-context.literal-ids int-cmp id) with
 	(maybe:yes v) -> v
 	(maybe:no)
 	-> (let ((index (add-literal lit)))
-	     (tree/insert! the-context.literal-ids < id index)
+	     (tree/insert! the-context.literal-ids int-cmp id index)
 	     index)))
 
     (define (get-symbol-index sym)
@@ -254,7 +279,7 @@
 		       (cont regvars gen-return)
 		       )
 	      k)))
-	(tree/insert! the-context.profile-funs symbol<? name {index=0 names=current-funs})
+	(tree/insert! the-context.profile-funs symbol-index-cmp name {index=0 names=current-funs})
 	(pop current-funs)
 	r))
 
@@ -372,7 +397,7 @@
 				(nth regs (index-eq i perm)))))
 		       (ck perm-regs))
 	(hd . tl) -> (compile #f hd lenv
-			      (cont (append (k/free k) regs)
+			      (cont (merge-sets (k/free k) regs)
 				    (lambda (reg) (collect-primargs* tl (cons reg regs) perm lenv k ck))))
 	))
 
@@ -386,8 +411,7 @@
 	   (< (length names) 5)
 	   (not (some?
 		 (lambda (name)
-		   (vars-get-flag name VFLAG-FREEREF)
-		   )
+		   (vars-get-flag name VFLAG-FREEREF))
 		 names))))
 
     (define (safe-for-tr-call exp fun)
@@ -450,7 +474,7 @@
 		 types
 		 (cont:k target free
 			 (compile-store-args 0 1 args target
-					     (list:cons target free) lenv k))))
+                                             (add-to-set target free) lenv k))))
 	))
 
     (define (compile-store-args i offset args tuple-reg free-regs lenv k)
@@ -472,12 +496,16 @@
 	(if (= 0 (length names))
 	    ;; note: the last 'init' is the body
 	    ;; build a new version of the continuation with <regs> listed as free regs.
-	    (compile tail? (car inits) lenv (add-free-regs k regs))
+            ;;(compile tail? (car inits) lenv (add-free-regs k regs))
+            (compile tail? (car inits) lenv 
+                     (cont (merge-sets regs (k/free k))
+                           (lambda (reg)
+                             (insn:move reg -1 k))))
 	    (compile #f
 		     (car inits)
 		     lenv
 		     (cont
-		      (append regs (k/free k))
+		      (merge-sets regs (k/free k))
 		      (lambda (reg)
 			(loop (cdr names)
 			      (cdr inits)
@@ -506,7 +534,7 @@
 		  tuple-reg
 		  (dead free
 			(compile-store-args 0 1 inits tuple-reg
-					    (list:cons tuple-reg free)
+                                            (add-to-set tuple-reg free)
 					    (extend-lenv formals lenv)
 					    k-body))))))))
 
@@ -541,21 +569,29 @@
 		   (insn:nvcase test-reg dtname alt-formals jump-num alts ealt1 k)))
 	       (compile #f value lenv (cont free finish))))))
 
+    (define match-error?
+      (node:primapp '%match-error _) -> #t
+      _ -> #f)
+
     (define (c-pvcase tail? alt-formals arities subs lenv k)
+      ;; pvcase subs = <value>, <else-clause>, <alt0>, ...
       (let ((free (k/free k))
-	    (jump-num (jump-counter.inc)))
-	;; pvcase subs = <value>, <else-clause>, <alt0>, ...
-	 (let ((value (nth subs 0))
-	       (eclause (nth subs 1))
-	       (alts (cdr (cdr subs))))
-	   (define (make-jump-k)
-	     (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
-	   (define (finish test-reg)
-	     (let ((alts (map (lambda (alt) (compile tail? alt lenv (make-jump-k))) alts))
-		   (else? (match (noderec->t eclause) with (node:primapp '%match-error _) -> #f _ -> #t))
-		   (ealt (if else? (maybe:yes (compile tail? eclause lenv (make-jump-k))) (maybe:no))))
-	       (insn:pvcase test-reg alt-formals arities jump-num alts ealt k)))
-	   (compile #f value lenv (cont free finish)))))
+	    (jump-num (jump-counter.inc))
+            (value (nth subs 0))
+            (eclause (nth subs 1))
+            (alts (cdr (cdr subs)))
+            (has-else (not (match-error? (noderec->t eclause)))))
+        (define (make-jump-k)
+          (cont free (lambda (reg) (insn:jump reg (k/target k) jump-num free))))
+        (define (finish test-reg)
+          (let ((alts (map (lambda (alt) (compile tail? alt lenv (make-jump-k))) alts))
+                (ealt (if has-else
+                          (maybe:yes (compile tail? eclause lenv (make-jump-k)))
+                          (maybe:no))))
+            (insn:pvcase test-reg alt-formals arities jump-num alts ealt k)))
+        (if (and (= (length alts) 1) (not has-else))
+            (compile tail? (nth alts 0) lenv k)
+            (compile #f value lenv (cont free finish)))))
 
     (define fatbar-counter (make-counter 0))
 
@@ -564,12 +600,13 @@
 	    (lenv0 (cpsenv:fat label lenv))
 	    (free (k/free k))
 	    (target (k/target k))
-	    (jump-num (jump-counter.inc)))
+	    (jump-num (jump-counter.inc))
+            (jump-cont (cont free (lambda (reg) (insn:jump reg target jump-num free)))))
 	(insn:fatbar
 	 label
 	 jump-num
-	 (compile tail? (nth subs 0) lenv0 (cont free (lambda (reg) (insn:jump reg target jump-num free))))
-	 (compile tail? (nth subs 1) lenv  (cont free (lambda (reg) (insn:jump reg target jump-num free))))
+	 (compile tail? (nth subs 0) lenv0 jump-cont)
+	 (compile tail? (nth subs 1) lenv  jump-cont)
 	 k)))
 
     (define (c-fail tail? lenv k)
@@ -600,7 +637,7 @@
 			     (cont:k target free
 				     (compile-store-args
 				      0 0 args target
-				      (list:cons target free)
+                                      (add-to-set target free)
 				      lenv k)))
 		 (insn:alloc (tag:uobj tag) 0 k)))
 	_ -> (error1 "bad %vcon params" params)))
@@ -614,8 +651,8 @@
 	  -> (match (noderec->subs exp) with
 	       (exp0 val) -> (loop exp0 (list:cons (:pair field val) fields))
 	       _	  -> (error1 "malformed %rextend" exp))
-	  (node:primapp '%rmake _) ;; done - put the names in canonical order
-	  -> (let ((fields0 (sort
+	  (node:primapp '%rmake _)
+	  -> (let ((fields0 (sort ;; done - put the names in canonical order
 			    (lambda (a b)
 			      (match a b with
 				(:pair f0 _) (:pair f1 _)
@@ -633,10 +670,11 @@
 			   ;;   the allocation... compile-store-args is broken in that it assigns
 			   ;;   a target for a <stor> [rather than a dead cont].
 			   (cont:k target free
-				   (compile-store-args
-				    0 0 args target
-				    (list:cons target free)
-				    lenv k))))
+			           (compile-store-args
+			            0 0 args target
+                                    (add-to-set target free)
+			            lenv k))
+                           ))
 	  _ -> (c-record-extension fields exp lenv k))))
 
     (define (c-record-extension fields exp lenv k)
@@ -686,9 +724,15 @@
 ;;   (an object type) ends up spinning forever.  may be related to non-canonical
 ;;   record types.  needs more investigation.
 
+;; XXX update: this is almost certainly a problem with exponential growth
+;;   when using a `<` function to do deep compares: each level of comparison
+;;   makes *two* calls (to eliminate the equality case).
+;;   magic<? may help with this problem, but the only true fix is to change 
+;;   *everything* to use 3-way comparisons.
+
 (define (collect-all-types root)
   (let ((ng (make-node-generator root))
-	(type-map (map-maker type<?)))
+	(type-map (map-maker magic-cmp)))
     (let loop ()
       (match (ng) with
 	(maybe:no) -> #u

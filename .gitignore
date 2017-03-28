@@ -1,7 +1,15 @@
 self/compile.c
 self/compile.ll
+self/compile.byc
 self/compile
+self/compile.dSYM/
+self/compile[0-9]
 doom/*.c
 doom/*.ll
 tests/*.c
 tests/*.ll
+tests/*.byc
+/TAGS
+/.tramp_history
+/self/.tramp_history
+/vm/irkvm

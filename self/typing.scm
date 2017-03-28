@@ -246,10 +246,15 @@
 
   (define (type-of exp tenv)
     ;;(printf "type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n")
-    (let ((texp (type-of* exp tenv)))
+    (let ((texp0 (noderec->type exp))
+          (texp1 (type-of* exp tenv)))
+      ;; XXX the intent of this is to unify with user-assigned types,
+      ;;  but it is breaking polymorphic types somehow. (try poly-append).
+      ;;(when (not (no-type? texp0))
+      ;;  (unify exp texp0 texp1))
+      (set-node-type! exp texp1)
       ;;(printf "type-of* " (int (noderec->id exp)) " " (type-repr texp) "\n")
-      (set-node-type! exp texp)
-      texp))
+      texp1))
 
   (define (type-of-literal lit exp tenv)
     (match lit with
@@ -287,23 +292,6 @@
     t -> t)
 
   (define (type-of-cexp gens sig exp tenv)
-    (let ((type (instantiate-type-scheme gens sig)))
-      (match type with
-	(type:pred 'arrow pargs _)
-	-> (if (not (= (- (length pargs) 1) (length (noderec->subs exp))))
-	       (error1 "wrong number of args to cexp" exp)
-	       (match pargs with
-		 () -> (error1 "malformed arrow type" sig)
-		 (result-type . parg-types)
-		 -> (let ((arg-types (map (lambda (x) (type-of x tenv)) (noderec->subs exp))))
-		      (for-each2 (lambda (a b)
-				   (unify exp (unraw a) b))
-				 parg-types arg-types)
-		      result-type
-		      )))
-	_ -> type)))
-
-  (define (type-of-ffi gens sig exp tenv)
     (let ((type (instantiate-type-scheme gens sig)))
       (match type with
 	(type:pred 'arrow pargs _)
@@ -634,6 +622,7 @@
       ;; llvm prims
       '%llarith    -> (:scheme '() (arrow int-type (LIST int-type int-type)))
       '%llicmp     -> (:scheme '() (arrow bool-type (LIST int-type int-type)))
+      '%lleq       -> (:scheme (LIST T0) (arrow bool-type (LIST T0 T0)))
       _ -> (error1 "lookup-primapp" name)))
 
   ;; each exception is stored in a global table along with a tvar
@@ -729,9 +718,9 @@
     (for-each apply-subst-to-program (noderec->subs n)))
 
   (let ((t (type-of node (alist/make))))
-    (printf "applying subst...") (flush)
+    ;;(printf "applying subst...") (flush)
     (apply-subst-to-program node)
-    (printf "done.\n")
+    ;;(printf "done.\n")
     t))
 
 ;; (define (test-typing)

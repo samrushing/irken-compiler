@@ -6,17 +6,32 @@
 (include "self/analyze.scm")
 
 (define (make-writer file)
-  (let ((level 0))
+  (let ((level 0)
+        (buffer '())
+        (nbytes 0)
+        (total 0))
+    (define (push s)
+      (PUSH buffer s)
+      (set! nbytes (+ nbytes (string-length s)))
+      (if (>= nbytes 16384)
+          (flush)))
     (define (write-string s)
-      (write file.fd
-	     (format (repeat level "  ") s "\n"))
-      #u)
-    (define (copy s)
-      (write file.fd s))
+      (push (format (repeat level "  ") s "\n")))
+    (define (flush)
+      (when (> nbytes 0)
+        (write file.fd (string-concat (reverse buffer)))
+        (set! buffer '())
+        (set! total (+ total nbytes))
+        (set! nbytes 0)))
     (define (indent) (set! level (+ level 1)))
     (define (dedent) (set! level (- level 1)))
-    (define (close-file) (close file.fd))
-    {write=write-string indent=indent dedent=dedent copy=copy close=close-file}
+    (define (close-file)
+      (flush)
+      (close file.fd)
+      )
+    (define (get-total)
+      total)
+    {write=write-string indent=indent dedent=dedent copy=push close=close-file get-total=get-total}
     ))
 
 (define (make-name-frobber)
@@ -71,8 +86,31 @@
   x -> (error1 "expected immediate literal " x))
 
 
+(define immediate-true  (encode-immediate (literal:cons 'bool 'true '())))
+(define immediate-false (encode-immediate (literal:cons 'bool 'false '())))
+
+;; immediate types (multiples of 2 (but not 4!))
+(define TC_CHAR         (<<  1 1)) ;; 00000010 02
+(define TC_BOOL         (<<  3 1)) ;; 00000110 06
+(define TC_NIL          (<<  5 1)) ;; 00001010 0a
+(define TC_UNDEFINED    (<<  7 1)) ;; 00001110 0e
+(define TC_EMPTY_VECTOR (<<  9 1)) ;; 00010010 12
+(define TC_USERIMM      (<< 11 1)) ;; 00010110 16
+
+;; pointer types (multiples of 4)
+(define TC_SAVE         (<< 1 2)) ;; 00000100  04
+(define TC_CLOSURE      (<< 2 2)) ;; 00001000  08
+(define TC_TUPLE        (<< 3 2)) ;; 00001100  0c
+(define TC_ENV          (<< 3 2)) ;; 00001100  0c alias
+(define TC_STRING       (<< 4 2)) ;; 00010000  10
+(define TC_VECTOR       (<< 5 2)) ;; 00010100  14
+(define TC_PAIR         (<< 6 2)) ;; 00011000  18
+(define TC_SYMBOL       (<< 7 2)) ;; 00011100  1c
+(define TC_BUFFER       (<< 8 2)) ;; 00100000  20
+(define TC_USEROBJ      (<< 9 2)) ;; 00100100  24
+
 (define (find-jumps insns)
-  (let ((used (map-maker <)))
+  (let ((used (map-maker int-cmp)))
     (walk-insns
      (lambda (insn _)
        (match insn with
@@ -111,8 +149,7 @@
 	  ;; this sig is ambiguous given the set of known records.
 	  (maybe:no)))))
 
-;; XXX: profiler is currently unimplemented (it was originally
-;;  written for the all-in-one-function C back end).
+;; profiler currently works only on the C backend.
 
 (define (emit-profile-0 o)
   (o.write "
@@ -145,8 +182,7 @@ static void prof_dump (void)
 
 ;; we support three types of non-immediate literals:
 ;;
-;; 1) strings.  identical strings are *not* merged, since
-;;      modifying strings is a reasonable choice.
+;; 1) strings.  identical strings are merged. do not modify literal strings.
 ;; 2) symbols.  this emits a string followed by a symbol tuple.
 ;;      these are collected so each is unique.  any runtime
 ;;      symbol table should be populated with these first.
@@ -157,11 +193,9 @@ static void prof_dump (void)
 ;;      object.
 
 (define (emit-constructed o)
-  (let ((lits (reverse the-context.literals))
-	(nlits (length lits))
-	(strings (alist/make))
+  (let ((lits the-context.literals)
+	(nlits lits.count)
 	(output '())
-	(current-index 0)
 	(symbol-counter 0)
 	)
 
@@ -176,7 +210,7 @@ static void prof_dump (void)
 	'list 'nil -> "TC_NIL"
 	_ _ -> (format "UITAG(" (int index) ")")))
 
-    (define (walk exp)
+    (define (walk exp litnum)
       (match exp with
 	;; data constructor
 	(literal:cons dt variant args)
@@ -185,59 +219,57 @@ static void prof_dump (void)
 		 (nargs (length args)))
 	     (if (> nargs 0)
 		 ;; constructor with args
-		 (let ((args0 (map walk args))
+		 (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
 		       (addr (+ 1 (length output))))
 		   (PUSH output (uohead nargs dt variant alt.index))
 		   (for-each (lambda (x) (PUSH output x)) args0)
-		   (format "UPTR(" (int current-index) "," (int addr) ")"))
+		   (format "UPTR(" (int litnum) "," (int addr) ")"))
 		 ;; nullary constructor - immediate
 		 (uitag dt variant alt.index)))
 	(literal:vector args)
-	-> (let ((args0 (map walk args))
+	-> (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
 		 (nargs (length args))
 		 (addr (+ 1 (length output))))
 	     (PUSH output (format "(" (int nargs) "<<8)|TC_VECTOR"))
 	     (for-each (lambda (x) (PUSH output x)) args0)
-	     (format "UPTR(" (int current-index) "," (int addr) ")"))
+	     (format "UPTR(" (int litnum) "," (int addr) ")"))
 	(literal:symbol sym)
 	-> (let ((index (alist/get the-context.symbols sym "unknown symbol?")))
 	     (format "UPTR(" (int index) ",1)"))
 	(literal:string s)
-	-> (match (alist/lookup strings s) with
-	     (maybe:yes index) -> (format "UPTR0(" (int index) ")")
-	     (maybe:no) -> (error "emit-constructed: lost string"))
+	->  (format "UPTR0(" (int (cmap->index lits exp)) ")")
+        ;; NOTE: sexp is missing from here.  without that, no sexp literals.
 	_ -> (int->string (encode-immediate exp))
 	))
     (o.dedent) ;; XXX fix this by defaulting to zero indent
-    (for-range
-	i nlits
+    (for-map i lit lits.rev
 	(set! output '())
-	(set! current-index i)
-	(let ((lit (nth lits i)))
-	  (match lit with
-	    ;; strings are a special case here because they have a non-uniform structure: the existence of
-	    ;;   the uint32_t <length> field means it's hard for us to put a UPTR in the front.
-	    (literal:string s)
-	    -> (let ((slen (string-length s)))
-		 ;; this works because we want strings compared for eq? identity...
-		 (alist/push strings s i)
-		 (o.write (format "pxll_string constructed_" (int i) " = {STRING_HEADER(" (int slen) "), " (int slen) ", \"" (c-string s) "\" };")))
-	    ;; there's a temptation to skip the extra pointer at the front, but that would require additional smarts
-	    ;;   in insn_constructed (as already exist for strings).
-	    ;; NOTE: this reference to the string object only works because it comes before the symbol in the-context.constructed.
-	    (literal:symbol s)
-	    -> (begin
-		 (o.write (format "// symbol " (sym s)))
-		 (o.write (format "pxll_int constructed_" (int i)
-				  "[] = {UPTR(" (int i)
-				  ",1), SYMBOL_HEADER, UPTR0(" (int (- current-index 1))
-				  "), INTCON(" (int symbol-counter) ")};"))
-		 (set! symbol-counter (+ 1 symbol-counter))
-		 )
-	    _ -> (let ((val (walk (nth lits i)))
-		       (rout (list:cons val (reverse output))))
-		   (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
-	    )))
+        (match lit with
+          ;; strings are a special case here because they have a non-uniform structure: the existence of
+          ;;   the uint32_t <length> field means it's hard for us to put a UPTR in the front.
+          (literal:string s)
+          -> (let ((slen (string-length s)))
+               ;; this works because we want strings compared for eq? identity...
+               (o.write (format "pxll_string constructed_" (int i)
+                                " = {STRING_HEADER(" (int slen)
+                                "), " (int slen)
+                                ", \"" (c-string s) "\" };")))
+          ;; there's a temptation to skip the extra pointer at the front, but that would require additional smarts
+          ;;   in insn_constructed (as already exist for strings).
+          (literal:symbol s)
+          -> (begin
+               (o.write (format "// symbol " (sym s)))
+               (o.write (format "pxll_int constructed_" (int i)
+                                "[] = {UPTR(" (int i)
+                                ",1), SYMBOL_HEADER, UPTR0("
+                                (int (cmap->index lits (literal:string (symbol->string s))))
+                                "), INTCON(" (int symbol-counter) ")};"))
+               (set! symbol-counter (+ 1 symbol-counter))
+               )
+          _ -> (let ((val (walk lit i))
+                     (rout (list:cons val (reverse output))))
+                 (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
+          ))
     (let ((symptrs '()))
       (alist/iterate
        (lambda (symbol index)
@@ -254,11 +286,11 @@ static void prof_dump (void)
    (string->list
     "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ")))
 
-;; fix when we get zero-padding format capability...
 (define (char->oct-encoding ch)
   (let ((in-oct (format (oct (char->ascii ch)))))
     (format
      "\\"
+     ;; can't use zpad here because we want to catch out-of-range chars.
      (match (string-length in-oct) with
        0 -> "000"
        1 -> "00"
@@ -336,8 +368,18 @@ static void prof_dump (void)
 
 (include "self/c.scm")
 (include "self/llvm.scm")
+(include "self/bytecode.scm")
 
 (define (compile-with-backend base cps)
+  (match the-context.options.backend with
+    (backend:bytecode)
+    -> (compile-to-bytecode base cps)
+    _ -> (compile-with-backend0 base cps)
+    ))
+
+;; note: the llvm backend relies on the C backend to some extent.
+
+(define (compile-with-backend0 base cps)
 
   (let ((opath (string-append base ".c"))
 	(ofile (file/open-write opath #t #o644))
@@ -348,8 +390,7 @@ static void prof_dump (void)
 	(llvm? (eq? the-context.options.backend (backend:llvm)))
 	(sources (LIST opath))
 	)
-    (printf "\n-- C output --\n")
-    (printf " : " opath "\n")
+    (notquiet (printf "\n-- C output --\n : " opath "\n"))
     (for-each
      (lambda (path) (o.write (format "#include <" path ">")))
      (reverse the-context.cincludes))
@@ -374,19 +415,21 @@ static void prof_dump (void)
 	   (get-file-contents "include/preamble.ll"))
 	  (emit-llvm o ollvm "toplevel" cps)
 	  (ollvm.close)
+          (notquiet (printf "wrote " (int (ollvm.get-total)) " bytes to " llpath ".\n"))
 	  (PUSH sources llpath))
 	(emit-c o0 o cps))
     (if the-context.options.profile (emit-profile-1 o))
-    (print-string "done.\n")
+    (notquiet (print-string "done.\n"))
     (o0.close)
     ;; copy code after declarations
     (o.copy (read-file-contents (file/open-read tmp-path)))
     (o.close)
+    (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
     (unlink tmp-path)
     (when (not the-context.options.nocompile)
-	  (print-string "compiling...\n")
-	  (invoke-cc base sources the-context.options (if llvm? "-flto" ""))
-	  #u
-	  )
+      (notquiet (print-string "compiling...\n"))
+      (invoke-cc base sources the-context.options (if llvm? "-flto" ""))
+      #u
+      )
     )
   )

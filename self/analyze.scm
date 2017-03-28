@@ -28,7 +28,7 @@
       (node:function name _)
       -> (begin
 	   (PUSH fenv name)
-	   (tree/insert! the-context.funs symbol-index<? name exp)
+	   (tree/insert! the-context.funs symbol-index-cmp name exp)
 	   (vars-set-flag! name VFLAG-FUNCTION))
       ;; a convenient place to detect this.
       (node:primapp name _)
@@ -176,15 +176,15 @@
 	  (maybe:yes deps)
 	  -> (deps::iterate
 	      (lambda (dep)
-		(match (tree/member multiplier symbol-index<? dep) with
-		  (maybe:no) -> (tree/insert! multiplier symbol-index<? dep calls)
+		(match (tree/member multiplier symbol-index-cmp dep) with
+		  (maybe:no) -> (tree/insert! multiplier symbol-index-cmp dep calls)
 		  (maybe:yes _) -> #u)))
 	  (maybe:no) -> #u)))
 
     ;; XXX no protection against infinite aliases
 
     (define (follow-aliases fenv name)
-      (match (tree/member fenv symbol-index<? name) with
+      (match (tree/member fenv symbol-index-cmp name) with
 	(maybe:no) -> (maybe:no)
 	(maybe:yes fun)
 	-> (match (noderec->t fun) with
@@ -193,7 +193,7 @@
 	     _ -> (maybe:yes (:pair name fun)))))
 
     (define (get-fun-calls name calls)
-      (match (tree/member multiplier symbol-index<? name) with
+      (match (tree/member multiplier symbol-index-cmp name) with
 	(maybe:yes num) -> (* num calls)
 	(maybe:no) -> calls))
 
@@ -205,7 +205,7 @@
 	    (node:fix names)
 	    -> (for-range
 		   i (length names)
-		   (tree/insert! fenv symbol-index<? (nth names i) (nth (noderec->subs node) i)))
+		   (tree/insert! fenv symbol-index-cmp (nth names i) (nth (noderec->subs node) i)))
 
 	    (node:call)
 	    -> (match (noderec->subs node) with
@@ -444,7 +444,7 @@
     (for-each
      (lambda (name)
        ;;(printf "searching escaping fun " (sym name) "\n")
-       (let ((fun (match (tree/member the-context.funs symbol-index<? name) with
+       (let ((fun (match (tree/member the-context.funs symbol-index-cmp name) with
 		    (maybe:yes fun) -> fun
 		    (maybe:no) -> (error1 "find-escaping-funs: failed lookup" name))))
        (find-escaping-variables fun '())))
@@ -460,7 +460,7 @@
 (define (do-simple-optimizations node)
   (set! simpleopt-hits 0)
   (let loop ((r (simpleopt node)))
-    (printf "simpleopt: " (int simpleopt-hits) "\n")
+    ;;(printf "simpleopt: " (int simpleopt-hits) "\n")
     (cond ((> simpleopt-hits 0)
 	   (set! simpleopt-hits 0)
 	   (loop (simpleopt r)))
@@ -671,9 +671,9 @@
 	(set! exp.size (sum-size exp.subs))
 	(:tuple (noderec:t exp) fat-env)
 	)))
-  (printf "starting optimize-nvcase...\n")
+;;  (printf "starting optimize-nvcase...\n")
   (search root (fatopt:nil))
-  (printf "done with optimize-nvcase.\n")
+;;  (printf "done with optimize-nvcase.\n")
   )
 
 (define (remove-onearmed-nvcase root)

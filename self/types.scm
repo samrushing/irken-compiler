@@ -24,32 +24,7 @@
     -> (eq? name0 name)
     _ -> #f))
 
-;; define a total ordering on all types
-(define type*<?
-  (type:tvar n0 _)  (type:tvar n1 _)  -> (< n0 n1)
-  (type:tvar _ _)   (type:pred _ _ _) -> #t
-  (type:pred _ _ _) (type:tvar _ _ )  -> #f
-  (type:pred p0 args0 _) (type:pred p1 args1 _)
-  -> (cond ((symbol<? p0 p1) #t)
-	   ((symbol<? p1 p0) #f)
-	   ((< (length args0) (length args1)) #t)
-	   ((< (length args1) (length args0)) #f)
-	   (else
-	    (let loop ((args0 args0) (args1 args1))
-	      (match args0 args1 with
-		() _ -> #f
-		(t0 . tl0) (t1 . tl1)
-		-> (cond ((type<? t0 t1) #t)
-			 ((type<? t1 t0) #f)
-			 (else
-			  (loop tl0 tl1)))
-		_ _ -> (impossible)
-		)))))
-
-(define (type<? a b)
-  (if (eq? a b)
-      #f
-      (type*<? a b)))
+(define type<? magic<?)
 
 ;; singleton base types
 (define int-type        (pred 'int '()))

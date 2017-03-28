@@ -66,7 +66,7 @@
 
 (define map-maker (map-class))
 
-;; set class using aa_map and ignoring values.
+;; set class using 'tree' and ignoring values.
 (define (set2-class)
 
   (define (add self k)

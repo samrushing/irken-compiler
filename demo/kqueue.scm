@@ -179,17 +179,17 @@ set_nonblocking (int fd)
 
 ;; these funs know that EVFILT values are consecutive small negative ints
 (define (poller/lookup-event p ident filter)
-  (tree/member p.filters[(- 0 filter)] < ident))
+  (tree/member p.filters[(- 0 filter)] int-cmp ident))
 
 (define (poller/add-event p ident filter k)
   (set! p.nwait (+ 1 p.nwait))
   (set! p.filters[(- 0 filter)]
 	(tree/insert p.filters[(- 0 filter)]
-		     < ident k)))
+		     int-cmp ident k)))
 
 (define (poller/delete-event p ident filter)
   (set! p.filters[(- 0 filter)]
-	(tree/delete p.filters[(- 0 filter)] ident < =))
+	(tree/delete p.filters[(- 0 filter)] int-cmp ident))
   (set! p.nwait (- p.nwait 1)))
 
 (define (poller/wait-for p ident filter)

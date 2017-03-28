@@ -1,14 +1,10 @@
 
-(define (>= a b)
-  (%>= a b))
+(include "lib/core.scm")
 
-(define (- a b)
-  (%- a b))
-
-(define (= a b)
-  (%= a b))
+(define calls 0)
 
 (define (tak x y z)
+  (set! calls (+ 1 calls))
   (if (>= y x)
       z
       (tak (tak (- x 1) y z)
@@ -18,5 +14,8 @@
 (let loop ((n 20))
   (let ((r (tak 18 12 6)))
     (if (= n 0)
-	r
+        r
 	(loop (- n 1)))))
+
+calls
+

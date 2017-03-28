@@ -1,3 +1,6 @@
+#ifndef PXLL_H
+#define PXLL_H
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -40,9 +43,8 @@ object * heap1 = NULL;
 #define TC_VECTOR               (5<<2) // 00010100  14
 #define TC_PAIR                 (6<<2) // 00011000  18
 #define TC_SYMBOL               (7<<2) // 00011100  1c
-#define TC_VEC16                (8<<2) // 00100000  20
-#define TC_BUFFER               (9<<2) // 00100100  24
-#define TC_USEROBJ             (10<<2) // 00101000  28
+#define TC_BUFFER               (8<<2) // 00100000  20
+#define TC_USEROBJ              (9<<2) // 00100100  24
 
 // alias
 #define TC_CONTINUATION TC_SAVE
@@ -87,7 +89,6 @@ object * heap1 = NULL;
 #define STRING_HEADER(n)        STRING_TUPLE_LENGTH(n)<<8|TC_STRING
 #define SYMBOL_HEADER           ((1<<8)|TC_SYMBOL)
 #define CONS_HEADER             ((2<<8)|TC_PAIR)
-#define VEC16_TUPLE_LENGTH(n)   HOW_MANY ((n*2) + sizeof(int32_t), sizeof(object))
 
 // these make the C output more compact & readable
 #define PXLL_TEST(x)		((x) ? PXLL_TRUE : PXLL_FALSE)
@@ -97,8 +98,8 @@ object * heap1 = NULL;
 #define UOBJ_SET(o,i,v)         (((pxll_vector*)(o))->val[i] = v)
 
 // code output for literals
-#define UOTAG(n)                (TC_USEROBJ+(n<<2))
-#define UITAG(n)                (TC_USERIMM+(n<<8))
+#define UOTAG(n)                (TC_USEROBJ+((n)<<2))
+#define UITAG(n)                (TC_USERIMM+((n)<<8))
 #define UPTR(n,o)               ((pxll_int)(constructed_##n+o))
 #define UPTR0(n)                ((pxll_int)(&constructed_##n))
 #define UOHEAD(l,n)             ((l<<8)|UOTAG(n))
@@ -122,7 +123,7 @@ typedef uintptr_t header;
 
 // XXX future path: eventually we'd like to be able to model C types in the
 //   Irken type system - in which case we could model these guys directly in
-//   irken.  Might make things like vec16 less of a disgusting hack.
+//   irken.
 
 // environment tuple - 'rib'
 typedef struct _tuple
@@ -171,13 +172,6 @@ typedef struct _string {
   char data[];
 } pxll_string;
 
-typedef struct _vec16 {
-  header tc;
-  uint32_t len;
-  // hopefully we get 32-bit alignment here
-  int16_t data[];
-} pxll_vec16;
-
 typedef struct _pair {
   header tc;
   object * car;
@@ -221,3 +215,6 @@ get_safe_typecode (object * ob)
     return GET_TYPECODE (*ob);
   }
 }
+
+#endif // PXLL_H
+

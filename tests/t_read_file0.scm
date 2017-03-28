@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/basis.scm")
+(include "lib/os.scm")
 
 (define (read-file path)
   (let ((ifile (file/open-read path)))

@@ -202,7 +202,7 @@
   (literal:string s)	 -> (format (string s))
   (literal:symbol s)     -> (format (sym s))
   (literal:int n)	 -> (format (int n))
-  (literal:char ch)	 -> (format (char #\#) (char #\\) (char ch)) ;; printable?
+  (literal:char ch)	 -> (format (repr-char ch))
   (literal:undef)	 -> (format "#u")
   (literal:cons dt v ()) -> (format "(" (sym dt) ":" (sym v) ")")
   (literal:cons dt v l)	 -> (format "(" (sym dt) ":" (sym v) " " (join literal->string " " l) ")")
@@ -226,16 +226,16 @@
 (define format-node-type
   (node:varref name)             -> (format "varref " (sym name))
   (node:varset name)             -> (format "varset " (sym name))
-  (node:literal lit)             -> (format "literal " (p literal->string lit))
-  (node:cexp gens type template) -> (format "cexp " (p type-repr type) " " template)
-  (node:ffi gens type name)      -> (format "ffi " (p type-repr type) " " (sym name))
+  (node:literal lit)             -> (format "literal " (literal->string lit))
+  (node:cexp gens type template) -> (format "cexp " (type-repr type) " " template)
+  (node:ffi gens type name)      -> (format "ffi " (type-repr type) " " (sym name))
   (node:sequence)                -> (format "sequence")
   (node:if)                      -> (format "conditional")
   (node:call)                    -> (format "call")
   (node:function name formals)   -> (format "function " (sym name) " (" (join symbol->string " " formals) ") ")
   (node:fix formals)             -> (format "fix (" (join symbol->string " " formals) ") ")
   (node:subst from to)           -> (format "subst " (sym from) "->" (sym to))
-  (node:primapp name params)     -> (format "primapp " (sym name) " " (p repr params))
+  (node:primapp name params)     -> (format "primapp " (sym name) " " (repr params))
   (node:let formals)             -> (format "let (" (join symbol->string " " formals) ")")
   (node:nvcase dt tags arities)  -> (format "nvcase " (sym dt)
                                             "(" (join symbol->string " " tags) ")"
@@ -326,7 +326,7 @@
       () -> (:pair (reverse names) (reverse inits))
       ((sexp:list ((sexp:symbol name) init)) . l)
       -> (loop l (list:cons name names) (list:cons init inits))
-      _ -> (error1 "unpack-bindings" l)
+      _ -> (error1 "unpack-bindings" (format (join repr " " l)))
       )))
 
 (define (parse-cexp-sig sig)
@@ -365,6 +365,7 @@
     (:sorted-fix (append (reverse names0) (reverse names1))
 		 (append (reverse inits0) (reverse inits1)))))
 
+;; translate sexp => node.
 (define walk
   (sexp:symbol s)  -> (node/varref s)
   (sexp:string s)  -> (node/literal (literal:string s))
@@ -391,6 +392,11 @@
        ((sexp:symbol 'literal) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'if) test then else)	    -> (node/if (walk test) (walk then) (walk else))
        ((sexp:symbol '%%sexp) exp)                  -> (node/literal (unsexp exp))
+       ((sexp:symbol '%typed) type exp)
+       -> (let ((exp0 (walk exp)))
+            (printf "user type in expression: " (repr type) "\n")
+            (set-node-type! exp0 (parse-type type))
+            exp0)
        ((sexp:symbol '%%cexp) sig template . args)
        -> (let ((scheme (parse-cexp-sig sig)))
 	    (match scheme with
@@ -491,10 +497,10 @@
 	(counter (make-counter 0)))
     (define (add sym)
       (let ((vd (make-vardef sym (counter.inc))))
-	(set! map (tree/insert map symbol-index<? sym vd))
+	(set! map (tree/insert map symbol-index-cmp sym vd))
 	vd))
     (define (lookup sym)
-      (tree/member map symbol-index<? sym))
+      (tree/member map symbol-index-cmp sym))
     (define (get) map)
     {add=add lookup=lookup get=get}
     ))

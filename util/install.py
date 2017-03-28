@@ -54,8 +54,22 @@ open ('self/flags.scm', 'wb').write (
     flags.replace ('./include', IRKENINC)
     )
 
-# tricky, result code != 0
-os.system ('self/compile self/compile.scm')
+system ('self/compile self/compile.scm -q')
+
+# rebuild bytecode
+print 'building new bytecode image...'
+system ('self/compile self/compile.scm -b -q')
 
 # copy binary
 system ('cp -p self/compile %s/irken' % (IRKENBIN,))
+# copy vm
+system ('cp -p vm/irkvm %s/irkvm' % (IRKENBIN,))
+# copy byte compiler image
+system ('cp -p self/compile.byc %s/' % (IRKENLIB,))
+# make irkc script
+open ('vm/irkc', 'wb').write (
+    "#!/bin/sh\n%s/irkvm %s/compile.byc $@\n" % (IRKENBIN, IRKENLIB)
+)
+os.chmod ('vm/irkc', 0755)
+system ('cp -p vm/irkc %s/' % (IRKENBIN,))
+

@@ -1,22 +1,27 @@
 ;; -*- Mode: Irken -*-
 
 (define (printn x)
-  (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
+  (%backend (c llvm)
+    (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
+  (%backend bytecode
+    (print x)
+    (newline)))
 
 (define (print x)
-  (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
-
-(define (print-string s)
-  (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s))
-  #u
+  (%backend (c llvm) (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
+  (%backend bytecode (%%cexp ('a -> undefined) "printo" x))
   )
 
-;; original version returns how many chars were written...
-(define (print-string* s)
-  (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)))
+;; note: discards return value.
+(define (print-string s)
+  (%backend (c llvm) (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)) #u)
+  (%backend bytecode (%%cexp (string -> int) "prints" s) #u)
+  )
 
 (define (flush)
-  (%%cexp (-> int) "fflush (stdout)"))
+  (%backend (c llvm) (%%cexp (-> int) "fflush (stdout)"))
+  ;; not using stdio
+  (%backend bytecode #u))
 
 (define (print-char ch)
   (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" ch))
@@ -24,50 +29,72 @@
 (define (terpri)
   (print-char #\newline))
 
-(define newline terpri)
+(define (newline)
+  (%backend (c llvm) (print-char #\newline))
+  (%backend bytecode (print-string "\n")))
 
 (define (= a b)
   (%backend c (%%cexp (int int -> bool) "%0==%1" a b))
-  (%backend llvm (%llicmp eq a b)))
+  (%backend llvm (%llicmp eq a b))
+  (%backend bytecode (%%cexp (int int -> bool) "eq" a b))
+  )
 
 (define (zero? a)
   (%%cexp (int -> bool) "%0==0" a))
 
 (define (< a b)
   (%backend c (%%cexp (int int -> bool) "%0<%1" a b))
-  (%backend llvm (%llicmp slt a b)))
+  (%backend llvm (%llicmp slt a b))
+  (%backend bytecode (%%cexp (int int -> bool) "lt" a b))
+  )
 
 (define (<= a b)
   (%backend c (%%cexp (int int -> bool) "%0<=%1" a b))
-  (%backend llvm (%llicmp sle a b)))
+  (%backend llvm (%llicmp sle a b))
+  (%backend bytecode (%%cexp (int int -> bool) "le" a b))
+  )
 
 (define (> a b)
   (%backend c (%%cexp (int int -> bool) "%0>%1" a b))
-  (%backend llvm (%llicmp sgt a b)))
+  (%backend llvm (%llicmp sgt a b))
+  (%backend bytecode (%%cexp (int int -> bool) "gt" a b))
+  )
 
 (define (>= a b)
   (%backend c (%%cexp (int int -> bool) "%0>=%1" a b))
-  (%backend llvm (%llicmp sge a b)))
+  (%backend llvm (%llicmp sge a b))
+  (%backend bytecode (%%cexp (int int -> bool) "ge" a b))
+  )
 
 (define (>0 a)
   (%backend c (%%cexp (int -> bool) "%0>0" a))
-  (%backend llvm (%llicmp sgt a 0)))
+  (%backend llvm (%llicmp sgt a 0))
+  (%backend bytecode (%%cexp (int int -> bool) "gt" a 0))
+  )
 
 (define (<0 a)
   (%backend c (%%cexp (int -> bool) "%0<0" a))
-  (%backend llvm (%llicmp slt a 0)))
+  (%backend llvm (%llicmp slt a 0))
+  (%backend bytecode (%%cexp (int int -> bool) "lt" a 0))
+  )
 
 (define (binary+ a b)
   (%backend c (%%cexp (int int -> int) "%0+%1" a b))
-  (%backend llvm (%llarith add a b)))
+  (%backend llvm (%llarith add a b))
+  (%backend bytecode (%%cexp (int int -> int) "add" a b))
+  )
 
 (define (binary- a b)
   (%backend c (%%cexp (int int -> int) "%0-%1" a b))
-  (%backend llvm (%llarith sub a b)))
+  (%backend llvm (%llarith sub a b))
+  (%backend bytecode (%%cexp (int int -> int) "sub" a b))
+  )
 
 (define (binary* a b)
   (%backend c (%%cexp (int int -> int) "%0*%1" a b))
-  (%backend llvm (%llarith mul a b)))
+  (%backend llvm (%llarith mul a b))
+  (%backend bytecode (%%cexp (int int -> int) "mul" a b))
+  )
 
 (defmacro +
   (+ x)       -> x
@@ -84,14 +111,18 @@
 
 (define (/ a b)
   (%backend c (%%cexp (int int -> int) "%0/%1" a b))
-  (%backend llvm (%llarith sdiv a b)))
+  (%backend llvm (%llarith sdiv a b))
+  (%backend bytecode (%%cexp (int int -> int) "div" a b))
+  )
 
 ;; Note: this is incorrect! mod and remainder are not the same
 ;;  operation. See http://en.wikipedia.org/wiki/Modulo_operation
 ;;  [specifically, the sign of the result can differ]
 (define (mod a b)
   (%backend c (%%cexp (int int -> int) "%0 %% %1" a b))
-  (%backend llvm (%llarith srem a b)))
+  (%backend llvm (%llarith srem a b))
+  (%backend bytecode (%%cexp (int int -> int) "srem" a b))
+  )
 
 (define remainder mod)
 
@@ -100,37 +131,53 @@
 
 (define (<< a b)
   (%backend c (%%cexp (int int -> int) "%0<<%1" a b))
-  (%backend llvm (%llarith shl a b)))
+  (%backend llvm (%llarith shl a b))
+  (%backend bytecode (%%cexp (int int -> int) "shl" a b))
+  )
 
 (define (>> a b)
   (%backend c (%%cexp (int int -> int) "%0>>%1" a b))
-  (%backend llvm (%llarith ashr a b)))
+  (%backend llvm (%llarith ashr a b))
+  (%backend bytecode (%%cexp (int int -> int) "ashr" a b))
+  )
 
 (define (bit-get n i)
   (%backend c (%%cexp (int int -> bool) "(%0&(1<<%1))>0" n i))
-  (%backend llvm (> (logand n (<< 1 i)) 0)))
+  (%backend llvm (>0 (logand n (<< 1 i))))
+  (%backend bytecode (>0 (logand n (<< 1 i))))
+  )
 
 (define (bit-set n i)
   (%backend c (%%cexp (int int -> int) "%0|(1<<%1)" n i))
-  (%backend llvm (logior n (<< 1 i))))
+  (%backend llvm (logior n (<< 1 i)))
+  (%backend bytecode (logior n (<< 1 i)))
+  )
 
 ;; any reason I can't use the same characters that C does?
 ;; yeah - '|' is a comment start character in scheme.
 (define (logior a b)
   (%backend c (%%cexp (int int -> int) "%0|%1" a b))
-  (%backend llvm (%llarith or a b)))
+  (%backend llvm (%llarith or a b))
+  (%backend bytecode (%%cexp (int int -> int) "or" a b))
+  )
 
 (define (logxor a b)
   (%backend c (%%cexp (int int -> int) "%0^%1" a b))
-  (%backend llvm (%llarith xor a b)))
+  (%backend llvm (%llarith xor a b))
+  (%backend bytecode (%%cexp (int int -> int) "xor" a b))
+  )
 
 (define (logand a b)
   (%backend c (%%cexp (int int -> int) "%0&%1" a b))
-  (%backend llvm (%llarith and a b)))
+  (%backend llvm (%llarith and a b))
+  (%backend bytecode (%%cexp (int int -> int) "and" a b))
+  )
 
 (define (lognot a)
   (%backend c (%%cexp (int -> int) "~%0" a))
-  (%backend llvm (- -1 a)))
+  (%backend llvm (- -1 a))
+  (%backend bytecode (- -1 a))
+  )
 
 ;; note: use llvm.minnum
 (define (min x y)
@@ -144,48 +191,71 @@
 
 (datatype cmp
   (:<)
-  (:>)
   (:=)
+  (:>)
   )
 
 (define cmp-repr
-  (cmp:=) -> "="
   (cmp:<) -> "<"
+  (cmp:=) -> "="
   (cmp:>) -> ">"
   )
 
-(define (cmp a b)
+(define (int-cmp a b)
   (cond ((< a b) (cmp:<))
 	((> a b) (cmp:>))
 	(else (cmp:=))))
 
+(define (magic-cmp a b)
+  ;; note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
+  ;;  to match the 'cmp' datatype.
+  (%backend (c llvm)
+    (%%cexp ('a 'a -> cmp) "(object*)UITAG(1+magic_cmp(%0, %1))" a b))
+  (%backend bytecode
+    (%%cexp ('a 'a -> cmp) "cmp" a b))
+  )
+
+(define (magic<? a b)
+  (eq? (cmp:<) (magic-cmp a b)))
+
 (define (eq? a b)
-  (%%cexp ('a 'a -> bool) "%0==%1" a b))
+  (%backend c (%%cexp ('a 'a -> bool) "%0==%1" a b))
+  (%backend llvm (%lleq #f a b))
+  (%backend bytecode (%%cexp ('a 'a -> bool) "eq" a b))
+  )
 
 (define (not x)
   (eq? x #f))
 
 (define (char=? a b)
-  (%%cexp (char char -> bool) "%0==%1" a b))
+  (eq? a b))
 
 (define (char< a b)
   (%%cexp (char char -> bool) "%0<%1" a b))
 
 (define (string-length s)
-  (%%cexp ((raw string) -> int) "%0->len" s))
+  (%backend (c llvm) (%%cexp ((raw string) -> int) "%0->len" s))
+  (%backend bytecode (%%cexp (string -> int) "slen" s))
+  )
 
 (define (make-vector n val)
-  (%ensure-heap #f n)
-  (%make-vector #f n val))
-
-;; (define (make-vec16 n)
-;;   ;; XXX ensure-heap here
-;;   (%make-vec16 #f n))
+  (%backend (c llvm)
+    (%ensure-heap #f n)
+    (%make-vector #f n val))
+  (%backend bytecode
+    (%%cexp (int 'a -> (vector 'a))
+            "vmake"
+            n val))
+  )
 
 (define (vector-length v)
-  (%%cexp
-   ((vector 'a) -> int)
-   "(%0 == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%0)" v))
+  (%backend (c llvm)
+    (%%cexp
+     ((vector 'a) -> int)
+     "(%0 == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%0)" v))
+  (%backend bytecode
+    (%%cexp ((vector 'a) -> int) "vlen" v))
+  )
 
 (define (address-of ob)
   (%%cexp ('a -> int) "(pxll_int)%0" ob))
@@ -195,7 +265,7 @@
 (define (error x)
   (print-string "\n***\nRuntime Error, halting: ")
   (printn x)
-  (%exit #f x)
+  (%exit #f -1)
   )
 
 (define (error1 msg ob)
@@ -212,11 +282,16 @@
   (print-string "\n\t")
   (print ob1)
   (print-string "\n")
-  (%exit #f #u)
+  (%exit #f -1)
   )
 
 (define (impossible)
   (error "Why, sometimes I've believed as many as six impossible things before breakfast."))
+
+(define assert
+  #t -> #u
+  #f -> (error "assertion failed.")
+  )
 
 (define (id x) x)
 
@@ -381,16 +456,36 @@
   (try body0 body1 ...)                   -> (try (begin body0) body1 ...)
   )
 
-(cinclude "sys/errno.h")
+(%backend (c llvm)
+  (cinclude "sys/errno.h")
 
-(define (syscall retval)
-  (if (< retval 0)
-      (raise (:OSError (%%cexp (-> int) "errno")))
-      retval))
+  (define (syscall retval)
+    (if (< retval 0)
+        ;; this requires string.scm.  need to place syscall elsewhere.
+        ;; (raise (:OSError (copy-cstring (%%cexp (-> cstring) "strerror(errno)"))))
+        (raise (:OSError (%%cexp (-> int) "errno")))
+        retval))
 
-(define (set-verbose-gc b)
-  (%%cexp (bool -> undefined) "verbose_gc = %0" b)
+  (define (set-verbose-gc b)
+    (%%cexp (bool -> undefined) "(verbose_gc = %0, PXLL_UNDEFINED)" b))
+
+  (define (get-word-size)
+    (%%cexp (-> int) "sizeof(pxll_int)"))
   )
 
-(define (get-word-size)
-  (%%cexp (-> int) "sizeof(pxll_int)"))
+(%backend bytecode
+
+  (define (syscall retval)
+    (if (< retval 0)
+        (raise (:OSError -1)) ;; XXX temp
+        retval))
+
+  (define (set-verbose-gc b)
+    (%%cexp (bool -> undefined) "quiet" b))
+
+  ;; could probably calculate this from int math.
+  (define (get-word-size)
+    8 ;; XXX bogus
+    )
+  )
+  

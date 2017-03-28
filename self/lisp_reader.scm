@@ -6,7 +6,6 @@
 (include "lib/io.scm")
 (include "lib/os.scm")
 (include "lib/alist.scm")
-;(include "lib/aa_map.scm")
 (include "lib/frb.scm")
 (include "lib/symbol.scm")
 
@@ -296,18 +295,14 @@
 	  )))
 
     (define (read-list)
-      ;; throw away the open paren
-      (next)
+      (next) ;; throw away the open paren
       (let loop ((result '()))
 	(skip-whitespace)
-	(let ((ch (peek)))
-	  (if (eq? ch #\))
-	      ;; throw away the paren
-	      (begin (next) (reverse result))
-	      (let ((exp (read)))
-		;; XXX should I check for <include> here?
-		(loop (list:cons exp result)))
-	      ))))
+        (cond ((eq? (peek) #\))
+               (next) ;; throw away the close paren
+               (reverse result))
+              (else
+               (loop (list:cons (read) result))))))
 
     (define (read-record)
       ;; { label=value label=value ...}
@@ -367,19 +362,13 @@
 	    (maybe:yes digit) -> (loop (+ (* r 8) digit) (skip-peek))
 	    (maybe:no) -> (if neg? (- 0 r) r)))))
 
-    (define (read-include path result)
-      ;; cons the forms from this file onto result, in reverse order...
-      (append (reverse (find-and-read-file path)) result))
-
     (define (read-all)
       (let loop ((result '()))
 	(skip-whitespace)
 	(if (eq? (peek) #\eof)
 	    (reverse result)
-	    (let ((form (read)))
-	      (match form with
-		(sexp:list ((sexp:symbol 'include) (sexp:string path))) -> (loop (read-include path result))
-		_                                                       -> (loop (list:cons form result)))))))
+            (loop (list:cons (read) result)))
+        ))
 
     (read-all)
     ))
@@ -391,10 +380,10 @@
 	(format a "/" b))))
 
 (define (read-file path)
-  (printf "reading file '" path "'\n")
+  ;;(printf "reading file '" path "'\n")
   (let ((file (file/open-read path))
 	(result (reader path (lambda () (file/read-char file)))))
-    (printf "done.\n")
+    ;;(printf "done.\n")
     result))
 
 (define (read-string s)
@@ -413,21 +402,8 @@
   (field:t sa va) (field:t sb vb)
   -> (and (eq? sa sb) (sexp=? va vb)))
 
-;; XXX consider eq? shortcut
-(define sexp=?
-  (sexp:undef) (sexp:undef)           -> #t
-  (sexp:symbol a) (sexp:symbol b)     -> (eq? a b)
-  (sexp:bool a) (sexp:bool b)         -> (eq? a b)
-  (sexp:int a) (sexp:int b)           -> (= a b)
-  (sexp:string a) (sexp:string b)     -> (string=? a b)
-  (sexp:char a) (sexp:char b)         -> (char=? a b)
-  (sexp:list l0) (sexp:list l1)       -> (every2? sexp=? l0 l1)
-  (sexp:vector a) (sexp:vector b)     -> (every2? sexp=? a b)
-  (sexp:record a) (sexp:record b)     -> (every2? field=? a b)
-  (sexp:cons a0 a1) (sexp:cons b0 b1) -> (and (eq? a0 b0) (eq? a1 b1))
-  (sexp:attr a0 a1) (sexp:attr b0 b1) -> (and (sexp=? a0 b0) (eq? a1 b1))
-  _ _ -> #f
-  )
+(define (sexp=? a b)
+  (eq? (cmp:=) (magic-cmp a b)))
 
 (define (sexp1 sym rest)
   ;; build an s-expression with <sym> at the front followed by <rest>
@@ -435,14 +411,24 @@
 
 (define repr-field
   (field:t '... _)   -> "..."
-  (field:t name val) -> (format (sym name) "=" (p repr val)))
+  (field:t name val) -> (format (sym name) "=" (repr val)))
+
+(define repr-char
+  #\newline -> "#\\newline"
+  #\space   -> "#\\space"
+  #\return  -> "#\\return"
+  #\tab     -> "#\\tab"
+  #\eof     -> "#\\eof"
+  #\nul     -> "#\\nul"
+  ch        -> (format "#\\" (char ch))
+  )
 
 (define repr
   (sexp:list ((sexp:symbol 'quote) x)) -> (format "'" (repr x))
   (sexp:list l)     -> (format "(" (join repr " " l) ")")
   (sexp:symbol s)   -> (format (sym s))
   (sexp:string s)   -> (repr-string s)
-  (sexp:char ch)    -> (format "#\\" (char ch))
+  (sexp:char ch)    -> (repr-char ch)
   (sexp:bool #t)    -> "#t"
   (sexp:bool #f)    -> "#f"
   (sexp:int n)      -> (format (int n))
@@ -450,7 +436,7 @@
   (sexp:vector v)   -> (format "#(" (join repr " " v) ")")
   (sexp:record fl)  -> (format "{" (join repr-field " " fl) "}")
   (sexp:cons dt c)  -> (format (if (eq? dt 'nil) "" (symbol->string dt)) ":" (sym c))
-  (sexp:attr lhs a) -> (format (p repr lhs) "." (sym a))
+  (sexp:attr lhs a) -> (format (repr lhs) "." (sym a))
   )
 
 (define indent
@@ -496,17 +482,3 @@
   (recur 0 exp)
   (print-string "\n")
   )
-
-;; (define (test-file)
-;;   (let ((t (read-file
-;; 	    (if (> sys.argc 1)
-;; 		sys.argv[1]
-;; 		"lib/core.scm"))))
-;;     ;;  (printn t)
-;;     ;;(for-each (lambda (x) (printn x) (pp x 80) (newline)) t)
-;;     (printn t)
-;;     (for-each (lambda (x) (pp x 80) (newline)) t)
-;;     #u
-;;     ))
-
-;(test-file)

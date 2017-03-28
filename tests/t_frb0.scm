@@ -6,7 +6,7 @@
 
 ;; test tree/make macro
 
-(let ((t (tree/make <
+(let ((t (tree/make int-cmp
 	  (1 "time")
 	  (2 "flies")
 	  (3 "like")
@@ -14,5 +14,5 @@
 	  (5 "banana")
 	  )))
   (printn t)
-  (tree/member t < 5)
+  (tree/member t int-cmp 5)
   )

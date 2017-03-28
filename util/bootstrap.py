@@ -18,6 +18,8 @@ cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -I./include')
 #   you *must* add -fno-var-tracking as well or your compiles will never finish.
 #   See: http://gcc.gnu.org/bugzilla/show_bug.cgi?id=56510
 
+class CommandFailed (Exception):
+    pass
 
 # NOTE: to make the bootstrap self/compile.c, make sure self/flags is untouched,
 #  then self-compile.  The result should be sent to github.
@@ -36,7 +38,8 @@ def system (cmd):
     if windows:
         cmd = tweak (cmd)
     print cmd
-    os.system (cmd)
+    if 0 != os.system (cmd):
+        raise CommandFailed (cmd)
 
 def move (p0, p1):
     if windows:
@@ -50,6 +53,13 @@ def copy (p0, p1):
     else:
         system ('cp %s %s' % (p0, p1))
 
+def unlink (p):
+    try:
+        os.unlink (tweak (p))
+    except OSError:
+        pass
+
+
 open ('self/flags.scm', 'wb').write (
 """
 (define CC "%s")
@@ -57,17 +67,20 @@ open ('self/flags.scm', 'wb').write (
 """ % (gcc, cflags))
 
 print 'copying the bootstrap compiler'
-copy ('self/bootstrap.c', 'self/compile.c')
+copy ('self/bootstrap.byc', 'self/compile.byc')
+
+print 'compiling with vm...'
+system ('vm/irkvm self/compile.byc self/compile.scm -q')
 
 print 'compiling stage0 binary:'
 system ('%s %s self/compile.c -o self/compile' % (gcc, cflags))
 
 print 'compiling stage1 binary:'
-system ('self/compile self/compile.scm')
+system ('self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.1.c')
 
 print 'compiling stage2 binary:'
-system ('self/compile self/compile.scm')
+system ('self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.2.c')
 
 def diff (p0, p1):
@@ -93,12 +106,5 @@ if samesame:
 else:
     print 'stage1 and stage2 output differs'
 
-def unlink (p):
-    try:
-        os.unlink (tweak (p))
-    except:
-        pass
-
 unlink ('self/compile.1.c')
 move ('self/compile.2.c', 'self/compile.c')
-unlink ('self/compile.backup.c')

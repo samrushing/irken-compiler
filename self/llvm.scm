@@ -1,35 +1,9 @@
 ;; -*- Mode: Irken -*-
 
-(define immediate-true  (encode-immediate (literal:cons 'bool 'true '())))
-(define immediate-false (encode-immediate (literal:cons 'bool 'false '())))
-
-;; any way to pull these from the include file?
-
-;; immediate types (multiples of 2 (but not 4!))
-(define TC_CHAR 2)           ;; (1<<1) // 00000010 02
-(define TC_BOOL 6)           ;; (3<<1) // 00000110 06
-(define TC_NIL 10)           ;; (5<<1) // 00001010 0a
-(define TC_UNDEFINED 14)     ;; (7<<1) // 00001110 0e
-(define TC_EMPTY_VECTOR 18)  ;; (9<<1) // 00010010 12
-(define TC_USERIMM 22)       ;; (11<<1) // 00010110 16
-
-;; pointer types (multiples of 4)
-(define TC_SAVE 4)     ;; (1<<2) // 00000100  04
-(define TC_CLOSURE 8)  ;; (2<<2) // 00001000  08
-(define TC_TUPLE 12)   ;; (3<<2) // 00001100  0c
-(define TC_ENV 12)     ;; (3<<2) // 00001100  0c alias
-(define TC_STRING 16)  ;; (4<<2) // 00010000  10
-(define TC_VECTOR 20)  ;; (5<<2) // 00010100  14
-(define TC_PAIR 24)    ;; (6<<2) // 00011000  18
-(define TC_SYMBOL 28)  ;; (7<<2) // 00011100  1c
-(define TC_VEC16 32)   ;; (8<<2) // 00100000  20
-(define TC_BUFFER 36)  ;; (9<<2) // 00100100  24
-(define TC_USEROBJ 40) ;; (10<<2)// 00101000  28
-
 
 ;; XXX shouldn't be global (or should be kept in the-context).
-(define fatbar-free (map-maker <))
-(define litcons (set2-maker <))
+(define fatbar-free (map-maker int-cmp))
+(define litcons (set2-maker int-cmp))
 
 ;; CPS registers are mapped to LLVM idents like this:
 ;;  r5 -> "%r5"
@@ -51,7 +25,7 @@
 	(fun-stack '())
 	(label-counter (make-counter 1))
 	(arg-counter (make-counter 0))
-	(renamed (map-maker <))
+	(renamed (map-maker int-cmp))
 	)
 
     (define (ID)
@@ -179,6 +153,7 @@
       (match name params args with
 	'%llarith (sexp:symbol op) (arg0 arg1)             -> (emit-arith op arg0 arg1 target)
 	'%llicmp  (sexp:symbol op) (arg0 arg1)             -> (emit-icmp op arg0 arg1 target)
+	'%lleq    _                (arg0 arg1)             -> (emit-icmp 'eq arg0 arg1 target)
 	'%dtcon   (sexp:cons dtname altname) args          -> (emit-dtcon dtname altname args target)
 	'%nvget   (sexp:list (_ (sexp:int index) _)) (reg) -> (emit-nvget target reg index)
 	'%make-vector _ (vlen vval)                        -> (emit-make-vector vlen vval target)
@@ -234,9 +209,7 @@
 	     )
 
 	;; '%cget
-	;; '%cset XXX dont' forget call to dead-set
-	;; '%getcc
-	;; '%putcc
+	;; '%cset XXX don't forget call to dead-set
 	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x (repr params) args))
 	))
 
