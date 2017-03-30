@@ -25,13 +25,6 @@
 (define (unlink name)
   ((make-ffi "unlink\x00" #\i 1 (name) (string -> int)) name))
 
-;; (define vm-get-object
-;;   (let ((object-getter (%%cexp (-> (string -> 'a)) "getc")))
-;;     (lambda (name)
-;;       (%%cexp ((string -> 'a) int string -> 'a) "irk" object-getter 1 name))))
-
-;; (define irken-argv : (vector string) (vm-get-object "argv"))
-
 (define sys
   (let ((argv0 (%%cexp (-> (vector string)) "argv"))
         (argc (vector-length argv0)))
