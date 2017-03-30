@@ -24,7 +24,7 @@ char * op_names[] = {
   "nvcase", "tupref", "vlen", "vref", "vset", "vmake", "alloc",
   "rref", "rset", "getcc", "putcc", "irk", "getc", "dlsym", "ffi",
   "smake", "slen", "sref", "sset", "scopy", "unchar", "plat", "gist",
-  "argv", "quiet", "heap",
+  "argv", "quiet", "heap", "readf",
 };
 
 static int argc;
@@ -411,6 +411,7 @@ vm_get_field_offset (pxll_int index, pxll_int label_code)
 
 object * vm_the_closure = PXLL_NIL;
 
+static
 pxll_int
 vm_set_closure (object * closure)
 {
@@ -418,6 +419,7 @@ vm_set_closure (object * closure)
   return 0;
 }
 
+static
 object
 vm_gc (int nreg)
 {
@@ -446,6 +448,7 @@ vm_gc (int nreg)
   return nwords;
 }
 
+static
 object *
 vm_copy_string (char * s)
 {
@@ -456,6 +459,7 @@ vm_copy_string (char * s)
   return (object *) r;
 }
 
+static
 object *
 vm_make_argv (void)
 {
@@ -465,6 +469,32 @@ vm_make_argv (void)
     r[i+1] = vm_copy_string (argv[i+1]);
   }
   return r;
+}
+
+static
+object *
+vm_read_file (pxll_string * path)
+{
+  // zero-terminate path
+  char path0[path->len + 1];
+  memcpy (path0, path->data, path->len + 1);
+  path0[path->len] = '\x00';
+  FILE * f = fopen (path0, "rb");
+  object * result = PXLL_NIL;
+  char data[16384];
+  while (1) {
+    size_t nbytes = fread (data, 1, sizeof(data), f);
+    if (nbytes == 0) {
+      break;
+    } else {
+      pxll_string * part = (pxll_string *) allocate (TC_STRING, string_tuple_length (nbytes));
+      memcpy (part->data, data, nbytes);
+      part->len = nbytes;
+      result = vm_list_cons ((object*)part, result);
+    }
+  }
+  fclose (f);
+  return result;
 }
 
 pxll_int
@@ -604,7 +634,7 @@ vm_go (void)
     &&l_vmake, &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc,
     &&l_irk, &&l_getc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_plat, &&l_gist,
-    &&l_argv, &&l_quiet, &&l_heap,
+    &&l_argv, &&l_quiet, &&l_heap, && l_readf,
   };
 
   // XXX what happens when the opcode is out of range? (segfault)
@@ -1194,6 +1224,11 @@ vm_go (void)
       }
     }
   }
+  pc += 3;
+  DISPATCH();
+ l_readf:
+    // READF target path
+  REG1 = vm_read_file ((pxll_string *) REG2);
   pc += 3;
   DISPATCH();
 }

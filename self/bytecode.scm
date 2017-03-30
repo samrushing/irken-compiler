@@ -86,6 +86,8 @@
     (OI 'argv    1      #f     #t)   ;; target
     (OI 'quiet   1      #f     #f)   ;; bool
     (OI 'heap    2      #f     #f)   ;; size nreg
+    (OI 'readf   2      #f     #t)   ;; target path
+    ;;  name   nargs varargs target? args
     )))
 
 (for-range i (vector-length opcode-info)
@@ -182,8 +184,8 @@
         (insn:pvcase tr tags arities jn alts ealt k)  -> (emit-pvcase tr tags arities jn alts ealt k)
         (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind (k/target k)) k)
         (insn:alloc tag size k)                       -> (emitk (emit-alloc tag size (k/target k)) k)
-        (insn:ffi sig type name args k)               -> (error1 "no FFI in bytecode backend" insn)
         (insn:testcexp regs sig tmpl jn k0 k1 k)      -> (impossible)
+        (insn:ffi sig type name args k)               -> (error1 "ffi being redesigned." insn)
         ))
 
     (define (encode-int n)
