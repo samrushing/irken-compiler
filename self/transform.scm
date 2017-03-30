@@ -1,6 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(include "self/lisp_reader.scm")
 (include "self/mbe.scm")
 (include "self/types.scm")
 (include "self/match.scm")

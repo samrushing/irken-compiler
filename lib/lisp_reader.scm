@@ -1,14 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/core.scm")
-(include "lib/pair.scm")
-(include "lib/string.scm")
-(include "lib/io.scm")
-(include "lib/os.scm")
-(include "lib/alist.scm")
-(include "lib/frb.scm")
-(include "lib/symbol.scm")
-
 ;; XXX consider rewriting with more experience
 
 (datatype field
@@ -378,13 +369,6 @@
     (if (char=? #\/ (string-ref a (- alen 1)))
 	(format a b)
 	(format a "/" b))))
-
-(define (read-file path)
-  ;;(printf "reading file '" path "'\n")
-  (let ((file (file/open-read path))
-	(result (reader path (lambda () (file/read-char file)))))
-    ;;(printf "done.\n")
-    result))
 
 (define (read-string s)
   (reader "<string>" (string-reader s)))

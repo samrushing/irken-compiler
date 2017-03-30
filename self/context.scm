@@ -1,7 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/cmap.scm")
-
 (datatype backend
   (:c)
   (:llvm)

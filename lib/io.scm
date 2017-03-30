@@ -77,18 +77,6 @@
 	 (file/flush self)
 	 (file/write-char self ch))))
 
-;; read from a string one char at a time...
-;; XXX think about generator interfaces...
-(define (string-reader s)
-  (let ((pos 0)
-	(slen (string-length s)))
-    (lambda ()
-      (if (>= pos slen)
-	  #\eof
-	  (let ((r (string-ref s pos)))
-	    (set! pos (+ 1 pos))
-	    r)))))
-
 (define (make-file-generator ifile)
   (make-generator
    (lambda (consumer)

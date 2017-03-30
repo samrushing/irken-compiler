@@ -1,5 +1,19 @@
 ;; -*- Mode: Irken -*-
 
+(include "lib/core.scm")
+(include "lib/pair.scm")
+(include "lib/string.scm")
+(include "lib/io.scm")
+(include "lib/os.scm")
+(include "lib/alist.scm")
+(include "lib/frb.scm")
+(include "lib/symbol.scm")
+(include "lib/lisp_reader.scm")
+(include "lib/cmap.scm")
+(include "lib/counter.scm")
+(include "lib/stack.scm")
+(include "lib/set.scm")
+
 (include "self/backend.scm")
 
 (define (find-base path)
@@ -28,6 +42,11 @@
       except
       (:OSError _) -> (find-file dirs name)
       ))
+
+(define (read-file path)
+  (let ((file (file/open-read path))
+	(result (reader path (lambda () (file/read-char file)))))
+    result))
 
 (define (find-and-read-file path)
   ;;(printf "reading file '" path "'\n")

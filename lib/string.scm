@@ -330,3 +330,15 @@
 	    "memcpy (%0, %1, %2)"
 	    result s len)
     result))
+
+;; read from a string one char at a time...
+;; XXX think about generator interfaces...
+(define (string-reader s)
+  (let ((pos 0)
+	(slen (string-length s)))
+    (lambda ()
+      (if (>= pos slen)
+	  #\eof
+	  (let ((r (string-ref s pos)))
+	    (set! pos (+ 1 pos))
+	    r)))))

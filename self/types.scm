@@ -1,7 +1,5 @@
 ;; -*- Mode: Irken; coding: utf-8 -*-
 
-(include "lib/set.scm")
-
 (datatype type
   (:tvar int                {parent=(maybe type) pending=bool})
   (:pred symbol (list type) {parent=(maybe type) pending=bool})
