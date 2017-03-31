@@ -85,6 +85,7 @@
     (OI 'gist    1      #f     #t)   ;; target
     (OI 'argv    1      #f     #t)   ;; target
     (OI 'quiet   1      #f     #f)   ;; bool
+    (OI 'heap    2      #f     #f)   ;; size nreg
     )))
 
 (for-range i (vector-length opcode-info)
@@ -449,6 +450,11 @@
          (rk rv) -> (LINSN 'putcc target rk rv)
          _ -> (primop-error))
 
+       (define prim-heap
+         (rsize) free
+         -> (LINSN 'heap rsize (length free))
+         _ _ -> (primop-error))
+
        (match name with
          '%dtcon       -> (prim-dtcon parm)
          '%nvget       -> (prim-nvget parm args)
@@ -460,8 +466,7 @@
          '%exit        -> (prim-exit args)
          '%getcc       -> (prim-getcc args)
          '%putcc       -> (prim-putcc args)
-         ;; XXX ensure-heap: we need to handle free regs in gc.
-         ;; '%ensure-heap -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
+         '%ensure-heap -> (prim-heap args (k/free k))
          ;; '%callocate   -> (prim-callocate parm args)
          _ -> (primop-error))))
 

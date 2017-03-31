@@ -1,7 +1,10 @@
 ;; -*- Mode: Irken -*-
 
 (define (string-tuple-length n)
-  (%%cexp (int -> int) "string_tuple_length (%0)" n))
+  (%backend (c llvm)
+    (%%cexp (int -> int) "string_tuple_length (%0)" n))
+  (%backend bytecode
+    (how-many (+ n 4) (get-word-size))))
 
 (define (make-string n)
   (%backend (c llvm)
@@ -11,6 +14,7 @@
      "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((pxll_string*)(t))->len = %0, t)"
      n))
   (%backend bytecode
+    (%ensure-heap #f (string-tuple-length n))
     (%%cexp (int -> string) "smake" n))
   )
 
