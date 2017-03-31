@@ -120,13 +120,13 @@ while working on the compiler (on my machine) is ~5s.
 
 To use the bytecode/VM:
 
-    $ self/compile myfile.scm -b
-    $ vm/irkvm myfile.byc
+    $ irken myfile.scm -b
+    $ irkvm myfile.byc
 
 You can also run the compiler in the VM:
 
-    $ vm/irkvm self/compile.byc myfile.scm -b
-    $ vm/irkvm myfile.byc
+    $ irkvm self/compile.byc myfile.scm -b
+    $ irkvm myfile.byc
 
 I am currently working on a universal FFI interface that should be
 usable from all 3 backends.
