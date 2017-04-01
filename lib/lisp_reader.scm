@@ -91,17 +91,16 @@
       (peek)
       )
 
-    (define (skip-comment)
-      (let loop ((ch (next)))
-	(match ch with
-	  #\return -> #u
-	  #\newline -> #u
-	  _ -> (loop (skip-peek)))))
+    (define skip-comment
+      #\return  -> #u
+      #\newline -> #u
+      _         -> (skip-comment (skip-peek))
+      )
 
     (define (skip-whitespace)
       (let loop ((ch (peek)))
 	(cond ((eq? ch #\eof) #u)
-	      ((eq? ch #\;) (skip-comment) (loop (peek)))
+	      ((eq? ch #\;) (skip-comment (skip-peek)) (loop (peek)))
 	      ((whitespace? ch) (loop (skip-peek)))
 	      (else #u))))
 

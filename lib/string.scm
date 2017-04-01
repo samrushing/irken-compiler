@@ -196,7 +196,7 @@
 	))))
 
 (define whitespace    '(#\space #\tab #\newline #\return))
-(define delimiters     (string->list "()[]{}:"))
+(define delimiters     (string->list "()[]{}:;"))
 (define letters        (string->list "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
 (define all-delimiters (append whitespace delimiters))
 (define digits         (string->list "0123456789"))
