@@ -334,7 +334,7 @@
 	     (rule:t pats code)
 	     -> (let ((subs (pattern->subs (car pats))))
 		  (if (not (= (length subs) arity))
-		      (error1 "arity mismatch in variant pattern" rules))
+		      (error1 "arity mismatch in variant pattern" (repr code)))
 		  (PUSH rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
 		  (for-range
 		      i arity

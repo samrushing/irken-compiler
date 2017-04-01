@@ -129,6 +129,11 @@
     (define (dead free k)
       (cont:k -1 free k))
 
+    (define (cps-error msg exp0)
+      (printf (join "\n" (get-node-context exp (noderec->id exp0) 30)) "\n")
+      (printf "node id=" (int (noderec->id exp0)) "\n")
+      (error msg))
+
     (define (compile tail? exp lenv k)
 
       ;; override continuation when in tail position
@@ -559,7 +564,7 @@
 		       (ealt1
 			(if (not (= (dt.get-nalts) (length alts)))
 			    (match (noderec->t eclause) with
-			      (node:primapp '%match-error _) -> (error1 "incomplete match" alt-formals)
+			      (node:primapp '%match-error _) -> (cps-error "incomplete match" value)
 			      ;; complete match, no ealt
 			      (node:primapp '%complete-match _) -> (maybe:no)
 			      ;; incomplete match with ealt
