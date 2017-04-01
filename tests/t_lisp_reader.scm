@@ -1,8 +1,13 @@
 ;; -*- Mode: Irken -*-
 
-;; XXX this is about to be moved to lib.
-(include "self/lisp_reader.scm")
+(include "lib/basis.scm")
 (include "lib/os.scm")
+(include "lib/lisp_reader.scm")
+
+(define (read-file path)
+  (let ((file (file/open-read path))
+	(result (reader path (lambda () (file/read-char file)))))
+    result))
 
 (define (test-file)
   (let ((t (read-file
