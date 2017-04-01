@@ -1,0 +1,11 @@
+(event
+  (includes sys/types.h sys/event.h sys/time.h)
+  (structs kevent timespec)
+  (constants EVFILT_READ EVFILT_EXCEPT EVFILT_WRITE EVFILT_AIO
+             EVFILT_VNODE EVFILT_PROC EVFILT_SIGNAL
+             EV_ADD EV_ENABLE EV_DISABLE EV_DELETE EV_RECEIPT 
+             EV_ONESHOT EV_CLEAR EV_EOF EV_ERROR)
+  (funs 
+   (kqueue -> int)
+   (kevent int (* (struct kevent)) int (* (struct kevent)) int (* (struct timespec)) -> int)
+   ))

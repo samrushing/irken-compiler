@@ -1,0 +1,12 @@
+(socket
+  (includes sys/types.h sys/socket.h netinet/in.h arpa/inet.h)
+  (structs sockaddr sockaddr_in sockaddr_in6 in_addr in6_addr)
+  (constants AF_INET AF_UNIX SOCK_STREAM SOCK_DGRAM)
+  (funs 
+   (inet_ntop int (* (struct in_addr)) (* char) int -> (* char))
+   (inet_pton int (* char) (* (struct in_addr)) -> int)
+   (socket int int int -> int)
+   (bind int (* (struct sockaddr)) int -> int)
+   (listen int int -> int)
+   (accept int (* (struct sockaddr)) int -> int)
+   ))
