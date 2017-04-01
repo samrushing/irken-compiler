@@ -1,23 +1,22 @@
 ;; -*- Mode: Irken -*-
 
-(include "self/lisp_reader.scm")
+(include "lib/basis.scm")
+(include "lib/os.scm")
+(include "lib/lisp_reader.scm")
 
 ;; --- s-expression input ---
-
-(define (find-and-read-file path)
-  (raise (:NoIncludeFiles))
-  )
 
 (define (file/read-line file)
   (let loop ((ch (file/read-char file))
          (r '()))
     (if (eq? ch #\newline)
-    (list->string (reverse r))
-    (loop (file/read-char file) (list:cons ch r)))))
+        (list->string (reverse r))
+        (loop (file/read-char file) (list:cons ch r)))))
 
-(define (ask prompt file)
-  (printf prompt) (flush)
-  (file/read-line file))
+(define (ask prompt ifile ofile)
+  (file/write ofile prompt)
+  (file/flush ofile)
+  (file/read-line ifile))
 
 ;; --- universal datatype ---
 ;;
@@ -199,16 +198,16 @@
   (varset 'x (univ:int 34) namespace)
   )
 
-(define (read-eval-print-loop stdin)
+(define (read-eval-print-loop ifile ofile)
   (setup-initial-environment)
-  (let loop ((line (ask "> " stdin)))
+  (let loop ((line (ask "> " ifile ofile)))
     (match (string-length line) with
       0 -> #u
       _ -> (begin
          ;;(printf "line = '" line "'\n")
          (for-list exp (read-string line)
            (printf (univ-repr (eval exp namespace)) "\n"))
-         (loop (ask "> " stdin)))
+         (loop (ask "> " ifile ofile)))
       )))
 
-(read-eval-print-loop (file/open-stdin))
+(read-eval-print-loop (file/open-stdin) (file/open-stdout))
