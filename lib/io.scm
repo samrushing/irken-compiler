@@ -67,7 +67,20 @@
     (let ((n (write-substring self.fd self.buf start self.pos)))
       (if (< n self.pos)
 	  (loop n)
-	  #u))))
+	  (set! self.pos 0))
+      )))
+
+(define (file/write self s)
+  (let ((slen (string-length s))
+        (blen (string-length self.buf)))
+    (cond ((< (+ self.pos slen) blen)
+           (buffer-copy s 0 slen self.buf self.pos)
+           (set! self.pos (+ self.pos slen)))
+          (else
+           (file/flush self)
+           (write self.fd s)
+           #u)
+          )))
 
 (define (file/write-char self ch)
   (cond ((< self.pos (string-length self.buf))
