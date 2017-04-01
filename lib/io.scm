@@ -62,6 +62,13 @@
 	(else
 	 (file/read-char self))))
 
+(define (file/read-line file)
+  (let loop ((ch (file/read-char file))
+         (r '()))
+    (if (eq? ch #\newline)
+        (list->string (reverse r))
+        (loop (file/read-char file) (list:cons ch r)))))
+
 (define (file/flush self)
   (let loop ((start 0))
     (let ((n (write-substring self.fd self.buf start self.pos)))

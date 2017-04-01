@@ -6,13 +6,6 @@
 
 ;; --- s-expression input ---
 
-(define (file/read-line file)
-  (let loop ((ch (file/read-char file))
-         (r '()))
-    (if (eq? ch #\newline)
-        (list->string (reverse r))
-        (loop (file/read-char file) (list:cons ch r)))))
-
 (define (ask prompt ifile ofile)
   (file/write ofile prompt)
   (file/flush ofile)
@@ -31,7 +24,7 @@
   (:symbol symbol)
   (:undef)
   (:list (list univ))
-  (:function (list symbol) sexp)
+  (:function (list symbol) sexp) ;; formals body
   )
 
 ;; how to print out a universal value
