@@ -49,11 +49,11 @@ Irken is now written in itself, so you need to bootstrap it.  You can do this
 via the python script, or manually.
 [see https://github.com/samrushing/irken-compiler/wiki/bootstrapping-manually]
 
-Just run the script "util/bootstrap.py":
+Just run ``make bootstrap``:
 
-    $ python util/bootstrap.py
+    $ make bootstrap
     [the default compiler is 'clang', to use gcc:
-      $ CC=gcc python util/bootstrap.py ]
+    $ CC=gcc make bootstrap ]
 
 Which does the following:
 
