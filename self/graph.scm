@@ -1,7 +1,6 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/set2.scm")
-(include "lib/alist2.scm")
 (include "lib/map.scm")
 
 (define (symbol-set-class)
@@ -43,7 +42,6 @@
     s))
 
 (define (build-dependency-graph root)
-  ;;(let ((g (alist-maker)))
   (let ((g (map-maker symbol-index-cmp)))
     (define (search exp current-fun)
       (match (noderec->t exp) with
@@ -71,7 +69,6 @@
     (set! the-context.dep-graph g)))
 
 (define (transpose g)
-  ;;(let ((gt (alist-maker)))
   (let ((gt (map-maker symbol-cmp)))
     (g::iterate
      (lambda (k _)
@@ -153,7 +150,6 @@
 (define (partition-fix names scc-graph)
   ;; partition the functions of this fix into sets of mutually-recursive functions
   (let ((n (length names))
-	;(name-map (alist-maker))
 	(name-map (map-maker symbol-cmp))
 	(leftover (range n))
 	(parts '())
