@@ -52,8 +52,10 @@ via the python script, or manually.
 Just run ``make bootstrap``:
 
     $ make bootstrap
-    [the default compiler is 'clang', to use gcc:
-    $ CC=gcc make bootstrap ]
+
+The default compiler is 'clang', to use gcc:
+
+    $ CC=gcc make bootstrap
 
 Which does the following:
 
