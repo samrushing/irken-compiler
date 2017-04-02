@@ -334,13 +334,27 @@
     (define (emit-store off arg tup i)
       (o.write (format "r" (int tup) "[" (int (+ 1 (+ i off))) "] = r" (int arg) ";")))
 
+    (define (safe-known-fun name)
+      (let ((var (vars-get-var name)))
+        (= 0 var.sets)))
+
+    (define (format-call mname funreg)
+      (match mname with
+        (maybe:no) -> (format "((kfun)(r" (int funreg) "[1]))();") ;; unknown
+        (maybe:yes name)
+        -> (let ((var (vars-get-var name)))
+             (if (= 0 var.sets)
+                 (let ((cfun (gen-function-cname name 0))) ;; known
+                   ;; include last-minute forward declaration
+                   (declare-function cfun #f)
+                   (format cfun "();")
+                   )
+                 (format "((kfun)(r" (int funreg) "[1]))();") ;; mutated
+                 ))
+        ))
+
     (define (emit-tail name fun args)
-      (let ((funcall
-	     (match name with
-	       (maybe:no)       -> (format "((kfun)(r" (int fun) "[1]))();")
-	       (maybe:yes name) -> (let ((cname (gen-function-cname name 0)))
-				     (declare-function cname #f)
-				     (format cname "();")))))
+      (let ((funcall (format-call name fun)))
 	(if (>= args 0)
 	    (o.write (format "r" (int args) "[1] = r" (int fun) "[2]; lenv = r" (int args) "; " funcall))
 	    (o.write (format "lenv = r" (int fun) "[2]; " funcall))
@@ -361,14 +375,7 @@
 	  (declare-function kfun #f)
 	  (o.write (format "t[1] = k; t[2] = lenv; t[3] = " kfun "; " (string-join saves "; ") "; k = t;")))
 	;; call
-	(let ((funcall
-	       (match name with
-		 (maybe:no)	  -> (format "((kfun)(r" (int fun) "[1]))();") ;;; unknown
-		 (maybe:yes name) -> (let ((cfun (gen-function-cname name 0))) ;;; known
-				       ;; include last-minute forward declaration
-				       (declare-function cfun #f)
-				       (format cfun "();")
-				       ))))
+	(let ((funcall (format-call name fun)))
 	  (if (>= args 0)
 	      (o.write (format "r" (int args) "[1] = r" (int fun) "[2]; lenv = r" (int args) "; " funcall))
 	      (o.write (format "lenv = r" (int fun) "[2]; " funcall))))

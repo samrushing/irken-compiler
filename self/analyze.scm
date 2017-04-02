@@ -225,6 +225,7 @@
                            ;;                       " escapes " (bool escapes) " recursive " (bool recursive) "\n")
 			   (cond ((and (function? fun)
 				       (not (eq? (string-ref (symbol->string name) 0) #\^))
+                                       (= var.sets 0) ;; don't inline functions that are assigned.
 				       (not getputcc) ;; don't inline functions that use getcc/putcc
 				       (> calls 0)
 				       (and (or (<= (noderec->size fun) inline-threshold)
