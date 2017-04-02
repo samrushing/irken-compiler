@@ -2,14 +2,7 @@
 
 ;; Tak, the Hideous New Girl!
 
-(define (>= a b)
-  (%%cexp (int int -> bool) "%0>=%1" a b))
-
-(define (- a b)
-  (%%cexp (int int -> int) "%0-%1" a b))
-
-(define (zero? a)
-  (%%cexp (int -> bool) "%0==0" a))
+(include "lib/core.scm")
 
 (define (tak x y z)
   (if (>= y x)
@@ -20,6 +13,6 @@
 
 (let loop ((n 20))
   (let ((r (tak 18 12 6)))
-    (if (zero? n)
+    (if (= 0 n)
 	r
 	(loop (- n 1)))))
