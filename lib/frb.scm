@@ -260,24 +260,6 @@
   d p (tree:black l r k v) -> (begin (tree/dump (+ d 1) p l) (p k v d) (tree/dump (+ d 1) p r))
   )
 
-;; the defn of make-generator, call/cc, etc... makes it pretty hard
-;;  to pass more than one arg through a continuation.  so instead we'll
-;;  use a 'pair' constructor to iterate through the tree...
-
-;; XXX use :tuple instead, so let-values can be used.
-
-;; (define (tree/make-generator tree end-key end-val)
-;;   (make-generator
-;;    (lambda (consumer)
-;;      (tree/inorder (lambda (k v) (consumer (:pair k v))) tree)
-;;      (let loop ()
-;;        (consumer (:pair end-key end-val))
-;;        (loop))
-;;      )
-;;    ))
-
-;; 'standard' generator form.
-
 (define (tree/make-generator t)
   (make-generator
    (lambda (consumer)
