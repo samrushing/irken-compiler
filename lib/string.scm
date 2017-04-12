@@ -294,6 +294,7 @@
   (fitem (<join> sep l))	-> (string-join l sep)         ;; separate each string in <l> with <sep>
   (fitem (<join> p sep l))	-> (string-join (map p l) sep) ;; map <p> over list <l>, separate each with <sep>
   (fitem (<string> s))          -> (repr-string s)
+  (fitem (<base64> s))          -> (b64-encode s)                     ;; include lib/base64.scm
   (fitem (<lpad> n item ...))	-> (lpad n (format item ...) #\space) ;; left-pad
   (fitem (<rpad> n item ...))	-> (rpad n (format item ...) #\space) ;; right-pad
   (fitem (<cpad> n item ...))	-> (cpad n (format item ...) #\space) ;; center-pad
@@ -310,10 +311,6 @@
 (defmacro format
   (format item)	    -> (fitem item)
   (format item ...) -> (string-concat (formatl item ...))
-  )
-
-(defmacro format-join
-  (format-join sep item ...) -> (string-join (formatl item ...) sep)
   )
 
 (defmacro printf
@@ -342,3 +339,10 @@
 	  (let ((r (string-ref s pos)))
 	    (set! pos (+ 1 pos))
 	    r)))))
+
+(define (string-generator s)
+  (make-generator
+   (lambda (consumer)
+     (for-range i (string-length s)
+       (consumer (maybe:yes (string-ref s i))))
+     (forever (consumer (maybe:no))))))
