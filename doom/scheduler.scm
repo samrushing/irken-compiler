@@ -49,8 +49,8 @@
   (tree/insert! (kfilt filter) int-cmp ident k))
 
 (define (poller/delete-event ident filter)
-  (tree/delete! (kfilt filter) int-cmp ident))
-  (set! the-poller.nwait (- the-poller.nwait 1))
+  (tree/delete! (kfilt filter) int-cmp ident)
+  (set! the-poller.nwait (- the-poller.nwait 1)))
 
 ;; put the current thread to sleep while waiting for the kevent (ident, filter).
 (define (poller/wait-for ident filter)
@@ -75,10 +75,10 @@
 (define poller/enqueue-waiting-thread
   (:kev ident filter)
   -> (match (poller/lookup-event ident filter) with
-	 (maybe:yes k) -> (begin
-			    (poller/delete-event ident filter)
-			    (poller/enqueue k))
-	 (maybe:no)    -> (raise (:PollerNoSuchEvent ident filter))))
+       (maybe:yes k) -> (begin
+                          (poller/delete-event ident filter)
+                          (poller/enqueue k))
+       (maybe:no)    -> (raise (:PollerNoSuchEvent ident filter))))
 
 (define (poller/wait-and-schedule)
   ;; all the runnable threads have done their bit, now throw it to kevent().
