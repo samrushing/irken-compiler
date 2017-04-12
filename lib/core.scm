@@ -484,10 +484,12 @@
   (define (set-verbose-gc b)
     (%%cexp (bool -> undefined) "quiet" b))
 
-  ;; could probably calculate this from int math.
+  ;; this is a kludge, but should work for a few more years...
   (define (get-word-size)
-    8 ;; XXX bogus
-    )
+    (match (< (<< 1 30) 0) with
+      #t -> 4
+      #f -> 8
+      ))
 
   (define (how-many x n)
     (/ (- (+ x n) 1) n))
