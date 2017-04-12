@@ -374,7 +374,7 @@ print_string (object * ob, int quoted)
       if (isprint(*ps)) {
 	fputc (*ps, stdout);
       } else {
-	fprintf (stdout, "\\0x%02x", (unsigned char) *ps);
+	fprintf (stdout, "\\x%02x", (unsigned char) *ps);
       }
     }
     if (i > 50) {
