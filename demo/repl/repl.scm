@@ -115,6 +115,22 @@
          (univ:int a) (univ:int b) -> (univ:int (- a b))
          _ _ -> (repl-error (format "bad args: " (univ-repr a) " " (univ-repr b)))
          ))
+  '%cons (arg0 arg1) env
+  -> (let ((a (eval arg0 env))
+           (b (eval arg1 env)))
+       (match b with
+         (univ:list lx)
+         -> (univ:list (cons a lx))
+         _ -> (repl-error (format "bad args: " (univ-repr b)))))
+  '%nil () env
+  -> (univ:list '())
+  '%car (arg) env
+  -> (match (eval arg env) with
+       (univ:list ())
+       -> (repl-error (format "car of empty list" (repr arg)))
+       (univ:list (hd . tl))
+       -> hd
+       x -> (repl-error (format "car of non-list" (univ-repr x))))
   prim _ _
   -> (repl-error (format "unknown prim: " (sym prim)))
   )
@@ -187,8 +203,12 @@
     exp -> (repl-error (format "bad/unknown expression: " (repr exp)))
     ))
 
+(define (eval-string s namespace)
+  (eval (car (read-string s)) namespace))
+
 (define (setup-initial-environment)
   (varset 'x (univ:int 34) namespace)
+  (varset '+ (eval-string "(lambda (a b) (%+ a b))" namespace) namespace)
   )
 
 (define (read-eval-print-loop ifile ofile)
