@@ -383,7 +383,9 @@
                (maybe:yes dt)
                -> (let ((alt (dt.get altname)))
                     (cond ((= nargs 0)
-                           (LINSN 'imm target (get-uitag dtname altname alt.index)))
+                           (if (= target -1)
+                               '()
+                               (LINSN 'imm target (get-uitag dtname altname alt.index))))
                           (else
                            (if (>= target 0)
                                (LIST (stream:insn
