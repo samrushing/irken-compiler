@@ -9,6 +9,7 @@
 (include "lib/queue.scm")
 (include "lib/set.scm")
 (include "lib/alist.scm")
+(include "lib/os.scm")
 (include "lib/io.scm")
 (include "lib/frb.scm")
 
