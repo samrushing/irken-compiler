@@ -57,6 +57,16 @@
   (alist:nil) -> 0
   (alist:entry _ _ tl) -> (+ 1 (alist/length tl)))
 
+;; create a inverse map of an existing alist.
+(define (alist/inverse al)
+  (let ((r (alist:nil)))
+    (alist/iterate
+     (lambda (k v)
+       (alist/push r v k))
+     al
+     )
+    r))
+
 ;; imperative alist 'object'.
 
 (define (alist-class)
