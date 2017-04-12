@@ -21,6 +21,7 @@
 	      "define" "set!"
 	      "include"
 	      "typealias"
+              "letcc" "getcc" "putcc" "let/cc"
 	      ) t)
        "\\>") 1)
      ;; named let
@@ -29,13 +30,12 @@
      ;; functions
      ;; SMR: 2015 - had to tweak this regex, something breaking, probably syntax-table related?
      ;;   may very well affect the other uses of \\sw...
-     '("(define\\s-+(?\\([^ \t\n)]+\\)"
-       (1 font-lock-function-name-face))
+     '("(define\\s-+(?\\([^ \t\n)]+\\)" . (1 font-lock-function-name-face))
+     '("(\\([^) \t\n]*:[^) \t\n]+\\)" . (1 font-lock-type-face))
      ;; datatypes
-     '("(datatype\\s-+\\(\\sw+\\)" (1 font-lock-type-face))
+     '("(datatype\\s-+(?\\([^ \t\n)]+\\)" . (1 font-lock-type-face))
      ;; constructors (again, the issue with \\sw)
      ;; '("\\<\\sw*:\\sw+\\>" . font-lock-type-face)
-     '("(\\(\\sw*:[^) \t\n]+\\)" . (1 font-lock-type-face))
       ;; matching
       '("->" . font-lock-function-name-face)
       ))
@@ -79,6 +79,8 @@
 (put 'for-set 'scheme-indent-function 2)
 (put 'for-set2 'scheme-indent-function 4)
 (put 'for-map 'scheme-indent-function 3)
+(put 'for-vector 'scheme-indent-function 2)
+(put 'for 'scheme-indent-function 2)
 (put 'let/cc 'scheme-indent-function 1)
 (put 'while 'scheme-indent-function 1)
 (put 'when 'scheme-indent-function 1)
