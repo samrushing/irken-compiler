@@ -1,0 +1,14 @@
+"\x11\x17\xf1\xfb.\xff\xfa\xec\xa2\x0f\xe1\x12\xb9\xb0\xa1testing!"
+17
+23
+-15
+-1234
+65530
+-324923423
+314159265
+"testing!"
+val: 0x1234abcd
+val: 0xe49
+val: 0xdeadbeef
+val: 0x2a7d1ef2
+{u0 0 1 2 7}
