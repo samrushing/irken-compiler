@@ -28,19 +28,19 @@
 
 (datatype cdef
   ;; size name fields
-  (:struct int symbol (list cfield)) 
+  (:struct int symbol (list cfield))
   (:union  int symbol (list cfield))
   )
 
 (define cdef-print
   (cdef:struct size name fields)
-  -> (begin 
+  -> (begin
        (printf "struct " (sym name) " {\n")
        (for-list field fields
          (cfield-print field))
        (printf "} [" (lpad 3 (int size)) "]\n"))
   (cdef:union size name fields)
-  -> (begin 
+  -> (begin
        (printf "union " (sym name) " {\n")
        (for-list field fields
          (cfield-print field))
@@ -49,14 +49,190 @@
 
 ;; c function signature
 (datatype csig
-  (:t symbol ctype (list ctype)) ;; name return-type arg-types
+  (:fun symbol ctype (list ctype)) ;; name return-type arg-types
+  (:obj symbol ctype)              ;; name type
   )
 
 (define csig-print
-  (csig:t name rtype argtypes)
+  (csig:fun name rtype argtypes)
   -> (printf "(" (sym name) " " (join ctype-repr " " argtypes) " -> " (ctype-repr rtype) ")\n")
+  (csig:obj name otype)
+  -> (printf "(" (sym name) " " (ctype-repr otype) ")\n")
   )
 
-;; XXX would we want a namespace for these?
-(define cstructs (map-maker symbol-index-cmp))
-(define cfuns (map-maker symbol-index-cmp))
+(define parse-ctype
+  (sexp:symbol name)
+  -> (ctype:name name)
+  (sexp:list ((sexp:symbol 'int) (sexp:list ((sexp:int size) (sexp:int signed?)))))
+  -> (ctype:int size (if (= signed? 1) #t #f))
+  (sexp:list ((sexp:symbol '*) sub))
+  -> (ctype:pointer (parse-ctype sub))
+  (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
+  -> (ctype:struct name)
+  (sexp:list ((sexp:symbol 'union) (sexp:symbol name)))
+  -> (ctype:union name)
+  (sexp:list ((sexp:symbol 'array) sub (sexp:list ((sexp:int size)))))
+  -> (ctype:array size (parse-ctype sub))
+  x -> (error1 "malformed type" (repr x))
+  )
+
+(define (parse-spec forms)
+
+  (define parse-field
+    (sexp:list ((sexp:int size) (sexp:symbol name) ftype))
+    -> (cfield:t size name (parse-ctype ftype))
+    x -> (error1 "malformed field" (repr x))
+    )
+
+  (define parse-struct
+    'struct ((sexp:symbol name) (sexp:int size) . fields)
+    -> (ffi-info.structs::add name (cdef:struct size name (map parse-field fields)))
+    'union ((sexp:symbol name) (sexp:int size) . fields)
+    -> (ffi-info.unions::add name (cdef:union size name (map parse-field fields)))
+    kind x -> (error1 "malformed struct" (:pair kind x))
+    )
+
+  (define arrow-type?
+    ()                    -> #f
+    ((sexp:symbol '->) _) -> #t
+    (hd . tl)             -> (arrow-type? tl)
+    )
+
+  (define parse-sig*
+    name (sexp:list sig)
+    -> (if (arrow-type? sig)
+           (let ((siglen (length sig))
+                 (rtype (nth sig (- siglen 1)))
+                 (args (slice sig 0 (- siglen 2))))
+             (csig:fun name (parse-ctype rtype) (map parse-ctype args)))
+           (csig:obj name (parse-ctype (sexp:list sig))))
+    name sig
+    -> (csig:obj name (parse-ctype sig))
+    name _ -> (error1 "malformed sig" name)
+    )
+
+  (define parse-sig
+    ((sexp:symbol name) sig)
+    -> (ffi-info.sigs::add name (parse-sig* name sig))
+    x -> (error1 "malformed sig" (repr (sexp:list x)))
+    )
+
+  (define parse-con
+    ((sexp:symbol name) (sexp:int val))
+    -> (ffi-info.cons::add name val)
+    x -> (error1 "malformed constant" x)
+    )
+
+  (define parse-form
+    (sexp:list ((sexp:symbol 'struct) . rest))
+    -> (parse-struct 'struct rest)
+    (sexp:list ((sexp:symbol 'union) . rest))
+    -> (parse-struct 'union rest)
+    (sexp:list ((sexp:symbol 'sig) . rest))
+    -> (parse-sig rest)
+    (sexp:list ((sexp:symbol 'con) . rest))
+    -> (parse-con rest)
+    x -> (error1 "malformed spec file" x)
+    )
+
+  (for-list form forms
+    (parse-form form))
+
+  )
+
+;; XXX do we need to distinguish between compile-time and run-time use
+;;     of this registry?
+(define ffi-info
+  ;; we have to use two maps for struct/union because
+  ;; they sometimes have the same name (e.g. in6_addr)
+  ;; [alternatively we could use a pair as key?]
+  {structs = (map-maker symbol-index-cmp)
+   unions  = (map-maker symbol-index-cmp)
+   cons    = (map-maker symbol-index-cmp)
+   sigs    = (map-maker symbol-index-cmp)
+   })
+
+(define (dump-ffi-info)
+  (printf "sigs:\n")
+  (for-map k v ffi-info.sigs.self.t
+    (csig-print v))
+  (printf "defs:\n")
+  (for-map k v ffi-info.structs.self.t
+    (cdef-print v))
+  (for-map k v ffi-info.unions.self.t
+    (cdef-print v))
+  (printf "constants:\n")
+  (for-map k v ffi-info.cons.self.t
+    (printf (lpad 5 (int v)) " " (sym k) "\n"))
+  )
+
+(define (read-spec name)
+  (let ((path0 (format "ffi/" (sym name) "_ffi.scm")))
+    (%backend bytecode
+      (read-string
+       (string-concat
+        (%%cexp (string -> (list string)) "readf" path0))))
+    (%backend (c llvm)
+      (let ((file (file/open-read path0)))
+        (reader path0 (lambda () (file/read-char file)))))
+    ))
+
+;; this is meant for *runtime* use.
+(define require-ffi
+  (let ((loaded '()))
+    (lambda (name)
+      (when (not (member-eq? name loaded))
+        (let ((forms (read-spec name)))
+          (parse-spec forms)
+          (PUSH loaded name))))
+    ))
+
+(define *word-size* (get-word-size))
+
+(define base-type-size
+  'void -> (error "void has no size")
+  'char -> 1
+  _ -> *word-size*
+  )
+
+(define (lookup-struct-size name)
+  (match (ffi-info.structs::get name) with
+    (maybe:yes (cdef:struct size _ _)) -> size
+    _ -> (error1 "lookup-struct-size: unknown struct" name)
+    ))
+
+(define (lookup-union-size name)
+  (match (ffi-info.unions::get name) with
+    (maybe:yes (cdef:union size _ _)) -> size
+    _ -> (error1 "lookup-struct-size: unknown struct" name)
+    ))
+
+(define (lookup-struct-fields name)
+  (match (ffi-info.structs::get name) with
+    (maybe:yes (cdef:struct _ _ fields)) -> fields
+    _ -> (error1 "lookup-struct-size: unknown struct" name)
+    ))
+
+(define (lookup-union-fields name)
+  (match (ffi-info.unions::get name) with
+    (maybe:yes (cdef:union _ _ fields)) -> fields
+    _ -> (error1 "lookup-struct-size: unknown struct" name)
+    ))
+
+(define lookup-field
+  name ()
+  -> (error1 "lookup-field failed" name)
+  name ((cfield:t offset name0 ctype) . tl)
+  -> (if (eq? name name0)
+         (:tuple offset ctype)
+         (lookup-field name tl))
+  )
+
+(define ctype->size
+  (ctype:pointer _)    -> *word-size*
+  (ctype:int size _)   -> size
+  (ctype:array size t) -> (* size (ctype->size t))
+  (ctype:name name)    -> (base-type-size name)
+  (ctype:struct name)  -> (lookup-struct-size name)
+  (ctype:union name)   -> (lookup-union-size name)
+  )
