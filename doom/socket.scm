@@ -18,6 +18,7 @@ set_nonblocking (int fd)
 ")
 
 (define SOCK_STREAM	(%%cexp int "SOCK_STREAM"))
+(define SOCK_DGRAM      (%%cexp int "SOCK_DGRAM"))
 (define AF_INET         (%%cexp int "AF_INET"))
 
 ;; it'd be nice if we could have these act more like #define
@@ -116,6 +117,21 @@ set_nonblocking (int fd)
     (if (= r size)
 	buffer
 	(copy-string buffer r))))
+
+(define (recv-exact* fd acc left)
+  (let ((size0 (min left 8192))
+        (part (recv fd size0))
+        (n (string-length part))
+        (left0 (- left n)))
+    (if (or (= n 0) (= 0 left0))
+        (string-concat (reverse (list:cons part acc)))
+        (recv-exact* fd (list:cons part acc) left0))))
+
+(define (recv-exact fd size)
+  (let ((r (recv-exact* fd '() size)))
+    (if (= (string-length r) size)
+        r
+        (raise (:RecvExactShort size (string-length r))))))
 
 (define (send fd s)
   (let loop ()
