@@ -757,21 +757,20 @@
           _ -> (impossible)
           )))
 
-    (define (peephole s)
-      ;; only one optimization so far...
-      (match s with
-        (a b . tl)
-        -> (match a b with
-             (stream:insn 'jmp (n0)) (stream:label n1)
-             -> (if (= n0 n1)
-                    ;; remove jmp to following label
-                    (list:cons b (peephole tl))
-                    (list:cons a (peephole (list:cons b tl))))
-             _ _ -> (list:cons a (peephole (list:cons b tl))))
-        (hd . tl)
-        -> (list:cons hd (peephole tl))
-        () -> '()
-        ))
+    (define peephole
+      ;; only one optimizaiton so far
+      acc (a b . tl)
+      -> (match a b with
+           (stream:insn 'jmp (n0)) (stream:label n1)
+           -> (if (= n0 n1)
+                  ;; remove jmp to following label
+                  (peephole (list:cons b acc) tl)
+                  (peephole (list:cons a acc) (list:cons b tl)))
+           _ _ -> (peephole (list:cons a acc) (list:cons b tl)))
+      acc (hd . tl)
+      -> (peephole (list:cons hd acc) tl)
+      acc () -> (reverse acc)
+      )
 
     (define (print-stream s)
       (let ((pc 0))
@@ -817,14 +816,13 @@
 
     (emit-literals)
 
-    (let ((s (peephole (emit cps))))
+    (let ((s (peephole '() (emit cps))))
+      (set! cps (insn:return 0))
       (verbose
        (printf "labels:\n")
        (print-stream s))
       (let ((resolved (resolve-labels s)))
-        (verbose
-         (printf "resolved:\n")
-         (print-stream resolved))
+        (set! s '())
         (emit-stream resolved))
       (o.close)
       (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
