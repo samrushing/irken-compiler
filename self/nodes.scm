@@ -2,11 +2,13 @@
 
 (include "self/context.scm")
 (include "self/transform.scm")
+(include "lib/ctype.scm")
 
 (datatype literal
   (:string string)
   (:int int)
   (:char char)
+  (:bool bool)
   (:undef)
   (:symbol symbol)
   (:cons symbol symbol (list literal))
@@ -203,6 +205,7 @@
   (literal:symbol s)     -> (format (sym s))
   (literal:int n)	 -> (format (int n))
   (literal:char ch)	 -> (format (repr-char ch))
+  (literal:bool b)       -> (if b "#t" "#f")
   (literal:undef)	 -> (format "#u")
   (literal:cons dt v ()) -> (format "(" (sym dt) ":" (sym v) ")")
   (literal:cons dt v l)	 -> (format "(" (sym dt) ":" (sym v) " " (join literal->string " " l) ")")
@@ -365,13 +368,15 @@
     (:sorted-fix (append (reverse names0) (reverse names1))
 		 (append (reverse inits0) (reverse inits1)))))
 
+;; XXX this really needs to be lifted into a wrapper fun named `sexp->node`,
+;;   this name as a global is stupid.
 ;; translate sexp => node.
 (define walk
   (sexp:symbol s)  -> (node/varref s)
   (sexp:string s)  -> (node/literal (literal:string s))
   (sexp:int n)	   -> (node/literal (literal:int n))
   (sexp:char c)	   -> (node/literal (literal:char c))
-  (sexp:bool b)	   -> (node/literal (literal:cons 'bool (if b 'true 'false) '()))
+  (sexp:bool b)	   -> (node/literal (literal:bool b))
   (sexp:undef)	   -> (node/literal (literal:undef))
   (sexp:record fl) -> (foldr (lambda (field rest)
 			       (match field with
@@ -391,7 +396,8 @@
        ((sexp:symbol 'quote) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'literal) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'if) test then else)	    -> (node/if (walk test) (walk then) (walk else))
-       ((sexp:symbol '%%sexp) exp)                  -> (node/literal (unsexp exp))
+       ;;((sexp:symbol '%%sexp) exp)                  -> (node/literal (unsexp exp))
+       ((sexp:symbol '%%sexp) . exps)               -> (node/literal (unsexp-list exps))
        ((sexp:symbol '%typed) type exp)
        -> (let ((exp0 (walk exp)))
             (printf "user type in expression: " (repr type) "\n")
@@ -459,6 +465,7 @@
   (sexp:string s)  -> (literal:string s)
   (sexp:int n)     -> (literal:int n)
   (sexp:char c)    -> (literal:char c)
+  (sexp:bool b)    -> (literal:bool b)
   (sexp:undef)     -> (literal:undef)
   (sexp:symbol s)  -> (literal:symbol s)
   (sexp:list l)    -> (build-list-literal l)
@@ -476,7 +483,7 @@
   (sexp:string s)  -> (literal:cons 'sexp 'string (LIST (literal:string s)))
   (sexp:int n)     -> (literal:cons 'sexp 'int (LIST (literal:int n)))
   (sexp:char c)    -> (literal:cons 'sexp 'char (LIST (literal:char c)))
-  (sexp:bool b)    -> (literal:cons 'sexp 'bool (LIST (literal:cons 'bool (if b 'true 'false) '())))
+  (sexp:bool b)    -> (literal:cons 'sexp 'bool (LIST (literal:bool b)))
   (sexp:undef)     -> (literal:cons 'sexp 'undef '())
   (sexp:symbol s)  -> (literal:cons 'sexp 'symbol (LIST (literal:symbol s)))
   (sexp:list l)    -> (literal:cons 'sexp 'list (LIST (unsexp-list l)))

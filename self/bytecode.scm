@@ -622,8 +622,8 @@
                  -> (begin
                       (o.copy (format "S" (encode-int (string-length s))))
                       (o.copy s))
-                 (literal:cons 'bool 'true _) -> (o.copy "T")
-                 (literal:cons 'bool 'false _) -> (o.copy "F")
+                 (literal:bool #t) -> (o.copy "T")
+                 (literal:bool #f) -> (o.copy "F")
                  (literal:cons dt variant args)
                  -> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
                           (alt (dto.get variant))

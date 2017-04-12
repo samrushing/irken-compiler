@@ -81,13 +81,15 @@
   (literal:int n)   -> (logior 1 (<< n 1))
   (literal:char ch) -> (logior 2 (<< (char->ascii ch) 8))
   (literal:undef)   -> #x0e
-  (literal:cons 'bool 'true _) -> #x106
-  (literal:cons 'bool 'false _) -> #x006
+  (literal:bool #t) -> #x106
+  (literal:bool #f) -> #x006
+  ;; (literal:cons 'bool 'true _) -> #x106
+  ;; (literal:cons 'bool 'false _) -> #x006
   x -> (error1 "expected immediate literal " x))
 
 
-(define immediate-true  (encode-immediate (literal:cons 'bool 'true '())))
-(define immediate-false (encode-immediate (literal:cons 'bool 'false '())))
+(define immediate-true  (encode-immediate (literal:bool #t)))
+(define immediate-false (encode-immediate (literal:bool #f)))
 
 ;; immediate types (multiples of 2 (but not 4!))
 (define TC_CHAR         (<<  1 1)) ;; 00000010 02

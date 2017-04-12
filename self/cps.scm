@@ -210,7 +210,8 @@
 	;;   immediate, and not show up in 'constructed'.  I think it
 	;;   can be done like this:
 	;; (literal:cons x y ()) -> (insn:literal lit k)
-	(literal:cons 'bool s _) -> (insn:literal lit k)
+	;;(literal:cons 'bool s _) -> (insn:literal lit k)
+        (literal:bool _)         -> (insn:literal lit k)
 	(literal:cons _ _ args) -> (begin
 				     (scan-literals args)
 				     (insn:litcon (get-literal-index lit id) 'constructor k))

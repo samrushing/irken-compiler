@@ -533,8 +533,9 @@
       (node:if)
       -> (match node.subs with
 	   ;; (if #t a b) => a
-	   ((noderec:t {t=(node:literal (literal:cons 'bool b _)) ...}) then else)
-	   -> (if (eq? b 'true) (return (simpleopt then)) (return (simpleopt else)))
+	   ;;((noderec:t {t=(node:literal (literal:cons 'bool b _)) ...}) then else)
+	   ((noderec:t {t=(node:literal (literal:bool b)) ...}) then else)
+	   -> (if b (return (simpleopt then)) (return (simpleopt else)))
 	   _ -> #u)
 
       (node:sequence)

@@ -261,6 +261,7 @@
       (literal:string _)    -> string-type
       (literal:int _)	    -> int-type
       (literal:char _)	    -> char-type
+      (literal:bool _)      -> bool-type
       (literal:undef)	    -> undefined-type
       (literal:symbol _)    -> symbol-type
       (literal:sexp _)      -> sexp-type
