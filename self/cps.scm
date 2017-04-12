@@ -766,7 +766,7 @@
     ))
 
 (define (print-type-tree root)
-  (for (make-node-generator root) (n d x)
+  (for (n d x) (make-node-generator root)
        (indent d)
        (printf (type-repr (noderec->type n)) "\n")))
 

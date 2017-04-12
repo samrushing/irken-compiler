@@ -119,7 +119,7 @@
 (defmacro for
 
   ;; multiple variables
-  (for generator-exp (var0 ...) body0 ...)
+  (for (var0 ...) generator-exp body0 ...)
   -> (let (($gen generator-exp))
        (let $genloop (($item ($gen)))
 	 (match $item with
@@ -132,7 +132,7 @@
   ;;  the performance advantage of avoiding the :tuple wrapper.]
 
   ;; single-variable
-  (for generator-exp var body0 ...)
+  (for var generator-exp body0 ...)
   -> (let (($gen generator-exp))
        (let $genloop (($item ($gen)))
 	 (match $item with

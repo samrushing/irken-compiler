@@ -360,7 +360,7 @@ static void prof_dump (void)
 
 (define (copy-file-contents ofile path)
   (let ((ifile (file/open-read path)))
-    (for (make-file-generator ifile) block
+    (for block (make-file-generator ifile)
          (ofile.copy block))
     (file/close ifile)))
 
