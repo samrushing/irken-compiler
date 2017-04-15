@@ -148,14 +148,28 @@
       (hd . tl) -> (loop tl)
       )))
 
+(define (expand-name sym0 r)
+  (match (mbe/assoc sym0 r) with
+    (maybe:no)                     -> sym0
+    (maybe:yes (sexp:symbol sym1)) -> sym1
+    (maybe:yes x) -> (error (format "name " (sym sym0) " did not expand to a symbol " (repr x)))
+    ))
+
+(define expand-field
+  (field:t name exp) r
+  -> (field:t (expand-name name r) (expand-pattern exp r))
+  )
+
 (define (expand-pattern p r) ;; sexp, (list sexp) -> sexp
   (match p with
-    (sexp:list pl)    -> (sexp:list (expand-list pl r))
-    (sexp:vector pl)  -> (sexp:vector (expand-list pl r))
-    (sexp:symbol sym) -> (match (mbe/assoc sym r) with
-			    (maybe:yes v) -> v
-			    (maybe:no)    -> p)
-    x                 -> x
+    (sexp:list pl)      -> (sexp:list (expand-list pl r))
+    (sexp:vector pl)    -> (sexp:vector (expand-list pl r))
+    (sexp:record fs)    -> (sexp:record (map (lambda (f) (expand-field f r)) fs))
+    (sexp:attr exp sym) -> (sexp:attr (expand-pattern exp r) (expand-name sym r))
+    (sexp:symbol sym)   -> (match (mbe/assoc sym r) with
+                             (maybe:yes v) -> v
+                             (maybe:no)    -> p)
+    x                   -> x
     ))
 
 (define (expand-list p r) ;; (list sexp), (list sexp) -> (list sexp)
