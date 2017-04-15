@@ -11,7 +11,7 @@
 
 (define ctype-repr
   (ctype:name name)    -> (symbol->string name)
-  (ctype:int size s?)  -> (format (if s? "u" "i") (int (* size 8)))
+  (ctype:int size s?)  -> (format (if s? "i" "u") (int (* size 8)))
   (ctype:array size t) -> (format "(array " (int size) " " (ctype-repr t) ")")
   (ctype:pointer t)    -> (format "(* " (ctype-repr t) ")")
   (ctype:struct name)  -> (format "(struct " (sym name) ")")
@@ -235,4 +235,62 @@
   (ctype:name name)    -> (base-type-size name)
   (ctype:struct name)  -> (lookup-struct-size name)
   (ctype:union name)   -> (lookup-union-size name)
+  )
+
+;; --- runtime offset calculation ---
+
+;; XXX consider using a record rather than a tuple, I think
+;;  it could really clean up user code.
+
+(define cref-field
+  name off0 (ctype:struct sname)
+  -> (let-values (((off1 ctype) (lookup-field name (lookup-struct-fields sname))))
+       (:tuple (+ off0 off1) ctype))
+  name off0 (ctype:union sname)
+  -> (let-values (((off1 ctype) (lookup-field name (lookup-union-fields sname))))
+       (:tuple (+ off0 off1) ctype))
+  _ _ t -> (error1 "cref-field: type is not struct/union" (ctype-repr t))
+  )
+
+(define cref-aref
+  index off0 (ctype:array size ctype0)
+  -> (:tuple (+ off0 (* (ctype->size ctype0) index)) ctype0)
+  _ _ t -> (error1 "cref-aref: type is not an array" (ctype-repr t))
+  )
+
+(defmacro cref
+  (cref ctype a ...)
+  -> (expand-cref 0 ctype (%%sexp a ...)))
+
+(define expand-cref
+  off ctype () 
+  -> (:tuple off ctype)
+  off ctype ((sexp:symbol fname) . tl)
+  -> (let-values (((off0 ctype0) (cref-field fname off ctype)))
+       (expand-cref off0 ctype0 tl))
+  off ctype ((sexp:int index) . tl)
+  -> (let-values (((off0 ctype0) (cref-aref index off ctype)))
+       (expand-cref off0 ctype0 tl))
+  off ctype (sexp . _)
+  -> (error1 "cref: elems must be symbol or integer" (repr sexp))
+  )
+
+;; convert a ctype to an `op_cget` code (used by the VM).
+(define ctype->code
+  (ctype:int 1 #f)                  -> #\1
+  (ctype:int 2 #f)                  -> #\2
+  (ctype:int 4 #f)                  -> #\4
+  (ctype:int 8 #f)                  -> #\8
+  (ctype:int 1 #t)                  -> #\i
+  (ctype:int 2 #t)                  -> #\j
+  (ctype:int 4 #t)                  -> #\k
+  (ctype:int 8 #t)                  -> #\l
+  (ctype:array _ (ctype:name char)) -> #\s
+  (ctype:array _ _)                 -> #\p
+  (ctype:pointer _)                 -> #\p
+  (ctype:struct _)                  -> #\p
+  (ctype:union _)                   -> #\p
+  (ctype:name 'char)                -> #\c
+  (ctype:name 'void)                -> (raise (:VoidDereference))
+  x                                 -> (raise (:StrangeCtype x))
   )
