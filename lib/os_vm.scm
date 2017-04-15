@@ -1,15 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(defmacro make-ffi
-  (make-ffi name rtype nargs (formal0 ...) (ftype0 ...))
-  -> (let (($pfun (%%cexp (string -> int) "dlsym" name)))
-       (lambda (formal0 ...)
-         (%%cexp (int char int ftype0 ...)
-                 "ffi"
-                 $pfun rtype nargs
-                 formal0 ...))))
-
-
 (define (system cmd)
   ((make-ffi "system\x00" #\i 1 (cmd) (string -> int)) cmd))
 
