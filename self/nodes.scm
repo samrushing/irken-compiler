@@ -396,7 +396,6 @@
        ((sexp:symbol 'quote) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'literal) arg)		    -> (node/literal (build-literal arg))
        ((sexp:symbol 'if) test then else)	    -> (node/if (walk test) (walk then) (walk else))
-       ;;((sexp:symbol '%%sexp) exp)                  -> (node/literal (unsexp exp))
        ((sexp:symbol '%%sexp) . exps)               -> (node/literal (unsexp-list exps))
        ((sexp:symbol '%typed) type exp)
        -> (let ((exp0 (walk exp)))
@@ -413,6 +412,8 @@
 	    (match scheme with
 	      (:scheme gens type)
 	      -> (node/ffi gens type name (map walk args))))
+       ((sexp:symbol '%%ffitype) ctype)
+       -> (node/literal (ctype->literal (parse-ctype ctype)))
        ((sexp:symbol '%nvcase) (sexp:symbol dt) val-exp (sexp:list tags) (sexp:list arities) (sexp:list alts) ealt)
        -> (node/nvcase dt (map sexp->symbol tags) (map sexp->int arities) (walk val-exp) (map walk alts) (walk ealt))
        ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) type . body)
