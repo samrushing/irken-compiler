@@ -148,6 +148,7 @@
       (hd . tl) -> (loop tl)
       )))
 
+;; this is only used to allow attribute reference names to be macro args.
 (define (expand-name sym0 r)
   (match (mbe/assoc sym0 r) with
     (maybe:no)                     -> sym0
@@ -157,7 +158,7 @@
 
 (define expand-field
   (field:t name exp) r
-  -> (field:t (expand-name name r) (expand-pattern exp r))
+  -> (field:t name (expand-pattern exp r))
   )
 
 (define (expand-pattern p r) ;; sexp, (list sexp) -> sexp
