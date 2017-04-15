@@ -224,7 +224,7 @@
   -> (error1 "lookup-field failed" name)
   name ((cfield:t offset name0 ctype) . tl)
   -> (if (eq? name name0)
-         (:tuple offset ctype)
+         {off=offset ctype=ctype}
          (lookup-field name tl))
   )
 
@@ -239,39 +239,37 @@
 
 ;; --- runtime offset calculation ---
 
-;; XXX consider using a record rather than a tuple, I think
-;;  it could really clean up user code.
-
 (define cref-field
-  name off0 (ctype:struct sname)
-  -> (let-values (((off1 ctype) (lookup-field name (lookup-struct-fields sname))))
-       (:tuple (+ off0 off1) ctype))
-  name off0 (ctype:union sname)
-  -> (let-values (((off1 ctype) (lookup-field name (lookup-union-fields sname))))
-       (:tuple (+ off0 off1) ctype))
-  _ _ t -> (error1 "cref-field: type is not struct/union" (ctype-repr t))
+  name {off=off0 ctype=(ctype:struct sname)}
+  -> (let ((ref (lookup-field name (lookup-struct-fields sname))))
+       {off=(+ off0 ref.off) ctype=ref.ctype})
+  name {off=off0 ctype=(ctype:union sname)}
+  -> (let ((ref (lookup-field name (lookup-union-fields sname))))
+       {off=(+ off0 ref.off) ctype=ref.ctype})
+  _ ref -> (error1 "cref-field: type is not struct/union" (ctype-repr ref.ctype))
   )
 
 (define cref-aref
-  index off0 (ctype:array size ctype0)
-  -> (:tuple (+ off0 (* (ctype->size ctype0) index)) ctype0)
-  _ _ t -> (error1 "cref-aref: type is not an array" (ctype-repr t))
+  index {off=off0 ctype=(ctype:array size ctype0)}
+  -> {off=(+ off0 (* (ctype->size ctype0) index)) ctype=ctype0}
+  _ ref -> (error1 "cref-aref: type is not an array" (ctype-repr ref.ctype))
   )
+
+;; ughhh.. really need to teach macros to emit record literals.
+(define (makeref off ctype) {off=off ctype=ctype})
 
 (defmacro cref
   (cref ctype a ...)
-  -> (expand-cref 0 ctype (%%sexp a ...)))
+  -> (expand-cref (makeref 0 ctype) (%%sexp a ...)))
 
 (define expand-cref
-  off ctype () 
-  -> (:tuple off ctype)
-  off ctype ((sexp:symbol fname) . tl)
-  -> (let-values (((off0 ctype0) (cref-field fname off ctype)))
-       (expand-cref off0 ctype0 tl))
-  off ctype ((sexp:int index) . tl)
-  -> (let-values (((off0 ctype0) (cref-aref index off ctype)))
-       (expand-cref off0 ctype0 tl))
-  off ctype (sexp . _)
+  ref0 () 
+  -> ref0
+  ref0 ((sexp:symbol fname) . tl)
+  -> (expand-cref (cref-field fname ref0) tl)
+  ref0 ((sexp:int index) . tl)
+  -> (expand-cref (cref-aref index ref0) tl)
+  ref0 (sexp . _)
   -> (error1 "cref: elems must be symbol or integer" (repr sexp))
   )
 
