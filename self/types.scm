@@ -273,16 +273,6 @@
 (define (parse-type exp)
   (parse-type* exp (alist-maker)))
 
-;; I think this is a bug: the moo() in there should be inside the pre(),
-;;  otherwise it's a malformed row! [hey, maybe this is where 'kinding' comes in. 8^)]
-;;
-;; moo(t20093, rproduct(rlabel(level, pre(int),
-;;                      rlabel(key, pre(t908),
-;;                      rlabel(val, pre(t909),
-;;                      rlabel(left, moo(t20068, pre(t20092)),
-;;                      rlabel(right, moo(t20073, pre(t20093)),
-;;                      rdefault(abs))))))))
-
 ;; rproduct(rlabel(x, pre(bool), rlabel(y, pre(int), rdefault(abs))))
 ;; => '(x y)
 (define get-record-sig
