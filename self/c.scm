@@ -10,8 +10,10 @@
 	 'bool         -> (format "PXLL_IS_TRUE(" arg ")")
 	 'string       -> (format "((pxll_string*)(" arg "))->data")
 	 'cstring      -> (format "(char*)" arg)
+         ;; cmem is either a buffer or a pointer
+         'cmem         -> (format "(" (irken-type->c-type type) ")(mem2ptr(" arg "))")
 	 'buffer       -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
-	 'ptr	       -> arg
+         '*            -> (format "(" (irken-type->c-type type) ")" arg)
 	 'arrow	       -> arg
 	 'vector       -> arg
 	 'symbol       -> arg
@@ -28,9 +30,12 @@
 ;; (buffer (struct sockaddr_t)) => (struct sockaddr_t *)
 (define (irken-type->c-type t)
   (match t with
-    (type:pred 'buffer (arg) _)	-> (format "(" (irken-type->c-type arg) "*)")
     (type:pred 'struct (arg) _) -> (format "struct " (irken-type->c-type arg))
-    (type:pred name () _)	-> (format (sym name))
+    (type:pred 'cmem   (arg) _) -> (format (irken-type->c-type arg) "*")
+    (type:pred 'buffer (arg) _) -> (format (irken-type->c-type arg) "*")
+    (type:pred '*      (arg) _) -> (format (irken-type->c-type arg) "*")
+    (type:pred name () _)       -> (format (sym name))
+    (type:tvar _ _)             -> "void"
     _ -> (error1 "malformed ctype" (type-repr t))))
 
 
@@ -51,7 +56,9 @@
     (type:pred 'int _ _)     -> (format "BOX_INTEGER((pxll_int)" exp ")")
     (type:pred 'bool _ _)    -> (format "PXLL_TEST(" exp ")")
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
-    (type:pred 'ptr _ _)     -> (format "(object*)" exp)
+    (type:pred '* _ _)       -> (format "(ptr2mem(" exp ")")
+    (type:pred 'buffer _ _)  -> (format "(buf2mem(" exp ")")
+    (type:pred 'void _ _)    -> (format "(" exp ", (object*)PXLL_UNDEFINED)")
     (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
 				    (format "box((pxll_int)" exp ")")
 				    exp)
@@ -432,6 +439,7 @@
 
     (define (emit-primop name parm type args k)
 
+      ;; this *really* needs the print-context-of-error thing that typing.scm uses.
       (define (primop-error)
 	(error1 "primop" name))
 
@@ -539,6 +547,22 @@
                                  ") * unbox(r" (int (car args)) "), sizeof (object)));"))
                 (error1 "%callocate: dead target?" type))))
 
+        (define (prim-callocate2 parm args malloc?)
+          (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
+            ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
+            ;; ok in this version we need to wrap the buffer object with a user datatype tuple
+            ;; indicating that it is a cmem:{buffer,ptr} type.
+            (cond ((>= target 0)
+                   (o.write (format "O r" (int target) " = allocate (TC_USEROBJ+0, 1);"))
+                   (if malloc?
+                       (o.write (format "O r" (int target) "t = (object*) malloc (sizeof (" 
+                                        (irken-type->c-type type) ") * unbox(r" (int (car args)) "));"))
+                       (o.write (format "O r" (int target) "t = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" 
+                                        (irken-type->c-type type) ") * unbox(r" (int (car args)) "), sizeof (object)));")))
+                   (o.write (format "r" (int target) "[1] = r" (int target) "t;")))
+                  (else
+                   (error1 "%callocate2: dead target?" type)))))
+
         (define (prim-exit args)
           (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
           (when (> target 0)
@@ -571,22 +595,56 @@
                        (move rv target))
           _ -> (primop-error))
 
-          (match name with
-            '%dtcon       -> (prim-dtcon parm)
-            '%nvget       -> (prim-nvget parm args)
-            '%make-vector -> (prim-make-vector args)
-            '%array-ref   -> (prim-array-ref args)
-            '%array-set   -> (prim-array-set args)
-            '%record-get  -> (prim-record-get parm args)
-            '%record-set  -> (prim-record-set parm args)
-            '%callocate   -> (prim-callocate parm args)
-            '%exit        -> (prim-exit args)
-            '%cget        -> (prim-cget args)
-            '%cset        -> (prim-cset args type)
-            '%getcc       -> (prim-getcc args)
-            '%putcc       -> (prim-putcc args)
-            '%ensure-heap -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
-            _ -> (primop-error))))
+        (define (prim-ffi2 parm args)
+          (match parm with
+            (sexp:symbol name)
+            -> (match (ffi-info.sigs::get name) with
+                 (maybe:yes (csig:fun name rtype argtypes))
+                 -> (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
+                          (argt0 (map ctype->irken-type argtypes))
+                          (args2 (map2 wrap-in argt0 args0))
+                          (call0 (format (sym name) "(" (join "," args2) ")"))
+                          (call1 (if (= target -1) call0 (wrap-out type call0))))
+                      (if (= target -1)
+                          (o.write (format call1 ";"))
+                          (o.write (format "O r" (int target) " = " call1 ";"))))
+                 _ -> (primop-error))
+            _ -> (primop-error)
+            ))
+            
+        (define prim-cget3
+          (sexp:symbol name)
+          -> (match (ffi-info.sigs::get name) with
+               (maybe:yes (csig:obj name obtype))
+               -> (let (;; might need to use ctype->irken-type here
+                        (ob0 (format "((" (type-repr type) ")" (sym name) ")"))
+                        (ob1 (wrap-out type ob0)))
+                    (o.write (format "O r" (int target) " = " ob1 ";"))
+                    )
+               _ -> (primop-error))
+          _ -> (primop-error))
+
+        (match name with
+          '%dtcon       -> (prim-dtcon parm)
+          '%nvget       -> (prim-nvget parm args)
+          '%make-vector -> (prim-make-vector args)
+          '%array-ref   -> (prim-array-ref args)
+          '%array-set   -> (prim-array-set args)
+          '%record-get  -> (prim-record-get parm args)
+          '%record-set  -> (prim-record-set parm args)
+          '%callocate   -> (prim-callocate parm args)
+          '%callocate2  -> (prim-callocate2 parm args #f)
+          '%callocate3  -> (prim-callocate2 parm args #t)
+          ;;'%free        -> (prim-free args)
+          '%exit        -> (prim-exit args)
+          '%cget        -> (prim-cget args)
+          '%cset        -> (prim-cset args type)
+          '%getcc       -> (prim-getcc args)
+          '%putcc       -> (prim-putcc args)
+          '%ensure-heap -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
+          '%ffi2        -> (prim-ffi2 parm args)
+          '%cget3       -> (prim-cget3 parm)
+          _ -> (primop-error))))
 
     (define (lookup-cast to-type from-type exp)
       (match to-type from-type with
