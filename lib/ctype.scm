@@ -18,6 +18,19 @@
   (ctype:union name)   -> (format "(union " (sym name) ")")
   )
 
+;; a 'buffer' is a heap-allocated chunk of memory
+;;   (that will be moved or collected upon gc).
+;; a 'ptr' is allocated/freed/managed outside of irken
+;;   (either by another library or manually with malloc/free).
+;;
+;; Note: do not change the order of this datatype, the runtime
+;;   knows about it.
+
+(datatype cmem
+  (:buffer (buffer 'a))
+  (:ptr (* 'a))
+  )
+
 (datatype cfield
   (:t int symbol ctype) ;; offset name type
   )
@@ -47,7 +60,7 @@
        (printf "} [" (lpad 3 (int size)) "]\n"))
   )
 
-;; c function signature
+;; c function/object signature
 (datatype csig
   (:fun symbol ctype (list ctype)) ;; name return-type arg-types
   (:obj symbol ctype)              ;; name type
@@ -61,8 +74,8 @@
   )
 
 (define parse-ctype
-  (sexp:symbol name)
-  -> (ctype:name name)
+  (sexp:symbol 'int)
+  -> (ctype:int *word-size* #t)
   (sexp:list ((sexp:symbol 'int) (sexp:list ((sexp:int size) (sexp:int signed?)))))
   -> (ctype:int size (if (= signed? 1) #t #f))
   (sexp:list ((sexp:symbol '*) sub))
@@ -73,10 +86,12 @@
   -> (ctype:union name)
   (sexp:list ((sexp:symbol 'array) sub (sexp:list ((sexp:int size)))))
   -> (ctype:array size (parse-ctype sub))
+  (sexp:symbol name)
+  -> (ctype:name name)
   x -> (error1 "malformed type" (repr x))
   )
 
-(define (parse-spec forms)
+(define (parse-spec info forms)
 
   (define parse-field
     (sexp:list ((sexp:int size) (sexp:symbol name) ftype))
@@ -86,9 +101,9 @@
 
   (define parse-struct
     'struct ((sexp:symbol name) (sexp:int size) . fields)
-    -> (ffi-info.structs::add name (cdef:struct size name (map parse-field fields)))
+    -> (info.structs::add name (cdef:struct size name (map parse-field fields)))
     'union ((sexp:symbol name) (sexp:int size) . fields)
-    -> (ffi-info.unions::add name (cdef:union size name (map parse-field fields)))
+    -> (info.unions::add name (cdef:union size name (map parse-field fields)))
     kind x -> (error1 "malformed struct" (:pair kind x))
     )
 
@@ -113,14 +128,23 @@
 
   (define parse-sig
     ((sexp:symbol name) sig)
-    -> (ffi-info.sigs::add name (parse-sig* name sig))
+    -> (info.sigs::add name (parse-sig* name sig))
     x -> (error1 "malformed sig" (repr (sexp:list x)))
     )
 
   (define parse-con
     ((sexp:symbol name) (sexp:int val))
-    -> (ffi-info.cons::add name val)
+    -> (info.cons::add name val)
     x -> (error1 "malformed constant" x)
+    )
+
+  (define parse-includes
+    acc ()
+    -> (set! info.includes (append acc info.includes))
+    acc ((sexp:string path) . rest)
+    -> (parse-includes (list:cons path acc) rest)
+    acc x
+    -> (error1 "malformed includes" x)
     )
 
   (define parse-form
@@ -132,38 +156,50 @@
     -> (parse-sig rest)
     (sexp:list ((sexp:symbol 'con) . rest))
     -> (parse-con rest)
+    (sexp:list ((sexp:symbol 'includes) . rest))
+    -> (parse-includes '() rest)
     x -> (error1 "malformed spec file" x)
     )
 
   (for-list form forms
     (parse-form form))
-
   )
 
 ;; XXX do we need to distinguish between compile-time and run-time use
 ;;     of this registry?
-(define ffi-info
+(define (make-ffi-info)
   ;; we have to use two maps for struct/union because
   ;; they sometimes have the same name (e.g. in6_addr)
   ;; [alternatively we could use a pair as key?]
-  {structs = (map-maker symbol-index-cmp)
-   unions  = (map-maker symbol-index-cmp)
-   cons    = (map-maker symbol-index-cmp)
-   sigs    = (map-maker symbol-index-cmp)
+  {structs  = (map-maker symbol-index-cmp)
+   unions   = (map-maker symbol-index-cmp)
+   cons     = (map-maker symbol-index-cmp)
+   sigs     = (map-maker symbol-index-cmp)
+   includes = '()
    })
 
+(define ffi-info (make-ffi-info))
+
+(define (merge-ffi-info info)
+  (ffi-info.structs::union info.structs)
+  (ffi-info.unions::union info.unions)
+  (ffi-info.cons::union info.cons)
+  (ffi-info.sigs::union info.sigs)
+  ;; XXX this should probably be a set rather than a list
+  (set! ffi-info.includes (append ffi-info.includes info.includes))
+  )
+
 (define (dump-ffi-info)
+  (printf "includes: " (join " " ffi-info.includes) "\n")
   (printf "sigs:\n")
-  (for-map k v ffi-info.sigs.self.t
-    (csig-print v))
+  (map csig-print (ffi-info.sigs::values))
   (printf "defs:\n")
-  (for-map k v ffi-info.structs.self.t
-    (cdef-print v))
-  (for-map k v ffi-info.unions.self.t
-    (cdef-print v))
+  (map cdef-print (ffi-info.structs::values))
+  (map cdef-print (ffi-info.unions::values))
   (printf "constants:\n")
-  (for-map k v ffi-info.cons.self.t
-    (printf (lpad 5 (int v)) " " (sym k) "\n"))
+  (ffi-info.cons::iterate
+   (lambda (k v)
+     (printf (lpad 5 (int v)) " " (sym k) "\n")))
   )
 
 (define (read-spec name)
@@ -177,15 +213,31 @@
         (reader path0 (lambda () (file/read-char file)))))
     ))
 
-;; this is meant for *runtime* use.
-(define require-ffi
-  (let ((loaded '()))
+;; meant for *compile-time* use.
+(define require-ffi*
+  (let ((loaded (map-maker magic-cmp)))
     (lambda (name)
-      (when (not (member-eq? name loaded))
-        (let ((forms (read-spec name)))
-          (parse-spec forms)
-          (PUSH loaded name))))
-    ))
+      (match (loaded::get name) with
+        (maybe:yes info)
+        -> info
+        (maybe:no)
+        -> (try
+            (let ((forms (read-spec name))
+                  (info (make-ffi-info)))
+              (parse-spec info forms)
+              (loaded::add name info)
+              (merge-ffi-info info)
+              info)
+            except
+            (:OSError x)
+            -> (begin
+                 (printf "unable to load spec for interface " (sym name) "\n")
+                 (raise (:OSError x)))
+            )))))
+
+;; this is meant for *runtime* use.
+(define (require-ffi name)
+  (require-ffi* name))
 
 (define *word-size* (get-word-size))
 
@@ -255,15 +307,8 @@
   _ ref -> (error1 "cref-aref: type is not an array" (ctype-repr ref.ctype))
   )
 
-;; ughhh.. really need to teach macros to emit record literals.
-(define (makeref off ctype) {off=off ctype=ctype})
-
-(defmacro cref
-  (cref ctype a ...)
-  -> (expand-cref (makeref 0 ctype) (%%sexp a ...)))
-
 (define expand-cref
-  ref0 () 
+  ref0 ()
   -> ref0
   ref0 ((sexp:symbol fname) . tl)
   -> (expand-cref (cref-field fname ref0) tl)
@@ -272,6 +317,10 @@
   ref0 (sexp . _)
   -> (error1 "cref: elems must be symbol or integer" (repr sexp))
   )
+
+(defmacro cref
+  (cref ctype a ...)
+  -> (expand-cref {off=0 ctype=ctype} (%%sexp a ...)))
 
 ;; convert a ctype to an `op_cget` code (used by the VM).
 (define ctype->code
@@ -291,4 +340,56 @@
   (ctype:name 'char)                -> #\c
   (ctype:name 'void)                -> (raise (:VoidDereference))
   x                                 -> (raise (:StrangeCtype x))
+  )
+
+;; macros that expand into implementations of the foreign functions
+;;   declared in the spec file.  the macro 'calls' are built by
+;;   self/autoffi.scm.
+;;
+;; the c/llvm expansions are much simpler because most of the work
+;;   is done at compile-time.  The bytecode is more complex because
+;;   information about sizes/structs/etc is only available at runtime.
+
+(%backend (c llvm)
+
+  (defmacro build-ffi-fun
+    (build-ffi-fun name ztname rtype rcode nargs argtypes (formal0 ...))
+    -> (lambda (formal0 ...) (%ffi2 name formal0 ...)))
+
+  (defmacro build-ffi-ob-get
+    (build-ffi-ob-get name ztname obtype obcode)
+    -> (lambda () (%cget3 name)))
+
+  (defmacro build-ffi-ob-set
+    (build-ffi-ob-set name ztname obtype obcode)
+    -> (lambda (val) (%cset3 name val)))
+
+  )
+
+(%backend bytecode
+
+  (defmacro build-ffi-fun
+    (build-ffi-fun name ztname rtype rcode nargs (argtype0 ...) (formal0 ...))
+    -> (let (($pfun (%%cexp (string -> int) "dlsym" ztname)))
+         (lambda (formal0 ...)
+           (%%cexp (int char int argtype0 ... -> rtype)
+                   "ffi"
+                   $pfun rcode nargs
+                   formal0 ...))))
+
+  (defmacro build-ffi-ob-get
+    (build-ffi-ob-get name ztname obtype obcode)
+    -> (let (($pobj (%%cexp (string -> (* obtype)) "dlsym" ztname)))
+         (lambda ()
+           (%cget3 obtype $pobj 0 obcode))))
+
+  (defmacro build-ffi-ob-set
+    (build-ffi-ob-get name ztname obtype obcode)
+    -> (let (($pobj (%%cexp (string -> (* obtype)) "dlsym" ztname)))
+         (lambda (val)
+           (%cset3 obtype $pobj 0 obcode val))))
+
+  (define (copy-cstring s)
+    (%%cexp ((* char) -> string) "sfromc" s))
+
   )
