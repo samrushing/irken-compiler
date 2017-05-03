@@ -1,5 +1,5 @@
 
-(define (thing:(char int -> {a=char b=int}) a b)
+(define (thing a b) : (char int -> {a=char b=int})
   {a=a b=b}
   )
 
