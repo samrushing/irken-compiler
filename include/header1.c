@@ -235,67 +235,6 @@ pxll_int min_int (pxll_int a, pxll_int b)
   }
 }
 
-// magic<? ('a 'a -> bool)
-// uses runtime tags to lexicographically compare any two objects.
-// XXX infinite objects?
-// XXX consider 'magic_cmp'. (i.e., the 'cmp' datatype).
-// XXX consider how this may interact with the avoid-boxing optimization.
-
-// XXX grok why this goes FUCKING INSANE with a moderately complex
-//   object when the eq? test is missing.  I think it's because we
-//   make two comparisons for each level of sub-object.  The only
-//   real fix for this is to use 3-way comparison everywhere.
-//   probably means rewriting frb.scm as well (!).
-
-pxll_int
-magic_less_than (object * a, object * b)
-{
-  if (a == b) {
-    return 0;
-  } else if (is_int (a) && is_int (b)) {
-    return ((pxll_int) a < (pxll_int) b);
-  } else if (is_immediate (a) && is_immediate (b)) {
-    return ((pxll_int) a < (pxll_int) b);
-  } else if (is_immediate (a)) {
-    return 1; // immediates are less than all tuples.
-  } else if (is_immediate (b)) {
-    return 0;
-  } else {
-    pxll_int tca = GET_TYPECODE (*a);
-    pxll_int tcb = GET_TYPECODE (*b);
-    if (tca < tcb) {
-      return 1;
-    } else if (tcb < tca) {
-      return 0;
-    } else if (tca == TC_STRING) {
-      pxll_string * sa = (pxll_string *) a;
-      pxll_string * sb = (pxll_string *) b;
-      int cmp = memcmp (sa->data, sb->data, min_int (sa->len, sb->len));
-      if (cmp == 0) {
-        return (sa->len < sb->len);
-      } else {
-        return (cmp < 0);
-      }
-    } else {
-      // tags are the same: do per-element comparison.
-      // XXX check special internal types like TC_CLOSURE!
-      pxll_int len_a = GET_TUPLE_LENGTH (*a);
-      pxll_int len_b = GET_TUPLE_LENGTH (*b);
-      for (int i=0; i < min_int (len_a, len_b); i++) {
-        if (magic_less_than ((object*)a[i+1], (object*)b[i+1])) {
-          return 1;
-        } else if (magic_less_than ((object*)b[i+1], (object*)a[i+1])) {
-          return 0;
-        } else {
-          // a[i] == b[i], continue to the next...
-        }
-      }
-      // if we are here, items are equal up to min-length.
-      return (len_a < len_b);
-    }
-  }
-}
-
 pxll_int
 magic_cmp_int (pxll_int a, pxll_int b)
 {
@@ -711,6 +650,40 @@ void exit_continuation (void)
   } else {
     exit (0);
   }
+}
+
+object *
+mem2ptr (object * ob)
+{
+  switch (get_case_tup (ob)) {
+  case TC_USEROBJ + 0:
+    // buffer object
+    return ob+1;
+    break;
+  case TC_USEROBJ + 1:
+    // pointer
+    return (object*) UNBOX_INTEGER (*((pxll_int*)(ob+1)));
+    break;
+  default:
+    fprintf (stderr, "bad cmem object\n");
+    abort();
+  }
+}
+
+object *
+ptr2mem (void * ptr)
+{
+  object * result = allocate (TC_USEROBJ + 1, 1);
+  result[1] = (object*) BOX_INTEGER ((pxll_int)ptr);
+  return result;
+}
+
+object *
+buf2mem (object * buf)
+{
+  object * result = allocate (TC_USEROBJ + 0, 1);
+  result[1] = buf;
+  return result;
 }
 
 // --------------------------------------------------------------------------------
