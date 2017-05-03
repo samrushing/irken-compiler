@@ -17,15 +17,33 @@
   (:t symbol pattern)
   )
 
+(define fieldpair-repr
+  (fieldpair:t name pat)
+  -> (format (sym name) "=" (pattern-repr pat)))
+
 (datatype pattern
   (:literal sexp)
   (:variable symbol)
   (:constructor symbol symbol (list pattern))
-  (:record (list fieldpair))
+  (:record (list fieldpair) bool) ;; fields open-record?
+  )
+
+(define pattern-repr
+  (pattern:literal exp) -> (repr exp)
+  (pattern:variable sym) -> (symbol->string sym)
+  (pattern:constructor dt alt subs)
+  -> (format "(" (sym dt) ":" (sym alt) " " (join pattern-repr " " subs) ")")
+  (pattern:record pairs open?)
+  -> (format "{" (join fieldpair-repr " " pairs) (if open? "..." "") "}")
   )
 
 (datatype rule
   (:t (list pattern) sexp))
+
+(define rule-repr
+  (rule:t pats exp)
+  -> (format (join pattern-repr " " pats) " -> " (repr exp))
+  )
 
 (define rule->code (rule:t _ code) -> code)
 (define rule->pats (rule:t pats _) -> pats)
@@ -37,20 +55,20 @@
 (define (new-match-var)
   (string->symbol (format "m" (int (match-counter.inc)))))
 
-(define notdotdotdot
-  (field:t '... _) -> #f
-  _		   -> #t
-  )
-
 (define (compile-pattern expander vars exp)
 
   (define (parse-pattern exp)
-    (define parse-fieldpair
-      (field:t name pat) -> (fieldpair:t name (kind pat)))
+
+    (define parse-record-fields
+      acc ()                        -> (pattern:record acc #f)
+      acc ((field:t '... _))        -> (pattern:record acc #t)
+      acc ((field:t '... _) . tl)   -> (error1 "malformed record pattern" (format "... " (join repr-field " " tl) "}"))
+      acc ((field:t name pat) . tl) -> (parse-record-fields (list:cons (fieldpair:t name (kind pat)) acc) tl)
+      )
+
     (define kind
       (sexp:symbol s)	   -> (pattern:variable s)
-      ;; for now, ignore '...' in record patterns
-      (sexp:record fields) -> (pattern:record (map parse-fieldpair (filter notdotdotdot fields)))
+      (sexp:record fields) -> (parse-record-fields '() fields)
       (sexp:bool b)	   -> (pattern:constructor 'bool (if b 'true 'false) '())
       (sexp:list l)
       -> (match l with
@@ -59,7 +77,7 @@
 	   ((sexp:cons dt alt) . args) -> (pattern:constructor dt alt (map kind args))
 	   ((sexp:symbol '.) last) -> (kind last)
 	   (hd . tl) -> (pattern:constructor 'list 'cons (LIST (kind hd) (kind (sexp:list tl))))
-	   _ -> (error1 "malformed pattern" l))
+	   _ -> (error1 "malformed pattern" (format (join repr " " l))))
       x -> (pattern:literal x))
     (kind exp))
 
@@ -75,34 +93,11 @@
 	(pat . tl)
 	-> (loop (list:cons (parse-pattern pat) patterns) rules tl))))
 
-  ;; XXX redo with format after writing <sexp-repr>
-  (define (dump-pat p)
-    (define ps print-string)
-    (define dump-field
-      (fieldpair:t name vpat)
-      -> (begin (print name)
-		(ps "=")
-		(dump-pat vpat)))
-    (match p with
-      (pattern:literal exp)
-      -> (begin (ps "L") (ps (repr exp)))
-      (pattern:variable var)
-      -> (print var)
-      (pattern:constructor dt alt args)
-      -> (begin (ps "(") (print dt) (ps ":") (print alt) (ps " ")
-		(for-each (lambda (x) (dump-pat x) (ps " ")) args)
-		(ps ")"))
-      (pattern:record fpats)
-      -> (begin (ps "{")
-		(for-each (lambda (fp) (dump-field fp) (ps " ")) fpats)
-		(ps "}"))
-      _ -> (error1 "NYI" p)))
-
   (define pattern->kind
     (pattern:literal _)		 -> 'literal
     (pattern:variable _)	 -> 'variable
     (pattern:constructor _ _ _ ) -> 'constructor
-    (pattern:record _)		 -> 'record
+    (pattern:record _ _)         -> 'record
     )
 
   ;; pull the first pattern out of each rule
@@ -119,17 +114,6 @@
     (eq? (first-pattern-kind a)
 	 (first-pattern-kind b)))
   
-;;   (define thingum-counter (make-counter 0))
-
-;;   (define (compile-match vars rules default)
-;;     (let ((n (thingum-counter.inc)))
-;;       (print-string "compile-match: ") (printn n)
-;;       (for-each dump-rule rules)
-;;       (let ((r (compile-match* vars rules default)))
-;; 	(print-string "\n  -- result=") (printn n)
-;; 	(pp r 80) (newline)
-;; 	r)))
-
   (define (compile-match vars rules default)
     (match vars rules with
       ;; the 'empty rule'
@@ -141,28 +125,24 @@
 	(if (= (length groups) 1)
 	    ;; one of the standard rules
 	    (compile-group vars (car groups) default)
-	    ;; mixture rule
 	    (begin
-	      ;;(print-string " -- kind = mixture\n")
-	      (for-each
-	       (lambda (group)
-		 (set! default (compile-group vars group default)))
-	       ;; the python code iteratively calls pop(), which
-	       ;;   is equivalent to iterating over it in reverse.
-	       (reverse groups))
+              ;; mixture rule
+              ;; the python code iteratively calls pop(), which
+              ;;   is equivalent to iterating over it in reverse.
+              (for-list group (reverse groups)
+                (set! default (compile-group vars group default)))
 	      default)
 	    ))))
     
   ;; we know the rules are of identical kind
   (define (compile-group vars rules default)
-    (let ((kind (first-pattern-kind (car rules))))
-      ;;(print-string " -- kind = ") (printn kind)
-      (match kind with
-	'literal     -> (constant-rule vars rules default)
-	'variable    -> (variable-rule vars rules default)
-	'constructor -> (constructor-rule vars rules default)
-	'record	     -> (record-rule vars rules default)
-	_	     -> (impossible))))
+    (match (first-pattern-kind (car rules)) with
+      'literal     -> (constant-rule vars rules default)
+      'variable    -> (variable-rule vars rules default)
+      'constructor -> (constructor-rule vars rules default)
+      'record      -> (record-rule vars rules default)
+      _            -> (impossible)
+      ))
 
   (define (fatbar e1 e2)
     (cond ((eq? e1 match-fail) e2)
@@ -192,7 +172,6 @@
 			   -> (rule:t (cdr pats) (subst var0 (car pats) code))))
 		       rules)))
       (compile-match (cdr vars) rules0 default)))
-  
 
   (define fieldpair->label
     (fieldpair:t label _) -> label)
@@ -201,7 +180,7 @@
     (fieldpair:t _ pattern) -> pattern)
 
   (define pattern->fieldpairs
-    (pattern:record fields) -> fields
+    (pattern:record fields _) -> fields
     _ -> (error "not a record pattern"))
 
   (define (pattern->record-sig p)
@@ -213,14 +192,11 @@
   (define (record-rule vars rules default)
     ;; first - sanity check, make sure each sig matches.
     (let ((sig0 (pattern->record-sig (car (rule->pats (car rules))))))
-      (for-each
-       (lambda (rule)
-	 (if (not (equal-sigs? sig0 (pattern->record-sig (car (rule->pats rule)))))
-	     (error1 "record pattern with different label sigs" rules)))
-       (cdr rules))
+      (for-list rule (cdr rules)
+        (when (not (equal-sigs? sig0 (pattern->record-sig (car (rule->pats rule)))))
+          (printf "record pattern signature mismatch:\n\t" (join rule-repr "\n\t" rules))
+          (error "record pattern mismatch")))
       ;; translate
-;;       (print-string "record-rule, vars=") (printn vars)
-;;       (print-string "record-rule, sig0=") (printn sig0)
       (let ((var0 (nth vars 0))
 	    (vars0 (map (lambda (field) (string->symbol (format (sym var0) "_" (sym field)))) sig0))
 	    (rules0
@@ -335,15 +311,15 @@
 	   (define frob-rule
 	     (rule:t pats code)
 	     -> (let ((subs (pattern->subs (car pats))))
-		  (if (not (= (length subs) arity))
-		      (error1 "arity mismatch in variant pattern" rules))
+		  (when (not (= (length subs) arity))
+                    (printf "arity mismatch in constructor pattern:\n\t" (rule-repr (rule:t pats code)))
+                    (error "arity mismatch in constructor pattern"))
 		  (PUSH rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
-		  (for-range
-		      i arity
-		      (match (nth subs i) with
-			(pattern:variable '_) -> #u
-			_ -> (set! wild[i] #f))
-		      )))
+		  (for-range i arity
+                    (match (nth subs i) with
+                      (pattern:variable '_) -> #u
+                      _ -> (set! wild[i] #f))
+                    )))
 	   (for-each frob-rule (rules-stack.get))
 	   ;; if every pattern has a wildcard for this arg of the constructor,
 	   ;;  then use '_' rather than the symbol we generated.
@@ -373,30 +349,26 @@
 	    (fatbar result default)
 	    result))))
 
-  (define dump-rule
-    (rule:t pats code)
-    -> (begin (for-each (lambda (p)
-			  (dump-pat p)
-			  (print-string " ")) pats)
-	      (print-string "-> ")
-	      (pp code 80)
-	      (newline)
-	      ))
-
   (define nthunk
     0 p -> '()
-    n p -> (list:cons (p) (nthunk (- n 1) p)))
+    n p -> (list:cons (p) (nthunk (- n 1) p))
+    )
+
+  (define (arity-check rules)
+    (let ((lengths (map (lambda (rule) (length (rule->pats rule))) rules))
+          (arity (car lengths)))
+      (when (not (all (lambda (x) (= x arity)) (cdr lengths)))
+        (printf "arity mismatch in patterns:\n\t"
+                (join rule-repr "\n\t" rules))
+        (error "arity mismatch in patterns"))
+      arity))
 
   (let ((rules (parse-match expander exp)))
-;;     (print-string "compiling match:\n")
-;;     (for-each dump-rule rules) (newline)
-    (let ((npats (length (rule->pats (car rules))))
+    (arity-check rules)
+    (let ((npats (arity-check rules))
 	  (vars (if (null? vars)
 		    (nthunk npats new-match-var)
 		    vars))
 	  (result (compile-match vars rules match-error)))
-;;       (print-string "match compiler result:\n")
-;;       (pp result 80) (newline)
-;;       (print-string " ---\n")
       (:pair vars result)))
   )
