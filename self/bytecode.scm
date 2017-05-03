@@ -76,6 +76,7 @@
     (OI 'dlsym   2      #f     #t)   ;; target name
     (OI 'ffi     4      #t     #t)   ;; target fun nargs arg0 ...
     (OI 'smake   2      #f     #t)   ;; target size
+    (OI 'sfromc  2      #f     #t)   ;; target src
     (OI 'slen    2      #f     #t)   ;; target string
     (OI 'sref    3      #f     #t)   ;; target string index
     (OI 'sset    3      #f     #f)   ;; string index char
