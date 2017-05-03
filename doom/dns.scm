@@ -93,13 +93,13 @@
 (define (dnsheader-repr r)
   (format "<head qid=" (int r.qid) " qr=" (int r.qr) " op=" (int r.opcode)
           " aa=" (int r.aa) " tc=" (int r.tc) " rd=" (int r.rd) " ra=" (int r.ra)
-          " z=" (int r.z) " rcode=" (int r.rcode) 
+          " z=" (int r.z) " rcode=" (int r.rcode)
           " qd=" (int r.qdcount) " an=" (int r.ancount) " ns=" (int r.nscount)
           " ar=" (int r.arcount) ">"))
 
 (define (add-header p h)
-  (p@u16 h.qid)
-  (p@u16 
+  (p::u16 h.qid)
+  (p::u16
    (packbits
     (4 h.rcode)
     (3 0)
@@ -109,26 +109,26 @@
     (1 h.aa)
     (4 h.opcode)
     (1 h.qr)))
-  (p@u16 h.qdcount)
-  (p@u16 h.ancount)
-  (p@u16 h.nscount)
-  (p@u16 h.arcount)
+  (p::u16 h.qdcount)
+  (p::u16 h.ancount)
+  (p::u16 h.nscount)
+  (p::u16 h.arcount)
   )
 
 (define (build-question qid name qtype qclass recursion)
   (let ((h (dnsheader-make))
         (p (pbuf/make 512))
         (nameparts (map-maker magic-cmp)))
-        
+
     (define (pack-name s)
       (let loop ((parts (string-split s #\.)))
         (match (nameparts::get parts) with
           (maybe:yes pos)
-          -> (p@u16 (logior #xc0 pos))
+          -> (p::u16 (logior #xc0 pos))
           (maybe:no)
           -> (match parts with
-               ()   -> (p@u8 0)   ;; normal name
-               ("") -> (p@u8 0)   ;; name ending in dot
+               ()   -> (p::u8 0)   ;; normal name
+               ("") -> (p::u8 0)   ;; name ending in dot
                ("" . tl)          ;; name with empty label
                -> (raise (:BadDNSName s))
                (label . tl) ;; normal case
@@ -137,9 +137,9 @@
                         (raise (:BadDNSName s))
                         (begin
                           ;; record this partial name's location
-                          (nameparts::add parts (p@pos))
-                          (p@u8 len)
-                          (p@string label)
+                          (nameparts::add parts (p::pos))
+                          (p::u8 len)
+                          (p::string label)
                           (loop tl)))))
           )))
 
@@ -149,11 +149,11 @@
     (set! h.rd recursion)
     (add-header p h)
     (pack-name name)
-    (p@u16 (dnstype->int qtype))
-    (p@u16 dnsclass-in)
-    (p@val)
+    (p::u16 (dnstype->int qtype))
+    (p::u16 dnsclass-in)
+    (p::val)
     ))
-        
+
 (datatype dnsrr
   (:a (vector char))
   (:aaaa (vector char))
@@ -205,24 +205,24 @@
 
   (let ((u (ubuf/make data))
         (h (dnsheader-make))
-        (qid (u@u16))
-        (flags (u@u16))
+        (qid (u::u16))
+        (flags (u::u16))
         (nameparts (map-maker magic-cmp))
         (r {qd='() an='() ns='() ar='()}))
 
     (define (unpack-name* acc)
-      (let ((pos (u@pos))
-            (n0 (u@u8))
+      (let ((pos (u::pos))
+            (n0 (u::u8))
             (n1 (logand n0 #x3f)))
         (cond ((= #xc0 (logand n0 #xc0))
                ;; pointer
-               (match (nameparts::get (logior (<< n1 8) (u@u8))) with
+               (match (nameparts::get (logior (<< n1 8) (u::u8))) with
                  (maybe:yes parts) -> (append parts acc)
                  (maybe:no) -> (raise (:BadDNSPacket "bad name pointer" u))))
               ((= n1 0) acc)
               (else
                ;; normal label
-               (let ((label (u@string n1))
+               (let ((label (u::string n1))
                      (r (unpack-name* (list:cons label acc))))
                  ;; tricky: we want to store only the labels that came *after* this point.
                  (nameparts::add pos (slice r 0 (- (length r) (length acc))))
@@ -236,81 +236,81 @@
     (define (decode-rr type len)
       (match type with
         (dnstype:a)
-        -> (let ((data (u@string len))
+        -> (let ((data (u::string len))
                  (r (make-vector len #\0)))
              (for-range i len
                (set! r[i] (string-ref data i)))
              (dnsrr:a r))
         (dnstype:aaaa)
-        -> (let ((data (u@string len))
+        -> (let ((data (u::string len))
                  (r (make-vector len #\0)))
              (for-range i len
                (set! r[i] (string-ref data i)))
              (dnsrr:aaaa r))
         (dnstype:mx)
-        -> (let ((pref (u@u16))
+        -> (let ((pref (u::u16))
                  (name (unpack-name)))
              (dnsrr:mx pref name))
         (dnstype:soa)
         -> (let ((mname (unpack-name))
                  (rname (unpack-name))
-                 (serial (u@u32))
-                 (refresh (u@u32))
-                 (retry (u@u32))
-                 (expire (u@u32))
-                 (minimum (u@u32)))
+                 (serial (u::u32))
+                 (refresh (u::u32))
+                 (retry (u::u32))
+                 (expire (u::u32))
+                 (minimum (u::u32)))
              (dnsrr:soa mname rname serial refresh retry expire minimum))
         ;; fun note: this wire format is actually not in the rfc.
         (dnstype:srv)
-        -> (let ((priority (u@u16))
-                 (weight (u@u16))
-                 (port (u@u16))
+        -> (let ((priority (u::u16))
+                 (weight (u::u16))
+                 (port (u::u16))
                  (target (unpack-name)))
              (dnsrr:srv priority weight port target))
         (dnstype:dnskey)
-        -> (let ((flags (u@u16))
-                 (proto (u@u8))
-                 (algo (u@u8)))
-             (dnsrr:dnskey flags proto algo (u@string (- len 4))))
+        -> (let ((flags (u::u16))
+                 (proto (u::u8))
+                 (algo (u::u8)))
+             (dnsrr:dnskey flags proto algo (u::string (- len 4))))
         (dnstype:rrsig)
-        -> (let ((pos0 (u@pos))
-                 (type (u@u16))
-                 (algo (u@u8))
-                 (labels (u@u8))
-                 (ttl (u@u32))
-                 (exp (u@u32))
-                 (inc (u@u32))
-                 (tag (u@u16))
+        -> (let ((pos0 (u::pos))
+                 (type (u::u16))
+                 (algo (u::u8))
+                 (labels (u::u8))
+                 (ttl (u::u32))
+                 (exp (u::u32))
+                 (inc (u::u32))
+                 (tag (u::u16))
                  (name (unpack-name))
-                 (pos1 (u@pos)))
+                 (pos1 (u::pos)))
              (dnsrr:rrsig type algo labels ttl exp inc tag name
-                          (u@string (- len (- pos1 pos0)))))
+                          (u::string (- len (- pos1 pos0)))))
         (dnstype:ns)      -> (dnsrr:ns (unpack-name))
         (dnstype:cname)   -> (dnsrr:cname (unpack-name))
         (dnstype:ptr)     -> (dnsrr:ptr (unpack-name))
-        (dnstype:txt)     -> (dnsrr:txt (u@string len))
-        (dnstype:other x) -> (dnsrr:other x (u@string len))
+        (dnstype:txt)     -> (dnsrr:txt (u::string len))
+        (dnstype:other x) -> (dnsrr:other x (u::string len))
         ;; this should not happen
-        (dnstype:any)     -> (dnsrr:other 255 (u@string len))
+        (dnstype:any)     -> (dnsrr:other 255 (u::string len))
         ))
 
     (define (unpack-rr)
       (let ((name (unpack-name))
-            (type (int->dnstype (u@u16)))
-            (class (u@u16)) ;; XXX verify as `IN`
-            (ttl (u@u32))
-            (rdlength (u@u16)))
+            (type (int->dnstype (u::u16)))
+            (class (u::u16)) ;; XXX verify as `IN`
+            (ttl (u::u32))
+            (rdlength (u::u16)))
         {name=name type=type class=class ttl=ttl
                    data=(decode-rr type rdlength)}
         ))
 
     (define (unpack-question)
       (let ((name (unpack-name))
-            (qtype (u@u16))
-            (qclass (u@u16)))
+            (qtype (u::u16))
+            (qclass (u::u16)))
         {name=name qtype=qtype qclass=qclass}))
 
-    (unpackbits 
+    (unpackbits
      flags
      (4 h.rcode)
      (3 h.z)
@@ -320,10 +320,10 @@
      (1 h.aa)
      (4 h.opcode)
      (1 h.qr))
-    (set! h.qdcount (u@u16))
-    (set! h.ancount (u@u16))
-    (set! h.nscount (u@u16))
-    (set! h.arcount (u@u16))
+    (set! h.qdcount (u::u16))
+    (set! h.ancount (u::u16))
+    (set! h.nscount (u::u16))
+    (set! h.arcount (u::u16))
     (when (= h.tc 1)
       (printf "reply truncated\n")
       (raise (:DNSTruncated)))
@@ -353,7 +353,7 @@
        ))
 
 (define (tcp-enc-size-prefix len)
-  (list->string 
+  (list->string
    (LIST (ascii->char (>> len 8))
          (ascii->char (logand #xff len)))))
 
@@ -376,7 +376,7 @@
          (close fd)))
      except
      (:DNSTruncated)
-     -> (begin 
+     -> (begin
           (close fd)
           (printf "trying tcp...\n")
           (set! fd (socket AF_INET SOCK_STREAM 0))
