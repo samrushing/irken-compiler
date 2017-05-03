@@ -80,6 +80,7 @@
 (put 'for-set2 'scheme-indent-function 4)
 (put 'for-map 'scheme-indent-function 3)
 (put 'for-vector 'scheme-indent-function 2)
+(put 'for-string 'scheme-indent-function 2)
 (put 'for 'scheme-indent-function 2)
 (put 'let/cc 'scheme-indent-function 1)
 (put 'while 'scheme-indent-function 1)
