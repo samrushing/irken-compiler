@@ -309,14 +309,9 @@
 	   (define frob-rule
 	     (rule:t pats code)
 	     -> (let ((subs (pattern->subs (car pats))))
-<<<<<<< HEAD
-		  (if (not (= (length subs) arity))
-		      (error1 "arity mismatch in variant pattern" (repr code)))
-=======
 		  (when (not (= (length subs) arity))
                     (printf "arity mismatch in constructor pattern:\n\t" (rule-repr (rule:t pats code)))
                     (error "arity mismatch in constructor pattern"))
->>>>>>> b698b8ae33f4e086ecc05e9c47838592ed742399
 		  (PUSH rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
 		  (for-range i arity
                     (match (nth subs i) with
