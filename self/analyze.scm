@@ -773,7 +773,14 @@
   (build-dependency-graph node)
   ;;(print-graph the-context.dep-graph)
   ;; trim, simple, inline, simple
-  (do-simple-optimizations
-   (do-inlining
-    (do-simple-optimizations
-     (do-trim node)))))
+   (do-simple-optimizations
+    (do-inlining
+     (do-simple-optimizations
+      (do-trim node)))))
+
+(define (do-n-rounds node n)
+  (if (= n 0)
+      node
+      (begin
+        (notquiet (printf "opt " (int n) " ...\n"))
+        (do-n-rounds (do-one-round node) (- n 1)))))
