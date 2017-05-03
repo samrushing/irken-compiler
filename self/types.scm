@@ -299,6 +299,16 @@
   (let ((sig (get-record-sig t)))
     (sexp:list (map sexp:symbol sig))))
 
+(define ctype->irken-type
+  (ctype:name name)                  -> (pred name '())
+  (ctype:int _ _)                    -> int-type
+  (ctype:array _ t)                  -> (pred 'cmem (LIST (ctype->irken-type t)))
+  (ctype:pointer (ctype:name 'char)) -> string-type
+  (ctype:pointer t)                  -> (pred 'cmem (LIST (ctype->irken-type t)))
+  (ctype:struct n)                   -> (pred 'struct (LIST (pred n '())))
+  (ctype:union n)                    -> (pred 'union (LIST (pred n '())))
+  )
+
 ;; (define (test-types)
 ;;   (let ((t0 (parse-type (car (read-string "((list sexp) -> int)"))))
 ;;      (t1 (parse-type (car (read-string "(thing 'a 'b (list 'a) (list 'b))"))))
