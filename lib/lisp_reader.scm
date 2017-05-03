@@ -219,7 +219,8 @@
 	(skip-whitespace)
 	(let ((ch (peek)))
 	  (match ch with
-	    ;; postfix array-reference syntax
+            ;; ------ postfix/infix extensions -----
+	    ;; array-reference syntax
 	    #\[ -> (let ((index (read-array-index)))
 		     ;; primops take a parameter---------V
 		     (sexp (sexp:symbol '%array-ref) (sexp:bool #f) result index))
@@ -227,10 +228,13 @@
 	    #\: -> (begin
 		     (next)
 		     (match result (read) with
+                       ;; normal constructor syntax
 		       (sexp:symbol dt) (sexp:symbol alt) -> (sexp:cons dt alt)
+                       ;; object/method syntax (ob::add arg0 ...)
 		       ;; not forcing (sexp:symbol) on <ob> might allow 'builtin method calls'...
-		       ;;ob (sexp:cons 'nil method) -> (sexp:attr (sexp:attr ob 'o) method)
-		       ob (sexp:cons 'nil method) -> (sexp (sexp:symbol '%method) (sexp:symbol method) ob)
+		       ;;  ob (sexp:cons 'nil method) -> (sexp:attr (sexp:attr ob 'o) method)
+                       ob (sexp:cons 'nil method)
+                       -> (sexp (sexp:symbol '%%obref) ob (sexp:symbol method))
 		       ;; object : type syntax
 		       ob type -> (sexp (sexp:symbol '%typed) ob type)))
 		       ;;x y -> (read-error1 "colon syntax" (:pair x y))))
