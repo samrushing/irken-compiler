@@ -317,16 +317,19 @@
   (printf item ...) -> (print-string (format item ...))
   )
 
-(define (strlen s)
-  (%%cexp (cstring -> int) "strlen(%0)" s))
+(%backend (c llvm)
 
-(define (copy-cstring s)
-  (let ((len (strlen s))
-	(result (make-string len)))
-    (%%cexp (string cstring int -> undefined)
-	    "memcpy (%0, %1, %2)"
-	    result s len)
-    result))
+  (define (strlen s)
+    (%%cexp (cstring -> int) "strlen(%0)" s))
+
+  (define (copy-cstring s)
+    (let ((len (strlen s))
+          (result (make-string len)))
+      (%%cexp (string cstring int -> undefined)
+              "memcpy (%0, %1, %2)"
+              result s len)
+      result))
+  )
 
 ;; read from a string one char at a time...
 ;; XXX think about generator interfaces...
@@ -346,3 +349,11 @@
      (for-range i (string-length s)
        (consumer (maybe:yes (string-ref s i))))
      (forever (consumer (maybe:no))))))
+
+(defmacro for-string
+  (for-string chname s body ...)
+  -> (let (($s s)) ;; avoid duplicating <s> expression.
+       (for-range $i (string-length $s)
+	 (let ((chname (string-ref $s $i)))
+	   body ...))))
+
