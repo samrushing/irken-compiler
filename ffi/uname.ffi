@@ -2,6 +2,6 @@
   (includes sys/utsname.h)
   (structs utsname)
   (constants)
-  (funs
+  (sigs
     (uname (* (struct utsname)) -> int)
     ))
