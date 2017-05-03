@@ -4,7 +4,11 @@
 
 ;; XXX now that delete is available, add delete methods.
 
-(define (map-class)
+(datatype map-ob
+  (:t {t=(tree 'a 'b) cmp=('a 'a -> cmp)})
+  )
+
+(define (map-maker cmp)
 
   (define (add self k v)
     (match (tree/member self.t self.cmp k) with
@@ -47,6 +51,13 @@
   (define (values self)
     (tree/values self.t))
 
+  (define (union self other)
+    (other::iterate
+     (lambda (k v)
+       (add self k v))))
+
+  (define un (map-ob:t self) -> self)
+
   (let ((methods
 	 {add=add
 	  maybe-add=maybe-add
@@ -57,17 +68,21 @@
 	  riterate=riterate
 	  map=map
 	  keys=keys
-	  values=values}))
-    ;; new method
-    (lambda (cmp)
-      ;; don't modify the cmp function slot, you dolt.
-      {o=methods self={t=(tree/empty) cmp=cmp}}
-      )))
-
-(define map-maker (map-class))
+	  values=values
+          union=union
+          un=un
+          }))
+    ;; don't modify the cmp function slot, you dolt.
+    {o=methods self=(map-ob:t {t=(tree/empty) cmp=cmp})}
+    ))
 
 ;; set class using 'tree' and ignoring values.
-(define (set2-class)
+
+(datatype set2-ob
+  (:t {t=(tree 'a 'b) cmp=('a 'a -> cmp)})
+  )
+
+(define (set2-maker cmp)
 
   (define (add self k)
     (match (tree/member self.t self.cmp k) with
@@ -88,15 +103,15 @@
   (define (keys self)
     (tree/keys self.t))
 
+  (define un (set2-ob:t self) -> self)
+
   (let ((methods
 	 {add=add
 	  member=member
 	  iterate=iterate
-	  keys=keys}))
-    ;; new method
-    (lambda (cmp)
-      ;; don't modify the cmp function slot, you dolt.
-      {o=methods self={t=(tree/empty) cmp=cmp}}
-      )))
-
-(define set2-maker (set2-class))
+	  keys=keys
+          un=un
+          }))
+    ;; don't modify the cmp function slot, you dolt.
+    {o=methods self=(set2-ob:t {t=(tree/empty) cmp=cmp})}
+    ))

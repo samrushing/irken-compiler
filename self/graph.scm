@@ -3,6 +3,10 @@
 (include "lib/set2.scm")
 (include "lib/map.scm")
 
+(datatype symbol-set-ob
+  (:t {t=(tree 'a 'b)})
+  )
+
 (define (symbol-set-class)
 
   (define (in self sym)
@@ -27,9 +31,11 @@
      (lambda (k v) (p v))
      self.t))
 
-  (let ((methods {in=in add=add get=get iterate=iterate}))
+  (define un (symbol-set-ob:t self) -> self)
+
+  (let ((methods {in=in add=add get=get iterate=iterate un=un}))
     (define (new)
-      {o=methods self={t=(tree/empty)}})
+      {o=methods self=(symbol-set-ob:t {t=(tree/empty)})})
     new)
   )
 

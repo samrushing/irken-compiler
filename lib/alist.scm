@@ -51,7 +51,7 @@
 
 (define alist->values
   (alist:nil) -> (list:nil)
-  (alist:entry _ v tl) -> (list:cons v (alist->keys tl)))
+  (alist:entry _ v tl) -> (list:cons v (alist->values tl)))
 
 (define alist/length
   (alist:nil) -> 0
@@ -69,7 +69,11 @@
 
 ;; imperative alist 'object'.
 
-(define (alist-class)
+(datatype alist-ob
+  (:t {alist=(alist 'a 'b)})
+  )
+
+(define (alist-maker)
 
   (define (add self k v)
     ;; should we check for it first?
@@ -121,6 +125,8 @@
 	(alist:nil) -> (reverse acc)
 	(alist:entry _ v tl) -> (loop (list:cons v acc) tl))))
 
+  (define un (alist-ob:t self) -> self)
+
   (let ((methods
 	 {add         = add
 	  get         = lookup
@@ -129,8 +135,8 @@
 	  iterate     = iterate
 	  map         = map
 	  keys        = keys
-	  values      = values}))
+	  values      = values
+          un          = un}))
     ;; new method
-    (lambda () {o=methods self={alist=(alist:nil)}})))
-
-(define alist-maker (alist-class))
+    {o=methods self=(alist-ob:t {alist=(alist:nil)})}
+    ))

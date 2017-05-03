@@ -1,5 +1,9 @@
 ;; -*- Mode: Irken -*-
 
+(datatype set-ob
+  (:t {list=(list 'a)})
+  )
+
 (define (set-class)
 
   (define (in self x)
@@ -23,9 +27,11 @@
 	() -> #u
 	(hd . tl) -> (begin (p hd) (loop tl)))))
 
-  (let ((methods {in=in add=add get=get iterate=iterate}))
+  (define un (set-ob:t self) -> self)
+
+  (let ((methods {in=in add=add get=get iterate=iterate un=un}))
     (define (new l)
-      {o=methods self={list=l}})
+      {o=methods self=(set-ob:t {list=l})})
     new
     ))
 
