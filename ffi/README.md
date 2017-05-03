@@ -204,7 +204,7 @@ I think sexp is nearly as simple as something could get.
 
 Then we could use closures for ref/set of structures.  For example:
 
-    (let ((desc0 (lookup-descriptor 'sockaddr_in6 'in6_addr 'in6_addr 'in6_addr '__u6_addr32)))
+    (let ((desc0 (lookup-descriptor 'sockaddr_in6 'in6_addr 'in6_addr '__u6_addr32)))
       ...)
 
 Hah, we can't do file i/o without the FFI, unless we build something very
@@ -251,5 +251,31 @@ raises the reference count.  The runtime keeps a map of all such
 addresses, and on occasion will sweep through and `free` any that have
 generation numbers lower than the current one. [might this require an
 stl map, or can we do it within irken?]
+
+
+Descriptor Plan
+---------------
+
+We want the best possible solution in VM-vs-C backends.  In the C backend,
+we want a descriptor that accesses a structure element via compile-time
+expressions, like this: `x.sockaddr_in6.in6_addr.in6_addr.u6_addr32[0]`,
+and on the VM we need to emit a literal describing that path which is used
+to compute the offset at runtime.
+
+So I think the cps phase should generate a prim - like %cget/%cset, that
+includes that literal as its parameter.  For the C backend, this will result
+in a %%cexp-style line.
+
+`TC_BUFFER`: maybe we can continue to use TC_BUFFER exactly as it is? In this
+case a TC_BUFFER will hold a 'pointer'?  Or do we want a compile-time type
+that holds a raw pointer with the swizzled low bit?
+
+Let's lean toward this: a C pointer is swizzled and the runtime sees it as
+an integer.  Next step: testing this representation with a simple FFI.
+I need a simple C function that returns a pointer of some kind.  strerror?
+
+Hmmm.. now I'm thinking we need to use TC_BUFFER.  Because there's no way
+to pass this kind of pointer arg back into the ffi unless it's a plain old
+int.  Maybe we give up on the high bit for pointers?
 
 
