@@ -15,6 +15,7 @@
 (include "lib/set.scm")
 
 (include "self/backend.scm")
+(include "self/autoffi.scm")
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
@@ -237,6 +238,8 @@ default flags:
       (lambda (name type)
 	(print-string (format "  " (sym name) " : " (type-repr (apply-subst type)) "\n")))
 	the-context.exceptions)
+     (printf "\n-- FFI --\n")
+     (dump-ffi-info)
      )
 
     (notquiet (printf "backend...\n"))
