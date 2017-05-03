@@ -89,6 +89,9 @@
           "-l" -> (begin
                     (set! i (+ i 1))
                     (PUSH options.libraries argv[i]))
+          "-O" -> (begin
+                    (set! i (+ i 1))
+                    (set! options.opt-rounds (string->int argv[i])))
 	  "-m" -> (set! options.debugmacroexpansion #t)
 	  "-dt" -> (set! options.debugtyping #t)
 	  "-ni" -> (set! options.noinline #t)
@@ -122,6 +125,7 @@ Usage: compile <irken-src-file> [options]
  -ni : no inlining
  -p : generate profile-printing code
  -n : disable letreg optimization
+ -O : rounds of optimization (default: 3)
  -q : quiet the compiler
  -nr : no range check (e.g. vector access)
  -h : display this usage
@@ -169,17 +173,11 @@ default flags:
 	(_ (set! forms0 '()))
 	(_ (set! forms1 '()))
 	(_ (rename-variables node1))
-	;;(_ (begin (pp-node node0) (newline)))
 	(_ (optimize-nvcase node1))
-        (_ (notquiet (printf "opt1...\n")))
-	(node2 (do-one-round node1))
-	;;(_ (begin (print-string "after first round:\n") (pp-node node1)))
-        (_ (notquiet (printf "opt2...\n")))
-	(noden (do-one-round node2))
+        (noden (do-n-rounds node1 the-context.options.opt-rounds))
 	;; try to free up some memory
 	(_ (set! node0 (node/sequence '())))
 	(_ (set! node1 (node/sequence '())))
-	(_ (set! node2 (node/sequence '())))
 	(_ (set! the-context.funs (tree/empty)))
 	(_ (find-tail noden))
 	(_ (find-leaves noden))
