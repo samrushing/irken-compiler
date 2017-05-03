@@ -84,27 +84,6 @@
       (type:pred na _ _) (type:pred nb _ _) -> (eq? na nb)
       _ _ -> #f)
 
-    ;; note: a remaining difference between the python solver and the this solver:
-    ;;   the python solver will emit rlabel (name,abs(), ...) in some cases.
-    ;;   doesn't seem to have an impact (yet), but something to watch for:
-    ;;
-    ;; 7039 L        primapp [11] ('%rextend/x', None) {a=bool b=bool x=int y=char z=char}
-    ;; 7037 L          primapp [9] ('%rextend/y', None) {a=bool b=bool x=#f y=char z=char}
-    ;; 7035 L            primapp [7] ('%rextend/z', None) {a=bool b=bool y=#f z=char}
-    ;; 7033 L              primapp [5] ('%rextend/a', None) {a=bool b=bool z=#f}
-    ;; 7031 L                primapp [3] ('%rextend/b', None) {a=#f b=bool}
-    ;; 7029 L                  primapp [1] ('%rmake', None) {b=#f}
-    ;;
-    ;; vs
-    ;;
-    ;; 2360   11  100       primapp %rextend x : {x=int y=char z=char a=bool b=bool }
-    ;; 2358    9  100         primapp %rextend y : {y=char z=char a=bool b=bool }
-    ;; 2356    7  100           primapp %rextend z : {z=char a=bool b=bool }
-    ;; 2354    5  100             primapp %rextend a : {a=bool b=bool }
-    ;; 2352    3  100               primapp %rextend b : {b=bool }
-    ;; 2350    1  100                 primapp %rmake #f : {}
-
-
     (define (U-row u v)
       (match u v with
 	;; u and v are both rlabel
@@ -185,10 +164,8 @@
 	      (type:tvar _ _) -> #f
 	      (type:pred _ args _)
 	      -> (begin
-		   (for-each
-		    (lambda (arg)
-		      (if (occurs-in-type tvar arg) (return #t) #u))
-		    args)
+                   (for-list arg args
+                     (if (occurs-in-type tvar arg) (return #t) #u))
 		   #f)))))
 
   ;; occurs-free and build-type-scheme could obviously
@@ -278,11 +255,8 @@
 					     result-type)
 					x -> (error1 "strange constructor scheme" x))))
       (literal:vector l)    -> (let ((tv (new-tvar)))
-				 (for-each
-				  (lambda (x)
-				    (let ((tx (type-of-literal x exp tenv)))
-				      (unify exp tv tx)))
-				  l)
+                                 (for-list x l
+                                   (unify exp tv (type-of-literal x exp tenv)))
 				 (pred 'vector (LIST tv))
 				 )
       ))
@@ -302,9 +276,8 @@
 		 () -> (error1 "malformed arrow type" sig)
 		 (result-type . parg-types)
 		 -> (let ((arg-types (map (lambda (x) (type-of x tenv)) (noderec->subs exp))))
-		      (for-each2 (lambda (a b)
-				   (unify exp (unraw a) b))
-				 parg-types arg-types)
+                      (for-list2 a b parg-types arg-types
+                        (unify exp (unraw a) b))
 		      result-type
 		      )))
 	_ -> type)))
@@ -336,12 +309,10 @@
   (define (type-of-function formals body sig tenv)
     (if (no-type? sig)
 	(let ((arg-types '()))
-	  (for-each
-	   (lambda (formal)
-	     (let ((type (optional-type formal tenv)))
-	       (PUSH arg-types type)
-	       (alist/push tenv formal (:scheme '() type))))
-	   formals)
+	  (for-list formal formals
+            (let ((type (optional-type formal tenv)))
+              (PUSH arg-types type)
+              (alist/push tenv formal (:scheme '() type))))
 	  (arrow (type-of body tenv) (reverse arg-types)))
 	;; user-supplied type (do we need to instantiate?)
 	(let ((solved (type-of-function formals body no-type tenv)))
@@ -398,30 +369,25 @@
 	       (init-types (make-vector n no-type))
 	       )
 	   ;;(print-string "reordered: ") (printn names0)
-	   (for-each
-	    (lambda (part)
-	      ;; build temp tenv for typing the inits
-	      (let ((temp-tenv
-		     (foldr
-		      (lambda (i al)
-			(alist:entry names[i] (:scheme '() init-tvars[i]) al))
-		      tenv (reverse part))))
-		;; type each init in temp-tenv
-		(for-each
-		 (lambda (i)
-		   (let ((ti (type-of inits[i] temp-tenv))
-			 (_ (unify inits[i] ti init-tvars[i]))
-			 ;;(ti (apply-subst ti)))
-			 )
-		     (set! init-types[i] ti)))
-		 part)
-		;; now extend the environment with type schemes instead
-		(for-each
-		 (lambda (i)
-		   (let ((scheme (build-type-scheme init-types[i] tenv)))
-		     (alist/push tenv names[i] scheme)))
-		 part)))
-	    partition)
+	   (for-list part partition
+             ;; build temp tenv for typing the inits
+             (let ((temp-tenv
+                    (foldr
+                     (lambda (i al)
+                       (alist:entry names[i] (:scheme '() init-tvars[i]) al))
+                     tenv (reverse part))))
+               ;; type each init in temp-tenv
+               (for-list i part
+                 (let ((ti (type-of inits[i] temp-tenv))
+                       (_ (unify inits[i] ti init-tvars[i]))
+                       ;;(ti (apply-subst ti)))
+                       )
+                   (set! init-types[i] ti)))
+               ;; now extend the environment with type schemes instead
+               (for-list i part
+                 (let ((scheme (build-type-scheme init-types[i] tenv)))
+                   (alist/push tenv names[i] scheme)))
+               part))
 	   ;; type the body in the new polymorphic environment
 	   (type-of body tenv))))
 
@@ -461,7 +427,8 @@
 	       (let ((type0 (instantiate-type-scheme tvars type)))
 		 (unify exp tval type0))))
       ;; each alt has the same type
-      (for-each (lambda (alt) (unify alt tv (type-of alt tenv))) alts)
+      (for-list alt alts
+        (unify alt tv (type-of alt tenv)))
       ;; this will work even when else-exp is a dummy %%match-error
       (unify else-exp tv (type-of else-exp tenv))
       tv))
@@ -505,6 +472,8 @@
       (maybe:no) -> (let ((index (alist/length the-context.variant-labels)))
 		      (alist/push the-context.variant-labels label index))))
 
+  ;; these are used in type schemes in lookup-primap.  Since they are generalized
+  ;;  over, it's ok to use the same tvar repeatedly.
   (define T0 (new-tvar))
   (define T1 (new-tvar))
   (define T2 (new-tvar))
