@@ -518,7 +518,10 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
     object * ob = vm_regs[bytecode[pc+5+i]];
     switch (get_case (ob)) {
     case TC_INT:
-      args[i] = &ffi_type_sint;
+      // Note: we can't use sint here, because it is not a synonym for 'intptr_t',
+      //  which is what irken uses for its integer representation.  Specifically,
+      //  on amd64 'int' is only 32 bits.
+      args[i] = &ffi_type_pointer;
       vals[i] = (void*) UNBOX_INTEGER (ob);
       pvals[i] = vals + i;
       break;
@@ -556,11 +559,17 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
     unsigned char rcode = (unsigned char) GET_CHAR (vm_regs[bytecode[pc+3]]);
     switch (rcode) {
     case 'i':
-      rtype = &ffi_type_sint;
+      rtype = &ffi_type_pointer;
       break;
     case 'p':
     case 's':
       rtype = &ffi_type_pointer;
+      break;
+    case 'u':
+      rtype = &ffi_type_sint;
+      break;
+    case 'c':
+      rtype = &ffi_type_uchar;
       break;
     default:
       fprintf (stderr, "unknown return type\n");
@@ -585,6 +594,12 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
       case 'p':
         *result = BOX_INTEGER ((pxll_int)rc);
         break;
+      case 'u':
+        *result = (object *) PXLL_UNDEFINED;
+        break;
+      case 'c':
+        *result = TO_CHAR ((uint8_t)rc);
+        break;
       }
       return 0;
     } else {
@@ -599,108 +614,114 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
 pxll_int
 vm_cget (object ** result, object * src, pxll_int off, pxll_int code)
 {
+  uint8_t * p;
   switch (get_case (src)) {
-  case TC_BUFFER: {
-    uint8_t * p = (uint8_t *) (src + 1);
-    p += off;
-    switch (code) {
-    case 's':
-      *result = vm_copy_string ((char *) p);
-      break;
-    case '1':
-      *result = BOX_INTEGER ((pxll_int)(*((uint8_t *)p)));
-      break;
-    case '2':
-      *result = BOX_INTEGER ((pxll_int)*((uint16_t *)p));
-      break;
-    case '4':
-      *result = BOX_INTEGER ((pxll_int)*((uint32_t *)p));
-      break;
-    case '8':
-      *result = BOX_INTEGER ((pxll_int)*((uint64_t *)p));
-      break;
-    case 'i':
-      *result = BOX_INTEGER ((pxll_int)*((int8_t *)p));
-      break;
-    case 'j':
-      *result = BOX_INTEGER ((pxll_int)*((int16_t *)p));
-      break;
-    case 'k':
-      *result = BOX_INTEGER ((pxll_int)*((int32_t *)p));
-      break;
-    case 'l':
-      *result = BOX_INTEGER ((pxll_int)*((int64_t *)p));
-      break;
-    case 'p':
-      *result = BOX_INTEGER ((pxll_int)*p);
-      break;
-    case 'c':
-      *result = TO_CHAR (*p);
-      break;
-    default:
-      fprintf (stderr, "vm_cget: unknown result code\n");
-      return -1;
-    }
-  }
-    return 0;
+  case TC_BUFFER:
+    p = (uint8_t *) (src + 1);
+    break;
+  case TC_INT:
+    p = (uint8_t *) UNBOX_INTEGER (src);
     break;
   default:
-    fprintf (stderr, "vm_cget: src not TC_BUFFER\n");
+    fprintf (stderr, "vm_cget: src not TC_BUFFER or pointer\n");
     return -1;
   }
+  p += off;
+  switch (code) {
+  case 's':
+    *result = vm_copy_string ((char *) p);
+    break;
+  case '1':
+    *result = BOX_INTEGER ((pxll_int)(*((uint8_t *)p)));
+    break;
+  case '2':
+    *result = BOX_INTEGER ((pxll_int)*((uint16_t *)p));
+    break;
+  case '4':
+    *result = BOX_INTEGER ((pxll_int)*((uint32_t *)p));
+    break;
+  case '8':
+    *result = BOX_INTEGER ((pxll_int)*((uint64_t *)p));
+    break;
+  case 'i':
+    *result = BOX_INTEGER ((pxll_int)*((int8_t *)p));
+    break;
+  case 'j':
+    *result = BOX_INTEGER ((pxll_int)*((int16_t *)p));
+    break;
+  case 'k':
+    *result = BOX_INTEGER ((pxll_int)*((int32_t *)p));
+    break;
+  case 'l':
+    *result = BOX_INTEGER ((pxll_int)*((int64_t *)p));
+    break;
+  case 'p':
+    *result = BOX_INTEGER ((pxll_int)*p);
+    break;
+  case 'c':
+    *result = TO_CHAR (*p);
+    break;
+  default:
+    fprintf (stderr, "vm_cget: unknown result code\n");
+    return -1;
+  }
+  return 0;
 }
 
 pxll_int
 vm_cset (object * dst, pxll_int off, pxll_int code, object * val)
 {
+  uint8_t * p;
   switch (get_case (dst)) {
-  case TC_BUFFER: {
-    uint8_t * p = (uint8_t *) (dst + 1);
-    p += off;
-    switch (code) {
-    case 's': {
-      pxll_string * s = (pxll_string *) val;
-      memcpy (p, s->data, s->len);
-    }
-      break;
-    case '1':
-      * ((uint8_t*)p) = (uint8_t) UNBOX_INTEGER (val);
-      break;
-    case '2':
-      * ((uint16_t*)p) = (uint16_t) UNBOX_INTEGER (val);
-      break;
-    case '4':
-      * ((uint32_t*)p) = (uint32_t) UNBOX_INTEGER (val);
-      break;
-    case '8':
-      * ((uint64_t*)p) = (uint64_t) UNBOX_INTEGER (val);
-      break;
-    case 'i':
-      * ((int8_t*)p) = (int8_t) UNBOX_INTEGER (val);
-      break;
-    case 'j':
-      * ((int16_t*)p) = (int16_t) UNBOX_INTEGER (val);
-      break;
-    case 'k':
-      * ((int32_t*)p) = (int32_t) UNBOX_INTEGER (val);
-      break;
-    case 'l':
-      * ((int64_t*)p) = (int64_t) UNBOX_INTEGER (val);
-      break;
-    case 'p':
-      * ((pxll_int*)p) = UNBOX_INTEGER (val);
-      break;
-    default:
-      fprintf (stderr, "vm_cset: unknown result code\n");
-      return -1;
-    }
-  }
-    return 0;
+  case TC_BUFFER:
+    p = (uint8_t *) (dst + 1);
+    break;
+  case TC_INT:
+    p = (uint8_t *) UNBOX_INTEGER (dst);
     break;
   default:
-    fprintf (stderr, "vm_cset: dst not TC_BUFFER\n");
+    fprintf (stderr, "vm_cget: src not TC_BUFFER or pointer\n");
     return -1;
   }
+  p += off;
+  switch (code) {
+  case 's': {
+    pxll_string * s = (pxll_string *) val;
+    memcpy (p, s->data, s->len);
+  }
+    break;
+  case '1':
+    * ((uint8_t*)p) = (uint8_t) UNBOX_INTEGER (val);
+    break;
+  case '2':
+    * ((uint16_t*)p) = (uint16_t) UNBOX_INTEGER (val);
+    break;
+  case '4':
+    * ((uint32_t*)p) = (uint32_t) UNBOX_INTEGER (val);
+    break;
+  case '8':
+    * ((uint64_t*)p) = (uint64_t) UNBOX_INTEGER (val);
+    break;
+  case 'i':
+    * ((int8_t*)p) = (int8_t) UNBOX_INTEGER (val);
+    break;
+  case 'j':
+    * ((int16_t*)p) = (int16_t) UNBOX_INTEGER (val);
+    break;
+  case 'k':
+    * ((int32_t*)p) = (int32_t) UNBOX_INTEGER (val);
+    break;
+  case 'l':
+    * ((int64_t*)p) = (int64_t) UNBOX_INTEGER (val);
+    break;
+  case 'p':
+    * ((pxll_int*)p) = UNBOX_INTEGER (val);
+    break;
+  default:
+    fprintf (stderr, "vm_cset: unknown result code\n");
+    return -1;
+  }
+  return 0;
 }
 
 #define NREGS 20
@@ -744,13 +765,13 @@ vm_go (void)
     &&l_shl, &&l_ashr, &&l_or, &&l_xor, &&l_and, &&l_eq, &&l_lt,
     &&l_gt, &&l_le, &&l_ge, &&l_cmp, &&l_tst, &&l_jmp, &&l_fun,
     &&l_tail, &&l_tail0, &&l_env, &&l_stor, &&l_ref, &&l_mov,
-    &&l_epush, &&l_trcall, &&l_trcall0, &&l_ref0, &&l_call,
-    &&l_call0, &&l_pop, &&l_printo, &&l_prints, &&l_topis,
-    &&l_topref, &&l_topset, &&l_set, &&l_set0, &&l_pop0, &&l_epop,
-    &&l_tron, &&l_troff, &&l_gc, &&l_imm, &&l_make, &&l_makei,
-    &&l_exit, &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref, &&l_vset,
-    &&l_vmake, &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc,
-    &&l_irk, &&l_getc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_slen,
+    &&l_epush, &&l_trcall, &&l_trcall0, &&l_ref0, &&l_call, &&l_call0,
+    &&l_pop, &&l_printo, &&l_prints, &&l_topis, &&l_topref,
+    &&l_topset, &&l_set, &&l_set0, &&l_pop0, &&l_epop, &&l_tron,
+    &&l_troff, &&l_gc, &&l_imm, &&l_make, &&l_makei, &&l_exit,
+    &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref, &&l_vset, &&l_vmake,
+    &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc, &&l_irk,
+    &&l_getc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_plat, &&l_gist,
     &&l_argv, &&l_quiet, &&l_heap, &&l_readf, &&l_calloc, &&l_cget,
     &&l_cset,
@@ -1228,6 +1249,11 @@ vm_go (void)
     s->len = slen;
     REG1 = (object*)s;
   }
+  pc += 3;
+  DISPATCH();
+ l_sfromc:
+    // SFROMC target src
+  REG1 = vm_copy_string ((char*)UNBOX_INTEGER (REG2));
   pc += 3;
   DISPATCH();
  l_slen:
