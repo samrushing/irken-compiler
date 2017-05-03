@@ -9,15 +9,11 @@
 #include <assert.h>
 #include <inttypes.h>
 
-// it's arguable that there's no need for this include file, that it should
-//   just be placed at the top of header.c.
-
 typedef intptr_t pxll_int;
 typedef void * object;
 
 const size_t heap_size = 25000000; // about 200MB on 64-bit machine
-// update backend.py if you change this
-const size_t head_room = 1024;
+const size_t head_room = 8192;
 
 object * heap0 = NULL;
 object * heap1 = NULL;
