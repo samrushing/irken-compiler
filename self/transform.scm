@@ -25,7 +25,7 @@
   ;; similar to UNQUOTE-SPLICING.
   ;; (x y ... (%splice a b c) z)
   ;; -> (x y ... a b c z)
-  
+
   (define (splice-list forms acc)
     (match forms with
       () -> (reverse acc)
@@ -34,7 +34,7 @@
       (hd . tl)
       -> (splice-list tl (list:cons (splice hd) acc))
       ))
-  
+
   (define splice
     (sexp:list forms)
     -> (sexp:list (splice-list forms '()))
@@ -59,8 +59,9 @@
        (lambda (x)
 	 (match x with
 	   (:pair name init)
-	   -> (begin (PUSH names (sexp:symbol name))
-		     (PUSH inits (expand init)))))
+	   -> (begin
+                (PUSH names (sexp:symbol name))
+                (PUSH inits (expand init)))))
        defs)
       (wrap-fix (reverse names) (reverse inits) (expand (wrap-begin exps)))))
 
@@ -95,6 +96,8 @@
              (loop acc tl))
       acc ((sexp:list ((sexp:symbol 'include) (sexp:string path))) . tl)
       -> (loop (foldr cons acc (reverse (scan-for-meta (find-and-read-file path)))) tl)
+      acc ((sexp:list ((sexp:symbol 'require-ffi) (sexp:list ((sexp:symbol 'quote) (sexp:symbol interface))))) . tl)
+      -> (loop (foldr cons acc (reverse (autoffi interface))) tl)
       acc (hd . tl)
       -> (loop (list:cons hd acc) tl)
       )
@@ -141,9 +144,9 @@
       -> (match rator with
 	   (sexp:symbol sym)
 	   -> (match (alist/lookup transform-table sym) with
-		(maybe:yes fun) 
+		(maybe:yes fun)
                 -> (fun rands)
-		(maybe:no)	
+		(maybe:no)
                 -> (match (alist/lookup the-context.macros sym) with
                      (maybe:yes macro) -> (expand (macro.apply (sexp:list l) the-context.options.debugmacroexpansion))
                      (maybe:no)	       -> (sexp:list (list:cons rator (map expand rands)))))
@@ -152,6 +155,11 @@
 	   ;; XXX use something like __methods__ rather than 'o', duh.
 	   (sexp:list ((sexp:symbol '%method) (sexp:symbol name) ob))
 	   -> (sexp:list (append (LIST (sexp:attr (sexp:attr ob 'o) name) (sexp:attr ob 'self)) (map expand rands)))
+	   (sexp:list ((sexp:symbol '%%obref) ob (sexp:symbol name)))
+           -> (sexp:list (append (LIST (sexp:attr (sexp:attr ob 'o) name)
+                                       (sexp (sexp:attr (sexp:attr ob 'o) 'un)
+                                             (sexp:attr ob 'self)))
+                                 (map expand rands)))
 	   _ -> (sexp:list (map expand l)))))
 
   (define expand-if
@@ -215,12 +223,12 @@
 
   (define (expand-pvar-lambda type pvar formals body)
     (let ((msym (sexp:symbol (new-match-var))))
-      (expand 
+      (expand
        (sexp (sexp:symbol 'function)
 	     (sexp:symbol 'lambda)
 	     (sexp:list (LIST msym))
 	     type
-	     (sexp:list 
+	     (sexp:list
 	      (LIST (sexp:symbol 'vcase)
 		    msym
 		    (sexp:list (LIST formals body))
@@ -578,6 +586,65 @@
   (define (expand-%%sexp list)
     (sexp:list (cons (sexp:symbol '%%sexp) list)))
 
+  (define (expand-%%ffitype form)
+    (sexp:list (cons (sexp:symbol '%%ffitype) form)))
+
+  (define expand-%%attr
+    (ob (sexp:symbol name))
+    -> (sexp:attr (expand ob) name)
+    x -> (error1 "malformed %%attr" x))
+
+  ;; --------------------------------------------------------------------------------
+  ;; constant folding. this *really* needs to go into analyze.scm, so that it can
+  ;;  benefit from inlining.
+  ;; --------------------------------------------------------------------------------
+  (define (expand-<< args)
+    (let ((args0 (map expand args)))
+      (match args0 with
+        ((sexp:int n) (sexp:int m))
+        -> (sexp:int (<< n m))
+        _
+        -> (sexp:list (list:cons (sexp:symbol '<<) args0))
+        )))
+
+  (define (expand-binary- args)
+    (let ((args0 (map expand args)))
+      (match args0 with
+        ((sexp:int n) (sexp:int m))
+        -> (sexp:int (binary- n m))
+        _
+        -> (sexp:list (list:cons (sexp:symbol 'binary-) args0))
+        )))
+
+  (define (expand-binary+ args)
+    (let ((args0 (map expand args)))
+      (match args0 with
+        ((sexp:int n) (sexp:int m))
+        -> (sexp:int (binary+ n m))
+        _
+        -> (sexp:list (list:cons (sexp:symbol 'binary+) args0))
+        )))
+
+  (define (expand-logand args)
+    (let ((args0 (map expand args)))
+      (match args0 with
+        ((sexp:int n) (sexp:int m))
+        -> (sexp:int (logand n m))
+        _
+        -> (sexp:list (list:cons (sexp:symbol 'logand) args0))
+        )))
+
+  (define (expand-logior args)
+    (let ((args0 (map expand args)))
+      (match args0 with
+        ((sexp:int n) (sexp:int m))
+        -> (sexp:int (logior n m))
+        _
+        -> (sexp:list (list:cons (sexp:symbol 'logior) args0))
+        )))
+
+  ;; --------------------------------------------------------------------------------
+
   (define backend->name
     (backend:c)        -> 'c
     (backend:llvm)     -> 'llvm
@@ -602,6 +669,13 @@
       ('%%cexp expand-%%cexp)
       ('%%ffi expand-%%ffi)
       ('%%sexp expand-%%sexp)
+      ('%%ffitype expand-%%ffitype)
+      ('%%attr expand-%%attr)
+      ('<< expand-<<)
+      ('binary- expand-binary-)
+      ('binary+ expand-binary+)
+      ('logand expand-logand)
+      ('logior expand-logior)
       ))
 
   go
