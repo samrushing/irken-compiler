@@ -344,20 +344,27 @@
 	(oformat "store i8* %" (int id1) ", i8** %" (int id0))
 	))
 
+    (define (safe-known-fun name)
+      (let ((var (vars-get-var name)))
+        (= 0 var.sets)))
+
+    (define (emit-call* mname funreg)
+      (match mname with
+        (maybe:no)
+        -> (oformat "tail call void @tail_call (i8** %r" (int funreg) ")")
+        (maybe:yes name)
+        -> (if (safe-known-fun name)
+               (oformat "tail call void @" (gen-function-cname name 0) "()")
+               (oformat "tail call void @tail_call (i8** %r" (int funreg) ")"))
+        ))
+
     (define (emit-tail name fun args)
       (if (>= args 0)
 	  (oformat "call void @link_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
 	  (oformat "call void @link_env_noargs (i8** %r" (int fun) ")"))
-      (match name with
-	(maybe:yes name) ;; known function
-	-> (let ((cname (gen-function-cname name 0)))
-	     (oformat "tail call void @" cname "()")
-	     (oformat "ret void"))
-	(maybe:no) ;; unknown function
-	-> (begin
-	     (oformat "tail call void @tail_call (i8** %r" (int fun) ")")
-	     (oformat "ret void"))
-	))
+      (emit-call* name fun)
+      (oformat "ret void")
+      )
 
     (define (emit-trcall depth name regs)
       (let ((nargs (length regs))
@@ -396,11 +403,7 @@
 	    (oformat "call void @link_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
 	    (oformat "call void @link_env_noargs (i8** %r" (int fun) ")"))
 	;; call
-	(match name with
-	  (maybe:no)
-	  -> (oformat "tail call void @tail_call (i8** %r" (int fun) ")")
-	  (maybe:yes name)
-	  -> (oformat "tail call void @" (gen-function-cname name 0) "()"))
+        (emit-call* name fun)
 	(oformat "ret void")
 	;; emit a new c function to represent the continuation of the current irken function
 	(PUSH fun-stack
