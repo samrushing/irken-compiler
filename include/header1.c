@@ -140,7 +140,16 @@ dump_object (object * ob, int depth)
     case TC_EMPTY_VECTOR:
       fprintf (stdout, "#()");
       break;
+    case TC_USERIMM:
+      // a user immediate unit-type...
+      fprintf (stdout, "<u%" PRIuPTR ">", (((pxll_int)ob)>>8));
+      break;
     case 0: {
+      // if (!((ob >= heap0) && (ob < (heap0 + heap_size)))) {
+      //   // pointer is outside our heap (i.e., foreign)
+      //   fprintf (stdout, "<%p>", ob);
+      //   break;
+      // }
       // structure
       header h = (header) (ob[0]);
       int tc = h & 0xff;
@@ -216,9 +225,6 @@ dump_object (object * ob, int depth)
       }
     }
       break;
-    case TC_USERIMM:
-      // a user immediate unit-type...
-      fprintf (stdout, "<u%" PRIuPTR ">", (((pxll_int)ob)>>8));
     }
   }
   return (object *) PXLL_UNDEFINED;
