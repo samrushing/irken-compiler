@@ -41,6 +41,12 @@ class sexp_reader:
             else:
                 self.next()
 
+    def skip_comment (self):
+        while 1:
+            ch = self.next()
+            if ch == '\n':
+                return
+
     def read (self):
         self.skip_whitespace()
         ch = self.peek()
@@ -48,6 +54,9 @@ class sexp_reader:
             raise EOFError, "Unexpected end of file"
         elif ch == '(':
             return self.read_list()
+        elif ch == ';':
+            self.skip_comment()
+            self.read()
         else:
             return self.read_atom()
 
@@ -313,6 +322,9 @@ def sexp (ob):
     else:
         return ob
 
+def quote (s):
+    return '"' + s + '"'
+
 def emit_ffi (iface):
     path = '%s_iface.c' % (iface['name'],)
     build_clang_input (path, iface)
@@ -330,6 +342,8 @@ def emit_ffi (iface):
     f.write (';; -*- Mode: irken -*-\n\n')
     f.write (';; -- do not edit: auto-generated from interface \'%s\'\n' % (iface['path'],))
     f.write (';; --   platform: %s  machine: %s\n\n' % (plat, mach))
+    # emit includes
+    f.write ('(includes %s)\n' % (' '.join ([quote(x) for x in iface['includes']])))
     # emit struct/union defs
     for layout in layouts:
         if len(layout[0]) == 1:
@@ -348,13 +362,17 @@ def emit_ffi (iface):
                     ))
         f.write ('  )\n')
     # emit sigs.
-    for fun in iface['funs']:
-        name, argtypes, rtype = fun
-        f.write ('(sig %s (%s -> %s))\n' % (
-            name, 
-            ' '.join ([sexp(x) for x in argtypes]),
-            sexp(rtype)
-            ))
+    for sig in iface['sigs']:
+        if len(sig) == 3:
+            name, argtypes, rtype = sig
+            f.write ('(sig %s (%s -> %s))\n' % (
+                name, 
+                ' '.join ([sexp(x) for x in argtypes]),
+                sexp(rtype)
+                ))
+        else:
+            name, obtype = sig
+            f.write ('(sig %s %s)\n' % (name, sexp(obtype)))
     for (name, val) in constants:
         f.write ('(con %s %s)\n' % (name, val))
     f.close()
@@ -365,15 +383,15 @@ def read_spec (path):
     name = spec[0]
     includes = []
     structs = []
-    funs = []
+    sigs = []
     constants = []
     for part in spec[1:]:
         if part[0] == 'includes':
             includes.extend (part[1:])
         elif part[0] == 'structs':
             structs.extend (part[1:])
-        elif part[0] == 'funs':
-            funs.extend (part[1:])
+        elif part[0] == 'sigs':
+            sigs.extend (part[1:])
         elif part[0] == 'constants':
             constants.extend (part[1:])
 
@@ -395,13 +413,17 @@ def read_spec (path):
     r['includes'] = includes
     r['structs'] = structs
     r['constants'] = constants
-    r['funs'] = []
-    for fun in funs:
-        fname = fun[0]
-        assert (fun[-2] == '->')
-        argtypes = map (parse_spectype, fun[1:-2])
-        rtype = parse_spectype (fun[-1])
-        r['funs'].append ((fname, argtypes, rtype))
+    r['includes'] = includes
+    r['sigs'] = []
+    for sig in sigs:
+        name = sig[0]
+        if len(sig) > 2 and sig[-2] == '->':
+            argtypes = map (parse_spectype, sig[1:-2])
+            rtype = parse_spectype (sig[-1])
+            r['sigs'].append ((name, argtypes, rtype))
+        else:
+            assert len(sig) == 2
+            r['sigs'].append ((name, parse_spectype (sig[1])))
     return r
 
 int_size_table = build_int_size_table()
