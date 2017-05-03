@@ -283,18 +283,6 @@
 		      (v (make-vector n x)))
 		  (recur v 0 l))))
 
-;; ;; using %vec16-set because the type system keeps <recur>
-;; ;;   generic, thus skipping the vec16 detection.  gotta figure this out.
-;; (define (list->vec16 l)
-;;   (define recur
-;;     v _ ()      -> v
-;;     v n (x . y) -> (begin (%vec16-set v n x) (recur v (+ n 1) y)))
-;;   (match l with
-;;     ()       -> #()  ;; special-case test for empty list
-;;     (_ . _)  -> (let ((n (length l))
-;; 		      (v (%make-vec16 n)))
-;; 		  (recur v 0 l))))
-
 ;; http://www.codecodex.com/wiki/Merge_sort#OCaml
 
 (define (sort < l)
