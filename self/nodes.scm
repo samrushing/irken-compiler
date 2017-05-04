@@ -254,11 +254,9 @@
 
 (define (walk-node-tree p n d)
   (p n d)
-  (for-each
-   (lambda (sub)
-     (walk-node-tree p sub (+ d 1)))
-   (noderec->subs n)
-   ))
+  (for-list sub (noderec->subs n)
+    (walk-node-tree p sub (+ d 1)))
+  )
 
 (define (make-node-generator n)
   (make-generator
