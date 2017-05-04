@@ -53,19 +53,6 @@
 (define (rpre t)                (pred 'pre (LIST t)))
 (define (make-label sym)        (pred sym '()))
 
-(define rlabel-repr
-  (type:pred label () _) (type:pred 'pre (t) _) -> (format (sym label) "=" (type-repr t))
-  (type:pred label () _) (type:pred 'abs () _)  -> (format (sym label) "=#f")
-  (type:pred label () _) x                      -> (format (sym label) "=" (type-repr x))
-  x y -> (error1 "bad row type" (LIST x y))
-  )
-
-(define row-repr
-  (type:pred 'rlabel (label type rest) _)         -> (format (rlabel-repr label type) " " (row-repr rest))
-  (type:pred 'rdefault ((type:pred 'abs () _)) _) -> ""
-  (type:tvar id _)                                -> "..."
-  x                                               -> (format "<confused:" (type-repr x) ">")
-  )
 
 ;; put a row type into canonical order (sorted by field name).
 
@@ -104,23 +91,55 @@
     -> (type:pred pred (map row-canon args) rt)
     ))
 
-(define type-repr
-  (type:tvar id _)                    -> (format "t" (int id))
-  (type:pred 'arrow (rtype atype) _)  -> (format "(" (type-repr atype) "->" (type-repr rtype) ")")
-  (type:pred 'arrow (rtype . args) _) -> (format "(" (join type-repr ", " args) ")->" (type-repr rtype))
-  (type:pred 'rproduct (row) _)       -> (format "{" (row-repr row) "}")
-  (type:pred 'rsum (row) _)           -> (format "|" (row-repr row) "|")
-  (type:pred pred () _)               -> (format (sym pred))
-  (type:pred pred args _)             -> (format (sym pred) "(" (join type-repr ", " args) ")")
-  )
 
-(define (get-tvars t)
-  (let ((tvars (make-set '() eq?)))
-    (define recur
-      (type:pred sym types _) -> (for-each recur types)
-      x                       -> (tvars.add x))
-    (recur t)
-    (tvars.get)))
+(define (type-repr* t pretty?)
+
+  (let ((tvars (cmap/make magic-cmp)))
+
+    (define (find-tvars t)
+      (define recur
+        (type:pred sym types _) -> (for-each recur types)
+        (type:tvar id _)        -> (begin (cmap/add tvars id) #u))
+      (recur t))
+
+    (define (tvar-repr id)
+      (if pretty?
+          (format "'" (char (ascii->char (+ (char->ascii #\a) (cmap->index tvars id)))))
+          (format "t" (int id))))
+
+    (define rlabel-repr
+      (type:pred label () _) (type:pred 'pre (t) _) -> (format (sym label) "=" (trep t))
+      (type:pred label () _) (type:pred 'abs () _)  -> (format (sym label) "=#f")
+      (type:pred label () _) x                      -> (format (sym label) "=" (trep x))
+      x y -> (error1 "bad row type" (LIST x y))
+      )
+
+    (define row-repr
+      (type:pred 'rlabel (label type rest) _)         -> (format (rlabel-repr label type) " " (row-repr rest))
+      (type:pred 'rdefault ((type:pred 'abs () _)) _) -> ""
+      (type:tvar id _)                                -> "..."
+      x                                               -> (format "<confused:" (trep x) ">")
+      )
+
+    (define trep
+      (type:tvar id _)                    -> (tvar-repr id)
+      (type:pred 'arrow (rtype atype) _)  -> (format "(" (trep atype) " -> " (trep rtype) ")")
+      (type:pred 'arrow (rtype . args) _) -> (format "(" (join trep " " args) " -> " (trep rtype) ")")
+      (type:pred 'rproduct (row) _)       -> (format "{" (row-repr row) "}")
+      (type:pred 'rsum (row) _)           -> (format "|" (row-repr row) "|")
+      (type:pred pred () _)               -> (format (sym pred))
+      (type:pred pred args _)             -> (format "(" (sym pred) " " (join trep " " args) ")")
+      )
+
+    (find-tvars t)
+    (if (> tvars.count 26)
+        (set! pretty? #f))
+    (trep t)
+    )
+)
+
+(define (type-repr t)
+  (type-repr* t #f))
 
 (define type->trec
   (type:tvar _ r) -> r

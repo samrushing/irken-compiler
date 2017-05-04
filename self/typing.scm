@@ -245,7 +245,8 @@
     (printf "}\n"))
 
   (define (type-of exp tenv)
-    ;;(printf "type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n")
+    (when the-context.options.debugtyping
+      (printf "type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n"))
     (let ((texp0 (noderec->type exp))
           (texp1 (type-of* exp tenv)))
       ;; XXX the intent of this is to unify with user-assigned types,
@@ -253,7 +254,8 @@
       ;;(when (not (no-type? texp0))
       ;;  (unify exp texp0 texp1))
       (set-node-type! exp texp1)
-      ;;(printf "type-of* " (int (noderec->id exp)) " " (type-repr texp) "\n")
+      (when the-context.options.debugtyping
+        (printf "type-of* " (int (noderec->id exp)) " " (type-repr texp1) "\n"))
       texp1))
 
   (define (type-of-literal lit exp tenv)
@@ -714,6 +716,10 @@
 		    )))))
 
   (define (apply-subst-to-program n)
+    ;; This one loop is causing heap allocation to triple while compiling,
+    ;;   and almost certainly adding a lot to the compile time.
+    ;; I think this is because apply-subst is destroying the shared nature
+    ;;   of the tree of types - by deep-copying all types.
     (set-node-type! n (apply-subst (noderec->type n)))
     (for-each apply-subst-to-program (noderec->subs n)))
 
