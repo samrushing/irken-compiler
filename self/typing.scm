@@ -729,6 +729,33 @@
     ;;(printf "done.\n")
     t))
 
+(define (dump-types n)
+
+  (define (strip-alpha name)
+    (let ((name0 (symbol->string name))
+          (parts (string-split name0 #\_)))
+      (let loop ((parts (reverse parts)))
+        (if (all digit? (string->list (car parts)))
+            (loop (cdr parts))
+            (format (join "_" (reverse parts)))))))
+
+  (let ((funstack (LIST 0)))
+    (for (make-node-generator n) (node depth)
+      ;; normalize indent
+      (match (noderec->t node) with
+        (node:function name formals)
+        -> (begin
+             (if (> depth (car funstack))
+                 (PUSH funstack depth)
+                 (while (< depth (car funstack))
+                   (pop funstack)))
+             (printf (rpad 20 (format (repeat (length funstack) "  ") (strip-alpha name)))
+                     " : " (type-repr* (noderec->type node) #t) "\n"))
+        _ -> #u
+        )
+      )))
+
+
 ;; (define (test-typing)
 ;;   (let ((context (make-context))
 ;; 	(transform (transformer context))
