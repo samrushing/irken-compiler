@@ -382,7 +382,8 @@
   (match (canon x) pos? with
     () _ -> (big:zero)
     y  #t -> (big:pos y)
-    y  #f -> (big:neg y))))
+    y  #f -> (big:neg y)
+    ))
 
 (define (digits-div da db pos?)
   ;; XXX test for zero
