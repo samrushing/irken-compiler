@@ -82,32 +82,37 @@
           "-b" -> (set! options.backend (backend:bytecode))
           "-h"  -> (usage)
           "-help" -> (usage)
+          "-types" -> (set! options.dumptypes #t)
 	  x -> (if (char=? #\- (string-ref x 0) )
 		   (raise (:UnknownOption "Unknown option" x))
 		   (set! filename-index i))
 	  ))
     (set-verbose-gc (not options.quiet))
+    (when options.dumptypes
+      ;; disable inlining so every function has a type.
+      (set! options.noinline #t))
     filename-index))
 
 (define (usage)
   (printf "
 Usage: compile <irken-src-file> [options]
- -c : don't compile .c file
- -v : verbose (very!) output
- -t : generate trace-printing code (currently unimplemented)
- -f : set CFLAGS for C compiler
- -I : add include search directory
- -l : add a link library
- -m : debug macro expansion
- -dt : debug typing
- -ni : no inlining
- -p : generate profile-printing code
- -n : disable letreg optimization
- -q : quiet the compiler
- -nr : no range check (e.g. vector access)
- -h : display this usage
- -llvm : compile using the LLVM backend.
- -b : compile using the bytecode backend.
+ -c     : don't compile .c file
+ -v     : verbose (very!) output
+ -t     : generate trace-printing code (currently unimplemented)
+ -f     : set CFLAGS for C compiler
+ -I     : add include search directory
+ -l     : add a link library
+ -m     : debug macro expansion
+ -dt    : debug typing
+ -types : dump all type signatures (do not compile)
+ -ni    : no inlining
+ -p     : generate profile-printing code
+ -n     : disable letreg optimization
+ -q     : quiet the compiler
+ -nr    : no range check (e.g. vector access)
+ -h     : display this usage
+ -llvm  : compile using the LLVM backend.
+ -b     : compile using the bytecode backend.
 
 default flags:
   CC='" CC "'
@@ -176,56 +181,58 @@ default flags:
 	(_ (verbose (printn strong)))
 	(_ (set! the-context.scc-graph strong))
         (_ (notquiet (printf "typing...\n")))
-	(type0 (type-program noden))
+	(_ (type-program noden))
 	;;(type-map (collect-all-types noden))
 	;;(_ (print-type-tree noden))
 	(_ (verbose (print-string "\n-- after typing --\n") (pp-node noden) (newline)))
 	(_ (remove-onearmed-nvcase noden)) ;; safe after typing
         (_ (notquiet (printf "cps...\n")))
-	(cps (compile noden))
-	(_ (set! noden (node/sequence '()))) ;; go easier on memory
-	)
+        )
+    (if the-context.options.dumptypes
+        (dump-types noden)
+        (main-compile base noden))
+    ))
+
+(define (main-compile base node)
+  (let ((cps (compile node)))
     (verbose
-     (print-string "\n-- RTL --\n")
+     (printf "\n-- RTL --\n")
      (print-insn cps 0)
      (newline)
-     (print-string "\n-- datatypes --\n")
+     (printf "\n-- datatypes --\n")
      (alist/iterate
       (lambda (name dt)
 	(print-datatype dt))
       the-context.datatypes)
-     (print-string "\n-- typealiases --\n")
+     (printf "\n-- typealiases --\n")
      (alist/iterate
       (lambda (name alias)
-	(print-string (format "  " (sym name) " : " (scheme-repr alias) "\n")))
+	(printf (format "  " (sym name) " : " (scheme-repr alias) "\n")))
       the-context.aliases)
-     (print-string "\n-- variables --\n")
+     (printf "\n-- variables --\n")
      (print-vars)
-     (print-string "\n-- labels --\n")
+     (printf "\n-- labels --\n")
      (printn the-context.labels)
-     (print-string "\n-- records --\n")
+     (printf "\n-- records --\n")
      (printn the-context.records)
-     (print-string "\n-- symbols --\n")
+     (printf "\n-- symbols --\n")
      (alist/iterate
       (lambda (sym index)
-	(print-string (format "  " (int index) " : " (sym sym) "\n")))
+	(printf "  " (int index) " : " (sym sym) "\n"))
       the-context.symbols)
-     (print-string "\n-- variant labels --\n")
+     (printf "\n-- variant labels --\n")
      (alist/iterate
       (lambda (sym index)
-	(print-string (format "  " (int index) " : " (sym sym) "\n")))
+	(printf "  " (int index) " : " (sym sym) "\n"))
       the-context.variant-labels)
-     (print-string "\n-- exceptions --\n")
+     (printf "\n-- exceptions --\n")
      (alist/iterate
       (lambda (name type)
-	(print-string (format "  " (sym name) " : " (type-repr (apply-subst type)) "\n")))
-	the-context.exceptions)
+	(printf "  " (sym name) " : " (type-repr (apply-subst type)) "\n"))
+      the-context.exceptions)
      )
-
     (notquiet (printf "backend...\n"))
-
     (compile-with-backend base cps)
-    )
-  )
+    ))
 
 (main)

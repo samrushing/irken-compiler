@@ -19,6 +19,7 @@
    noinline		= #f
    noletreg		= #f
    debugtyping          = #f
+   dumptypes            = #f
    quiet                = #f
    no-range-check       = #f
    backend              = (backend:c)

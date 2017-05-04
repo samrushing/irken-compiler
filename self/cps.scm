@@ -760,11 +760,6 @@
     type-map
     ))
 
-(define (print-type-tree root)
-  (for (make-node-generator root) (n d x)
-       (indent d)
-       (printf (type-repr (noderec->type n)) "\n")))
-
 ;;; XXX redo this with the new format macro - this function is horrible.
 (define (print-insn insn d)
 
