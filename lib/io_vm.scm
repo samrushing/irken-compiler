@@ -2,6 +2,11 @@
 
 (include "lib/posix.scm")
 
+;; everywhere but maybe windows?
+(define STDIN_FILENO  0)
+(define STDOUT_FILENO 1)
+(define STDERR_FILENO 2)
+
 ;; sadly, these constants are not the same across
 ;;   various systems.
 

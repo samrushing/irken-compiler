@@ -5,10 +5,6 @@
 (%backend bytecode
   (include "lib/io_vm.scm"))
 
-(define STDIN_FILENO  0)
-(define STDOUT_FILENO 1)
-(define STDERR_FILENO 2)
-
 ;; file I/O 'object'
 
 (define (file/open-read path)
