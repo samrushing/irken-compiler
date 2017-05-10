@@ -26,7 +26,7 @@
   ;; similar to UNQUOTE-SPLICING.
   ;; (x y ... (%splice a b c) z)
   ;; -> (x y ... a b c z)
-  
+
   (define (splice-list forms acc)
     (match forms with
       () -> (reverse acc)
@@ -35,7 +35,7 @@
       (hd . tl)
       -> (splice-list tl (list:cons (splice hd) acc))
       ))
-  
+
   (define splice
     (sexp:list forms)
     -> (sexp:list (splice-list forms '()))
@@ -44,10 +44,10 @@
 
   (define (wrap-fix names inits body)
     (if (> (length names) 0)
-	(sexp (sexp:symbol 'fix)
-	      (sexp:list names)
-	      (sexp:list inits)
-	      body)
+        (sexp (sym 'fix)
+              (list names)
+              (list inits)
+              body)
 	body))
 
   (define (wrap-begin exps)
@@ -128,10 +128,10 @@
       (sexp:bool _)	   -> exp
       (sexp:int _)	   -> exp
       (sexp:undef)	   -> exp
+      (sexp:cons _ _)	   -> exp
       (sexp:list l)	   -> (maybe-expand l)
       (sexp:vector rands)  -> (sexp:vector (map expand rands))
       (sexp:record fields) -> (sexp:record (map expand-field fields))
-      (sexp:cons _ _)	   -> exp
       (sexp:attr exp sym)  -> (sexp:attr (expand exp) sym)
       ))
 
@@ -142,9 +142,9 @@
       -> (match rator with
 	   (sexp:symbol sym)
 	   -> (match (alist/lookup transform-table sym) with
-		(maybe:yes fun) 
+		(maybe:yes fun)
                 -> (fun rands)
-		(maybe:no)	
+		(maybe:no)
                 -> (match (alist/lookup the-context.macros sym) with
                      (maybe:yes macro) -> (expand (macro.apply (sexp:list l) the-context.options.debugmacroexpansion))
                      (maybe:no)	       -> (sexp:list (list:cons rator (map expand rands)))))
@@ -156,8 +156,8 @@
 	   _ -> (sexp:list (map expand l)))))
 
   (define expand-if
-    (tst then)	    -> (sexp1 'if (LIST (expand tst) (expand then) (sexp:undef)))
-    (tst then else) -> (sexp1 'if (LIST (expand tst) (expand then) (expand else)))
+    (tst then)	    -> (sexp (sym 'if) (expand tst) (expand then) (undef))
+    (tst then else) -> (sexp (sym 'if) (expand tst) (expand then) (expand else))
     x		    -> (error1 "malformed <if>" x)
     )
 
@@ -167,11 +167,11 @@
 	     (rhs (expand rhs0)))
 	 (match lhs with
 	   (sexp:attr lhs attr)
-	   -> (sexp1 '%rset (LIST (sexp:symbol attr) lhs rhs))
+           -> (sexp (sym '%rset) (sym attr) lhs rhs)
 	   (sexp:list ((sexp:symbol '%array-ref) param lhs idx))
-	   -> (sexp1 '%array-set (LIST param lhs idx rhs))
+           -> (sexp (sym '%array-set) param lhs idx rhs)
 	   (sexp:symbol name)
-	   -> (sexp1 'set! (LIST (sexp:symbol name) rhs))
+           -> (sexp (sym 'set!) (sym name) rhs)
 	   x -> (error1 "malformed set!" x)
 	   ))
     x -> (error1 "malformed set!" x))
@@ -192,12 +192,12 @@
 		   -> (sexp var (expand val))
 		   _ -> (error1 "malformed binding in LET-SPLAT" pair)))
 	       bindings)))
-	 (sexp1 'let-splat (LIST (sexp:list bindings0) (expand-body body))))
+         (sexp (sym 'let-splat) (list bindings0) (expand-body body)))
     x -> (error1 "malformed LET-SPLAT" x))
 
   ;; avoid macro-expanding let-subst bindings
   (define expand-let-subst
-    (pair . body) -> (sexp1 'let-subst (LIST pair (expand-body body)))
+    (pair . body) -> (sexp (sym 'let-subst) pair (expand-body body))
     x -> (error1 "malformed LET-SUBST" x)
     )
 
@@ -216,23 +216,20 @@
 
   (define (expand-pvar-lambda type pvar formals body)
     (let ((msym (sexp:symbol (new-match-var))))
-      (expand 
-       (sexp (sexp:symbol 'function)
-	     (sexp:symbol 'lambda)
-	     (sexp:list (LIST msym))
+      (expand
+       (sexp (sym 'function)
+	     (sym 'lambda)
+	     (sexp msym)
 	     type
-	     (sexp:list 
-	      (LIST (sexp:symbol 'vcase)
-		    msym
-		    (sexp:list (LIST formals body))
-		    ))
+             (sexp (sym 'vcase) msym (sexp formals body))
 	     ))))
 
   (define (exp-function name formals type body)
     (match formals with
       (sexp:list ((sexp:cons 'nil pvar) . _))
       -> (expand-pvar-lambda type pvar formals body)
-      _ -> (sexp1 'function (LIST name formals type body))
+      ;;_ -> (sexp1 'function (LIST name formals type body))
+      _ -> (sexp (sym 'function) name formals type body)
       ))
 
   ;; collect tag/alt pairs from vcase
@@ -267,9 +264,9 @@
   ;;
 
   (define (make-nvget dt label index arity value)
-    (sexp (sexp:symbol '%nvget)
-	  (sexp (sexp:cons dt label) (sexp:int index) (sexp:int arity))
-	  (sexp:symbol value)))
+    (sexp (sym '%nvget)
+          (sexp (cons dt label) (int index) (int arity))
+          (sym value)))
 
   (define expand-vcase
     ;; nvcase := (vcase <datatype> <value> . alts)
@@ -310,13 +307,11 @@
 				  (LIST (nth alts i)))))
 		   ;; body
 		   (PUSH alts0 (nth alts i)))))
-	 (sexp (sexp:symbol '%nvcase)
-	       (sexp:symbol dt)
-	       (sexp:symbol value)
-	       (sexp:list (map sexp:symbol tags))
-	       (sexp:list (map sexp:int (reverse arities)))
-	       (sexp:list (map expand (reverse alts0)))
-	       (match ealt? with
+         (sexp (sym '%nvcase) (sym dt) (sym value)
+               (list (map sexp:symbol tags))
+               (list (map sexp:int (reverse arities)))
+               (list (map expand (reverse alts0)))
+               (match ealt? with
 		 (maybe:no) -> match-error
 		 (maybe:yes ealt) -> (expand ealt)))
 	 ))))
@@ -417,12 +412,13 @@
 
   (define (make-constructor dt tag arity)
     (let ((args (map-range i arity (sexp:symbol (string->symbol (format "arg" (int i)))))))
-      (sexp (sexp:symbol 'function)
-	    (sexp:symbol (string->symbol (format (sym dt) ":" (sym tag))))
-	    (sexp:list args)
-	    (sexp:bool #f)
-	    (sexp:list (append (LIST (sexp:symbol '%dtcon) (sexp:cons dt tag)) args))
-	    )))
+      (sexp (sym 'function)
+            (sym (string->symbol (format (sym dt) ":" (sym tag))))
+            (list args)
+            (bool #f)
+            ;; could use some kind of splice formatter here...
+            (sexp:list (append (LIST (sexp:symbol '%dtcon) (sexp:cons dt tag)) args))
+            )))
 
   (define (make-alt tvars tag types)
     (let ((types (map (lambda (t) (parse-type* t tvars)) types))
@@ -509,11 +505,11 @@
     (match (compile-pattern expand '() body) with
       (:pair vars body0)
       -> (:pair name
-		   (sexp (sexp:symbol 'function)
-			 (sexp:symbol name)
-			 (sexp:list (map sexp:symbol vars))
-                         type
-			 (expand body0)))))
+                (sexp (sym 'function)
+                      (sym name)
+                      (list (map sexp:symbol vars))
+                      type
+                      (expand body0)))))
 
   (define parse-no-formals-define
     ;; XXX should we run expand-body on body?
@@ -528,12 +524,12 @@
     ;;   _ -> (begin
     ;;          (print-string (format "user type in define: " (repr type) "\n"))
     ;;          (print-string (format "  parsed: " (type-repr (parse-type type)) "\n"))))
-    (:pair name (sexp (sexp:symbol 'function)
-		      (sexp:symbol name)
-		      (sexp:list formals)
-		      type
-		      ;; note: expand-body returns one sexp
-		      (expand-body body))))
+    (:pair name
+           (sexp (sym 'function)
+                 (sym name)
+                 (list formals)
+                 type
+                 (expand-body body))))
 
   (define (expand-match exps)
     (let loop ((vars '())
@@ -546,19 +542,19 @@
 	     -> (expand
 		 (if (null? inits)
 		     code
-		     (sexp (sexp:symbol 'let) (sexp:list inits) code))))
+                     (sexp (sym 'let) (list inits) code))))
 	((sexp:symbol var) . el)
 	-> (loop (list:cons var vars) inits el)
 	(value . el)
 	-> (let ((var (new-match-var)))
-	     (loop (list:cons var vars) (list:cons (sexp (sexp:symbol var) value) inits) el))
+	     (loop (list:cons var vars) (list:cons (sexp (sym var) value) inits) el))
 	_ -> (error1 "malformed match expression" exps))))
 
   (define expand-cinclude
     ((sexp:string path))
     -> (begin
 	 (PUSH the-context.cincludes path)
-	 (sexp (sexp:symbol 'begin)))
+	 (sexp (sym 'begin)))
     x -> (error1 "malformed <cinclude>" x)
     )
 
@@ -566,7 +562,7 @@
     ((sexp:string path))
     -> (begin
 	 (PUSH the-context.lincludes path)
-	 (sexp (sexp:symbol 'begin)))
+	 (sexp (sym 'begin)))
     x -> (error1 "malformed <linclude>" x)
     )
 
@@ -574,7 +570,7 @@
     ((sexp:string path))
     -> (begin
 	 (PUSH the-context.cverbatim path)
-	 (sexp (sexp:symbol 'begin)))
+	 (sexp (sym 'begin)))
     x -> (error1 "malformed <cverbatim>" x)
     )
 
