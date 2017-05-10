@@ -92,19 +92,21 @@
     ))
 
 
+(define (find-tvars t)
+  (let ((tvars (cmap/make magic-cmp)))
+    (define recur
+      (type:pred sym types _) -> (for-each recur types)
+      (type:tvar id _)        -> (begin (cmap/add tvars id) #u))
+    (recur t)
+    tvars))
+
 (define (type-repr* t pretty?)
 
-  (let ((tvars (cmap/make magic-cmp)))
-
-    (define (find-tvars t)
-      (define recur
-        (type:pred sym types _) -> (for-each recur types)
-        (type:tvar id _)        -> (begin (cmap/add tvars id) #u))
-      (recur t))
+  (let ((tvar-cmap (find-tvars t)))
 
     (define (tvar-repr id)
       (if pretty?
-          (format "'" (char (ascii->char (+ (char->ascii #\a) (cmap->index tvars id)))))
+          (format "'" (base26 (cmap->index tvar-cmap id)))
           (format "t" (int id))))
 
     (define rlabel-repr
@@ -130,16 +132,36 @@
       (type:pred pred () _)               -> (format (sym pred))
       (type:pred pred args _)             -> (format "(" (sym pred) " " (join trep " " args) ")")
       )
-
-    (find-tvars t)
-    (if (> tvars.count 26)
-        (set! pretty? #f))
     (trep t)
-    )
-)
+    ))
+
+(define (base26 num)
+
+  (define (digit n)
+    (ascii->char (+ (char->ascii #\a) n)))
+
+  (let loop ((q (/ num 26))
+             (r (remainder num 26))
+             (acc '()))
+    (if (= q 0)
+        (list->string (cons (digit r) acc))
+        (loop (/ q 26) (remainder q 26) (cons (digit r) acc)))
+    ))
 
 (define (type-repr t)
   (type-repr* t #f))
+
+(define (type->sexp* tvar-cmap t)
+  (define recur
+    (type:tvar index _)
+    -> (sexp (sym 'quote) (sym (string->symbol (base26 (cmap->index tvar-cmap index)))))
+    (type:pred name subs _)
+    -> (sexp:list (cons (sexp:symbol name) (map recur subs)))
+    )
+  (recur t))
+
+(define (type->sexp t)
+  (type->sexp* (find-tvars t) t))
 
 (define type->trec
   (type:tvar _ r) -> r
