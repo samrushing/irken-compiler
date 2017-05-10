@@ -585,6 +585,20 @@
     (backend:bytecode) -> 'bytecode
     )
 
+  (define expand-datatype->sexp
+    ((sexp:symbol dtname))
+    -> (match (alist/lookup the-context.datatypes dtname) with
+         (maybe:yes dt) -> (sexp (sym '%%sexp) (dt.to-sexp))
+         (maybe:no)     -> (error1 "unknown datatype" dtname))
+    x -> (error1 "malformed datatype->sexp" x))
+
+  (define expand-dtreflect
+    ((sexp:symbol operator) (sexp:symbol dtname))
+    -> (match (alist/lookup the-context.datatypes dtname) with
+         (maybe:yes dt) -> (expand (sexp (sym operator) (dt.to-sexp)))
+         (maybe:no)     -> (error1 "unknown datatype" dtname))
+    x -> (error1 "malformed dtreflect" x))
+
   (define transform-table
      (alist/make
       ('if expand-if)
@@ -603,6 +617,8 @@
       ('%%cexp expand-%%cexp)
       ('%%ffi expand-%%ffi)
       ('%%sexp expand-%%sexp)
+      ('datatype->sexp expand-datatype->sexp)
+      ('dtreflect expand-dtreflect)
       ))
 
   go
