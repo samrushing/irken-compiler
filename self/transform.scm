@@ -374,6 +374,22 @@
  	    ;; (printf "get-alt-scheme dt=" (sym name) " tag=" (sym tag) " scheme=" (scheme-repr r) "\n")
 	    r)))
 
+      (define (to-sexp)
+        (let ((tvar-cmap (cmap/make magic-cmp))
+              (index 0)
+              (r '()))
+          (for-list tvar (get-tvars)
+            (match tvar with
+              (type:tvar id _) -> (cmap/add tvar-cmap id)
+              _ -> (impossible)))
+          (for-list alt (reverse (alt-map::values))
+            (PUSH r (sexp (sym alt.name)
+                          (int index)
+                          (list (map (lambda (t) (type->sexp* tvar-cmap t)) alt.types))))
+            (set! index (+ 1 index)))
+          (sexp (sym name)
+                (list (reverse r)))))
+
       { name=name
 	get=get
 	add=add
@@ -381,7 +397,9 @@
 	get-nalts=get-nalts
 	get-scheme=get-scheme
 	get-alt-scheme=get-alt-scheme
-	get-tvars=get-tvars }
+	get-tvars=get-tvars
+        to-sexp=to-sexp
+        }
 
       ))
 
