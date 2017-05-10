@@ -448,34 +448,18 @@
     x -> (error1 "malformed datatype" x)
     )
 
-  ;; XXX I think this approach is wrong... either
-  ;;  1) we need to store these in *unparsed* form so when they are seen in the datatype
-  ;;     alts their typevars are seen, or
-  ;;  2) we have to bite the bullet and either add a new kind of datatype or extend the
-  ;;     current datatype to support non-variant datatypes natively.
-  ;;  I think we have to do #2... because otherwise we have no way to specify the typevars
-  ;;    correctly, e.g.:
-  ;; (define typealias thing1 {x=int y='a})
-  ;; (datatype thing2
-  ;;    (:one (thing1 int))
-  ;;    (:two (thing1 bool)))
-  ;; becomes impossible?
   (define parse-typealias
     ((sexp:symbol name) alias)
     -> (let ((tvars (alist-maker))
   	     (type (parse-type* alias tvars)))
-         (alist/push the-context.aliases
-		     name
-		     (:scheme (reverse (tvars::values)) type)))
+         (alist/push
+          the-context.aliases
+          name
+          (:scheme (reverse (tvars::values)) type)))
     ;; only predicate -> predicate mapping
     ;;((sexp:symbol name) (sexp:symbol alias))
     ;;-> (alist/push the-context.aliases name alias)
     x -> (error1 "malformed typealias" x))
-
-  ;; pushes unparsed alias
-  ;; (define parse-typealias
-  ;;   ((sexp:symbol name) alias) -> (alist/push the-context.aliases name alias)
-  ;;   x -> (error1 "malformed typealias" x))
 
   (define parse-define
     ;; (define name ...)
