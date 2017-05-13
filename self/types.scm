@@ -119,7 +119,7 @@
     (define row-repr
       (type:pred 'rlabel (label type rest) _)         -> (format (rlabel-repr label type) " " (row-repr rest))
       (type:pred 'rdefault ((type:pred 'abs () _)) _) -> ""
-      (type:tvar id _)                                -> "..."
+      (type:tvar id _)                                -> (format "...t" (int id))
       x                                               -> (format "<confused:" (trep x) ">")
       )
 
@@ -294,7 +294,11 @@
   )
 
 (define (parse-type exp)
-  (parse-type* exp (alist-maker)))
+  (let ((result (parse-type* exp (alist-maker))))
+    (when the-context.options.debugtyping
+      (printf "parse-type: sexp = " (repr exp) "\n")
+      (printf "          parsed = " (type-repr result) "\n"))
+    result))
 
 ;; I think this is a bug: the moo() in there should be inside the pre(),
 ;;  otherwise it's a malformed row! [hey, maybe this is where 'kinding' comes in. 8^)]

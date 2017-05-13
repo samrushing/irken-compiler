@@ -451,11 +451,9 @@
   (define parse-typealias
     ((sexp:symbol name) alias)
     -> (let ((tvars (alist-maker))
-  	     (type (parse-type* alias tvars)))
-         (alist/push
-          the-context.aliases
-          name
-          (:scheme (reverse (tvars::values)) type)))
+  	     (type (parse-type* alias tvars))
+             (scheme (:scheme (reverse (tvars::values)) type)))
+         (alist/push the-context.aliases name scheme))
     ;; only predicate -> predicate mapping
     ;;((sexp:symbol name) (sexp:symbol alias))
     ;;-> (alist/push the-context.aliases name alias)
