@@ -104,20 +104,19 @@
     ;; 2352    3  100               primapp %rextend b : {b=bool }
     ;; 2350    1  100                 primapp %rmake #f : {}
 
-
     (define (U-row u v)
       (match u v with
-	;; u and v are both rlabel
-	(type:pred 'rlabel (l0 t0 d0) _) (type:pred 'rlabel (l1 t1 d1) _)
-	-> (cond ((label=? l0 l1)
-		  ;; identical head labels, normal unify
-		  (U t0 t1)
-		  (U d0 d1))
-		 (else
-		  ;; distinct head labels, C-MUTATE-LL
-		  (let ((x (new-tvar)))
-		    (U d0 (rlabel l1 t1 x))
-		    (U d1 (rlabel l0 t0 x)))))
+        ;; u and v are both rlabel
+        (type:pred 'rlabel (l0 t0 d0) _) (type:pred 'rlabel (l1 t1 d1) _)
+        -> (cond ((label=? l0 l1)
+                  ;; identical labels, unify presence.
+                  (U t0 t1)
+                  (U d0 d1))
+                 (else
+                  ;; distinct head labels, C-MUTATE-LL
+                  (let ((x (new-tvar)))
+                    (U d0 (rlabel l1 t1 x))
+                    (U d1 (rlabel l0 t0 x)))))
 	;; u is rlabel, v is not
 	(type:pred 'rlabel (l0 t0 d0) _) (type:pred p1 s1 _)
 	-> (cond ((eq? p1 'rdefault)
@@ -246,7 +245,7 @@
 
   (define (type-of exp tenv)
     (when the-context.options.debugtyping
-      (printf "type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n"))
+      (printf "( type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n"))
     (let ((texp0 (noderec->type exp))
           (texp1 (type-of* exp tenv)))
       ;; XXX the intent of this is to unify with user-assigned types,
@@ -255,7 +254,7 @@
       ;;  (unify exp texp0 texp1))
       (set-node-type! exp texp1)
       (when the-context.options.debugtyping
-        (printf "type-of* " (int (noderec->id exp)) " " (type-repr texp1) "\n"))
+        (printf "type-of* " (int (noderec->id exp)) " " (type-repr texp1) ")\n"))
       texp1))
 
   (define (type-of-literal lit exp tenv)
@@ -294,21 +293,20 @@
     t -> t)
 
   (define (type-of-cexp gens sig exp tenv)
-    (let ((type (instantiate-type-scheme gens sig)))
-      (match type with
-	(type:pred 'arrow pargs _)
-	-> (if (not (= (- (length pargs) 1) (length (noderec->subs exp))))
-	       (error1 "wrong number of args to cexp" exp)
-	       (match pargs with
-		 () -> (error1 "malformed arrow type" sig)
-		 (result-type . parg-types)
-		 -> (let ((arg-types (map (lambda (x) (type-of x tenv)) (noderec->subs exp))))
-		      (for-each2 (lambda (a b)
-				   (unify exp (unraw a) b))
-				 parg-types arg-types)
-		      result-type
-		      )))
-	_ -> type)))
+    (match (instantiate-type-scheme gens sig) with
+      (type:pred 'arrow pargs _)
+      -> (if (not (= (- (length pargs) 1) (length (noderec->subs exp))))
+             (error1 "wrong number of args to cexp" exp)
+             (match pargs with
+               () -> (error1 "malformed arrow type" sig)
+               (result-type . parg-types)
+               -> (let ((arg-types (map (lambda (x) (type-of x tenv)) (noderec->subs exp))))
+                    (for-each2 (lambda (a b)
+                                 (unify exp (unraw a) b))
+                               parg-types arg-types)
+                    result-type
+                    )))
+      type -> type))
 
   (define (type-of-conditional exp tenv)
     (match (map (lambda (x) (type-of x tenv)) (noderec->subs exp)) with
@@ -335,21 +333,17 @@
     (new-tvar))
 
   (define (type-of-function formals body sig tenv)
-    (if (no-type? sig)
-	(let ((arg-types '()))
-	  (for-each
-	   (lambda (formal)
-	     (let ((type (optional-type formal tenv)))
-	       (PUSH arg-types type)
-	       (alist/push tenv formal (:scheme '() type))))
-	   formals)
-	  (arrow (type-of body tenv) (reverse arg-types)))
-	;; user-supplied type (do we need to instantiate?)
-	(let ((solved (type-of-function formals body no-type tenv)))
-	  ;;(printf "unifying user-supplied type: " (type-repr sig) " with " (type-repr solved) "\n")
-	  (unify body solved sig)
-	  sig
-	  )))
+    (let ((arg-types '()))
+      (for-list formal formals
+        (let ((type (optional-type formal tenv)))
+          (PUSH arg-types type)
+          (alist/push tenv formal (:scheme '() type))))
+      (let ((btype (type-of body tenv))
+            (ftype (arrow btype (reverse arg-types))))
+        (if (no-type? sig)
+            ftype
+            (begin (unify body ftype sig) sig)))
+      ))
 
   (define (apply-tenv name tenv)
 ;;     (print-string "apply-tenv: ") (printn name)
@@ -534,14 +528,16 @@
       '%rmake       -> (:scheme '() (arrow (rproduct (rdefault (rabs))) '()))
       '%ensure-heap -> (:scheme '() (arrow undefined-type (LIST int-type)))
       '%rextend     -> (match params with
-			 (sexp:symbol label)
-			 -> (let ((plabel (make-label label)))
-			      (:scheme (LIST T0 T1 T2)
-				       (arrow (rproduct (rlabel plabel (rpre T2) T1))
-					      (LIST
-					       (rproduct (rlabel plabel T0 T1))
-					       T2))))
-			 _ -> (prim-error name))
+                         (sexp:symbol label)
+                         -> (let ((plabel (make-label label)))
+                              ;; forall('a,'b).({lab=(abs) 'a} 'b -> {lab=(pre 'b) 'a})
+                              (:scheme (LIST T0 T1)
+                                       (arrow (rproduct (rlabel plabel (rpre T1) T0))
+                                              (LIST
+                                               (rproduct (rlabel plabel (rabs) T0))
+                                               T1)))
+                              )
+                         _ -> (prim-error name))
       '%raccess     -> (match params with
 			 (sexp:symbol label)
 			 -> (:scheme (LIST T0 T1)

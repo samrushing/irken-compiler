@@ -92,19 +92,21 @@
     ))
 
 
+(define (find-tvars t)
+  (let ((tvars (cmap/make magic-cmp)))
+    (define recur
+      (type:pred sym types _) -> (for-each recur types)
+      (type:tvar id _)        -> (begin (cmap/add tvars id) #u))
+    (recur t)
+    tvars))
+
 (define (type-repr* t pretty?)
 
-  (let ((tvars (cmap/make magic-cmp)))
-
-    (define (find-tvars t)
-      (define recur
-        (type:pred sym types _) -> (for-each recur types)
-        (type:tvar id _)        -> (begin (cmap/add tvars id) #u))
-      (recur t))
+  (let ((tvar-cmap (find-tvars t)))
 
     (define (tvar-repr id)
       (if pretty?
-          (format "'" (char (ascii->char (+ (char->ascii #\a) (cmap->index tvars id)))))
+          (format "'" (base26 (cmap->index tvar-cmap id)))
           (format "t" (int id))))
 
     (define rlabel-repr
@@ -117,7 +119,7 @@
     (define row-repr
       (type:pred 'rlabel (label type rest) _)         -> (format (rlabel-repr label type) " " (row-repr rest))
       (type:pred 'rdefault ((type:pred 'abs () _)) _) -> ""
-      (type:tvar id _)                                -> "..."
+      (type:tvar id _)                                -> (format "...t" (int id))
       x                                               -> (format "<confused:" (trep x) ">")
       )
 
@@ -130,16 +132,36 @@
       (type:pred pred () _)               -> (format (sym pred))
       (type:pred pred args _)             -> (format "(" (sym pred) " " (join trep " " args) ")")
       )
-
-    (find-tvars t)
-    (if (> tvars.count 26)
-        (set! pretty? #f))
     (trep t)
-    )
-)
+    ))
+
+(define (base26 num)
+
+  (define (digit n)
+    (ascii->char (+ (char->ascii #\a) n)))
+
+  (let loop ((q (/ num 26))
+             (r (remainder num 26))
+             (acc '()))
+    (if (= q 0)
+        (list->string (cons (digit r) acc))
+        (loop (/ q 26) (remainder q 26) (cons (digit r) acc)))
+    ))
 
 (define (type-repr t)
   (type-repr* t #f))
+
+(define (type->sexp* tvar-cmap t)
+  (define recur
+    (type:tvar index _)
+    -> (sexp (sym 'quote) (sym (string->symbol (base26 (cmap->index tvar-cmap index)))))
+    (type:pred name subs _)
+    -> (sexp:list (cons (sexp:symbol name) (map recur subs)))
+    )
+  (recur t))
+
+(define (type->sexp t)
+  (type->sexp* (find-tvars t) t))
 
 (define type->trec
   (type:tvar _ r) -> r
@@ -192,13 +214,13 @@
         )))
 
   (define parse-predicate
-    ;; without alias check
-    ((sexp:symbol p) . rest) -> (pred p (map parse rest))
-    ;; ;; with alias check...
-    ;; ((sexp:symbol p) . rest)
-    ;; -> (match (alist/lookup the-context.aliases p) with
-    ;; 	 (maybe:yes alias) -> (apply-alias p alias rest)
-    ;; 	 (maybe:no) -> (pred p (map parse rest)))
+    ;; ;; without alias check
+    ;; ((sexp:symbol p) . rest) -> (pred p (map parse rest))
+    ;; alias check...
+    ((sexp:symbol p) . rest)
+    -> (match (alist/lookup the-context.aliases p) with
+    	 (maybe:yes scheme) -> (apply-alias p scheme rest)
+    	 (maybe:no) -> (pred p (map parse rest)))
     ((sexp:cons 'nil pvar) . rest)
     -> (begin
          (printf "pvar in type: (:" (sym pvar) " " (join repr " " rest) ")\n")
@@ -208,54 +230,34 @@
                        (rdefault (rabs)))))
     x -> (error1 "malformed predicate" x))
 
-  ;; ;; similarities here with typing.scm/instantiate-type-scheme
-  ;; (define (apply-alias name alias pred-args)
-  ;;   ;; here we have an alias:sexp, which we can parse into a scheme,
-  ;;   ;;  and then substitute pred-args for the tvars in the scheme.
-  ;;   (printf "apply-alias: " (sym name) "\n")
-  ;;   (let ((tvars (alist-maker))
-  ;; 	  (type (parse-type* alias tvars))
-  ;; 	  (tvmap (alist-maker))
-  ;; 	  )
-  ;;     ;; build a map from tvar.id->arg
-  ;;     (for-each2
-  ;;      (lambda (k v)
-  ;; 	 (tvmap::add k (parse-type v)))
-  ;;      (reverse (tvars::values)) pred-args)
-  ;;     (when the-context.options.debugtyping
-  ;; 	    (printf "apply-alias " (repr alias) "\n")
-  ;; 	    (printf "         to " (join repr "," pred-args) "\n")
-  ;; 	    (printf "parsed type " (type-repr type) "\n")
-  ;; 	    (printf "      tvars " (join type-repr " " (tvars::values)) "\n"))
-  ;;     ;; walk the type, replacing each member of tvars
-  ;;     (let ((moovar (gen-tvar))
-  ;; 	    (recursive? #f)
-  ;; 	    (result
-  ;; 	     (let walk ((t type))
-  ;; 	       (match t with
-  ;; 		 (type:pred name0 args _)
-  ;; 		 -> (begin
-  ;; 		      (printf "  pred compare " (sym name0) " = " (sym name) "\n")
-  ;; 		      (if (eq? name name0)
-  ;; 			  ;; a recursive type alias.  moooo.
-  ;; 			  (begin
-  ;; 			    (printf "found recursion in type alias\n")
-  ;; 			    (set! recursive? #t)
-  ;; 			    moovar
-  ;; 			    )
-  ;; 			  (pred name0 (map walk args)))
-  ;; 		      )
-  ;; 		 _ -> (match (tvmap::get t) with
-  ;; 			(maybe:yes val) -> val
-  ;; 			(maybe:no) -> t)))))
-  ;; 	(let ((result0
-  ;; 	       (if recursive?
-  ;; 		   (pred 'moo (LIST moovar result))
-  ;; 		   result)))
-  ;; 	  (when the-context.options.debugtyping
-  ;; 		(printf "result   " (type-repr result0) "\n"))
-  ;; 	  result0))
-  ;;     ))
+  (define (apply-scheme scheme type-args)
+    (match scheme with
+      (:scheme gens type)
+      -> (if (not (= (length type-args) (length gens)))
+             (begin
+               (printf "apply-scheme: arity mismatch in type scheme:\n")
+               (printf "  predicate args = " (join type-repr ", " type-args) "\n")
+               (printf "      alias args = " (join type-repr ", " gens) "\n")
+               (error "apply-scheme: arity mistmatch"))
+             (let ((tmap (alist:nil)))
+               ;; build map from tvar => predicate arg.
+               (for-range i (length gens)
+                 (match (nth gens i) with
+                   (type:tvar id _)
+                   -> (alist/push tmap id (nth type-args i))
+                   _ -> (impossible)))
+               ;; walk the type, replacing.
+               (let walk ((t type))
+                 (match t with
+                   (type:pred name args _) -> (pred name (map walk args))
+                   (type:tvar id _) -> (match (alist/lookup tmap id) with
+                                         (maybe:yes type-arg) -> type-arg
+                                         (maybe:no) -> t)
+                   )))
+             )))
+
+  (define (apply-alias name scheme pred-args)
+    (apply-scheme scheme (map parse-type pred-args)))
 
   (define parse-list
     ((sexp:symbol 'quote) (sexp:symbol tvar)) -> (get-tvar tvar)
@@ -281,7 +283,7 @@
 			   ;; textual substitution, nullary predicate leaves
 			   ;;   all tvars untouched (thus forced to be equal in each use).
 			   (maybe:yes (:scheme gens atype))
-			   -> atype ;; (apply-alias sym alias '())
+			   -> atype
 			   ;; allow nullary predicates
 			   (maybe:no) -> (pred sym '())))
       (sexp:list l) -> (parse-list l)
@@ -292,7 +294,11 @@
   )
 
 (define (parse-type exp)
-  (parse-type* exp (alist-maker)))
+  (let ((result (parse-type* exp (alist-maker))))
+    (when the-context.options.debugtyping
+      (printf "parse-type: sexp = " (repr exp) "\n")
+      (printf "          parsed = " (type-repr result) "\n"))
+    result))
 
 ;; I think this is a bug: the moo() in there should be inside the pre(),
 ;;  otherwise it's a malformed row! [hey, maybe this is where 'kinding' comes in. 8^)]

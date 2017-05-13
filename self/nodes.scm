@@ -482,89 +482,90 @@
   exp -> (error1 "unsexp: unhandled literal type" exp)
   )
 
-(define (frob name num)
-  (string->symbol (format (sym name) "_" (int num))))
-
-(define (make-vardef name serial)
-  (let ((frobbed (frob name serial)))
-    {name=name name2=frobbed assigns='() refs='() serial=serial }
+(define make-vardef
+  (let ((counter (make-counter 0)))
+    (lambda (name)
+      (let ((serial (counter.inc))
+            (frobbed (string->symbol (format (sym name) "_" (int serial)))))
+        {name=name name2=frobbed assigns='() refs='() serial=serial}
+        ))
     ))
 
-(define (make-var-map)
-  (let ((map (tree/empty))
-	(counter (make-counter 0)))
-    (define (add sym)
-      (let ((vd (make-vardef sym (counter.inc))))
-	(set! map (tree/insert map symbol-index-cmp sym vd))
-	vd))
-    (define (lookup sym)
-      (tree/member map symbol-index-cmp sym))
-    (define (get) map)
-    {add=add lookup=lookup get=get}
-    ))
+(define (check-for-duplicates names)
+  (let ((nmap (tree:empty)))
+    (for-list name names
+      (match (tree/member nmap symbol-index-cmp name) with
+        (maybe:yes other) -> (raise (:DuplicateName name other))
+        (maybe:no)    -> (tree/insert! nmap symbol-index-cmp name name)
+        ))))
 
 (define (rename-variables n)
 
-  (let ((varmap (make-var-map)))
+  (define (rename-all exps lenv)
+    (for-each (lambda (exp) (rename exp lenv)) exps))
 
-    (define (rename-all exps lenv)
-      (for-each (lambda (exp) (rename exp lenv)) exps))
+  (define (rename exp lenv)
 
-    (define (rename exp lenv)
+    (define (lookup name)
+      (let loop0 ((lenv lenv))
+        (match lenv with
+          ()		 -> (maybe:no)
+          (rib . next) -> (let loop1 ((l rib))
+                            (match l with
+                              ()	  -> (loop0 next)
+                              (vd . tl) -> (if (eq? name vd.name)
+                                               (maybe:yes vd)
+                                               (loop1 tl)))))))
 
-      (define (lookup name)
-	(let loop0 ((lenv lenv))
-	  (match lenv with
-	    ()		 -> (maybe:no)
-	    (rib . next) -> (let loop1 ((l rib))
-			      (match l with
-				()	  -> (loop0 next)
-				(vd . tl) -> (if (eq? name vd.name)
-						 (maybe:yes vd)
-						 (loop1 tl)))))))
+    (match (noderec->t exp) with
+      (node:function name formals)
+      -> (let ((rib (map make-vardef formals))
+               (name2 (match (lookup name) with
+                        (maybe:no) -> (if (eq? name 'lambda)
+                                          (string->symbol (format "lambda_" (int (noderec->id exp))))
+                                          name)
+                        (maybe:yes vd) -> vd.name2)))
+           (set-node-t! exp (node:function name2 (map (lambda (x) x.name2) rib)))
+           (rename-all (noderec->subs exp) (list:cons rib lenv)))
+      (node:fix names)
+      -> (let ((_ (check-for-duplicates names))
+               (rib (map make-vardef names)))
+           ;; in this one, the <inits> namespace is renamed, too
+           (set-node-t! exp (node:fix (map (lambda (x) x.name2) rib)))
+           (rename-all (noderec->subs exp) (list:cons rib lenv)))
+      (node:let names) ;; this one is tricky!
+      -> (match (unpack-fix (noderec->subs exp)) with
+           (:fixsubs body inits)
+           -> (let ((rib '())
+                    (n (length inits)))
+                (for-range
+                    i n
+                  ;; add each name only after its init
+                  (rename (nth inits i) (list:cons rib lenv))
+                  (set! rib (list:cons (make-vardef (nth names i)) rib)))
+                ;; now that all the inits are done, rename the bindings and body
+                (set-node-t! exp (node:let (map (lambda (x) x.name2) (reverse rib))))
+                (rename body (list:cons rib lenv))))
+      (node:varref name)
+      -> (match (lookup name) with
+           (maybe:no) -> #u ;; can't rename it if we don't know what it is
+           (maybe:yes vd) -> (set-node-t! exp (node:varref vd.name2)))
+      (node:varset name)
+      -> (begin (match (lookup name) with
+                  (maybe:no) -> #u
+                  (maybe:yes vd) -> (set-node-t! exp (node:varset vd.name2)))
+                (rename-all (noderec->subs exp) lenv))
+      _ -> (rename-all (noderec->subs exp) lenv)
+      )
+    )
 
-      (match (noderec->t exp) with
-	(node:function name formals)
-	-> (let ((rib (map varmap.add formals))
-		 (name2 (match (lookup name) with
-			  (maybe:no) -> (if (eq? name 'lambda)
-					    (string->symbol (format "lambda_" (int (noderec->id exp))))
-					    name)
-			  (maybe:yes vd) -> vd.name2)))
-	     (set-node-t! exp (node:function name2 (map (lambda (x) x.name2) rib)))
-	     (rename-all (noderec->subs exp) (list:cons rib lenv)))
-	(node:fix names)
-	-> (let ((rib (map varmap.add names)))
-	     ;; in this one, the <inits> namespace is renamed, too
-	     (set-node-t! exp (node:fix (map (lambda (x) x.name2) rib)))
-	     (rename-all (noderec->subs exp) (list:cons rib lenv)))
-	(node:let names) ;; this one is tricky!
-	-> (match (unpack-fix (noderec->subs exp)) with
-	     (:fixsubs body inits)
-	     -> (let ((rib '())
-		      (n (length inits)))
-		  (for-range
-		      i n
-		      ;; add each name only after its init
-		      (rename (nth inits i) (list:cons rib lenv))
-		      (set! rib (list:cons (varmap.add (nth names i)) rib)))
-		  ;; now that all the inits are done, rename the bindings and body
-		  (set-node-t! exp (node:let (map (lambda (x) x.name2) (reverse rib))))
-		  (rename body (list:cons rib lenv))))
-	(node:varref name)
-	-> (match (lookup name) with
-	     (maybe:no) -> #u ;; can't rename it if we don't know what it is
-	     (maybe:yes vd) -> (set-node-t! exp (node:varref vd.name2)))
-	(node:varset name)
-	-> (begin (match (lookup name) with
-		    (maybe:no) -> #u
-		    (maybe:yes vd) -> (set-node-t! exp (node:varset vd.name2)))
-		  (rename-all (noderec->subs exp) lenv))
-	_ -> (rename-all (noderec->subs exp) lenv)
-	))
-
-    (rename n '())
-    ))
+  (try
+   (rename n '())
+   ;; XXX when symbols get file/pos info this should make a better error message.
+   except (:DuplicateName name other)
+   -> (error1 "duplicate name: " name)
+   )
+  )
 
 ;; walk the node tree, applying subst nodes
 (define (apply-substs exp)
