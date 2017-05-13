@@ -22,11 +22,6 @@
   (:attr sexp symbol)	;; attribute '.' syntax
   )
 
-;; In retrospect, I think it may have been a mistake to embed 'list'
-;;   into sexp.  It forces all sexp-handling code to cover two cases,
-;;   often triggering the need for an auxiliary function.  Might be
-;;   cleaner to just have (sexp:nil) and (sexp:cons)...
-
 ;; idea: how about a set of macros, similar to the format macro,
 ;;   to make sexps easier to build?  worth it?
 
