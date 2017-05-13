@@ -594,6 +594,11 @@
     -> (sexp:attr (expand ob) name)
     x -> (error1 "malformed %%attr" x))
 
+  (define expand-%%constructor
+    ((sexp:symbol dtname) (sexp:symbol altname))
+    -> (sexp:cons dtname altname)
+    x -> (error1 "malformed %%constructor" x))
+
   ;; --------------------------------------------------------------------------------
   ;; constant folding. this *really* needs to go into analyze.scm, so that it can
   ;;  benefit from inlining.
@@ -671,6 +676,7 @@
       ('%%sexp expand-%%sexp)
       ('%%ffitype expand-%%ffitype)
       ('%%attr expand-%%attr)
+      ('%%constructor expand-%%constructor)
       ('<< expand-<<)
       ('binary- expand-binary-)
       ('binary+ expand-binary+)
