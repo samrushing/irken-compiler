@@ -2,9 +2,11 @@
 
 (include "lib/set.scm")
 
+(typealias typerec {parent=(maybe type) pending=bool})
+
 (datatype type
-  (:tvar int                {parent=(maybe type) pending=bool})
-  (:pred symbol (list type) {parent=(maybe type) pending=bool})
+  (:tvar int                typerec)
+  (:pred symbol (list type) typerec)
   )
 
 (define (pred name subs)

@@ -387,7 +387,7 @@
 ;; NOTE: I think we're losing type safety across the generator boundary.
 
 ;; this simpler version uses getcc and putcc directly.
-(define (make-generator producer)
+(define (make-generator producer) : ((((maybe 'a) -> undefined) -> undefined) -> ( -> (maybe 'a)))
   (let ((ready #f)
         ;; holding useless continuations
         (caller (getcc))
