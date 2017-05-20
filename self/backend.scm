@@ -433,7 +433,7 @@ static void prof_dump (void)
     (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
     (unlink tmp-path)
     (when (not the-context.options.nocompile)
-      (notquiet (print-string "compiling...\n"))
+      (notquiet (print-string "...compiling\n"))
       (invoke-cc base sources the-context.options (if llvm? "-flto" ""))
       #u
       )
