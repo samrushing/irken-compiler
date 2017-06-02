@@ -25,7 +25,7 @@ This is the current interface to inet_pton/ntop from doom/socket.scm:
        (%%cexp (int string (buffer (struct sockaddr_in)) -> int)
     	   "inet_pton (%0, %1, &(%2->sin_addr))"
     	   af ascii buf)))
-    
+
     (define (inet_ntop af buf)
       (let ((ascii (make-string 100)))
         (%%cexp (int (buffer (struct sockaddr_in)) string int -> int)
@@ -33,7 +33,7 @@ This is the current interface to inet_pton/ntop from doom/socket.scm:
     		   af buf ascii (string-length ascii))
         ;; should strip this to NUL
         ascii))
-    
+
 Here we need the definition of (struct sockaddr_in).  It would be nice if we could access the various fields:
 
     $ clang -E -I./include ffi/t0.c | clang -cc1 -fdump-record-layouts
@@ -47,7 +47,7 @@ Here we need the definition of (struct sockaddr_in).  It would be nice if we cou
              4 |     in_addr_t s_addr
              8 |   char [8] sin_zero
                | [sizeof=16, align=4]
-    
+
 This covers many of the features we will need: sub-structures, arrays.
 
 Now one thing missing from this output are the typedefs.  Here, we have no idea what `sa_family_t` is unless it is a
@@ -57,7 +57,7 @@ Hmm... this doesn't help us, we lose the field names:
 
     %struct.sockaddr_in = type { i8, i8, i16, %struct.in_addr, [8 x i8] }
     %struct.in_addr = type { i32 }
-    
+
     @ob0_size = global i64 16, align 8
     @ob0 = common global %struct.sockaddr_in zeroinitializer, align 4
     @ob1 = common global i8 0, align 1
@@ -77,13 +77,13 @@ Sample Function
 Let's start with `inet_ntop`:
 
     char * inet_ntop (int af, void * src, char * dst, socklen_t size);
-    
+
 Actually that signature kinda sucks, because it is 'c polymorphic'.
 
 Let's instead pretend that it is:
 
     char * inet_ntop (int af, struct in_addr * src, char * dst, int size);
-    
+
 
 Getting Function Signatures
 --------------------------
@@ -95,7 +95,7 @@ The clang-query tool seems also very useful.
     clang-query> set output print
     clang-query> match functionDecl()
     Match #47:
-    
+
     Binding for "root":
     extern int inet_net_pton(int __af, const char *__cp, void *__buf, size_t __len) __attribute__((nothrow))
 
@@ -103,8 +103,8 @@ However it is not present on all systems with clang (XCode doesn't seem to provi
 
      int kqueue(void);
 
-     int kevent(int kq, const struct kevent *changelist, 
-                int nchanges, struct kevent *eventlist, 
+     int kevent(int kq, const struct kevent *changelist,
+                int nchanges, struct kevent *eventlist,
                 int nevents, const struct timespec *timeout);
 
 Considering that many libc/posix api's use void* for polymorphism, we are probably going
@@ -140,8 +140,8 @@ to a slot, possibly along with automatic data conversion (like currently exists 
 
 so, `gen.py` needs to output this:
 
-    (define s0 
-      (cdef:struct 
+    (define s0
+      (cdef:struct
        16
        'sockaddr_in
        (LIST (cfield:t 0 'sin_len    (ctype:int 1))
@@ -214,13 +214,13 @@ The current plan: the spec file is read at compile-time to manage types.
 It is read again at run-time to build the tables allowing make/ref/set of
 structs.  This means that at compile-time we must build a `ctype` object
 that will be reachable at *run-time*, and pass this to `%callocate`.
-Wait.  No.  `%callocate` will have to transform into code that will do 
+Wait.  No.  `%callocate` will have to transform into code that will do
 this lookup at runtime.  The `calloc` opcode will have to be passed a
 size argument as an integer in a register.  So we need a special form
 (or macro?) to do this.
 
 A new issue: with s2n, I've noticed that we don't have a way of handling
-opaque structs.  We need a way to take a pointer to a random struct and 
+opaque structs.  We need a way to take a pointer to a random struct and
 wrap it so that it can be passed in a type-safe manner.  We might as well
 make this the main mechanism for accessing things that are not in the heap
 [e.g. lib/malloc.scm].  Should we use TC_BUFFER for this?
@@ -279,3 +279,132 @@ to pass this kind of pointer arg back into the ffi unless it's a plain old
 int.  Maybe we give up on the high bit for pointers?
 
 
+
+compile-time vs run-time types
+------------------------------
+
+Can we view this as a partial evaluation thing?
+
+For example, say we have a vector of some numeric ctype, like i256.
+We can view (vector-ref v 12) as a runtime operation, or we can treat
+it (at compile time) as a partial evaluation, returning an lval.
+Do we need a special type to represent an lval (i.e., a 'ref' type in other
+MLs).
+
+In order to do this at compile time, we need the type system to be able to
+unify the types.  So we need a representation of ctypes that works with the
+other types.  So maybe we need a 'cref' predicate?  And it's a special 'kind',
+like row types.
+
+Then we need to think about the runtime representation of such a thing.
+In C the runtime representation is simply a pointer.
+
+Ok, compiler: type representation.
+
+(cref (ctype:array 100 (ctype:int 256 #t)))
+
+Now, we immediately have a problem since the predicate design can't fully model ctype.
+Do we need to introduce ctype as a 'kind'?
+
+But let's ignore that for now, assume we've done it.
+
+Then we need dereferencing operators on crefs.  If we create these as
+prims, then they *probably* have to be considered a runtime operation.
+
+But we want a compile-time operation, just like C does.  [is this
+really true? maybe not: C can compute an offset into an array at
+compile-time, but walking pointers requires runtime dereferencing].
+
+[an aside. can we address the VM offset issue like this: compiler
+emits pointer arithmetic in abstract-size terms, like "add N *
+sizeof-struct to <p>", and sizeof-struct is set at load time?]
+
+---
+
+Let's think more about representing C types in the predicate type language.
+The main issue is type variables.  Can they point only directly to a ctype,
+or do we want them to point to internals like size-of-array?  I think not.
+A type variable can only point directly to a ctype.  Do we need a different
+space for these tvars?
+
+So all ctypes must be wrapped with 'cref', and 'cref' becomes the new kind.
+
+So what is the type of malloc?
+
+I think malloc takes two args: a ctype and a size, and always returns
+a (cref (ctype:array ...)).  If we deref this array, we end up with
+(cref (ctype:int 256 #t)), yes?  Or, we can pass the array ref directly
+to llvm vector prims like add, mul, etc.
+
+What about NULL?  The proper way to model this is to consider a
+pointer a union type of 'null' or 'not null', and thus always check
+for it.  Can we consider NULL an invalid value, that is only
+explicitly checked upon dereference?  [does this apply to the return
+value from malloc itself?]
+
+
+----
+Can we cheat and provide a mapping from ctype to irken-type?
+
+(:name)
+  predicate
+(:int size signed?)
+  here we could introduce new predicates i8,u8,i16,u16,etc...?
+(:array size ctype)
+  here we are hosed, since no size.  but C doesn't have that either?
+(:pointer ctype)
+  predicate
+(:struct name)
+  predicate predicate
+(:union
+  predicate predicate
+
+So the only difficulty is around array.
+Could we just translate it into pointer?
+
+Ok, so assume we do this.  Sample code?
+
+    (let ((v (malloc (ctype:int 32 #f) 100)))
+      (for-range i 100
+        (set! (cref-aref v i) (* i i))))
+
+Is this possible?  Or do we need `set-cref!`?
+
+Now what about an 'obviously weird' type like u256?  We can model this
+directly in llvm... but how does it work?  I think we have to do
+`getelementptr` to ref each element, then we need to have a temporary
+that contains the result.  We can't just use `*`.  We need a function
+like `mul-u256-ref`.  And it needs somewhere to put its result.  So
+`mul-u256-ref` needs a result cref:
+
+    (mul-ref u256 a b c)
+
+where `c` is the destination, `a` and `b` are the operands.  `c` could be
+equal to `a` or `b`, but the llvm would have to do a `store`.
+
+We could theoretically have a `mul` that allocated and returned a place to
+store the result... but I think that should be left to macros.
+
+Now, back to the example code.  The `cref-aref` bit feels like a compile-time
+thing, but it's not: the index `i` is runtime.  So all we know at compile-time
+is that `cref-aref` returns a `(cref u32)`.
+
+llvm note
+---------
+llvm has vector versions of add/mul/etc, but llvm distinguishes between
+a vector (of fixed size) and an array.  Those insns only work on vectors.
+Though I'm sure it's possible to cast.
+
+
+buf vs malloc
+-------------
+
+This is something I've been struggling with for a while.  It'd be nice
+to be able to put C types onto the irken heap.  But if we model lvals
+the way I've suggested above, it becomes much more difficult.  We'd
+have to then have 'cref' be made of two parts: a base address and an
+offset.  Because the GC will move the data around.  And every access
+operation will be done via base+offset.  This is suitably difficult
+that I think trying to solve all the problems at once means I will
+continue to struggle and not make progress.  So let's put the 'buf'
+issue aside for a bit, and come back to it.
