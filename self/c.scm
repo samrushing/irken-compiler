@@ -557,14 +557,14 @@
         (define (prim-callocate2 parm args malloc?)
           (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
             ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
-            ;; ok in this version we need to wrap the buffer object with a user datatype tuple
+            ;; in this version we wrap the buffer object with a user datatype tuple
             ;; indicating that it is a cmem:{buffer,ptr} type.
             (cond ((>= target 0)
                    (o.write (format "O r" (int target) " = allocate (TC_USEROBJ+0, 1);"))
                    (if malloc?
-                       (o.write (format "O r" (int target) "t = (object*) malloc (sizeof (" 
+                       (o.write (format "O r" (int target) "t = (object*) malloc (sizeof ("
                                         (irken-type->c-type type) ") * unbox(r" (int (car args)) "));"))
-                       (o.write (format "O r" (int target) "t = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" 
+                       (o.write (format "O r" (int target) "t = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof ("
                                         (irken-type->c-type type) ") * unbox(r" (int (car args)) "), sizeof (object)));")))
                    (o.write (format "r" (int target) "[1] = r" (int target) "t;")))
                   (else
@@ -618,7 +618,7 @@
                  _ -> (primop-error))
             _ -> (primop-error)
             ))
-            
+
         (define prim-cget3
           (sexp:symbol name)
           -> (match (ffi-info.sigs::get name) with
@@ -640,8 +640,8 @@
           '%record-get  -> (prim-record-get parm args)
           '%record-set  -> (prim-record-set parm args)
           '%callocate   -> (prim-callocate parm args)
-          '%callocate2  -> (prim-callocate2 parm args #f)
-          '%callocate3  -> (prim-callocate2 parm args #t)
+          '%halloc      -> (prim-callocate2 parm args #f)
+          '%malloc      -> (prim-callocate2 parm args #t)
           ;;'%free        -> (prim-free args)
           '%exit        -> (prim-exit args)
           '%cget        -> (prim-cget args)
