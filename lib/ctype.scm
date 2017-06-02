@@ -27,7 +27,7 @@
 ;;   knows about it.
 
 (datatype cmem
-  (:buffer (buffer 'a))
+  (:buf (buffer 'a))
   (:ptr (* 'a))
   )
 
