@@ -94,6 +94,7 @@
                         )))
          (csig:obj name obtype)
          -> (let ((ztname (zero-terminate (symbol->string name)))
+                  ;; XXX I think we want posix-get-errno instead.
                   (getname (string->symbol (format "get-" (sym (iface-prefix name)))))
                   (setname (string->symbol (format "set-" (sym (iface-prefix name))))))
               (PUSH forms
