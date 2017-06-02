@@ -616,14 +616,16 @@ vm_cget (object ** result, object * src, pxll_int off, pxll_int code)
 {
   uint8_t * p;
   switch (get_case (src)) {
-  case TC_BUFFER:
-    p = (uint8_t *) (src + 1);
+  case TC_USEROBJ + 0:
+    // cmem:buf
+    p = (uint8_t *) ((object *) (src[1]) + 1);
     break;
-  case TC_INT:
-    p = (uint8_t *) UNBOX_INTEGER (src);
+  case TC_USEROBJ + 1:
+    // cmem:ptr
+    p = (uint8_t *) (src[1]);
     break;
   default:
-    fprintf (stderr, "vm_cget: src not TC_BUFFER or pointer\n");
+    fprintf (stderr, "vm_cget: invalid <src>\n");
     return -1;
   }
   p += off;
@@ -673,14 +675,16 @@ vm_cset (object * dst, pxll_int off, pxll_int code, object * val)
 {
   uint8_t * p;
   switch (get_case (dst)) {
-  case TC_BUFFER:
-    p = (uint8_t *) (dst + 1);
+  case TC_USEROBJ + 0:
+    // cmem:buf
+    p = (uint8_t *) ((object *) (dst[1]) + 1);
     break;
-  case TC_INT:
-    p = (uint8_t *) UNBOX_INTEGER (dst);
+  case TC_USEROBJ + 1:
+    // cmem:ptr
+    p = (uint8_t *) (dst[1]);
     break;
   default:
-    fprintf (stderr, "vm_cget: src not TC_BUFFER or pointer\n");
+    fprintf (stderr, "vm_cset: invalid <src>\n");
     return -1;
   }
   p += off;
@@ -742,7 +746,7 @@ vm_cset (object * dst, pxll_int off, pxll_int code, object * val)
 //   the core VM loop small enough to fit in the insn cache. maybe.
 //   another possibility: since the insn stream is (currently) 16-bit,
 //   we could simply encode prims in the higher byte?
-//   this would also be a cleaner way of handling %%cexp stuff, so 
+//   this would also be a cleaner way of handling %%cexp stuff, so
 //   %%cexp can only work with prims.
 
 object
@@ -1384,8 +1388,22 @@ vm_go (void)
     }
   }
  l_calloc: {
-    // CALLOC target size
-    object * result = allocate (TC_BUFFER, HOW_MANY (UNBOX_INTEGER (REG2), sizeof(object)));
+    // CALLOC target size kind
+    object * result;
+    // cmem: buf = 0, ptr = 1
+    pxll_int kind = UNBOX_INTEGER (REG3);
+    result = allocate (TC_USEROBJ + kind, 1);
+    if (kind == 0) {
+      result[1] = allocate (TC_BUFFER, HOW_MANY (UNBOX_INTEGER (REG2), sizeof(object)));
+    } else {
+      object * ptr = malloc ((size_t) UNBOX_INTEGER (REG2));
+      if (ptr) {
+        result[1] = ptr;
+      } else {
+        fprintf (stderr, "malloc failed.\n");
+        return BOX_INTEGER ((unsigned)-1);
+      }
+    }
     REG1 = result;
     pc += 3;
     DISPATCH();
