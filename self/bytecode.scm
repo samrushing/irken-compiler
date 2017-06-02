@@ -88,7 +88,7 @@
     (OI 'quiet   1      #f     #f)   ;; bool
     (OI 'heap    2      #f     #f)   ;; size nreg
     (OI 'readf   2      #f     #t)   ;; target path
-    (OI 'calloc  2      #f     #t)   ;; target size
+    (OI 'calloc  3      #f     #t)   ;; target size malloc?
     (OI 'cget    4      #f     #t)   ;; target src off code
     (OI 'cset    4      #f     #f)   ;; src off code val
     ;;  name   nargs varargs target? args
@@ -463,8 +463,11 @@
          -> (LINSN 'heap rsize (length free))
          _ _ -> (primop-error))
 
-       (define (prim-callocate args)
-         (LINSN 'calloc target (car args)))
+       (define (prim-halloc args)
+         (LINSN 'calloc target (car args) 0))
+
+       (define (prim-malloc args)
+         (LINSN 'calloc target (car args) 1))
 
        (define prim-cget2
          (src offset code)
@@ -488,9 +491,12 @@
          '%getcc       -> (prim-getcc args)
          '%putcc       -> (prim-putcc args)
          '%ensure-heap -> (prim-heap args (k/free k))
-         '%callocate   -> (prim-callocate args)
-         '%cget2       -> (prim-cget2 args)
-         '%cset2       -> (prim-cset2 args)
+         '%halloc      -> (prim-halloc args)
+         '%malloc      -> (prim-malloc args)
+         '%cget2       -> (prim-cget2 args) ;; (buffer X)
+         '%cget3       -> (prim-cget2 args) ;; (* X)
+         '%cset2       -> (prim-cset2 args) ;; (buffer X)
+         '%cset3       -> (prim-cset2 args) ;; (* X)
          _ -> (primop-error))))
 
     ;; we emit insns for k0, which may or may not jump to fail continuation in k1
