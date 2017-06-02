@@ -112,8 +112,8 @@
 		    (U (pred p1 tvars0) t0)
 		    (U (pred p1 tvars1) d0)
 		    (for-range i n
-			       (U (nth s1 i) (rlabel l0 (nth tvars0 i) (nth tvars1 i)))
-			       ))))
+                      (U (nth s1 i) (rlabel l0 (nth tvars0 i) (nth tvars1 i)))
+                      ))))
 	;; both are rdefault
 	(type:pred 'rdefault (t0) _) (type:pred 'rdefault (t1) _)
 	-> (U t0 t1)
@@ -222,7 +222,8 @@
     (printf "}\n"))
 
   (define (type-of exp tenv)
-    ;;(printf "type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n")
+    (when the-context.options.debugtyping
+      (printf "( type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n"))
     (let ((texp0 (noderec->type exp))
           (texp1 (type-of* exp tenv)))
       ;; XXX the intent of this is to unify with user-assigned types,
@@ -230,7 +231,8 @@
       ;;(when (not (no-type? texp0))
       ;;  (unify exp texp0 texp1))
       (set-node-type! exp texp1)
-      ;;(printf "type-of* " (int (noderec->id exp)) " " (type-repr texp) "\n")
+      (when the-context.options.debugtyping
+        (printf "type-of* " (int (noderec->id exp)) " " (type-repr texp1) ")\n"))
       texp1))
 
   (define (type-of-literal lit exp tenv)
@@ -593,7 +595,29 @@
       '%llarith    -> (:scheme '() (arrow int-type (LIST int-type int-type)))
       '%llicmp     -> (:scheme '() (arrow bool-type (LIST int-type int-type)))
       '%lleq       -> (:scheme (LIST T0) (arrow bool-type (LIST T0 T0)))
+      ;; for FFI
+      '%ffi2  -> (lookup-ffi-call-scheme params)
+      '%halloc -> (calloc-scheme params)
+      '%malloc -> (calloc-scheme params)
+      ;;'%cref -> (lookup-cref-scheme params)
+
       _ -> (error1 "lookup-primapp" name)))
+
+  (define (calloc-scheme param)
+    (:scheme '() (arrow (pred 'cmem (LIST (parse-type param))) (LIST int-type))))
+
+  ;; XXX do we need to scan the resulting type for tvars to add to gens?
+  (define lookup-ffi-call-scheme
+    (sexp:symbol name)
+    -> (match (ffi-info.sigs::get name) with
+         (maybe:yes (csig:fun name rtype argtypes))
+         -> (:scheme '() (arrow (ctype->irken-type rtype) (map ctype->irken-type argtypes)))
+         (maybe:yes (csig:obj name type))
+         -> (error1 "lookup-ffi-scheme-call: not a function" name)
+         (maybe:no)
+         -> (error1 "lookup-ffi-scheme-call: unknown name" name))
+    x -> (error1 "lookup-ffi-scheme-call: malformed" (repr x))
+    )
 
   ;; each exception is stored in a global table along with a tvar
   ;;  that will unify with each use.
