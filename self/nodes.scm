@@ -52,7 +52,7 @@
   (noderec:t n) -> n)
 
 (define noderec->t
-  (noderec:t n) -> n.t)  
+  (noderec:t n) -> n.t)
 
 (define noderec->subs
   (noderec:t n) -> n.subs)
@@ -69,16 +69,16 @@
 (define noderec->flags
   (noderec:t n) -> n.flags)
 
-(define set-node-subs! 
+(define set-node-subs!
   (noderec:t nr) s -> (set! nr.subs s))
 
-(define set-node-type! 
+(define set-node-type!
   (noderec:t nr) t -> (set! nr.type t))
 
-(define set-node-flags! 
+(define set-node-flags!
   (noderec:t nr) f -> (set! nr.flags f))
 
-(define set-node-t! 
+(define set-node-t!
   (noderec:t nr) t -> (set! nr.t t))
 
 ;; --- accessors ---
