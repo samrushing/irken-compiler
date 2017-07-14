@@ -48,6 +48,7 @@
     profile-funs        = (tree/empty)
     cexps               = (map-maker magic-cmp)
     callocates          = (map-maker magic-cmp)
+    ffi-count           = 0
     }
   )
 
