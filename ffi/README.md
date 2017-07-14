@@ -545,3 +545,7 @@ Here I need to describe exactly what was done:
 
  1) the sizeoff table
  2) `cref` and TC_FOREIGN.
+
+Issues:
+
+ 1) can we remove the type argument to c-get/set-int?
