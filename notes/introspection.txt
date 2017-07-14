@@ -1,0 +1,28 @@
+
+I'd like to provide some kind of introspection (with respect to types)
+at runtime.  Now that I know how to use %%sexp in macros, this might
+be easier.
+
+--- aside ---
+  | we need a real motivation for this other than xxx-repr,
+  | because that could be auto-generated.
+
+I think we need two data structures at runtime:
+
+1) a representation of type.
+2) a representation of datatypes.
+
+Yah, it's confusing.
+
+When an expression has type `(tree int string)`, that is #1.
+But the definition of a tree is #2.
+
+We will need both to do full introspection at runtime.
+A possible goal here is to be able to print out objects
+without having to write `xxx-repr` and `xxx-print` funs.
+
+For #1, we need a special form that will generate a literal, just
+like with %%ffitype.
+
+For #2, we will need a runtime version of the datatype declaration.
+

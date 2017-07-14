@@ -1,0 +1,25 @@
+;; -*- Mode: lisp -*-
+
+(posix
+  (includes sys/utsname.h unistd.h sys/time.h)
+  (structs utsname timeval timezone tm)
+  (constants STDIN_FILENO)
+  (sigs
+    (uname (* (struct utsname)) -> int)
+    (getpid -> int)
+    (rand -> int)
+    (srand int -> void)
+    (errno int)
+    (strerror int -> (* char))
+    (strlen (* char) -> int)
+    (memcpy (* void) (* void) int -> (* void))
+    (free (* void) -> void)
+    (puts (* char) -> int)
+    (gettimeofday (* (struct timeval)) (* (struct timezone)) -> int)
+    ;;(localtime (* time_t) -> (* (struct tm)))
+    (localtime (* long) -> (* (struct tm)))
+    (asctime (* (struct tm)) -> (* char))
+    ;;(ctime (* time_t) -> (* char))
+    (ctime (* long) -> (* char))
+    (close int -> int)
+    ))
