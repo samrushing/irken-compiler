@@ -2,14 +2,18 @@
 (socket
   (includes sys/types.h sys/socket.h netinet/in.h arpa/inet.h unistd.h sys/uio.h sys/errno.h)
   (structs sockaddr sockaddr_in sockaddr_in6 in_addr in6_addr)
-  (constants AF_INET AF_INET6 AF_UNIX SOCK_STREAM SOCK_DGRAM
+  (constants AF_INET AF_INET6 AF_UNIX
+             SOCK_STREAM SOCK_DGRAM SOCK_RAW
              EAGAIN EINPROGRESS EWOULDBLOCK)
   (sigs
-   (inet_ntop int (* (struct in_addr)) (* char) int -> (* char))
-   (inet_pton int (* char) (* (struct in_addr)) -> int)
+   (inet_ntop int (* void) (* char) int -> (* char))
+   (inet_pton int (* char) (* void) -> int)
    (socket int int int -> int)
    (bind int (* (struct sockaddr)) int -> int)
    (listen int int -> int)
-   (accept int (* (struct sockaddr)) int -> int)
+   (accept int (* (struct sockaddr)) (* uint) -> int)
+   (connect int (* (struct sockaddr)) int -> int)
+   (recv int (* char) int int -> int)
+   (send int (* char) int int -> int)
    (htons int -> int)
    ))
