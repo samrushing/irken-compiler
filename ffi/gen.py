@@ -86,7 +86,7 @@ class sexp_reader:
                 result.append(x)
 
 def build_clang_input (path, iface):
-    
+
     f = open (path, 'wb')
     W = f.write
 
@@ -161,8 +161,8 @@ main (int argc, char * argv[])
   fprintf (stdout, "int %zu\\n", sizeof(int));
   fprintf (stdout, "short %zu\\n", sizeof(short));
   fprintf (stdout, "long %zu\\n", sizeof(long));
-  fprintf (stdout, "long-long %zu\\n", sizeof(long long));  
-  fprintf (stdout, "intptr_t %zu\\n", sizeof(intptr_t));  
+  fprintf (stdout, "long-long %zu\\n", sizeof(long long));
+  fprintf (stdout, "intptr_t %zu\\n", sizeof(intptr_t));
   return 0;
 }
 """
@@ -297,7 +297,7 @@ def parse_one_layout (lines, tmap):
             r.append (parse_def (stype))
             state = 1
         elif state == 1:
-            if m: 
+            if m:
                 offset, indent, stype = m.groups()
                 r.append ((offset, len(indent), parse_type (stype, tmap)))
             else:
@@ -314,18 +314,25 @@ def parse_record_layouts (lines, tmap):
             layouts.append (parse_one_layout (lines, tmap))
     return layouts
 
+typedef_map = {}
+
 def sexp (ob):
     if type(ob) is list or type(ob) is tuple:
         return '(' + ' '.join ([sexp(x) for x in ob]) + ')'
     elif type(ob) is int:
         return str(ob)
     else:
-        return ob
+        if tmap.has_key (ob):
+            typedef_map[ob] = resolve_type (ob, tmap)
+            return ob
+        else:
+            return ob
 
 def quote (s):
     return '"' + s + '"'
 
 def emit_ffi (iface):
+    global tmap
     path = '%s_iface.c' % (iface['name'],)
     build_clang_input (path, iface)
     tmap = find_typedefs (path)
@@ -366,7 +373,7 @@ def emit_ffi (iface):
         if len(sig) == 3:
             name, argtypes, rtype = sig
             f.write ('(sig %s (%s -> %s))\n' % (
-                name, 
+                name,
                 ' '.join ([sexp(x) for x in argtypes]),
                 sexp(rtype)
                 ))
@@ -375,6 +382,15 @@ def emit_ffi (iface):
             f.write ('(sig %s %s)\n' % (name, sexp(obtype)))
     for (name, val) in constants:
         f.write ('(con %s %s)\n' % (name, val))
+    tdefs = typedef_map.items()
+    tdefs.sort()
+    for t0, t1 in tdefs:
+        if int_size_table.has_key (t1):
+            f.write ('(tdef %s %s)\n' % (
+                sexp(t0), sexp (('int', int_size_table[t1]))
+            ))
+        else:
+            raise ValueError ("opaque type? %r %r" % (t0, t1))
     f.close()
     print 'wrote %s' % (path,)
 
@@ -402,7 +418,10 @@ def read_spec (path):
             return ['*', parse_spectype (t[1])]
         elif t[0] == 'array':
             return ['array', parse_spectype (t[2]), [int(t[1])]]
-        elif t[0] in ('struct', 'union', 'other'):
+        elif t[0] == 'other':
+            W ('other type: %r\n' % (t[1],))
+            return t
+        elif t[0] in ('struct', 'union'):
             return t
         else:
             raise ValueError(t)
@@ -431,4 +450,3 @@ int_size_table = build_int_size_table()
 for ffi in sys.argv[1:]:
     iface = read_spec (ffi)
     emit_ffi (iface)
-    #emit_irken (iface)
