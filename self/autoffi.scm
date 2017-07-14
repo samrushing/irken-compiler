@@ -19,8 +19,8 @@
 (define ctype->sexp
   (ctype:name name)    -> (sexp:symbol name)
   (ctype:int size s?)  -> (sexp:symbol 'int)
-  (ctype:array size t) -> (sexp (sexp:symbol '*) (ctype->sexp t))
-  (ctype:pointer t)    -> (sexp (sexp:symbol '*) (ctype->sexp t))
+  (ctype:array size t) -> (sexp (sexp:symbol 'cref) (ctype->sexp t))
+  (ctype:pointer t)    -> (sexp (sexp:symbol 'cref) (ctype->sexp t))
   (ctype:struct name)  -> (sexp (sexp:symbol 'struct) (sexp:symbol name))
   (ctype:union name)   -> (sexp (sexp:symbol 'union) (sexp:symbol name))
   )
@@ -40,10 +40,10 @@
 ;;
 
 (define ctype->rtype-code
-  (ctype:int _ _) -> #\i
+  (ctype:int _ _)    -> #\i
   (ctype:name 'void) -> #\u
   (ctype:name 'char) -> #\c
-  (ctype:pointer _) -> #\p
+  (ctype:pointer _)  -> #\p
   x -> (error1 "ctype->rtype-code: bad rtype" (ctype-repr x))
   )
 
@@ -57,6 +57,8 @@
     (define (iface-includes)
       (map (lambda (path) (sexp (sexp:symbol 'cinclude) (sexp:string path)))
            info.includes))
+
+    (set! the-context.ffi-count (+ 1 the-context.ffi-count))
 
     (match the-context.options.backend with
       (backend:bytecode)
@@ -93,28 +95,17 @@
                               (sexp:list (argnames (length argtypes))))
                         )))
          (csig:obj name obtype)
-         -> (let ((ztname (zero-terminate (symbol->string name)))
-                  ;; XXX I think we want posix-get-errno instead.
-                  (getname (string->symbol (format "get-" (sym (iface-prefix name)))))
-                  (setname (string->symbol (format "set-" (sym (iface-prefix name))))))
+         -> (let ((ztname (zero-terminate (symbol->string name))))
               (PUSH forms
                     (sexp (sexp:symbol 'define)
-                          (sexp:symbol getname)
-                          (sexp (sexp:symbol 'build-ffi-ob-get)
+                          (sexp:symbol (iface-prefix name))
+                          (sexp (sexp:symbol 'build-ffi-ob)
                                 (sexp:symbol name)
                                 (sexp:string ztname)
                                 (ctype->sexp obtype)
                                 (sexp:char (ctype->code obtype))
                                 )))
-              (PUSH forms
-                    (sexp (sexp:symbol 'define)
-                          (sexp:symbol setname)
-                          (sexp (sexp:symbol 'build-ffi-ob-set)
-                                (sexp:symbol name)
-                                (sexp:string ztname)
-                                (ctype->sexp obtype)
-                                (sexp:char (ctype->code obtype))
-                                ))))
+              )
          )))
     (notquiet
      (printf "autoffi forms = \n")
