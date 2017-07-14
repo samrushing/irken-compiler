@@ -472,6 +472,10 @@
 
   (define (get-word-size)
     (%%cexp (-> int) "sizeof(pxll_int)"))
+
+  (define (get-int-size)
+    (%%cexp (-> int) "sizeof(int)"))
+
   )
 
 (%backend bytecode
@@ -480,6 +484,7 @@
     (make-ffi name rtype nargs (formal0 ...) (ftype0 ...))
     -> (let (($pfun (%%cexp (string -> int) "dlsym" name)))
          (lambda (formal0 ...)
+           (printf "** ffi: " name "\n")
            (%%cexp (int char int ftype0 ...)
                    "ffi"
                    $pfun rtype nargs
@@ -500,8 +505,12 @@
       #f -> 8
       ))
 
+  (define (get-int-size)
+    ;; true for nearly all 32 and 64-bit platforms.
+    ;; [only one I've used: old-school 64-bit OSF/1 on DEC Alpha]
+    4)
+
   (define (how-many x n)
     (/ (- (+ x n) 1) n))
 
   )
-  
