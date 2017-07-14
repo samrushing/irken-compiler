@@ -24,7 +24,8 @@ char * op_names[] = {
   "nvcase", "tupref", "vlen", "vref", "vset", "vmake", "alloc",
   "rref", "rset", "getcc", "putcc", "irk", "getc", "dlsym", "ffi",
   "smake", "slen", "sref", "sset", "scopy", "unchar", "plat", "gist",
-  "argv", "quiet", "heap", "readf", "calloc","cget","cset",
+  "argv", "quiet", "heap", "readf", "malloc","cget","cset", "free",
+  "sizeoff", "sgetp", "caref", "csref", "dlsym2", "csize",
 };
 
 static int argc;
@@ -118,10 +119,25 @@ vm_list_cons (object * car, object * cdr)
   return cell;
 }
 
+// eventually we'll need to move all these tables into a 'code object'
+//  in order to support running more than one code object at a time.
+
 object * bytecode_literals;
 object * vm_field_lookup_table;
+// size/offset table for ffi ctypes (e.g. 'int', 'struct in6_addr', ...)
+pxll_int vm_sizeoff_table[100] = {sizeof (void *), sizeof(short), sizeof(int), sizeof(long), sizeof(long long), 0};
 pxll_int vm_internal_symbol_counter = 0;
 object * vm_internal_symbol_list = PXLL_NIL;
+
+pxll_int
+get_sizeoff_entry (pxll_int sindex)
+{
+  if (sindex < 50) {
+    return sindex;
+  } else {
+    return vm_sizeoff_table[sindex - 50];
+  }
+}
 
 pxll_int
 read_literal (FILE * f, object * ob)
@@ -142,7 +158,7 @@ read_literal (FILE * f, object * ob)
     *ob =  PXLL_TRUE;
     break;
   case 'F':
-    *ob =  PXLL_FALSE;      
+    *ob =  PXLL_FALSE;
     break;
   case 'u':
     *ob =  PXLL_UNDEFINED;
@@ -233,7 +249,15 @@ read_literals (FILE * f)
     for (int i=0; i < nlits; i++) {
       CHECK (read_literal (f, &(lits0[i+1])));
     }
-    vm_field_lookup_table = bytecode_literals[nlits];
+    // field lookup table
+    CHECK (read_literal (f, (object *) &vm_field_lookup_table));
+    // sizeoff literal index
+    object * sizeoff_index_ob;
+    CHECK (read_literal (f, (object *) &sizeoff_index_ob));
+    pxll_int sizeoff_index = 1 + UNBOX_INTEGER (sizeoff_index_ob);
+    object * sizeoff_literal;
+    CHECK (read_literal (f, (object *) &sizeoff_literal));
+    bytecode_literals[sizeoff_index] = sizeoff_literal;
     return 0;
   } else {
     fprintf (stderr, "bytecode file does not start with vector.\n");
@@ -327,7 +351,7 @@ print_object (object * ob)
     fprintf (stdout, "<lenv>");
   } else if (IS_TYPE (TC_VM_CONT, ob[0])) {
     fprintf (stdout, "<cont>");
-  } else {    
+  } else {
     dump_object (ob, 0);
   }
 }
@@ -430,7 +454,7 @@ vm_gc (int nreg)
   t0 = rdtsc();
   // copy roots
   heap1[0] = (object) vm_lenv;
-  heap1[1] = (object) vm_k;  
+  heap1[1] = (object) vm_k;
   heap1[2] = (object) vm_top;
   heap1[3] = (object) bytecode_literals;
   nwords = do_gc (4 + nreg);
@@ -504,7 +528,7 @@ vm_read_file (pxll_string * path, object ** result)
 }
 
 pxll_int
-vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result) 
+vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
 {
   // FFI target pfun rtype nargs arg0 ...
   ffi_cif cif;
@@ -520,7 +544,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
     case TC_INT:
       // Note: we can't use sint here, because it is not a synonym for 'intptr_t',
       //  which is what irken uses for its integer representation.  Specifically,
-      //  on amd64 'int' is only 32 bits.
+      //  on LP64 'int' is only 32 bits.
       args[i] = &ffi_type_pointer;
       vals[i] = (void*) UNBOX_INTEGER (ob);
       pvals[i] = vals + i;
@@ -530,19 +554,24 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
       vals[i] = (void*) (pxll_int) (ob == PXLL_TRUE);
       pvals[i] = vals + i;
       break;
-    case TC_STRING:
-      args[i] = &ffi_type_pointer;
-      vals[i] = (void*) GET_STRING_POINTER (ob);
-      pvals[i] = vals + i;
-      break;
     case TC_CHAR:
       args[i] = &ffi_type_uchar;
       vals[i] = (void*) GET_CHAR (ob);
       pvals[i] = vals + i;
       break;
+    case TC_STRING:
+      args[i] = &ffi_type_pointer;
+      vals[i] = (void*) GET_STRING_POINTER (ob);
+      pvals[i] = vals + i;
+      break;
     case TC_BUFFER:
       args[i] = &ffi_type_pointer;
       vals[i] = ob + 1;
+      pvals[i] = vals + i;
+      break;
+    case TC_FOREIGN:
+      args[i] = &ffi_type_pointer;
+      vals[i] = ob[1];
       pvals[i] = vals + i;
       break;
     default:
@@ -553,6 +582,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
       break;
     }
   }
+
   if (good) {
     ffi_type * rtype;
     // parse rtype
@@ -592,7 +622,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
         }
         break;
       case 'p':
-        *result = BOX_INTEGER ((pxll_int)rc);
+        *result = make_foreign ((void *) rc);
         break;
       case 'u':
         *result = (object *) PXLL_UNDEFINED;
@@ -611,57 +641,57 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
   }
 }
 
+#include <sys/errno.h>
+
 pxll_int
-vm_cget (object ** result, object * src, pxll_int off, pxll_int code)
+vm_cget (object ** result, object * src, pxll_int code)
 {
-  uint8_t * p;
-  switch (get_case (src)) {
-  case TC_USEROBJ + 0:
-    // cmem:buf
-    p = (uint8_t *) ((object *) (src[1]) + 1);
-    break;
-  case TC_USEROBJ + 1:
-    // cmem:ptr
-    p = (uint8_t *) (src[1]);
-    break;
-  default:
-    fprintf (stderr, "vm_cget: invalid <src>\n");
-    return -1;
-  }
-  p += off;
+  uint8_t * p = (uint8_t *) get_foreign (src);
   switch (code) {
-  case 's':
-    *result = vm_copy_string ((char *) p);
-    break;
-  case '1':
+  case 'B':
     *result = BOX_INTEGER ((pxll_int)(*((uint8_t *)p)));
     break;
-  case '2':
+  case 'H':
     *result = BOX_INTEGER ((pxll_int)*((uint16_t *)p));
     break;
-  case '4':
+  case 'M':
     *result = BOX_INTEGER ((pxll_int)*((uint32_t *)p));
     break;
-  case '8':
+  case 'Q':
     *result = BOX_INTEGER ((pxll_int)*((uint64_t *)p));
     break;
-  case 'i':
+  case 'b':
     *result = BOX_INTEGER ((pxll_int)*((int8_t *)p));
     break;
-  case 'j':
+  case 'h':
     *result = BOX_INTEGER ((pxll_int)*((int16_t *)p));
     break;
-  case 'k':
+  case 'm':
     *result = BOX_INTEGER ((pxll_int)*((int32_t *)p));
     break;
-  case 'l':
+  case 'q':
     *result = BOX_INTEGER ((pxll_int)*((int64_t *)p));
     break;
+  case 'i':
+    *result = BOX_INTEGER ((pxll_int)*((int *)p));
+    break;
+  case 'I':
+    *result = BOX_INTEGER ((pxll_int)*((unsigned int *)p));
+    break;
+  case 'l':
+    *result = BOX_INTEGER ((pxll_int)*((long *)p));
+    break;
+  case 'L':
+    *result = BOX_INTEGER ((pxll_int)*((unsigned long *)p));
+    break;
   case 'p':
-    *result = BOX_INTEGER ((pxll_int)*p);
+    *result = make_foreign (*((void**)p));
     break;
   case 'c':
     *result = TO_CHAR (*p);
+    break;
+  case 's':
+    *result = vm_copy_string ((char *) p);
     break;
   default:
     fprintf (stderr, "vm_cget: unknown result code\n");
@@ -671,58 +701,56 @@ vm_cget (object ** result, object * src, pxll_int off, pxll_int code)
 }
 
 pxll_int
-vm_cset (object * dst, pxll_int off, pxll_int code, object * val)
+vm_cset (object * dst, pxll_int code, object * val)
 {
-  uint8_t * p;
-  switch (get_case (dst)) {
-  case TC_USEROBJ + 0:
-    // cmem:buf
-    p = (uint8_t *) ((object *) (dst[1]) + 1);
-    break;
-  case TC_USEROBJ + 1:
-    // cmem:ptr
-    p = (uint8_t *) (dst[1]);
-    break;
-  default:
-    fprintf (stderr, "vm_cset: invalid <src>\n");
-    return -1;
-  }
-  p += off;
+  uint8_t * p = (uint8_t *) get_foreign (dst);
   switch (code) {
   case 's': {
     pxll_string * s = (pxll_string *) val;
     memcpy (p, s->data, s->len);
   }
     break;
-  case '1':
+  case 'B':
     * ((uint8_t*)p) = (uint8_t) UNBOX_INTEGER (val);
     break;
-  case '2':
+  case 'H':
     * ((uint16_t*)p) = (uint16_t) UNBOX_INTEGER (val);
     break;
-  case '4':
+  case 'M':
     * ((uint32_t*)p) = (uint32_t) UNBOX_INTEGER (val);
     break;
-  case '8':
+  case 'Q':
     * ((uint64_t*)p) = (uint64_t) UNBOX_INTEGER (val);
     break;
-  case 'i':
+  case 'b':
     * ((int8_t*)p) = (int8_t) UNBOX_INTEGER (val);
     break;
-  case 'j':
+  case 'h':
     * ((int16_t*)p) = (int16_t) UNBOX_INTEGER (val);
     break;
-  case 'k':
+  case 'm':
     * ((int32_t*)p) = (int32_t) UNBOX_INTEGER (val);
     break;
-  case 'l':
+  case 'q':
     * ((int64_t*)p) = (int64_t) UNBOX_INTEGER (val);
     break;
+  case 'i':
+    * ((int *)p) = (int) UNBOX_INTEGER (val);
+    break;
+  case 'I':
+    * ((unsigned int *)p) = (unsigned int) UNBOX_INTEGER (val);
+    break;
+  case 'l':
+    * ((long *)p) = (long) UNBOX_INTEGER (val);
+    break;
+  case 'L':
+    * ((unsigned long *)p) = (unsigned long) UNBOX_INTEGER (val);
+    break;
   case 'p':
-    * ((pxll_int*)p) = UNBOX_INTEGER (val);
+    * ((object*)p) = get_foreign (val);
     break;
   default:
-    fprintf (stderr, "vm_cset: unknown result code\n");
+    fprintf (stderr, "vm_cset: unknown result code: %ld\n", code);
     return -1;
   }
   return 0;
@@ -777,8 +805,9 @@ vm_go (void)
     &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc, &&l_irk,
     &&l_getc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_plat, &&l_gist,
-    &&l_argv, &&l_quiet, &&l_heap, &&l_readf, &&l_calloc, &&l_cget,
-    &&l_cset,
+    &&l_argv, &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_cget,
+    &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
+    &&l_dlsym2, &&l_csize,
   };
 
   // XXX what happens when the opcode is out of range? (segfault)
@@ -1255,11 +1284,17 @@ vm_go (void)
   }
   pc += 3;
   DISPATCH();
- l_sfromc:
-    // SFROMC target src
-  REG1 = vm_copy_string ((char*)UNBOX_INTEGER (REG2));
-  pc += 3;
-  DISPATCH();
+ l_sfromc: {
+    // SFROMC target src len
+    pxll_int slen = UNBOX_INTEGER (REG3);
+    char * src = (char *) get_foreign (REG2);
+    pxll_string * dst = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
+    dst->len = slen;
+    memcpy (GET_STRING_POINTER (dst), src, slen);
+    REG1 = (object *) dst;
+    pc += 4;
+    DISPATCH();
+  }
  l_slen:
   // SLEN target string
   REG1 = BOX_INTEGER ((pxll_int)((pxll_string *) REG2)->len);
@@ -1334,7 +1369,7 @@ vm_go (void)
             vm_list_cons (
               vm_copy_string (plat.version),
               vm_list_cons (
-                vm_copy_string (plat.machine), 
+                vm_copy_string (plat.machine),
                 PXLL_NIL
               )))));
     } else {
@@ -1387,34 +1422,29 @@ vm_go (void)
       return BOX_INTEGER ((unsigned)-1);
     }
   }
- l_calloc: {
-    // CALLOC target size kind
+ l_malloc: {
+    // MALLOC target sindex nelem
     object * result;
-    // cmem: buf = 0, ptr = 1
-    pxll_int kind = UNBOX_INTEGER (REG3);
-    result = allocate (TC_USEROBJ + kind, 1);
-    if (kind == 0) {
-      result[1] = allocate (TC_BUFFER, HOW_MANY (UNBOX_INTEGER (REG2), sizeof(object)));
+    pxll_int sindex = BC2;
+    pxll_int nelem = UNBOX_INTEGER (REG3);
+    pxll_int sizeoff = get_sizeoff_entry (sindex);
+    result = (object*) malloc (sizeoff * nelem);
+    if (!result) {
+      fprintf (stderr, "malloc failed.\n");
+      return BOX_INTEGER ((unsigned)-1);
     } else {
-      object * ptr = malloc ((size_t) UNBOX_INTEGER (REG2));
-      if (ptr) {
-        result[1] = ptr;
-      } else {
-        fprintf (stderr, "malloc failed.\n");
-        return BOX_INTEGER ((unsigned)-1);
-      }
+      REG1 = make_foreign (result);
+      pc += 4;
+      DISPATCH();
     }
-    REG1 = result;
-    pc += 3;
-    DISPATCH();
   }
  l_cget: {
-    // CGET target src off code
+    // CGET target src code
     object * result;
-    pxll_int r = vm_cget (&result, REG2, UNBOX_INTEGER (REG3), GET_CHAR (REG4));
+    pxll_int r = vm_cget (&result, REG2, (pxll_int) BC3);
     if (r == 0) {
       REG1 = result;
-      pc += 5;
+      pc += 4;
       DISPATCH();
     } else {
       fprintf (stderr, "vm_cget failed.\n");
@@ -1422,19 +1452,72 @@ vm_go (void)
     }
   }
  l_cset: {
-    // CSET dst off code val
-    pxll_int r = vm_cset (REG1, UNBOX_INTEGER (REG2), GET_CHAR (REG3), REG4);
+    // CSET dst code val
+    pxll_int r = vm_cset (REG1, (pxll_int) BC2, REG3);
     if (r == 0) {
-      pc += 5;
+      pc += 4;
       DISPATCH();
     } else {
       fprintf (stderr, "vm_cset failed.\n");
       return BOX_INTEGER ((unsigned)-1);
     }
   }
+ l_free: {
+    // FREE src
+    object * src = get_foreign (REG1);
+    free (src);
+    pc += 2;
+    DISPATCH();
+  }
+ l_sizeoff: {
+    // SIZEOFF index val
+    pxll_int index = UNBOX_INTEGER (REG1);
+    pxll_int val   = UNBOX_INTEGER (REG2);
+    vm_sizeoff_table[index] = val;
+    pc += 3;
+    DISPATCH();
+  }
+ l_sgetp: {
+    // SGETP dst src
+    pxll_string * s = (pxll_string *) REG1;
+    REG2 = make_foreign (s->data);
+    pc += 3;
+    DISPATCH();
+  }
+ l_caref: {
+    // CAREF dst src sindex num
+    pxll_int sizeoff = get_sizeoff_entry (BC3);
+    char * src = (char *) get_foreign (REG2);
+    char * dst = src + (sizeoff * UNBOX_INTEGER (REG4));
+    REG1 = make_foreign (dst);
+    pc += 5;
+    DISPATCH();
+  }
+ l_csref: {
+    // CSREF dst src sindex
+    pxll_int sizeoff = get_sizeoff_entry (BC3);
+    // fprintf (stderr, "csref: sizeoff=%ld\n", sizeoff);
+    char * src = (char *) get_foreign (REG2);
+    // fprintf (stderr, "csref: src=%p\n", src);
+    char * dst = src + sizeoff;
+    // fprintf (stderr, "csref: dst=%p\n", dst);
+    REG1 = make_foreign (dst);
+    pc += 4;
+    DISPATCH();
+  }
+ l_dlsym2:
+  // DLSYM2 target name
+  REG1 = make_foreign (dlsym (RTLD_DEFAULT, GET_STRING_POINTER (REG2)));
+  pc += 3;
+  DISPATCH();
+ l_csize:
+  // CSIZE target sindex
+  REG1 = BOX_INTEGER (get_sizeoff_entry (BC2));
+  pc += 3;
+  DISPATCH();
 }
 
-void 
+void
 toplevel (void) {
   if (argc < 2) {
     fprintf (stderr, "Usage: %s <bytecode-file> <arg0> <arg1> ...\n", argv[0]);
@@ -1444,6 +1527,9 @@ toplevel (void) {
     object * result = vm_go();
     print_object (result);
     fprintf (stdout, "\n");
+    // for (int i=0; i < 7; i++) {
+    //   fprintf (stderr, "sizeoff[%d] = %ld\n", i, vm_sizeoff_table[i]);
+    // }
     if (is_int (result)) {
       exit ((int)(intptr_t)UNBOX_INTEGER(result));
     } else {
