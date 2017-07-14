@@ -200,11 +200,13 @@
 (define letters        (string->list "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
 (define all-delimiters (append whitespace delimiters))
 (define digits         (string->list "0123456789"))
+(define hex-digits     (string->list "0123456789ABCDEFabcdef"))
 (define printable      (append digits letters (string->list "!\"#$%&'*+,-./:;<=>?@\\^_`[({|})]~")))
 
 (define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
 (define delim?         (char-class all-delimiters))
 (define digit?         (char-class digits))
+(define hex-digit?     (char-class hex-digits))
 (define letter?        (char-class letters))
 (define field?         (char-class (cons #\- (append letters digits))))
 (define printable?     (char-class printable))
