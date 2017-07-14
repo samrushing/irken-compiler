@@ -475,6 +475,13 @@
   exp -> (error1 "unhandled literal type" exp)
   )
 
+(define (walk-literal lit p)
+  (match lit with
+    (literal:cons _ _ l) -> (begin (p lit) (for-list x l (walk-literal x p)))
+    (literal:vector l)   -> (begin (p lit) (for-list x l (walk-literal x p)))
+    _                    -> (begin (p lit) #u)
+    ))
+
 (define unsexp-list
   ()        -> (literal:cons 'list 'nil '())
   (hd . tl) -> (literal:cons 'list 'cons (LIST (unsexp hd) (unsexp-list tl)))
@@ -489,6 +496,7 @@
   (sexp:symbol s)  -> (literal:cons 'sexp 'symbol (LIST (literal:symbol s)))
   (sexp:list l)    -> (literal:cons 'sexp 'list (LIST (unsexp-list l)))
   (sexp:vector l)  -> (literal:cons 'sexp 'vector (map unsexp l))
+  (sexp:attr b n)  -> (literal:cons 'sexp 'attr (LIST (unsexp b) (literal:symbol n)))
   exp -> (error1 "unsexp: unhandled literal type" exp)
   )
 
