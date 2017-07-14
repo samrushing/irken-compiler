@@ -11,7 +11,7 @@
 (define (cmap/add m item)
   (match (tree/member m.map m.cmp item) with
     (maybe:yes index) -> index
-    (maybe:no) 
+    (maybe:no)
     -> (let ((index m.count))
 	 (tree/insert! m.map m.cmp item index)
 	 (tree/insert! m.rev int-cmp index item)
