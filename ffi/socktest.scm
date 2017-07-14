@@ -232,7 +232,7 @@
   (set! sock.fd -1)
   )
 
-(define (test-listen addr0 sock0)
+(define (test-echo addr0 sock0)
   (printf "fd0 = " (int sock0.fd) "\n")
   (sock/bind sock0 addr0)
   (address/free addr0)
@@ -260,7 +260,7 @@
 
 
 (test-addresses)
-(test-listen (address/make4 "127.0.0.1" 9002) (tcp4-sock))
-(test-listen (address/make6 "::1" 9002) (tcp6-sock))
+(test-echo (address/make4 "127.0.0.1" 9002) (tcp4-sock))
+(test-echo (address/make6 "::1" 9002) (tcp6-sock))
 
 
