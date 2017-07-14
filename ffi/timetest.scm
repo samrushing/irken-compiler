@@ -13,8 +13,8 @@
 ;;  are complex and variable.
 
 (define (gettimeofday)
-  (let ((tv (malloc1 (struct timeval)))
-        (tz (malloc1 (struct timezone))))
+  (let ((tv (malloc (struct timeval)))
+        (tz (malloc (struct timezone))))
     (posix/gettimeofday tv tz)
     (let ((result
            {sec         = (%c-get-int i64 (%c-sref timeval.tv_sec tv))
@@ -30,7 +30,7 @@
 
 (define (ctime)
   (let ((t0 (gettimeofday))
-        (t1* (malloc1 long)))
+        (t1* (malloc long)))
     (%c-set-int long t0.sec t1*)
     (let ((r (get-c-string (posix/ctime t1*))))
       (free t1*))))
