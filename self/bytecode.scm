@@ -88,9 +88,16 @@
     (OI 'quiet   1      #f     #f)   ;; bool
     (OI 'heap    2      #f     #f)   ;; size nreg
     (OI 'readf   2      #f     #t)   ;; target path
-    (OI 'calloc  3      #f     #t)   ;; target size malloc?
-    (OI 'cget    4      #f     #t)   ;; target src off code
-    (OI 'cset    4      #f     #f)   ;; src off code val
+    (OI 'malloc  3      #f     #t)   ;; target sindex size
+    (OI 'cget    3      #f     #t)   ;; target src code
+    (OI 'cset    3      #f     #f)   ;; src code val
+    (OI 'free    1      #f     #f)   ;; src
+    (OI 'sizeoff 2      #f     #f)   ;; index val
+    (OI 'sgetp   2      #f     #t)   ;; dst src
+    (OI 'caref   3      #f     #t)   ;; dst sindex num
+    (OI 'csref   3      #f     #t)   ;; dst src sindex
+    (OI 'dlsym2  2      #f     #t)   ;; target name
+    (OI 'csize   2      #f     #t)   ;; target sindex
     ;;  name   nargs varargs target? args
     )))
 
@@ -146,6 +153,8 @@
         (jump-label-map (map-maker int-cmp))
         (fun-label-map (map-maker symbol-index-cmp))
         (fatbar-map (map-maker int-cmp))
+        (sizeoff-map (cmap/make magic-cmp))
+        (lit-already (map-maker magic-cmp))
         )
 
     (define (new-label)
@@ -372,6 +381,29 @@
     (define (emit-pop src target)
       (append (move src target) (LINSN 'epop)))
 
+    (define get-sizeoff
+      ;; XXX handle all 'sorta known' sizes like pointer, int, char, etc.
+      (sexp:symbol 'char) -> 1
+      (sexp:symbol 'i8)   -> 1
+      (sexp:symbol 'u8)   -> 1
+      (sexp:symbol 'i16)  -> 2
+      (sexp:symbol 'u16)  -> 2
+      (sexp:symbol 'i32)  -> 4
+      (sexp:symbol 'u32)  -> 4
+      (sexp:symbol 'i64)  -> 8
+      (sexp:symbol 'u64)  -> 8
+      (sexp:list ((sexp:symbol 'cref) _)) -> 50 ;; (cref 'a) == pointer
+      (sexp:symbol 'short)                -> 51
+      (sexp:symbol 'int)                  -> 52
+      (sexp:symbol 'long)                 -> 53
+      (sexp:symbol 'longlong)             -> 54
+      sexp
+      -> (begin
+           (printf "get-sizeoff other = " (repr sexp) "\n")
+           (+ 55 (cmap/add sizeoff-map sexp))
+           )
+      )
+
     (define (emit-primop name parm type args k)
 
       (define (primop-error)
@@ -463,21 +495,54 @@
          -> (LINSN 'heap rsize (length free))
          _ _ -> (primop-error))
 
-       (define (prim-halloc args)
-         (LINSN 'calloc target (car args) 0))
+       (define (prim-malloc parm args)
+         (let ((sindex (get-sizeoff parm)))
+           (printf "adding %malloc call, sindex=" (int sindex) " parm = " (repr parm) "\n")
+           (LINSN 'malloc target sindex (car args))))
 
-       (define (prim-malloc args)
-         (LINSN 'calloc target (car args) 1))
+       (define (prim-free args)
+         (LINSN 'free (car args)))
 
-       (define prim-cget2
-         (src offset code)
-         -> (LINSN 'cget target src offset code)
+       (define (prim-string->cref args)
+         (LINSN 'sgetp target (car args)))
+
+       (define prim-c-aref
+         parm (src index)
+         -> (let ((sindex (get-sizeoff parm)))
+              (printf "c-aref parm = " (repr parm) "\n")
+              (LINSN 'caref target src sindex index))
+         _ _ -> (primop-error))
+
+       (define prim-c-sfromc
+         (src len)
+         -> (LINSN 'sfromc target src len)
          _ -> (primop-error))
 
-       (define prim-cset2
-         (src offset code val)
-         -> (LINSN 'cset src offset code val)
-         _ -> (primop-error))
+       (define prim-cget-int
+         (sexp:symbol itype) (src)
+         ;; CGET target src code
+         -> (LINSN 'cget target src (irken-type->code itype))
+         _ _ -> (primop-error)
+         )
+
+        (define prim-cset-int
+          (sexp:symbol itype) (src dst)
+          ;; CSET dst code val
+          -> (LINSN 'cset dst (irken-type->code itype) src)
+          _ _ -> (primop-error)
+          )
+
+        (define prim-c-sref
+          srefexp (src)
+          ;; SREF target src sindex
+          -> (let ((sindex (get-sizeoff parm)))
+               (printf "c-sref, sindex=" (int sindex) " parm = " (repr parm) "\n")
+               (LINSN 'csref target src sindex))
+          _ _ -> (primop-error)
+          )
+
+        (define (prim-c-sizeof parm)
+          (LINSN 'csize target (get-sizeoff parm)))
 
        (match name with
          '%dtcon       -> (prim-dtcon parm)
@@ -491,12 +556,20 @@
          '%getcc       -> (prim-getcc args)
          '%putcc       -> (prim-putcc args)
          '%ensure-heap -> (prim-heap args (k/free k))
-         '%halloc      -> (prim-halloc args)
-         '%malloc      -> (prim-malloc args)
-         '%cget2       -> (prim-cget2 args) ;; (buffer X)
-         '%cget3       -> (prim-cget2 args) ;; (* X)
-         '%cset2       -> (prim-cset2 args) ;; (buffer X)
-         '%cset3       -> (prim-cset2 args) ;; (* X)
+         ;; -------------------- FFI --------------------
+         ;; currently done with %%cexp (needs to be fixed)
+         ;; '%ffi2         ->
+         '%malloc       -> (prim-malloc parm args)
+         '%free         -> (prim-free args)
+         '%c-aref       -> (prim-c-aref parm args)
+         '%c-sfromc     -> (prim-c-sfromc args)
+         '%string->cref -> (prim-string->cref args)
+         '%c-get-int    -> (prim-cget-int parm args)
+         '%c-set-int    -> (prim-cset-int parm args)
+         '%c-sref       -> (prim-c-sref parm args)
+         '%c-sizeof     -> (prim-c-sizeof parm)
+         ;; -------------------- FFI --------------------
+
          _ -> (primop-error))))
 
     ;; we emit insns for k0, which may or may not jump to fail continuation in k1
@@ -629,64 +702,62 @@
             (literal:vector '())
             )))
 
+    (define (emit-one-literal ob)
+      (match (lit-already::get ob) with
+        (maybe:yes index)
+        -> (o.copy (format "P" (encode-int index)))
+        (maybe:no)
+        -> (match ob with
+             (literal:int n)
+             -> (if (< n 0)
+                    (o.copy (format "-" (encode-int (- 0 n))))
+                    (o.copy (format "+" (encode-int n))))
+             (literal:char ch) -> (o.copy (format "c" (encode-int (char->ascii ch))))
+             (literal:undef)   -> (o.copy "u")
+             (literal:string s)
+             -> (begin
+                  (o.copy (format "S" (encode-int (string-length s))))
+                  (o.copy s))
+             (literal:bool #t) -> (o.copy "T")
+             (literal:bool #f) -> (o.copy "F")
+             (literal:cons dt variant args)
+             -> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
+                      (alt (dto.get variant))
+                      (nargs (length args)))
+                  (if (= nargs 0)
+                      ;; immediate constructor
+                      (o.copy (format "I" (encode-int (get-uitag dt variant alt.index))))
+                      ;; constructor with args
+                      (begin
+                        (o.copy (format "C"
+                                        (encode-int (get-uotag dt variant alt.index))
+                                        (encode-int nargs)))
+                        (for-list arg args
+                          (emit-one-literal arg)))))
+             (literal:vector args)
+             -> (begin
+                  (o.copy (format "V" (encode-int (length args))))
+                  (for-list arg args
+                    (emit-one-literal arg)))
+             (literal:symbol s)
+             -> (let ((s0 (symbol->string s)))
+                  (o.copy (format "Y" (encode-int (string-length s0))))
+                  (o.copy s0))
+             ;; Note: sexp is done via literal:cons
+             _ -> (error1 "NYI literal type" (literal->string ob))
+             )
+        ))
+
     (define (emit-literals)
       ;; encode literals into the bytecode stream.
-      (let ((already (map-maker magic-cmp)))
-
-        (define (walk ob)
-          (match (already::get ob) with
-            (maybe:yes index)
-            -> (o.copy (format "P" (encode-int index)))
-            (maybe:no)
-            -> (match ob with
-                 (literal:int n)
-                 -> (if (< n 0)
-                        (o.copy (format "-" (encode-int (- 0 n))))
-                        (o.copy (format "+" (encode-int n))))
-                 (literal:char ch) -> (o.copy (format "c" (encode-int (char->ascii ch))))
-                 (literal:undef)   -> (o.copy "u")
-                 (literal:string s)
-                 -> (begin
-                      (o.copy (format "S" (encode-int (string-length s))))
-                      (o.copy s))
-                 (literal:bool #t) -> (o.copy "T")
-                 (literal:bool #f) -> (o.copy "F")
-                 (literal:cons dt variant args)
-                 -> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
-                          (alt (dto.get variant))
-                          (nargs (length args)))
-                      (if (= nargs 0)
-                          ;; immediate constructor
-                          (o.copy (format "I" (encode-int (get-uitag dt variant alt.index))))
-                          ;; constructor with args
-                          (begin
-                            (o.copy (format "C"
-                                            (encode-int (get-uotag dt variant alt.index))
-                                            (encode-int nargs)))
-                            (for-list arg args
-                              (walk arg)))))
-                 (literal:vector args)
-                 -> (begin
-                      (o.copy (format "V" (encode-int (length args))))
-                      (for-list arg args
-                        (walk arg)))
-                 ;; XXX sexp.
-                 (literal:symbol s)
-                 -> (let ((s0 (symbol->string s)))
-                      (o.copy (format "Y" (encode-int (string-length s0))))
-                      (o.copy s0))
-                 _ -> (error1 "NYI literal type" (literal->string ob))
-                 )))
-
-        ;; emit constructed literals as a vector
-        (let ((lits0 the-context.literals)
-              (nlits lits0.count))
-          (o.copy (format "V" (encode-int nlits)))
-          (for-range i nlits
-            (let ((item (cmap->item lits0 i)))
-              (walk item)
-              (already::add item i))
-            )
+      ;; emit constructed literals as a vector
+      (let ((lits0 the-context.literals)
+            (nlits lits0.count))
+        (o.copy (format "V" (encode-int nlits)))
+        (for-range i nlits
+          (let ((item (cmap->item lits0 i)))
+            (emit-one-literal item)
+            (lit-already::add item i))
           )
         ))
 
@@ -823,11 +894,51 @@
            _ -> 0))
        cps))
 
+    (define sizeoff-prims '(%malloc %c-aref %c-sref))
+
+    (define (find-sizeoff-prims cps)
+      (walk-insns
+       (lambda (insn depth)
+         (match insn with
+           (insn:primop name parm _ _ _)
+           -> (if (member-eq? name sizeoff-prims)
+                  (let ((sindex (get-sizeoff parm)))
+                    (printf "find-sizeoff-prims parm = " (repr parm) " sindex = " (int sindex) "\n")
+                    (if (not (< sindex 55))
+                        (cmap/add sizeoff-map parm)
+                        0))
+                  0)
+           _ -> 0))
+       cps))
+
+    (define (build-sizeoff-literal)
+      (let ((r '()))
+        (printf "build sizeoff vector...")
+        (for-range i sizeoff-map.count
+          (PUSH r (unsexp (cmap->item sizeoff-map i))))
+        (printf "done...\n")
+        (reverse r)))
+
+    (define (find-symbols lit)
+      (walk-literal
+       lit
+       (lambda (x)
+         (match x with
+           (literal:symbol s)
+           -> (begin
+                (printf "find-symbols: " (sym s) " ")
+                (printf (int (cmap/add the-context.literals x)) "\n"))
+           _ -> #u))))
+
+    (define sizeoff-sentinel
+      (literal:vector (LIST (literal:cons 'sexp 'symbol (LIST (literal:symbol '&&sizeoff-sentinel&&))))))
+
+
     ;; --------------------------------------------------------------------------------
 
     (notquiet (printf "output...\n"))
 
-    (o.copy "IRKVM0") ;; magic
+    (o.copy "IRKVM0") ;; oh oh it's magic.
 
     ;; assign a label to every used jump.
     (for-list jn (used-jumps::keys)
@@ -836,10 +947,22 @@
     ;; append 'immediate' literals
     (find-immediate-literals cps)
 
-    ;; place the field lookup table as the last literal.
-    (cmap/add the-context.literals (build-field-lookup-table))
-
-    (emit-literals)
+    ;; find prims that generate sizeoff info.
+    (find-sizeoff-prims cps)
+    ;; record the index of the sizeoff sentinel (so it can be replaced)
+    (let ((index (cmap->index the-context.literals sizeoff-sentinel))
+          (sizeoff-literal (build-sizeoff-literal)))
+      (printf "sizeoff sentinel index = " (int index) "\n")
+      ;; ensure that all symbols used in sizeoff are singletons
+      (for-list lit sizeoff-literal (find-symbols lit))
+      (printf "emit literals...\n")
+      (emit-literals)
+      (printf "done. (" (int the-context.literals.count) " literals).\n")
+      (emit-one-literal (build-field-lookup-table))
+      (emit-one-literal (literal:int index))
+      (emit-one-literal (literal:vector sizeoff-literal))
+      ;;(emit-one-literal (literal:int the-context.ffi-count))
+      )
 
     (let ((s (peephole '() (emit cps))))
       (set! cps (insn:return 0))
