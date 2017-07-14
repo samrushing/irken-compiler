@@ -206,6 +206,9 @@ dump_object (object * ob, int depth)
 	fprintf (stdout, "<buffer %" PRIuPTR " words %" PRIuPTR " bytes>", n, n * (sizeof(pxll_int)));
 	break;
       }
+      case TC_FOREIGN:
+        fprintf (stdout, "<foreign %p>", ob[1]);
+        break;
       case TC_SYMBOL:
 	print_string ((object*)ob[1], 0);
 	break;
@@ -538,6 +541,21 @@ make_vector (pxll_int size, object * val)
   return v;
 }
 
+object *
+make_foreign (void * ptr)
+{
+  object * r = allocate (TC_FOREIGN, 1);
+  r[1] = (object *) ptr;
+  return r;
+}
+
+// this might eventually grow up to fetch from either a
+//  TC_BUFFER or a TC_FOREIGN.
+void *
+get_foreign (object * ob)
+{
+  return (void *) ob[1];
+}
 
 // used to lookup record elements when the index
 //  cannot be computed at compile-time.
@@ -690,6 +708,15 @@ buf2mem (object * buf)
   object * result = allocate (TC_USEROBJ + 0, 1);
   result[1] = buf;
   return result;
+}
+
+static
+object *
+make_string (pxll_int len)
+{
+  pxll_string * result = (pxll_string *) allocate (TC_STRING, STRING_TUPLE_LENGTH (len));
+  result->len = len;
+  return (object *) result;
 }
 
 // --------------------------------------------------------------------------------

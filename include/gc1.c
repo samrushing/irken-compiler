@@ -100,6 +100,7 @@ do_gc (int nroots)
 
       case TC_STRING:
       case TC_BUFFER:
+      case TC_FOREIGN:
 	// skip it all
 	scan += length + 1;
 	break;
@@ -230,6 +231,7 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
       break;
     case TC_STRING:
     case TC_BUFFER:
+    case TC_FOREIGN: // XXX should probably squeal in this case.
       // skip it all
       scan += length+1;
       break;

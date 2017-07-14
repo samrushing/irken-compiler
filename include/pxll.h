@@ -40,7 +40,8 @@ object * heap1 = NULL;
 #define TC_PAIR                 (6<<2) // 00011000  18
 #define TC_SYMBOL               (7<<2) // 00011100  1c
 #define TC_BUFFER               (8<<2) // 00100000  20
-#define TC_USEROBJ              (9<<2) // 00100100  24
+#define TC_FOREIGN              (9<<2) // 00100100  24
+#define TC_USEROBJ             (10<<2) // 00101000  28
 
 // alias
 #define TC_CONTINUATION TC_SAVE
@@ -201,6 +202,8 @@ string_tuple_length (pxll_int n)
   pxll_int nwords = HOW_MANY (n + len_size, word_size);
   return nwords;
 }
+
+static object * make_string (pxll_int len);
 
 static pxll_int
 get_safe_typecode (object * ob)
