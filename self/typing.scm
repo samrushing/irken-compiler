@@ -595,28 +595,83 @@
       '%llarith    -> (:scheme '() (arrow int-type (LIST int-type int-type)))
       '%llicmp     -> (:scheme '() (arrow bool-type (LIST int-type int-type)))
       '%lleq       -> (:scheme (LIST T0) (arrow bool-type (LIST T0 T0)))
-      ;; for FFI
-      '%ffi2  -> (lookup-ffi-call-scheme params)
-      '%halloc -> (calloc-scheme params)
-      '%malloc -> (calloc-scheme params)
-      ;;'%cref -> (lookup-cref-scheme params)
-
+      ;; -------------------- FFI --------------------
+      '%ffi2  -> (lookup-ffi-scheme params)
+      '%malloc -> (:scheme '() (arrow (pred 'cref
+                                            (LIST (pred 'array (LIST (parse-type params)))))
+                                      (LIST int-type)))
+      '%free   -> (:scheme (LIST T0) (arrow undefined-type (LIST (pred 'cref (LIST T0)))))
+      '%c-aref -> (:scheme (LIST T0) (arrow (pred 'cref (LIST T0))
+                                            (LIST (pred 'cref (LIST (pred 'array (LIST T0)))) int-type)))
+      '%c-get-int -> (get-c-get-int-scheme params)
+      '%c-set-int -> (get-c-set-int-scheme params)
+      '%c-sref    -> (get-sref-scheme params)
+      '%c-sfromc     -> (:scheme '() (arrow string-type (LIST (pred 'cref (LIST (pred 'char '()))) int-type)))
+      '%string->cref -> (:scheme '() (arrow (pred 'cref (LIST (pred 'char '()))) (LIST string-type)))
+      '%c-cast       -> (:scheme (LIST T0)
+                                 (arrow (pred 'cref (LIST (parse-type params)))
+                                        (LIST (pred 'cref (LIST T0)))))
+      '%c-sizeof     -> (:scheme '() (arrow int-type '()))
+      ;; -------------------- FFI --------------------
       _ -> (error1 "lookup-primapp" name)))
 
-  (define (calloc-scheme param)
-    (:scheme '() (arrow (pred 'cmem (LIST (parse-type param))) (LIST int-type))))
+  (define get-c-get-int-scheme
+    (sexp:symbol cint-type)
+    -> (match (alist/lookup cint-types cint-type) with
+         (maybe:yes t) -> (:scheme '() (arrow int-type (LIST (pred 'cref (LIST t)))))
+         (maybe:no)    -> (match (lookup-tdef cint-type) with
+                            (maybe:yes (ctype:int _ _))
+                            -> (:scheme '() (arrow int-type
+                                                   (LIST (pred 'cref
+                                                               (LIST (pred cint-type '()))))))
+                            _ -> (prim-error '%c-get-int))
+         )
+    x -> (error1 "bad arg to c-get-int" (repr x)))
+
+  (define get-c-set-int-scheme
+    (sexp:symbol cint-type)
+    -> (match (alist/lookup cint-types cint-type) with
+         (maybe:yes t) -> (:scheme '() (arrow undefined-type (LIST int-type (pred 'cref (LIST t)))))
+         (maybe:no)    -> (match (lookup-tdef cint-type) with
+                            (maybe:yes (ctype:int _ _))
+                            -> (:scheme '() (arrow undefined-type
+                                                   (LIST int-type
+                                                         (pred 'cref (LIST (pred cint-type '()))))))
+                            _ -> (prim-error '%c-set-int)
+                            )
+         )
+    x -> (error1 "bad arg to c-set-int" (repr x)))
+
+  (define get-sref
+    ;; structname.field0.field1.field2 ...
+    (sexp:attr (sexp:symbol sname) fname)
+    -> (:tuple (lookup-field fname (lookup-struct-fields sname)) sname)
+    (sexp:attr sub fname)
+    -> (let-values (((ref sname) (get-sref sub)))
+         (:tuple (cref-field fname ref) sname))
+    x -> (error1 "get-sref: malformed struct/union reference" (repr x))
+    )
+
+  (define (get-sref-scheme refexp)
+    (let-values (((ref sname) (get-sref refexp)))
+      (let ((ftype (ctype->irken-type ref.ctype)))
+        (:scheme (LIST T0) (arrow (pred 'cref (LIST ftype))
+                                  (LIST (pred 'cref
+                                              (LIST (pred 'struct
+                                                          (LIST (pred sname '()))))))))
+        )))
 
   ;; XXX do we need to scan the resulting type for tvars to add to gens?
-  (define lookup-ffi-call-scheme
+  (define lookup-ffi-scheme
     (sexp:symbol name)
     -> (match (ffi-info.sigs::get name) with
-         (maybe:yes (csig:fun name rtype argtypes))
+         (maybe:yes (csig:fun _ rtype argtypes))
          -> (:scheme '() (arrow (ctype->irken-type rtype) (map ctype->irken-type argtypes)))
-         (maybe:yes (csig:obj name type))
-         -> (error1 "lookup-ffi-scheme-call: not a function" name)
+         (maybe:yes (csig:obj _ obtype))
+         -> (:scheme '() (arrow (pred 'cref (LIST (ctype->irken-type obtype))) '()))
          (maybe:no)
-         -> (error1 "lookup-ffi-scheme-call: unknown name" name))
-    x -> (error1 "lookup-ffi-scheme-call: malformed" (repr x))
+         -> (error1 "lookup-ffi-scheme: unknown name" name))
+    x -> (error1 "lookup-ffi-scheme: malformed" (repr x))
     )
 
   ;; each exception is stored in a global table along with a tvar
