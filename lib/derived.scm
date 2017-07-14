@@ -55,10 +55,10 @@
 ;;  values using the (:tuple ...) polyvariant.
 
 (defmacro let-values
-  (let-values (((x y ...) val)) body0 body1 ...)
-  -> (match val with (:tuple x y ...) -> (begin body0 body1 ...))
-  (let-values (((x y ...) val) b0 b1 ...) body0 body1 ...)
-  -> (match val with (:tuple x y ...) -> (let-values (b0 b1 ...) body0 body1 ...))
+  (let-values (((x y ...) val)) body ...)
+  -> (match val with (:tuple x y ...) -> (begin body ...))
+  (let-values (((x y ...) val) bind ...) body ...)
+  -> (match val with (:tuple x y ...) -> (let-values (bind ...) body ...))
   )
 
 ;; simplified <cond>
