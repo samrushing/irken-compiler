@@ -100,16 +100,17 @@
 (define TC_USERIMM      (<< 11 1)) ;; 00010110 16
 
 ;; pointer types (multiples of 4)
-(define TC_SAVE         (<< 1 2)) ;; 00000100  04
-(define TC_CLOSURE      (<< 2 2)) ;; 00001000  08
-(define TC_TUPLE        (<< 3 2)) ;; 00001100  0c
-(define TC_ENV          (<< 3 2)) ;; 00001100  0c alias
-(define TC_STRING       (<< 4 2)) ;; 00010000  10
-(define TC_VECTOR       (<< 5 2)) ;; 00010100  14
-(define TC_PAIR         (<< 6 2)) ;; 00011000  18
-(define TC_SYMBOL       (<< 7 2)) ;; 00011100  1c
-(define TC_BUFFER       (<< 8 2)) ;; 00100000  20
-(define TC_USEROBJ      (<< 9 2)) ;; 00100100  24
+(define TC_SAVE         (<<  1 2)) ;; 00000100  04
+(define TC_CLOSURE      (<<  2 2)) ;; 00001000  08
+(define TC_TUPLE        (<<  3 2)) ;; 00001100  0c
+(define TC_ENV          (<<  3 2)) ;; 00001100  0c alias
+(define TC_STRING       (<<  4 2)) ;; 00010000  10
+(define TC_VECTOR       (<<  5 2)) ;; 00010100  14
+(define TC_PAIR         (<<  6 2)) ;; 00011000  18
+(define TC_SYMBOL       (<<  7 2)) ;; 00011100  1c
+(define TC_BUFFER       (<<  8 2)) ;; 00100000  20
+(define TC_FOREIGN      (<<  9 2)) ;; 00100100  24
+(define TC_USEROBJ      (<< 10 2)) ;; 00100100  24
 
 (define (find-jumps insns)
   (let ((used (map-maker int-cmp)))
