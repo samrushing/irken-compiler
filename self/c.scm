@@ -11,9 +11,9 @@
 	 'string       -> (format "((pxll_string*)(" arg "))->data")
 	 'cstring      -> (format "(char*)" arg)
          ;; cmem is either a buffer or a pointer
-         'cmem         -> (format "(" (irken-type->c-type type) ")(mem2ptr(" arg "))")
+         ;;'cmem         -> (format "(" (irken-type->c-type type) ")(mem2ptr(" arg "))")
 	 'buffer       -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
-         '*            -> (format "(" (irken-type->c-type type) ")" arg)
+         'cref         -> (format "(" (irken-type->c-type type) ") get_foreign(" arg ")")
 	 'arrow	       -> arg
 	 'vector       -> arg
 	 'symbol       -> arg
@@ -29,15 +29,29 @@
 
 ;; (buffer (struct sockaddr_t)) => (struct sockaddr_t *)
 (define (irken-type->c-type t)
+
+  (define decode-name
+    'i8   -> "int8_t"
+    'u8   -> "uint8_t"
+    'i16  -> "int16_t"
+    'u16  -> "uint16_t"
+    'i32  -> "int32_t"
+    'u32  -> "uint32_t"
+    'i64  -> "int64_t"
+    'u64  -> "uint64_t"
+    'i256 -> "int256_t"
+    'u256 -> "uint256_t"
+    x -> (format (sym x)))
+
   (match t with
     (type:pred 'struct (arg) _) -> (format "struct " (irken-type->c-type arg))
-    (type:pred 'cmem   (arg) _) -> (format (irken-type->c-type arg) "*")
+    (type:pred 'cref   (arg) _) -> (format (irken-type->c-type arg) "*")
     (type:pred 'buffer (arg) _) -> (format (irken-type->c-type arg) "*")
     (type:pred '*      (arg) _) -> (format (irken-type->c-type arg) "*")
-    (type:pred name () _)       -> (format (sym name))
+    (type:pred name () _)       -> (decode-name name)
     (type:tvar _ _)             -> "void"
-    _ -> (error1 "malformed ctype" (type-repr t))))
-
+    _ -> (error1 "malformed ctype" (type-repr t))
+    ))
 
 ;;
 ;; ok, for *now*, I don't really want subtyping.  but I *do* want
@@ -56,8 +70,8 @@
     (type:pred 'int _ _)     -> (format "BOX_INTEGER((pxll_int)" exp ")")
     (type:pred 'bool _ _)    -> (format "PXLL_TEST(" exp ")")
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
-    (type:pred '* _ _)       -> (format "(ptr2mem(" exp ")")
-    (type:pred 'buffer _ _)  -> (format "(buf2mem(" exp ")")
+    (type:pred 'cref _ _)    -> (format "(make_foreign((void*)" exp "))")
+    (type:pred '* _ _)       -> (format "(make_foreign((void*)" exp "))")
     (type:pred 'void _ _)    -> (format "(" exp ", (object*)PXLL_UNDEFINED)")
     (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
 				    (format "box((pxll_int)" exp ")")
@@ -554,21 +568,26 @@
                                  ") * unbox(r" (int (car args)) "), sizeof (object)));"))
                 (error1 "%callocate: dead target?" type))))
 
-        (define (prim-callocate2 parm args malloc?)
-          (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
-            ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
-            ;; in this version we wrap the buffer object with a user datatype tuple
-            ;; indicating that it is a cmem:{buffer,ptr} type.
+        ;; (define (prim-malloc parm args)
+        ;;   (let ((type (parse-type parm)))
+        ;;     (cond ((>= target 0)
+        ;;            (o.write (format "O r" (int target) " = (object*) malloc (sizeof ("
+        ;;                             (irken-type->c-type type) ") * unbox(r" (int (car args)) "));")))
+        ;;           (else
+        ;;            (error1 "%malloc: dead target?" type)))))
+
+        (define (prim-malloc parm args)
+          (let ((type (parse-type parm)))
             (cond ((>= target 0)
-                   (o.write (format "O r" (int target) " = allocate (TC_USEROBJ+0, 1);"))
-                   (if malloc?
-                       (o.write (format "O r" (int target) "t = (object*) malloc (sizeof ("
-                                        (irken-type->c-type type) ") * unbox(r" (int (car args)) "));"))
-                       (o.write (format "O r" (int target) "t = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof ("
-                                        (irken-type->c-type type) ") * unbox(r" (int (car args)) "), sizeof (object)));")))
-                   (o.write (format "r" (int target) "[1] = r" (int target) "t;")))
+                   (o.write (format "O r" (int target) " = make_foreign (malloc (sizeof ("
+                                    (irken-type->c-type type) ") * unbox(r" (int (car args)) ")));")))
                   (else
-                   (error1 "%callocate2: dead target?" type)))))
+                   (error1 "%malloc: dead target?" type)))))
+
+        (define (prim-free args)
+          (o.write (format "free (get_foreign (r" (int (car args)) "));"))
+          (when (>= target 0)
+            (o.write (format "O r" (int target) " = PXLL_UNDEFINED;"))))
 
         (define (prim-exit args)
           (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
@@ -615,6 +634,8 @@
                       (if (= target -1)
                           (o.write (format call1 ";"))
                           (o.write (format "O r" (int target) " = " call1 ";"))))
+                 (maybe:yes (csig:obj name obtype))
+                 -> (o.write (format "O r" (int target) " = make_foreign ((void*)&" (sym name) ");"))
                  _ -> (primop-error))
             _ -> (primop-error)
             ))
@@ -631,26 +652,105 @@
                _ -> (primop-error))
           _ -> (primop-error))
 
+        (define (prim-c-aref args)
+          (match args type with
+            (src index) (type:pred 'cref (subtype) _)
+            -> (let ((ctype (irken-type->c-type subtype)))
+                 (printf "prim-c-aref: ctype = " ctype "\n")
+                 (o.write (format "// ctype = " ctype))
+                 (o.write (format "O r" (int target)
+                                  " = make_foreign((void*)((" ctype " *)(get_foreign (r" (int src) "))) "
+                                  "+ UNBOX_INTEGER(r" (int index) "));")))
+            _ _ -> (primop-error)))
+
+
+        (define (prim-c-sizeof ctexp)
+          (let ((t0 (parse-type ctexp))
+                (t1 (irken-type->c-type t0)))
+            (o.write (format "O r" (int target) " = BOX_INTEGER (sizeof (" t1 "));"))))
+
+        (define prim-c-get-int
+          (sexp:symbol cint-type) (src)
+          -> (let ((ctype (irken-type->c-type (pred cint-type '()))))
+               ;; XXX check against word size
+               (o.write (format "O r" (int target) " = BOX_INTEGER((pxll_int)*((" ctype "*)get_foreign(r" (int src) ")));"))
+               )
+          _ _ -> (primop-error))
+
+        (define prim-c-set-int
+          (sexp:symbol cint-type) (src dst)
+          -> (let ((ctype (irken-type->c-type (pred cint-type '()))))
+               ;; XXX check against word size
+               (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNBOX_INTEGER(r" (int src) ");"))
+               (when (> target 0)
+                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;")))
+               )
+          _ _ -> (primop-error))
+
+        (define sref->c
+          ;; structname.field0.field1.field2...
+          (sexp:attr (sexp:symbol sname) fname) src
+          -> (format "((((struct " (sym sname) "*)" src "))->" (sym fname) ")")
+          (sexp:attr sub fname) src
+          -> (format "(" (sref->c sub src) "." (sym fname) ")")
+          _ _ -> (impossible)
+          )
+
+        (define prim-c-sref
+          refexp (src)
+          -> (o.write (format "O r" (int target) " = make_foreign (&"
+                              (sref->c refexp (format "get_foreign (r" (int src))) "));"))
+          _ _ -> (primop-error))
+
+        (define prim-c-sfromc
+          (src len)
+          -> (begin
+               (o.write (format "O r" (int target) " = make_string (UNBOX_INTEGER (r" (int len) "));"))
+               (o.write (format "memcpy (GET_STRING_POINTER (r"
+                                (int target) "), get_foreign (r" (int src)
+                                "), UNBOX_INTEGER (r" (int len) "));")))
+          _ -> (primop-error))
+
+        (define prim-string->cref
+          (src)
+          -> (o.write (format "O r" (int target) " = make_foreign (GET_STRING_POINTER (r" (int src) "));"))
+          _ -> (primop-error))
+
+        ;; essentially a no-op.
+        (define prim-c-cast
+          (src)
+          -> (o.write (format "O r" (int target) " = r" (int src) ";"))
+          _ -> (primop-error))
+
         (match name with
-          '%dtcon       -> (prim-dtcon parm)
-          '%nvget       -> (prim-nvget parm args)
-          '%make-vector -> (prim-make-vector args)
-          '%array-ref   -> (prim-array-ref args)
-          '%array-set   -> (prim-array-set args)
-          '%record-get  -> (prim-record-get parm args)
-          '%record-set  -> (prim-record-set parm args)
-          '%callocate   -> (prim-callocate parm args)
-          '%halloc      -> (prim-callocate2 parm args #f)
-          '%malloc      -> (prim-callocate2 parm args #t)
-          ;;'%free        -> (prim-free args)
-          '%exit        -> (prim-exit args)
-          '%cget        -> (prim-cget args)
-          '%cset        -> (prim-cset args type)
-          '%getcc       -> (prim-getcc args)
-          '%putcc       -> (prim-putcc args)
-          '%ensure-heap -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
-          '%ffi2        -> (prim-ffi2 parm args)
-          '%cget3       -> (prim-cget3 parm)
+          '%dtcon        -> (prim-dtcon parm)
+          '%nvget        -> (prim-nvget parm args)
+          '%make-vector  -> (prim-make-vector args)
+          '%array-ref    -> (prim-array-ref args)
+          '%array-set    -> (prim-array-set args)
+          '%record-get   -> (prim-record-get parm args)
+          '%record-set   -> (prim-record-set parm args)
+          '%callocate    -> (prim-callocate parm args)
+          '%malloc       -> (prim-malloc parm args)
+          '%free         -> (prim-free args)
+          '%exit         -> (prim-exit args)
+          '%cget         -> (prim-cget args)
+          '%cset         -> (prim-cset args type)
+          '%getcc        -> (prim-getcc args)
+          '%putcc        -> (prim-putcc args)
+          '%ensure-heap  -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
+          ;; --------------- FFI ---------------
+          '%ffi2         -> (prim-ffi2 parm args)
+          '%cget3        -> (prim-cget3 parm)
+          '%c-aref       -> (prim-c-aref args)
+          '%c-get-int    -> (prim-c-get-int parm args)
+          '%c-set-int    -> (prim-c-set-int parm args)
+          '%c-sref       -> (prim-c-sref parm args)
+          ;;'%c-uref     -> (prim-c-uref parm args)
+          '%c-sfromc     -> (prim-c-sfromc args)
+          '%string->cref -> (prim-string->cref args)
+          '%c-sizeof     -> (prim-c-sizeof parm)
+          ;; -----------------------------------
           _ -> (primop-error))))
 
     (define (lookup-cast to-type from-type exp)
