@@ -361,6 +361,7 @@ Can we cheat and provide a mapping from ctype to irken-type?
 
 So the only difficulty is around array.
 Could we just translate it into pointer?
+[XXX we could just treat 'size' as a symbol.  i.e., (array u32 100) where '100' is a symbol/predicate]
 
 Ok, so assume we do this.  Sample code?
 
@@ -408,3 +409,139 @@ operation will be done via base+offset.  This is suitably difficult
 that I think trying to solve all the problems at once means I will
 continue to struggle and not make progress.  So let's put the 'buf'
 issue aside for a bit, and come back to it.
+
+
+vm ffi prims
+------------
+
+ok, to implement each of these prims, the runtime will
+ need to know some sizes.
+%malloc - needs to know the size of its argument
+%c-aref - needs to know the size of its elements
+%cref-get/set-int - int size
+
+%cref-sref: the whopper.
+For this, we have a chain of refs starting from some struct.
+for each field ref (whether struct or union field), we need
+to know the offset.
+
+My plan is this: for every point where we need to know a size,
+we add it to a table.  When done, we'll have a list of all needed
+unique sizes.  When the bytecode is loaded, the VM fills in all
+those sizes (somehow).
+
+The table of integer sizes is filled in when the VM is built.
+The other sizes/offsets... how can we do that?
+
+for example:
+
+    (%cref-sref in6_addr.__u6_addr.__u6_addr16 paddr0)
+
+Here, the VM will need to know the offset of `__u6_addr` in `in6_addr`,
+and then the offset of `__u6_addr16` in the union.
+
+Can we do this mostly/entirely in irken?  If so, then we need to call
+code that will fill in this table _before_ any user code is run.
+
+This is basically following a chain of struct/union, should be easy.
+
+So, in summary: only two 'difficult' problems:
+
+ 1) sref (chain of field refs - gives an offset)
+ 2) aref (size of object)
+
+What does the table look like?  It's a vector of ints.
+How do we populate the table?
+
+  prim             output                    input
+------------------------------------------------------
+'%malloc       sizeof ctype                ctype
+'%c-aref       sizeof ctype                ctype
+'%cref-sref    offset of field ref chain   (list symbol)
+'%cref-get-int sizeof int-type             size
+'%cref-set-int sizeof int-type             size
+
+In each of these prims, we make an entry in the cmap.
+
+Note: get/set-int - in most cases we already know the size.
+exceptions are for 'int', 'unsigned', 'long', etc...
+
+We _could_ just emit straight code to set these sizes/offsets,
+like this:
+
+    (set! ffi-offsets[12] (cref (ctype:struct 'thing) 'field0 'field1))
+
+But on second thought, this is a bad idea, because we have to scan for
+  prims while still in sexp form. (in order to insert this code), and
+  so we miss the tree shaker.
+
+How about this instead: we build a table that is inserted into the
+constant vector, and the size/offset vector is built from information
+in that table?
+
+What info is needed in this table, at runtime?  Basically, we need a
+full ctype, and a list of symbols.  But the backend doesn't have a
+ctype, it has an sexp.  So we need things representable by
+irken->ctype?  What does that consist of?
+
+(struct name)
+(array <sub>) ;; does not happen in normal C (2d array is an array of pointers to 1d arrays).
+(cref type) ;; always pointer-sized
+
+the fixed-size ints we already know (like i8, char, etc), that leaves:
+
+0 short
+1 int
+2 long
+3 longlong
+4 pointer
+
+These have predefined name, so we can give them known indices.
+
+So how can we make a single opcode work with both known and unknown sizes?
+How about this: if we know the size, then include it as a normal int.
+Otherwise, use a negative size, or an offset size, like 50+index, where
+the index tells us the size.
+
+So to populate the table we need the sizeof each struct encountered to fill
+each table.  [Once this works we can return to 'sref'].
+
+[looking at how to implement this table in the bytecode... I think we need
+ a 'bytecode object' struct in the VM in order to support multiple bytecodes
+ running at the same time...]
+
+;; data fed to runtime sizeoff-setting code:
+(struct thing)             ;; sizeof (struct thing)
+(union thing)              ;; sizeof (union thing)
+thing.field0.field1        ;; sref thing.field0.field1
+integer                    ;; fixed-size int or short|int|long|etc
+
+So the compiler builds a literal to represent this.  Can it build an sexp literal?
+[currently, no.  consider something else? list of symbols?]
+
+Ok, getting closer now.  Yes, we can emit sexp literals, using nodes::unsexp.
+Now we need 1) a new prim to update the sizeoff table and 2) code to call that
+prim at the right time (presumably after all require-ffi are done but before user
+code is called.  wouldn't it be nice if the topo sort did that for us automatically?).
+
+Got sexp literal working... problem now is: the point where %malloc is recognized
+(and the entry added to sizeoff-map) is *after* the call to emit-literals.  Aiiiieee.
+
+Solved with an extra pass over the cps that scans for prims that have sizeoff info.
+
+Many tests working.
+
+Remaining issue: typedefs.  For example, `time_t` is not required to be any particular
+type, size, or sign.  So we can't know anything about a `time_t` until runtime.
+So how do we read/write `time_t` refs?
+
+*OR* do we punt on this problem and use `int` in place of `time_t` in the .ffi file?
+[will this screw us up when `time_t` is a member of a struct?]
+
+`cref` design
+-------------
+
+Here I need to describe exactly what was done:
+
+ 1) the sizeoff table
+ 2) `cref` and TC_FOREIGN.
