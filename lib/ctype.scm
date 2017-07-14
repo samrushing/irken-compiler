@@ -18,19 +18,6 @@
   (ctype:union name)   -> (format "(union " (sym name) ")")
   )
 
-;; a 'buffer' is a heap-allocated chunk of memory
-;;   (that will be moved or collected upon gc).
-;; a 'ptr' is allocated/freed/managed outside of irken
-;;   (either by another library or manually with malloc/free).
-;;
-;; Note: do not change the order of this datatype, the runtime
-;;   knows about it.
-
-(datatype cmem
-  (:buf (buffer 'a))
-  (:ptr (* 'a))
-  )
-
 (datatype cfield
   (:t int symbol ctype) ;; offset name type
   )
@@ -75,7 +62,7 @@
 
 (define parse-ctype
   (sexp:symbol 'int)
-  -> (ctype:int *word-size* #t)
+  -> (ctype:int 0 #t) ;; indicates 'int' type, with no size qualification.
   (sexp:list ((sexp:symbol 'int) (sexp:list ((sexp:int size) (sexp:int signed?)))))
   -> (ctype:int size (if (= signed? 1) #t #f))
   (sexp:list ((sexp:symbol '*) sub))
@@ -138,6 +125,12 @@
     x -> (error1 "malformed constant" x)
     )
 
+  (define parse-tdef
+    ((sexp:symbol name) t)
+    -> (info.tdefs::add name (parse-ctype t))
+    x -> (error1 "malformed tdef" x)
+    )
+
   (define parse-includes
     acc ()
     -> (set! info.includes (append acc info.includes))
@@ -156,6 +149,8 @@
     -> (parse-sig rest)
     (sexp:list ((sexp:symbol 'con) . rest))
     -> (parse-con rest)
+    (sexp:list ((sexp:symbol 'tdef) . rest))
+    -> (parse-tdef rest)
     (sexp:list ((sexp:symbol 'includes) . rest))
     -> (parse-includes '() rest)
     x -> (error1 "malformed spec file" x)
@@ -175,6 +170,7 @@
    unions   = (map-maker symbol-index-cmp)
    cons     = (map-maker symbol-index-cmp)
    sigs     = (map-maker symbol-index-cmp)
+   tdefs    = (map-maker symbol-index-cmp)
    includes = '()
    })
 
@@ -185,6 +181,7 @@
   (ffi-info.unions::union info.unions)
   (ffi-info.cons::union info.cons)
   (ffi-info.sigs::union info.sigs)
+  (ffi-info.tdefs::union info.tdefs)
   ;; XXX this should probably be a set rather than a list
   (set! ffi-info.includes (append ffi-info.includes info.includes))
   )
@@ -200,6 +197,10 @@
   (ffi-info.cons::iterate
    (lambda (k v)
      (printf (lpad 5 (int v)) " " (sym k) "\n")))
+  (printf "typedefs:\n")
+  (ffi-info.tdefs::iterate
+   (lambda (k v)
+     (printf "  " (sym k) " " (ctype-repr v) "\n")))
   )
 
 (define (read-spec name)
@@ -217,6 +218,7 @@
 (define require-ffi*
   (let ((loaded (map-maker magic-cmp)))
     (lambda (name)
+      (printf "loading ffi spec for " (sym name) "\n")
       (match (loaded::get name) with
         (maybe:yes info)
         -> info
@@ -240,6 +242,7 @@
   (require-ffi* name))
 
 (define *word-size* (get-word-size))
+(define *int-size* (get-int-size))
 
 (define base-type-size
   'void -> (error "void has no size")
@@ -257,6 +260,12 @@
   (match (ffi-info.unions::get name) with
     (maybe:yes (cdef:union size _ _)) -> size
     _ -> (error1 "lookup-struct-size: unknown struct" name)
+    ))
+
+(define (lookup-tdef-size name)
+  (match (ffi-info.tdefs::get name) with
+    (maybe:yes (ctype:int size _)) -> size
+    _ -> (base-type-size name)
     ))
 
 (define (lookup-struct-fields name)
@@ -280,11 +289,15 @@
          (lookup-field name tl))
   )
 
+(define (lookup-tdef name)
+  (ffi-info.tdefs::get name))
+
 (define ctype->size
   (ctype:pointer _)    -> *word-size*
+  (ctype:int 0 _)      -> *int-size*
   (ctype:int size _)   -> size
   (ctype:array size t) -> (* size (ctype->size t))
-  (ctype:name name)    -> (base-type-size name)
+  (ctype:name name)    -> (lookup-tdef-size name)
   (ctype:struct name)  -> (lookup-struct-size name)
   (ctype:union name)   -> (lookup-union-size name)
   )
@@ -324,14 +337,16 @@
 
 ;; convert a ctype to an `op_cget` code (used by the VM).
 (define ctype->code
-  (ctype:int 1 #f)                  -> #\1
-  (ctype:int 2 #f)                  -> #\2
-  (ctype:int 4 #f)                  -> #\4
-  (ctype:int 8 #f)                  -> #\8
-  (ctype:int 1 #t)                  -> #\i
-  (ctype:int 2 #t)                  -> #\j
-  (ctype:int 4 #t)                  -> #\k
-  (ctype:int 8 #t)                  -> #\l
+  (ctype:int 0 #f)                  -> #\i ;; 'int'
+  (ctype:int 0 #t)                  -> #\I ;; 'unsigned int'
+  (ctype:int 1 #f)                  -> #\B
+  (ctype:int 1 #t)                  -> #\b
+  (ctype:int 2 #f)                  -> #\H
+  (ctype:int 2 #t)                  -> #\h
+  (ctype:int 4 #f)                  -> #\M
+  (ctype:int 4 #t)                  -> #\m
+  (ctype:int 8 #f)                  -> #\Q
+  (ctype:int 8 #t)                  -> #\q
   (ctype:array _ (ctype:name char)) -> #\s
   (ctype:array _ _)                 -> #\p
   (ctype:pointer _)                 -> #\p
@@ -341,6 +356,27 @@
   (ctype:name 'void)                -> (raise (:VoidDereference))
   x                                 -> (raise (:StrangeCtype x))
   )
+
+;; convert an irken 'sexp type' to an `op_cget` code (used by the VM).
+(define (irken-type->code type-sexp)
+  (char->ascii
+   (match type-sexp with
+     'int    -> #\i
+     'uint   -> #\I
+     'long   -> #\l
+     'ulong  -> #\L
+     'u8     -> #\B
+     'i8     -> #\b
+     'u16    -> #\H
+     'i16    -> #\h
+     'u32    -> #\M
+     'i32    -> #\m
+     'u64    -> #\Q
+     'i64    -> #\q
+     'string -> #\s
+     'char   -> #\c
+     x       -> (raise (:StrangeType x))
+     )))
 
 ;; macros that expand into implementations of the foreign functions
 ;;   declared in the spec file.  the macro 'calls' are built by
@@ -356,13 +392,9 @@
     (build-ffi-fun name ztname rtype rcode nargs argtypes (formal0 ...))
     -> (lambda (formal0 ...) (%ffi2 name formal0 ...)))
 
-  (defmacro build-ffi-ob-get
-    (build-ffi-ob-get name ztname obtype obcode)
-    -> (lambda () (%cget3 name)))
-
-  (defmacro build-ffi-ob-set
-    (build-ffi-ob-set name ztname obtype obcode)
-    -> (lambda (val) (%cset3 name val)))
+  (defmacro build-ffi-ob
+    (build-ffi-ob name ztname obtype obcode)
+    -> (%ffi2 name))
 
   )
 
@@ -372,24 +404,89 @@
     (build-ffi-fun name ztname rtype rcode nargs (argtype0 ...) (formal0 ...))
     -> (let (($pfun (%%cexp (string -> int) "dlsym" ztname)))
          (lambda (formal0 ...)
+           ;;(printf "** ffi " name "\n")
            (%%cexp (int char int argtype0 ... -> rtype)
                    "ffi"
                    $pfun rcode nargs
                    formal0 ...))))
 
-  (defmacro build-ffi-ob-get
-    (build-ffi-ob-get name ztname obtype obcode)
-    -> (let (($pobj (%%cexp (string -> (* obtype)) "dlsym" ztname)))
-         (lambda ()
-           (%cget3 obtype $pobj 0 obcode))))
-
-  (defmacro build-ffi-ob-set
-    (build-ffi-ob-get name ztname obtype obcode)
-    -> (let (($pobj (%%cexp (string -> (* obtype)) "dlsym" ztname)))
-         (lambda (val)
-           (%cset3 obtype $pobj 0 obcode val))))
-
-  (define (copy-cstring s)
-    (%%cexp ((* char) -> string) "sfromc" s))
+  (defmacro build-ffi-ob
+    (build-ffi-ob name ztname obtype obcode)
+    -> (%%cexp (string -> (cref obtype)) "dlsym2" ztname))
 
   )
+
+(%backend bytecode
+
+  ;; ----------------- sizeoff table -----------------
+
+  (define sexp->ref
+    (sexp:attr (sexp:symbol sname) fname)
+    -> (let ((ref0 {off=0 ctype=(ctype:struct sname)}))
+         (cref-field fname ref0))
+    (sexp:attr sub fname)
+    -> (let ((ref0 (sexp->ref sub)))
+         (cref-field fname ref0))
+    x -> (raise (:SexpRefError x))
+    )
+
+  (define sexp->sizeoff
+    (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
+    -> (ctype->size (ctype:struct name))
+    (sexp:list ((sexp:symbol 'union) (sexp:symbol name)))
+    -> (ctype->size (ctype:union name))
+    (sexp:symbol tdef)
+    -> (ctype->size (ctype:name tdef))
+    exp
+    -> (let ((ref (sexp->ref exp)))
+         ;;(printf "sexp->sizeoff sref " (repr exp) " " (int ref.off) "\n")
+         ref.off)
+    )
+
+  ;; XXX it would be really nice if we just had some generic mechanism for
+  ;;   sharing metadata with the runtime.  This hack is ok, ONCE.  But not
+  ;;   seven times.
+  ;; this will be replaced by the VM with the contents of the sizeoff table.
+  (define sizeoff-table (literal #((sexp:symbol &&sizeoff-sentinel&&))))
+
+  (define (update-sizeoff-table)
+
+    ;; (printf "sizeoff s-expressions: {\n")
+    ;; (for-vector item sizeoff-table
+    ;;   (printf "  " (repr item) "\n"))
+    ;; (printf "}\n")
+
+    (for-range i (vector-length sizeoff-table)
+      (let ((val (sexp->sizeoff sizeoff-table[i])))
+        (%%cexp (int int -> undefined) "sizeoff" (+ 5 i) val)))
+    )
+
+  ;; this doesn't work here: it *has* to come after all require-ffi calls.
+  ;; still an open problem on how to arrange that.
+  ;; (update-sizeoff-table)
+
+  )
+
+;; --------------------------------------------------------------------------------
+;;                                malloc
+;; --------------------------------------------------------------------------------
+;;
+;; XXX it would be nice to have a managed malloc storage facility.
+;;   I think this can be done with assistance from the GC, where we
+;;     associate some kind of counter/generation-number with each 'foreign'
+;;     pointer.  Then periodically we scan a map of all malloc memory to see
+;;     if it has been copied, and if not, then automatically call free().
+;;   This needs to handle the case where foreign pointers are truly foreign,
+;;     i.e., do not try to free the pointer to external objects like `errno`.
+
+;; this could also just use %c-cast.
+(defmacro malloc
+  (malloc type)       -> (%c-aref type (%malloc type 1) 0)
+  (malloc type nelem) -> (%malloc type nelem)
+  )
+
+(defmacro free
+  (free ob) -> (%free #f ob))
+
+(define (make-char-buffer size)
+  (%c-aref char (malloc char size) 0))
