@@ -42,6 +42,24 @@
    ('symbol symbol-type)
    ))
 
+(define cint-types
+  (alist/make
+   ('int (pred 'int '()))
+   ('long (pred 'long '()))
+   ('uint (pred 'uint '()))
+   ('ulong (pred 'ulong '()))
+   ('u8 (pred 'u8 '()))
+   ('i8 (pred 'i8 '()))
+   ('u16 (pred 'u16 '()))
+   ('i16 (pred 'i16 '()))
+   ('u32 (pred 'u32 '()))
+   ('i32 (pred 'i32 '()))
+   ('u64 (pred 'u64 '()))
+   ('i64 (pred 'i64 '()))
+   ('u256 (pred 'u256 '()))
+   ('i256 (pred 'i256 '()))
+   ))
+
 ;; row types
 (define (rproduct row)          (pred 'rproduct (LIST row)))
 (define (rsum row)              (pred 'rsum (LIST row)))
@@ -299,14 +317,34 @@
   (let ((sig (get-record-sig t)))
     (sexp:list (map sexp:symbol sig))))
 
+(define (int-ctype->itype size signed?)
+  (pred
+   (match size signed? with
+     0 #t  -> 'int
+     0 #f  -> 'unsigned
+     1 #t  -> 'i8
+     1 #f  -> 'u8
+     2 #t  -> 'i16
+     2 #f  -> 'u16
+     4 #t  -> 'i32
+     4 #f  -> 'u32
+     8 #t  -> 'i64
+     8 #f  -> 'u64
+     32 #t -> 'i256
+     32 #f -> 'u256
+     _ _   -> (error1 "unsupported int type"
+                      (format "size=" (int size)
+                              " signed=" (bool signed?)))
+     )
+   '()))
+
 (define ctype->irken-type
-  (ctype:name name)                  -> (pred name '())
-  (ctype:int _ _)                    -> int-type
-  (ctype:array _ t)                  -> (pred 'cmem (LIST (ctype->irken-type t)))
-  (ctype:pointer (ctype:name 'char)) -> string-type
-  (ctype:pointer t)                  -> (pred 'cmem (LIST (ctype->irken-type t)))
-  (ctype:struct n)                   -> (pred 'struct (LIST (pred n '())))
-  (ctype:union n)                    -> (pred 'union (LIST (pred n '())))
+  (ctype:name name) -> (pred name '())
+  (ctype:int n s)   -> (int-ctype->itype n s)
+  (ctype:array _ t) -> (pred 'array (LIST (ctype->irken-type t)))
+  (ctype:pointer t) -> (pred 'cref (LIST (ctype->irken-type t)))
+  (ctype:struct n)  -> (pred 'struct (LIST (pred n '())))
+  (ctype:union n)   -> (pred 'union (LIST (pred n '())))
   )
 
 ;; (define (test-types)
