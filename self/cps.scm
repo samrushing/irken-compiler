@@ -237,7 +237,7 @@
 	  -> (match (noderec->t test) the-context.options.backend with
 	       (node:cexp _ sig template) (backend:c)
 	       -> (c-simple-conditional tail? test then else sig template lenv k)
-	       _ _ 
+	       _ _
 	       -> (compile
 		   #f test lenv
 		   (cont free
@@ -359,8 +359,10 @@
 				;; we need both types in order to cast correctly
 				(c-primargs args name params cast-type lenv k))
 			   _ -> (impossible)))
-	  ;; do-nothing prim used to verify exception types
+	  ;; do-nothing prim used to verify exception types.
 	  '%exn-raise  -> (compile tail? (first args) lenv k)
+          ;; do-nothing prim to cast C types.
+          '%c-cast     -> (compile tail? (first args) lenv k)
 	  ;; note: discards first argument...
 	  '%exn-handle -> (compile tail? (second args) lenv k)
 	  _ -> (c-primargs args name params (noderec->type exp) lenv k))))
@@ -503,7 +505,7 @@
 	    ;; note: the last 'init' is the body
 	    ;; build a new version of the continuation with <regs> listed as free regs.
             ;;(compile tail? (car inits) lenv (add-free-regs k regs))
-            (compile tail? (car inits) lenv 
+            (compile tail? (car inits) lenv
                      (cont (merge-sets regs (k/free k))
                            (lambda (reg)
                              (insn:move reg -1 k))))
@@ -733,7 +735,7 @@
 ;; XXX update: this is almost certainly a problem with exponential growth
 ;;   when using a `<` function to do deep compares: each level of comparison
 ;;   makes *two* calls (to eliminate the equality case).
-;;   magic<? may help with this problem, but the only true fix is to change 
+;;   magic<? may help with this problem, but the only true fix is to change
 ;;   *everything* to use 3-way comparisons.
 
 (define (collect-all-types root)
