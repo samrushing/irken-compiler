@@ -10,7 +10,7 @@
 ;; -------------- packer --------------
 
 (define (pbuf-class)
-  
+
   (define (grow self)
     (let ((new-len (+ self.len (/ self.len 2)))
           (new-buf (make-string new-len)))
@@ -30,7 +30,7 @@
   (define (rcheck n lo hi)
     (if (and (>= n lo) (< n hi))
         #u
-        (error1 "packer range check failed: " 
+        (error1 "packer range check failed: "
                 (format (int lo) " <= " (int n) " < " (int hi)))))
 
   (define (i8 self n)
@@ -89,7 +89,7 @@
 
   (define un (pbuf-ob:t self) -> self)
 
-  (let ((methods 
+  (let ((methods
          {i8=i8 u8=u8 i16=i16 u16=u16 i32=i32 u32=u32
                 string=string bool8=bool8
                 un=un val=val pos=pos}))
@@ -102,7 +102,7 @@
 ;; -------------- unpacker --------------
 
 (define (ubuf-class)
-  
+
   (define (ensure self n)
     (if (> (+ self.pos n) self.len)
         (raise (:UnpackUnderflow self))))
@@ -160,7 +160,7 @@
 
   (define un (pbuf-ob:t self) -> self)
 
-  (let ((methods 
+  (let ((methods
          {i8=i8 u8=u8 i16=i16 u16=u16 i32=i32 u32=u32
                 string=string bool8=bool8
                 un=un pos=pos}))
@@ -175,7 +175,7 @@
 ;; (packbits (width value) ...)
 ;; Note: it starts with the least significant bits first.
 
-(defmacro bitmask 
+(defmacro bitmask
   (bitmask w n) -> (logand n (- (<< 1 w) 1)))
 
 (defmacro pbits
@@ -185,7 +185,7 @@
             (logior acc (<< (bitmask width val) widths))
             rest ...)
   )
-      
+
 (defmacro packbits
   (packbits item ...)
   -> (pbits 0 0 item ...))
@@ -201,9 +201,8 @@
 (defmacro unpackbits
   (unpackbits val) -> val
   (unpackbits val (width loc) rest ...)
-  -> (unpackbits 
+  -> (unpackbits
       (begin (set! loc (bitmask width val))
-             (>> val width)) 
+             (>> val width))
       rest ...)
   )
-
