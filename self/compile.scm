@@ -3,11 +3,11 @@
 (include "lib/core.scm")
 (include "lib/pair.scm")
 (include "lib/string.scm")
+(include "lib/symbol.scm")
 (include "lib/io.scm")
 (include "lib/os.scm")
 (include "lib/alist.scm")
 (include "lib/frb.scm")
-(include "lib/symbol.scm")
 (include "lib/lisp_reader.scm")
 (include "lib/cmap.scm")
 (include "lib/counter.scm")
@@ -247,5 +247,7 @@ default flags:
     (compile-with-backend base cps)
     )
   )
+
+(%backend bytecode (update-sizeoff-table))
 
 (main)
