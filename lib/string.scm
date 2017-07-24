@@ -302,6 +302,8 @@
   (fitem (<cpad> n item ...))	-> (cpad n (format item ...) #\space) ;; center-pad
   (fitem (<zpad> n item ...))	-> (lpad n (format item ...) #\0)     ;; zero-pad
   (fitem (<repeat> n item ...)) -> (string-concat (n-of n (format item ...)))
+  ;; XXX this might be nice?
+  ;; (fitem (<tuple> x (a b c) (int a) (string b) (hex c)))
   (fitem x)			-> x	;; anything else must already be a string
   )
 
