@@ -25,7 +25,7 @@ char * op_names[] = {
   "rref", "rset", "getcc", "putcc", "irk", "getc", "dlsym", "ffi",
   "smake", "slen", "sref", "sset", "scopy", "unchar", "plat", "gist",
   "argv", "quiet", "heap", "readf", "malloc","cget","cset", "free",
-  "sizeoff", "sgetp", "caref", "csref", "dlsym2", "csize",
+  "sizeoff", "sgetp", "caref", "csref", "dlsym2", "csize", "cref2int",
 };
 
 static int argc;
@@ -123,7 +123,7 @@ vm_list_cons (object * car, object * cdr)
 //  in order to support running more than one code object at a time.
 
 object * bytecode_literals;
-object * vm_field_lookup_table;
+object * vm_field_lookup_table; // note: this is a GC root.
 // size/offset table for ffi ctypes (e.g. 'int', 'struct in6_addr', ...)
 pxll_int vm_sizeoff_table[100] = {sizeof (void *), sizeof(short), sizeof(int), sizeof(long), sizeof(long long), 0};
 pxll_int vm_internal_symbol_counter = 0;
@@ -181,6 +181,7 @@ read_literal (FILE * f, object * ob)
     pxll_string * t = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (n));
     t->len = n;
     CHECK (read_string (f, t->data, n));
+    // fprintf (stderr, "sym "); fwrite (t->data, 1, n, stderr); fprintf (stderr, "\n");
     // now wrap as a symbol
     object * sym = allocate (TC_SYMBOL, 2);
     sym[1] = t;
@@ -444,6 +445,8 @@ vm_set_closure (object * closure)
   return 0;
 }
 
+#define N_VM_ROOTS 5
+
 static
 object
 vm_gc (int nreg)
@@ -457,15 +460,15 @@ vm_gc (int nreg)
   heap1[1] = (object) vm_k;
   heap1[2] = (object) vm_top;
   heap1[3] = (object) bytecode_literals;
-  nwords = do_gc (4 + nreg);
+  heap1[4] = (object) vm_field_lookup_table;
+  // NOTE: adjust value of N_VM_ROOTS if you add more roots!
+  nwords = do_gc (N_VM_ROOTS + nreg);
   // replace roots
   vm_lenv = (object *) heap0[0];
   vm_k    = (object *) heap0[1];
   vm_top  = (object *) heap0[2];
   bytecode_literals = (object*) heap0[3];
-  // XXX kludge
-  pxll_int nlits = GET_TUPLE_LENGTH (*(object*)bytecode_literals);
-  vm_field_lookup_table = bytecode_literals[nlits];
+  vm_field_lookup_table = (object *) heap0[4];
   // set new limit
   limit = heap0 + (heap_size - 1024);
   t1 = rdtsc();
@@ -807,7 +810,7 @@ vm_go (void)
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_plat, &&l_gist,
     &&l_argv, &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
-    &&l_dlsym2, &&l_csize,
+    &&l_dlsym2, &&l_csize, &&l_cref2int,
   };
 
   // XXX what happens when the opcode is out of range? (segfault)
@@ -1400,11 +1403,11 @@ vm_go (void)
     if (freep + size >= limit) {
       pxll_int nreg = BC2;
       for (int i=0; i < nreg; i++) {
-        heap1[4+i] = vm_regs[i];
+        heap1[N_VM_ROOTS + i] = vm_regs[i];
       }
       vm_gc (nreg);
       for (int i=0; i < nreg; i++) {
-        vm_regs[i] = heap0[4+i];
+        vm_regs[i] = heap0[N_VM_ROOTS + i];
       }
     }
   }
@@ -1515,6 +1518,12 @@ vm_go (void)
   REG1 = BOX_INTEGER (get_sizeoff_entry (BC2));
   pc += 3;
   DISPATCH();
+ l_cref2int:
+  // CREF2INT target src
+  fprintf (stderr, "%%cref->int %ld\n", (pxll_int) get_foreign (REG2));
+  REG1 = BOX_INTEGER ((pxll_int) get_foreign (REG2));
+  pc += 3;
+  DISPATCH();
 }
 
 void
@@ -1527,9 +1536,6 @@ toplevel (void) {
     object * result = vm_go();
     print_object (result);
     fprintf (stdout, "\n");
-    // for (int i=0; i < 7; i++) {
-    //   fprintf (stderr, "sizeoff[%d] = %ld\n", i, vm_sizeoff_table[i]);
-    // }
     if (is_int (result)) {
       exit ((int)(intptr_t)UNBOX_INTEGER(result));
     } else {
