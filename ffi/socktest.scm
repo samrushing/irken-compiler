@@ -43,14 +43,17 @@
 
 ;; --------------------------------------------------------------------------
 
+(define (raise-system-error)
+  (let ((errno (%c-get-int int posix/errno))
+        (msg (posix/strerror errno)))
+    (printf "system error: " (int errno)
+            " " (string (%c-sfromc #f msg (posix/strlen msg)))
+            "\n")
+    (raise (:OSError errno))))
+
 (define (trysys val)
   (if (< val 0)
-      (let ((errno (%c-get-int int posix/errno))
-            (msg (posix/strerror errno)))
-        (printf "system error: " (int errno)
-                " " (string (%c-sfromc #f msg (posix/strlen msg)))
-                "\n")
-        (raise (:OSError errno)))
+      (raise-system-error)
       val))
 
 ;; --------------------------------------------------------------------------
