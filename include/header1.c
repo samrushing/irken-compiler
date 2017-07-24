@@ -551,6 +551,7 @@ make_foreign (void * ptr)
 
 // this might eventually grow up to fetch from either a
 //  TC_BUFFER or a TC_FOREIGN.
+static
 void *
 get_foreign (object * ob)
 {
