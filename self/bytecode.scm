@@ -98,6 +98,7 @@
     (OI 'csref   3      #f     #t)   ;; dst src sindex
     (OI 'dlsym2  2      #f     #t)   ;; target name
     (OI 'csize   2      #f     #t)   ;; target sindex
+    (OI 'cref2int 2     #f     #t)   ;; target src
     ;;  name   nargs varargs target? args
     )))
 
@@ -544,6 +545,12 @@
         (define (prim-c-sizeof parm)
           (LINSN 'csize target (get-sizeoff parm)))
 
+        (define prim-cref->int
+          (src)
+          -> (LINSN 'cref2int target src)
+          _ -> (primop-error)
+          )
+
        (match name with
          '%dtcon       -> (prim-dtcon parm)
          '%nvget       -> (prim-nvget parm args)
@@ -568,6 +575,7 @@
          '%c-set-int    -> (prim-cset-int parm args)
          '%c-sref       -> (prim-c-sref parm args)
          '%c-sizeof     -> (prim-c-sizeof parm)
+         '%cref->int    -> (prim-cref->int args)
          ;; -------------------- FFI --------------------
 
          _ -> (primop-error))))
@@ -932,7 +940,6 @@
 
     (define sizeoff-sentinel
       (literal:vector (LIST (literal:cons 'sexp 'symbol (LIST (literal:symbol '&&sizeoff-sentinel&&))))))
-
 
     ;; --------------------------------------------------------------------------------
 

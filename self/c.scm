@@ -722,6 +722,11 @@
           -> (o.write (format "O r" (int target) " = r" (int src) ";"))
           _ -> (primop-error))
 
+        (define prim-cref->int
+          (src)
+          -> (o.write (format "O r" (int target) " = BOX_INTEGER (((pxll_int *) r" (int src) ")[1]);"))
+          _ -> (primop-error))
+
         (match name with
           '%dtcon        -> (prim-dtcon parm)
           '%nvget        -> (prim-nvget parm args)
@@ -750,6 +755,7 @@
           '%c-sfromc     -> (prim-c-sfromc args)
           '%string->cref -> (prim-string->cref args)
           '%c-sizeof     -> (prim-c-sizeof parm)
+          '%cref->int    -> (prim-cref->int args)
           ;; -----------------------------------
           _ -> (primop-error))))
 

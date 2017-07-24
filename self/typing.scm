@@ -612,6 +612,7 @@
                                  (arrow (pred 'cref (LIST (parse-type params)))
                                         (LIST (pred 'cref (LIST T0)))))
       '%c-sizeof     -> (:scheme '() (arrow int-type '()))
+      '%cref->int    -> (:scheme (LIST T0) (arrow int-type (LIST (pred 'cref (LIST T0)))))
       ;; -------------------- FFI --------------------
       _ -> (error1 "lookup-primapp" name)))
 
