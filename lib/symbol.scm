@@ -57,4 +57,7 @@
       (intern-symbol v[i]))
     ))
 
+;; Note: it is important that this be done relatively early at runtime,
+;;  there are subsystems (like FFI) that need this to have already happened.
+
 (initialize-symbol-table)
