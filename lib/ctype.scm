@@ -153,7 +153,7 @@
     -> (parse-tdef rest)
     (sexp:list ((sexp:symbol 'includes) . rest))
     -> (parse-includes '() rest)
-    x -> (error1 "malformed spec file" x)
+    x -> (error1 "malformed spec file" (repr x))
     )
 
   (for-list form forms
@@ -490,3 +490,21 @@
 
 (define (make-char-buffer size)
   (%c-aref char (malloc char size) 0))
+
+(define (get-cstring s*)
+  (let ((s0* (%c-aref char s* 0))
+        (slen (posix/strlen s0*)))
+    (%c-sfromc #f s0* slen)))
+
+(define (raise-system-error)
+  (let ((errno (%c-get-int int posix/errno))
+        (msg (posix/strerror errno)))
+    (printf "system error: " (int errno)
+            " " (string (%c-sfromc #f msg (posix/strlen msg)))
+            "\n")
+    (raise (:OSError errno))))
+
+(define (syscall val)
+  (if (< val 0)
+      (raise-system-error)
+      val))
