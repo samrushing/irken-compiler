@@ -159,7 +159,7 @@ typedef struct _closure {
 // a uint8 in the first character that says how many characters of the
 // full-word length are junk.  (so that you would compute the length by
 // ((tc>>8)*sizeof(object))-((uint8)data[0]))
-// 
+//
 // Another thing to consider - like python, always secretly
 // zero-terminate strings.
 typedef struct _string {
