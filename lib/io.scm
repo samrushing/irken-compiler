@@ -1,13 +1,43 @@
 ;; -*- Mode: Irken -*-
 
-(%backend (c llvm)
-  (include "lib/io_c.scm"))
-(%backend bytecode
-  (include "lib/io_vm.scm"))
+(require-ffi 'posix)
 
-(define STDIN_FILENO  0)
-(define STDOUT_FILENO 1)
-(define STDERR_FILENO 2)
+(define (open path oflag mode)
+  (syscall
+   (posix/open (%string->cref #f (zero-terminate path)) oflag mode)))
+
+(define (read fd size)
+  (let ((buffer (make-string size))
+        (r (syscall (posix/read fd (%string->cref #f buffer) size))))
+    (if (= r size)
+	buffer
+	(copy-string buffer r))))
+
+(define (read-into-buffer fd buffer)
+  (let ((blen (string-length buffer)))
+    (syscall
+     (posix/read fd (%string->cref #f buffer) blen)
+     )))
+
+(define (write fd s)
+  (let ((slen (string-length s)))
+    (syscall (posix/write fd (%string->cref #f s) slen))
+    ))
+
+;; XXX perhaps %string->cref should return (array char)?
+(define (write-substring fd s start len)
+  (let ((s* (%string->cref #f s))
+        (a* (%c-cast (array char) s*))
+        (a0* (%c-aref char a* start)))
+    ;; XXX range check
+    (syscall (posix/write fd (%c-cast char a0*) len))
+    ))
+
+(define (read-stdin)
+  (read 0 1024))
+
+(define (close fd)
+  (syscall (posix/close fd)))
 
 ;; file I/O 'object'
 
