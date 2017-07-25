@@ -460,13 +460,6 @@
 (%backend (c llvm)
   (cinclude "sys/errno.h")
 
-  (define (syscall retval)
-    (if (< retval 0)
-        ;; this requires string.scm.  need to place syscall elsewhere.
-        ;; (raise (:OSError (copy-cstring (%%cexp (-> cstring) "strerror(errno)"))))
-        (raise (:OSError (%%cexp (-> int) "errno")))
-        retval))
-
   (define (set-verbose-gc b)
     (%%cexp (bool -> undefined) "(verbose_gc = %0, PXLL_UNDEFINED)" b))
 
@@ -489,11 +482,6 @@
                    "ffi"
                    $pfun rtype nargs
                    formal0 ...))))
-
-  (define (syscall retval)
-    (if (< retval 0)
-        (raise (:OSError -1)) ;; XXX temp
-        retval))
 
   (define (set-verbose-gc b)
     (%%cexp (bool -> undefined) "quiet" b))
