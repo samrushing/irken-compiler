@@ -14,3 +14,5 @@ tests/*.byc
 /self/.tramp_history
 /vm/irkvm
 /vm/irkc
+ffi/*_ffi.scm
+
