@@ -23,7 +23,7 @@ char * op_names[] = {
   "epop", "tron", "troff", "gc", "imm", "make", "makei", "exit",
   "nvcase", "tupref", "vlen", "vref", "vset", "vmake", "alloc",
   "rref", "rset", "getcc", "putcc", "irk", "getc", "dlsym", "ffi",
-  "smake", "slen", "sref", "sset", "scopy", "unchar", "plat", "gist",
+  "smake", "slen", "sref", "sset", "scopy", "unchar", "gist",
   "argv", "quiet", "heap", "readf", "malloc","cget","cset", "free",
   "sizeoff", "sgetp", "caref", "csref", "dlsym2", "csize", "cref2int",
 };
@@ -807,7 +807,7 @@ vm_go (void)
     &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref, &&l_vset, &&l_vmake,
     &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc, &&l_irk,
     &&l_getc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
-    &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_plat, &&l_gist,
+    &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist,
     &&l_argv, &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
     &&l_dlsym2, &&l_csize, &&l_cref2int,
@@ -1358,29 +1358,6 @@ vm_go (void)
   // UNCHAR target char
   REG1 = (object*) BOX_INTEGER ((uintptr_t)GET_CHAR (REG2));
   pc += 3;
-  DISPATCH();
- l_plat: {
-    // PLAT target
-    struct utsname plat;
-    if (0 == uname (&plat)) {
-      REG1 = vm_list_cons (
-        vm_copy_string (plat.sysname),
-        vm_list_cons (
-          vm_copy_string (plat.nodename),
-          vm_list_cons (
-            vm_copy_string (plat.release),
-            vm_list_cons (
-              vm_copy_string (plat.version),
-              vm_list_cons (
-                vm_copy_string (plat.machine),
-                PXLL_NIL
-              )))));
-    } else {
-      // XXX error handler
-      REG1 = PXLL_NIL;
-    }
-    pc += 2;
-  }
   DISPATCH();
  l_gist:
   // GIST target

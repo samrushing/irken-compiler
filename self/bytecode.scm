@@ -82,7 +82,6 @@
     (OI 'sset    3      #f     #f)   ;; string index char
     (OI 'scopy   5      #f     #f)   ;; src src-start n dst dst-start
     (OI 'unchar  2      #f     #t)   ;; target char
-    (OI 'plat    1      #f     #t)   ;; target
     (OI 'gist    1      #f     #t)   ;; target
     (OI 'argv    1      #f     #t)   ;; target
     (OI 'quiet   1      #f     #f)   ;; bool
