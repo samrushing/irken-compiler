@@ -14,6 +14,9 @@
    (s2n_error_get_type int -> int)
    (s2n_init -> int)
    (s2n_cleanup -> int)
+   (s2n_strerror int (* char) -> (* char))
+
+   (s2n_config_new -> (* (struct s2n_config)))
    (s2n_config_free (* (struct s2n_config)) -> int)
    (s2n_config_free_dhparams (* (struct s2n_config)) -> int)
    (s2n_config_free_cert_chain_and_key (* (struct s2n_config)) -> int)
@@ -22,27 +25,28 @@
    (s2n_config_set_cipher_preferences (* (struct s2n_config)) (* char) -> int)
    (s2n_config_set_protocol_preferences (* (struct s2n_config)) (* (* char)) int -> int)
 
+   (s2n_connection_new int -> (* (struct s2n_connection)))
    (s2n_connection_set_config (* (struct s2n_connection)) (* (struct s2n_config)) -> int)
    (s2n_connection_set_fd (* (struct s2n_connection)) int -> int)
    (s2n_connection_set_read_fd (* (struct s2n_connection)) int -> int)
    (s2n_connection_set_write_fd (* (struct s2n_connection)) int -> int)
    (s2n_connection_use_corked_io (* (struct s2n_config)) -> int)
    (s2n_connection_set_blinding (* (struct s2n_connection)) int -> int)
-
    (s2n_connection_get_delay (* (struct s2n_connection)) -> int)
+
    (s2n_set_server_name (* (struct s2n_connection)) (* char)server_name -> int)
    (s2n_get_server_name (* (struct s2n_connection)) -> (* char))
    (s2n_get_application_protocol (* (struct s2n_connection)) -> (* char))
 
    (s2n_connection_get_ocsp_response (* (struct s2n_connection)) (* int)length -> (* int))
-   (s2n_connection_get_sct_list (* (struct s2n_connection))conn (* int)length -> (* int))
-   (s2n_negotiate (* (struct s2n_connection))conn (* int)blocked -> int)
-   (s2n_send (* (struct s2n_connection))conn (* char)buf int size (* int)blocked -> int)
-   (s2n_recv (* (struct s2n_connection))conn  (* char)buf int size (* int)blocked -> int)
+   (s2n_connection_get_sct_list (* (struct s2n_connection)) (* int) -> (* int))
+   (s2n_negotiate (* (struct s2n_connection)) (* int) -> int)
+   (s2n_send (* (struct s2n_connection)) (* char) int (* int) -> int)
+   (s2n_recv (* (struct s2n_connection)) (* char) int (* int) -> int)
 
    (s2n_connection_wipe (* (struct s2n_connection)) -> int)
    (s2n_connection_free (* (struct s2n_connection)) -> int)
-   (s2n_shutdown (* (struct s2n_connection))conn (* int)blocked -> int)
+   (s2n_shutdown (* (struct s2n_connection)) (* int) -> int)
 
    (s2n_connection_get_wire_bytes_in (* (struct s2n_connection)) -> int)
    (s2n_connection_get_wire_bytes_out (* (struct s2n_connection)) -> int)
