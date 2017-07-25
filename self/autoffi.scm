@@ -107,8 +107,8 @@
                                 )))
               )
          )))
-    (notquiet
-     (printf "autoffi forms = \n")
-     (pp (sexp:list forms) 100))
+    ;; (notquiet
+    ;;  (printf "autoffi forms = \n")
+    ;;  (pp (sexp:list forms) 100))
     (reverse forms)
     ))

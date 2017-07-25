@@ -218,7 +218,7 @@
 (define require-ffi*
   (let ((loaded (map-maker magic-cmp)))
     (lambda (name)
-      (printf "loading ffi spec for " (sym name) "\n")
+      ;; (printf "loading ffi spec for " (sym name) "\n")
       (match (loaded::get name) with
         (maybe:yes info)
         -> info

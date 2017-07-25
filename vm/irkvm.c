@@ -22,7 +22,7 @@ char * op_names[] = {
   "prints", "topis", "topref", "topset", "set", "set0", "pop0",
   "epop", "tron", "troff", "gc", "imm", "make", "makei", "exit",
   "nvcase", "tupref", "vlen", "vref", "vset", "vmake", "alloc",
-  "rref", "rset", "getcc", "putcc", "irk", "getc", "dlsym", "ffi",
+  "rref", "rset", "getcc", "putcc", /* "irk", "getc", */ "dlsym", "ffi",
   "smake", "slen", "sref", "sset", "scopy", "unchar", "gist",
   "argv", "quiet", "heap", "readf", "malloc","cget","cset", "free",
   "sizeoff", "sgetp", "caref", "csref", "dlsym2", "csize", "cref2int",
@@ -805,8 +805,8 @@ vm_go (void)
     &&l_topset, &&l_set, &&l_set0, &&l_pop0, &&l_epop, &&l_tron,
     &&l_troff, &&l_gc, &&l_imm, &&l_make, &&l_makei, &&l_exit,
     &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref, &&l_vset, &&l_vmake,
-    &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc, &&l_irk,
-    &&l_getc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
+    &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc, /* &&l_irk, */
+    /* &&l_getc, */ &&l_dlsym, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist,
     &&l_argv, &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
@@ -1237,26 +1237,24 @@ vm_go (void)
   REG1 = REG3;
   pc += 4;
   DISPATCH();
- l_irk: {
-    fprintf (stderr, "NOT\n");
-    abort();
-    // IRK target closure nargs arg0 ...
-    pxll_int nargs = UNBOX_INTEGER (REG3);
-    object * rib = allocate (TC_ENV, nargs + 1);
-    object * closure = REG2;
-    for (int i=0; i < nargs; i++) {
-      rib[i+2] = vm_regs[code[pc+4+i]];
-    }
-    invoke_closure (closure, rib);
-    REG1 = result;
-    pc += 4 + nargs;
-  }
-  DISPATCH();
- l_getc:
-  // GETC target
-  REG1 = vm_the_closure;
-  pc += 2;
-  DISPATCH();
+ // l_irk: {
+ //    // IRK target closure nargs arg0 ...
+ //    pxll_int nargs = UNBOX_INTEGER (REG3);
+ //    object * rib = allocate (TC_ENV, nargs + 1);
+ //    object * closure = REG2;
+ //    for (int i=0; i < nargs; i++) {
+ //      rib[i+2] = vm_regs[code[pc+4+i]];
+ //    }
+ //    invoke_closure (closure, rib);
+ //    REG1 = result;
+ //    pc += 4 + nargs;
+ //  }
+ //  DISPATCH();
+ // l_getc:
+ //  // GETC target
+ //  REG1 = vm_the_closure;
+ //  pc += 2;
+ //  DISPATCH();
  l_dlsym:
   // DLSYM target name
   REG1 = BOX_INTEGER ((pxll_int)dlsym (RTLD_DEFAULT, GET_STRING_POINTER (REG2)));
@@ -1497,7 +1495,6 @@ vm_go (void)
   DISPATCH();
  l_cref2int:
   // CREF2INT target src
-  fprintf (stderr, "%%cref->int %ld\n", (pxll_int) get_foreign (REG2));
   REG1 = BOX_INTEGER ((pxll_int) get_foreign (REG2));
   pc += 3;
   DISPATCH();

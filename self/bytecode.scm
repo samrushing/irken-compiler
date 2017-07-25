@@ -71,8 +71,8 @@
     (OI 'rset    3      #f     #f)   ;; rec label-code val
     (OI 'getcc   1      #f     #t)   ;; target
     (OI 'putcc   3      #f     #t)   ;; target k val
-    (OI 'irk     3      #t     #t)   ;; target closure nargs arg0 ...
-    (OI 'getc    1      #f     #t)   ;; target
+    ;; (OI 'irk     3      #t     #t)   ;; target closure nargs arg0 ...
+    ;; (OI 'getc    1      #f     #t)   ;; target
     (OI 'dlsym   2      #f     #t)   ;; target name
     (OI 'ffi     4      #t     #t)   ;; target fun nargs arg0 ...
     (OI 'smake   2      #f     #t)   ;; target size
