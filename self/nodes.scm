@@ -433,7 +433,7 @@
        ((sexp:symbol 'let-subst) (sexp:list ((sexp:symbol from) (sexp:symbol to))) body)
        -> (node/subst from to (walk body))
        ((sexp:symbol 'let-subst) . _)
-       -> (error1 "syntax error" (format (join repr " " l)))
+       -> (error1 "syntax error (let-subst)" (format (join repr " " l)))
        (rator . rands)
        -> (match rator with
 	    (sexp:symbol name)
@@ -451,7 +451,7 @@
 		   ;; let the inliner do it, correctly.
 		   (node/call (walk rator) (map walk rands)))
 	    _ -> (node/call (walk rator) (map walk rands)))
-       _ -> (error1 "syntax error: " l)
+       _ -> (error1 "syntax error 1: " l)
        )
   x -> (error1 "syntax error 2: " x)
   )
