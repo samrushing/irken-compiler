@@ -35,18 +35,6 @@
   )
 
 ;; --------------------------------------------------------------------------
-
-(define (trysys val)
-  (if (< val 0)
-      (let ((errno (%c-get-int int posix/errno))
-            (msg (posix/strerror errno)))
-        (printf "system error: " (int errno)
-                " " (string (%c-sfromc #f msg (posix/strlen msg)))
-                "\n")
-        (raise (:OSError errno)))
-      val))
-
-;; --------------------------------------------------------------------------
 ;;                            buffer object
 ;; --------------------------------------------------------------------------
 
@@ -85,7 +73,7 @@
 (typealias address {addr=(cref (struct sockaddr)) size=int})
 
 (define (inet_pton4 ip addr*) : (string (cref (struct in_addr)) -> int)
-  (trysys
+  (syscall
    (socket/inet_pton
     AF_INET
     (%string->cref #f (zero-terminate ip))
@@ -93,7 +81,7 @@
    ))
 
 (define (inet_pton6 ip addr*) : (string (cref (struct in6_addr)) -> int)
-  (trysys
+  (syscall
    (socket/inet_pton
     AF_INET6
     (%string->cref #f (zero-terminate ip))
@@ -165,7 +153,7 @@
 (typealias sock {fd=int ofd=int fam=AF type=SOCK})
 
 (define (sock/make fam type) : (AF SOCK -> sock)
-  (let ((fd (trysys (socket/socket (AF->int fam) (SOCK->int type) 0))))
+  (let ((fd (syscall (socket/socket (AF->int fam) (SOCK->int type) 0))))
     {fd=fd fam=fam type=type ofd=fd}
     ))
 
@@ -180,26 +168,26 @@
 
 (define (sock/recv sock buf)
   (let ((buf* (%c-aref char buf.buf buf.pos))
-        (nbytes (trysys (socket/recv sock.fd buf* (- buf.size buf.pos) 0))))
+        (nbytes (syscall (socket/recv sock.fd buf* (- buf.size buf.pos) 0))))
     (set! buf.end (+ buf.end nbytes)) ;; trust recv(2) to not overrun?
     nbytes))
 
 (define (sock/send sock buf)
   (let ((buf* (%c-aref char buf.buf buf.pos))
-        (nbytes (trysys (socket/send sock.fd buf* (- buf.end buf.pos) 0))))
+        (nbytes (syscall (socket/send sock.fd buf* (- buf.end buf.pos) 0))))
     nbytes))
 
 (define (sock/bind sock addr)
-  (trysys (socket/bind sock.fd addr.addr addr.size)))
+  (syscall (socket/bind sock.fd addr.addr addr.size)))
 
 (define (sock/listen sock backlog)
-  (trysys (socket/listen sock.fd backlog)))
+  (syscall (socket/listen sock.fd backlog)))
 
 (define (sock/accept sock)
   (let ((addr (address/make))
         (addrlen (malloc uint)))
     (%c-set-int uint addr.size addrlen)
-    (:tuple (sock/fromfd (trysys (socket/accept sock.fd addr.addr addrlen)) sock.fam sock.type)
+    (:tuple (sock/fromfd (syscall (socket/accept sock.fd addr.addr addrlen)) sock.fam sock.type)
             addr)))
 
 (define (sock/close sock)
