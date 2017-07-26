@@ -31,6 +31,12 @@
 	  (else (loop (file/read-buffer ifile)
 		      (list:cons buf l))))))
 
+(define (join-paths a b)
+  (let ((alen (string-length a)))
+    (if (char=? #\/ (string-ref a (- alen 1)))
+	(format a b)
+	(format a "/" b))))
+
 (define find-file
   () name
   -> (raise (:FileNotFound "file not found" name))

@@ -362,12 +362,6 @@
     (read-all)
     ))
 
-(define (join-paths a b)
-  (let ((alen (string-length a)))
-    (if (char=? #\/ (string-ref a (- alen 1)))
-	(format a b)
-	(format a "/" b))))
-
 (define (read-string s)
   (reader "<string>" (string-reader s)))
 
