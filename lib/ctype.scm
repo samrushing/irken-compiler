@@ -205,6 +205,7 @@
 
 (define (read-spec name)
   (let ((path0 (format "ffi/" (sym name) "_ffi.scm")))
+    ;;(printf "loading ffi spec for " (sym name) "\n")
     (%backend bytecode
       (read-string
        (string-concat
@@ -218,7 +219,6 @@
 (define require-ffi*
   (let ((loaded (map-maker magic-cmp)))
     (lambda (name)
-      ;; (printf "loading ffi spec for " (sym name) "\n")
       (match (loaded::get name) with
         (maybe:yes info)
         -> info
