@@ -22,9 +22,6 @@ clean:
 semi:
 	python util/clean.py -s
 
-dist:
-	python util/dist.py
-
 tags:
 	find ./self ./lib -name "*.scm" | etags -
 
