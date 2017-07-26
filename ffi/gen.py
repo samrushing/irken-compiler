@@ -244,7 +244,7 @@ def parse_type (ctype, tmap):
     ntok = len(tokens)
 
     def match (p, i):
-        return tokens[i:i+len(p)] == p
+        return tuple(tokens[i:i+len(p)]) == p
 
     r = None
     index = 0
@@ -262,7 +262,7 @@ def parse_type (ctype, tmap):
         found = False
         for pat in base_int_types:
             if match (pat, index):
-                r = ('int', tokens[index:index+len(pat)])
+                r = ('int', int_size_table[pat])
                 index += len(pat)
                 found = True
                 break
