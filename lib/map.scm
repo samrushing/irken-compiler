@@ -54,7 +54,7 @@
   (define (union self other)
     (other::iterate
      (lambda (k v)
-       (add self k v))))
+       (maybe-add self k v))))
 
   (define un (map-ob:t self) -> self)
 
