@@ -1,9 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/basis.scm")
-(include "lib/ctype.scm")
 (include "lib/map.scm")
-(include "lib/lisp_reader.scm")
 
 (require-ffi 'posix)
 (require-ffi 'socket)
