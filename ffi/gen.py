@@ -121,15 +121,21 @@ def do_cmd (cmd):
     else:
         return out.splitlines()
 
-def dump_record_layouts (path, extra_includes=None):
-    # XXX extra includes
-    return do_cmd ('clang -E %s | clang -cc1 -fdump-record-layouts' % path)
+def dump_record_layouts (path, args):
+    cmd = (
+        '%s -E %s %s | %s -cc1 -fdump-record-layouts' % (
+            args.clang, args.incs, path, args.clang
+        )
+    )
+    print 'cmd = %r' % (cmd,)
+    return do_cmd (cmd)
 
 # this catches the kinds of typedefs we are looking for.
 # it will screw up with things like "typedef x_t *y_t;" (or any weirdness).
-def find_typedefs (path, extra_includes=None):
-    # XXX extra includes
-    lines = do_cmd ('clang -E %s' % (path,))
+def find_typedefs (path, args):
+    cmd = '%s %s -E %s' % (args.clang, args.incs, path)
+    print 'cmd = %r' % (cmd,)
+    lines = do_cmd (cmd)
     tmap = {}
     for line in lines:
         parts = line.split()
@@ -139,8 +145,9 @@ def find_typedefs (path, extra_includes=None):
             tmap[f_type] = t_type
     return tmap
 
-def find_constants (path, iface):
-    do_cmd ('clang %s -o con' % (path,))
+def find_constants (path, iface, args):
+    cmd = '%s %s %s -o con' % (args.clang, args.incs, path)
+    do_cmd (cmd)
     lines = do_cmd ('./con')
     os.unlink ('./con')
     constants = iface['constants']
@@ -331,16 +338,16 @@ def sexp (ob):
 def quote (s):
     return '"' + s + '"'
 
-def emit_ffi (iface):
+def emit_ffi (iface, args):
     global tmap
     path = '%s_iface.c' % (iface['name'],)
     build_clang_input (path, iface)
-    tmap = find_typedefs (path)
+    tmap = find_typedefs (path, args)
     layouts = parse_record_layouts (
-        dump_record_layouts (path),
+        dump_record_layouts (path, args),
         tmap
     )
-    constants = find_constants (path, iface)
+    constants = find_constants (path, iface, args)
     path = '%s_ffi.scm' % (iface['name'],)
     uname = os.uname()
     plat = uname[0]
@@ -447,6 +454,23 @@ def read_spec (path):
 
 int_size_table = build_int_size_table()
 
-for ffi in sys.argv[1:]:
-    iface = read_spec (ffi)
-    emit_ffi (iface)
+import argparse
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument ('--clang', help="path to clang", default='clang')
+    p.add_argument ('--include', '-I', help="add include path for clang", action='append')
+    p.add_argument ('file', help="FFI spec file", metavar="FILE", action='append')
+    args = p.parse_args()
+
+    incs = []
+    for path in args.include:
+        incs.append ('-I%s' % (path,))
+    incs = ' '.join (incs)
+    args.incs = incs
+
+    for ffi in args.file:
+        iface = read_spec (ffi)
+        emit_ffi (iface, args)
+
+main()
