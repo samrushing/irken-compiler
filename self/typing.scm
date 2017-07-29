@@ -598,6 +598,9 @@
       '%malloc -> (:scheme '() (arrow (pred 'cref
                                             (LIST (pred 'array (LIST (parse-type params)))))
                                       (LIST int-type)))
+      '%halloc -> (:scheme '() (arrow (pred 'cref
+                                            (LIST (pred 'array (LIST (parse-type params)))))
+                                      (LIST int-type)))
       '%free   -> (:scheme (LIST T0) (arrow undefined-type (LIST (pred 'cref (LIST T0)))))
       '%c-aref -> (:scheme (LIST T0) (arrow (pred 'cref (LIST T0))
                                             (LIST (pred 'cref (LIST (pred 'array (LIST T0)))) int-type)))

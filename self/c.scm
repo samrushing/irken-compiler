@@ -576,6 +576,16 @@
                   (else
                    (error1 "%malloc: dead target?" type)))))
 
+        (define (prim-halloc parm args)
+          (let ((type (parse-type parm)))
+            (cond ((>= target 0)
+                   (o.write (format "O r" (int target)
+                                    " = make_halloc (sizeof ("
+                                    (irken-type->c-type type) ") * unbox(r" (int (car args))
+                                    "));")))
+                  (else
+                   (error1 "%malloc: dead target?" type)))))
+
         (define (prim-free args)
           (o.write (format "free (get_foreign (r" (int (car args)) "));"))
           (when (>= target 0)
@@ -622,8 +632,12 @@
                  (printf "prim-c-aref: ctype = " ctype "\n")
                  (o.write (format "// ctype = " ctype))
                  (o.write (format "O r" (int target)
-                                  " = make_foreign((void*)((" ctype " *)(get_foreign (r" (int src) "))) "
-                                  "+ UNBOX_INTEGER(r" (int index) "));")))
+                                  " = offset_foreign (r" (int src)", sizeof(" ctype
+                                  ") * UNBOX_INTEGER(r" (int index)"));"))
+                 ;; (o.write (format "O r" (int target)
+                 ;;                  " = make_foreign((void*)((" ctype " *)(get_foreign (r" (int src) "))) "
+                 ;;                  "+ UNBOX_INTEGER(r" (int index) "));"))
+                 )
             _ _ -> (primop-error)))
 
 
@@ -705,6 +719,7 @@
           '%ensure-heap  -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
           ;; --------------- FFI ---------------
           '%malloc       -> (prim-malloc parm args)
+          '%halloc       -> (prim-halloc parm args)
           '%free         -> (prim-free args)
           '%ffi2         -> (prim-ffi2 parm args)
           '%c-aref       -> (prim-c-aref args)
