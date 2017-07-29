@@ -26,7 +26,7 @@
       result)))
 
 (define (get-c-string ref)
-  (%c-sfromc #f ref (posix/strlen ref)))
+  (%cref->string #f ref (posix/strlen ref)))
 
 (define (ctime)
   (let ((t0 (gettimeofday))

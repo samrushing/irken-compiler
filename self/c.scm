@@ -712,7 +712,7 @@
           '%c-set-int    -> (prim-c-set-int parm args)
           '%c-sref       -> (prim-c-sref parm args)
           ;;'%c-uref     -> (prim-c-uref parm args)
-          '%c-sfromc     -> (prim-c-sfromc args)
+          '%cref->string -> (prim-c-sfromc args)
           '%string->cref -> (prim-string->cref args)
           '%c-sizeof     -> (prim-c-sizeof parm)
           '%cref->int    -> (prim-cref->int args)

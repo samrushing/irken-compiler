@@ -26,7 +26,7 @@
   (let ((val* (posix/getenv (%string->cref #f (zero-terminate name)))))
     (if (cref-null? val*)
         ""
-        (%c-sfromc #f val* (posix/strlen val*))
+        (%cref->string #f val* (posix/strlen val*))
         )))
 
 (define (unlink name)

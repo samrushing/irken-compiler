@@ -17,7 +17,7 @@
 (define (s2n-strerror n)
   (let ((s* (s2n/s2n_strerror n (%string->cref #f "EN\x00")))
         (slen (posix/strlen s*)))
-    (%c-sfromc #f s* slen)))
+    (%cref->string #f s* slen)))
 
 (define (get-s2n-error)
   (let ((err (%c-get-int int s2n/s2n_errno))

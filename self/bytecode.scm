@@ -568,7 +568,7 @@
          '%malloc       -> (prim-malloc parm args)
          '%free         -> (prim-free args)
          '%c-aref       -> (prim-c-aref parm args)
-         '%c-sfromc     -> (prim-c-sfromc args)
+         '%cref->string -> (prim-c-sfromc args)
          '%string->cref -> (prim-string->cref args)
          '%c-get-int    -> (prim-cget-int parm args)
          '%c-set-int    -> (prim-cset-int parm args)

@@ -45,7 +45,7 @@
   (let ((errno (%c-get-int int posix/errno))
         (msg (posix/strerror errno)))
     (printf "system error: " (int errno)
-            " " (string (%c-sfromc #f msg (posix/strlen msg)))
+            " " (string (%cref->string #f msg (posix/strlen msg)))
             "\n")
     (raise (:OSError errno))))
 
@@ -71,7 +71,7 @@
   {buf=(malloc char size) size=size pos=0 end=0})
 
 (define (buffer/contents buf)
-  (%c-sfromc #f (%c-aref char buf.buf buf.pos) (- buf.end buf.pos)))
+  (%cref->string #f (%c-aref char buf.buf buf.pos) (- buf.end buf.pos)))
 
 (define (buffer/reset! buf)
   (set! buf.pos 0)
@@ -137,7 +137,7 @@
         (a* (%c-sref sockaddr_in.sin_addr sa*))
         (port (socket/htons (%c-get-int u16 (%c-sref sockaddr_in.sin_port sa*)))))
     (socket/inet_ntop AF_INET (%c-cast (* void) a*) r1 16)
-    (let ((r2 (%c-sfromc #f r1 (posix/strlen r1))))
+    (let ((r2 (%cref->string #f r1 (posix/strlen r1))))
       (free r0)
       (:tuple r2 port))))
 
@@ -148,7 +148,7 @@
         (a* (%c-sref sockaddr_in6.sin6_addr sa*))
         (port (socket/htons (%c-get-int u16 (%c-sref sockaddr_in6.sin6_port sa*)))))
     (socket/inet_ntop AF_INET6 (%c-cast (* void) a*) r1 80)
-    (let ((r2 (%c-sfromc #f r1 (posix/strlen r1))))
+    (let ((r2 (%cref->string #f r1 (posix/strlen r1))))
       (free r0)
       (:tuple r2 port))))
 

@@ -494,13 +494,13 @@
 (define (get-cstring s*)
   (let ((s0* (%c-aref char s* 0))
         (slen (posix/strlen s0*)))
-    (%c-sfromc #f s0* slen)))
+    (%cref->string #f s0* slen)))
 
 (define (raise-system-error)
   (let ((errno (%c-get-int int posix/errno))
         (msg (posix/strerror errno)))
     (printf "system error: " (int errno)
-            " " (string (%c-sfromc #f msg (posix/strlen msg)))
+            " " (string (%cref->string #f msg (posix/strlen msg)))
             "\n")
     (raise (:OSError errno))))
 

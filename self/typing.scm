@@ -604,7 +604,7 @@
       '%c-get-int -> (get-c-get-int-scheme params)
       '%c-set-int -> (get-c-set-int-scheme params)
       '%c-sref    -> (get-sref-scheme params)
-      '%c-sfromc     -> (:scheme '() (arrow string-type (LIST (pred 'cref (LIST (pred 'char '()))) int-type)))
+      '%cref->string -> (:scheme '() (arrow string-type (LIST (pred 'cref (LIST (pred 'char '()))) int-type)))
       '%string->cref -> (:scheme '() (arrow (pred 'cref (LIST (pred 'char '()))) (LIST string-type)))
       '%c-cast       -> (:scheme (LIST T0)
                                  (arrow (pred 'cref (LIST (parse-type params)))
