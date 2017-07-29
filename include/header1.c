@@ -207,7 +207,16 @@ dump_object (object * ob, int depth)
 	break;
       }
       case TC_FOREIGN:
-        fprintf (stdout, "<foreign %p>", ob[1]);
+        switch (GET_TUPLE_LENGTH (*ob)) {
+        case 1:
+          fprintf (stdout, "<foreign %p>", ob[1]);
+          break;
+        case 2:
+          fprintf (stdout, "<foreign ");
+          dump_object (ob[1], depth+1);
+          fprintf (stdout, " off=%" PRIuPTR ">", UNBOX_INTEGER(ob[2]));
+          break;
+        }
         break;
       case TC_SYMBOL:
 	print_string ((object*)ob[1], 0);
@@ -549,13 +558,49 @@ make_foreign (void * ptr)
   return r;
 }
 
-// this might eventually grow up to fetch from either a
-//  TC_BUFFER or a TC_FOREIGN.
+object *
+make_halloc (pxll_int size)
+{
+  object * buffer = alloc_no_clear (TC_BUFFER, HOW_MANY (size, sizeof(object)));
+  object * result = allocate (TC_FOREIGN, 2);
+  result[1] = buffer;
+  result[2] = BOX_INTEGER (0);
+  return result;
+}
+
 static
 void *
 get_foreign (object * ob)
 {
-  return (void *) ob[1];
+  if (GET_TUPLE_SIZE (*ob) == 1) {
+    // TC_FOREIGN <pointer>
+    return (void *) ob[1];
+  } else {
+    // TC_FOREIGN <buffer> <offset>
+    object * buffer = (object*) ob[1];
+    uint8_t * base = (uint8_t *) (buffer + 1);
+    pxll_int offset = UNBOX_INTEGER (ob[2]);
+    return (void *) (base + offset);
+  }
+}
+
+static
+object *
+offset_foreign (object * foreign, pxll_int offset)
+{
+  // Note: offset is in bytes
+  if (GET_TUPLE_LENGTH (*foreign) == 1) {
+    // TC_FOREIGN <pointer>
+    object * r = allocate (TC_FOREIGN, 1);
+    r[1] = (uint8_t *) (foreign[1]) + offset;
+    return r;
+  } else {
+    // TC_FOREIGN <buffer> <offset>
+    object * r = allocate (TC_FOREIGN, 2);
+    r[1] = foreign[1];
+    r[2] = (object*) BOX_INTEGER ((UNBOX_INTEGER (foreign[2]) + offset));
+    return r;
+  }
 }
 
 // used to lookup record elements when the index

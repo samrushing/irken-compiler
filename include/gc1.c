@@ -100,10 +100,19 @@ do_gc (int nroots)
 
       case TC_STRING:
       case TC_BUFFER:
-      case TC_FOREIGN:
 	// skip it all
 	scan += length + 1;
 	break;
+
+      case TC_FOREIGN:
+        if (length == 1) {
+          scan += 2;
+        } else {
+          *p = copy (p); p++;
+          *p = copy (p); p++;
+          scan += 3;
+        }
+        break;
 
       default:
         // copy everything
