@@ -208,8 +208,6 @@
 	     (o.write (format "%r" (int target) " = bitcast i8** %r" (int rv) " to i8**"))
 	     )
 
-	;; '%cget
-	;; '%cset XXX don't forget call to dead-set
 	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x (repr params) args))
 	))
 

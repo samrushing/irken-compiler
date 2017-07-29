@@ -568,14 +568,6 @@
                                  ") * unbox(r" (int (car args)) "), sizeof (object)));"))
                 (error1 "%callocate: dead target?" type))))
 
-        ;; (define (prim-malloc parm args)
-        ;;   (let ((type (parse-type parm)))
-        ;;     (cond ((>= target 0)
-        ;;            (o.write (format "O r" (int target) " = (object*) malloc (sizeof ("
-        ;;                             (irken-type->c-type type) ") * unbox(r" (int (car args)) "));")))
-        ;;           (else
-        ;;            (error1 "%malloc: dead target?" type)))))
-
         (define (prim-malloc parm args)
           (let ((type (parse-type parm)))
             (cond ((>= target 0)
@@ -593,23 +585,6 @@
           (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
           (when (> target 0)
             (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
-
-        (define prim-cget
-          (rbase rindex)
-          ;; XXX range-check (probably need to add a length param to TC_BUFFER)
-          -> (let ((cexp (format "(((" (type-repr type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
-               (o.write (format "O r" (int target) " = " (wrap-out type cexp) ";")))
-          _ -> (primop-error))
-
-        (define prim-cset
-          (rbase rindex rval) (type:pred 'arrow (to-type from-type) _)
-          ;; XXX range-check (probably need to add a length param to TC_BUFFER)
-          -> (let ((rval-exp (lookup-cast to-type from-type (format "r" (int rval))))
-                   (lval (format "(((" (type-repr to-type) "*)((pxll_int*)r" (int rbase) ")+1)[" (int rindex) "])")))
-               (o.write (format lval " = " rval-exp ";"))
-               (when (> target 0)
-                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
-          _ _ -> (primop-error))
 
         (define prim-getcc
           () -> (o.write (format "O r" (int target) " = k; // %getcc"))
@@ -639,18 +614,6 @@
                  _ -> (primop-error))
             _ -> (primop-error)
             ))
-
-        (define prim-cget3
-          (sexp:symbol name)
-          -> (match (ffi-info.sigs::get name) with
-               (maybe:yes (csig:obj name obtype))
-               -> (let (;; might need to use ctype->irken-type here
-                        (ob0 (format "((" (type-repr type) ")" (sym name) ")"))
-                        (ob1 (wrap-out type ob0)))
-                    (o.write (format "O r" (int target) " = " ob1 ";"))
-                    )
-               _ -> (primop-error))
-          _ -> (primop-error))
 
         (define (prim-c-aref args)
           (match args type with
@@ -736,17 +699,14 @@
           '%record-get   -> (prim-record-get parm args)
           '%record-set   -> (prim-record-set parm args)
           '%callocate    -> (prim-callocate parm args)
-          '%malloc       -> (prim-malloc parm args)
-          '%free         -> (prim-free args)
           '%exit         -> (prim-exit args)
-          '%cget         -> (prim-cget args)
-          '%cset         -> (prim-cset args type)
           '%getcc        -> (prim-getcc args)
           '%putcc        -> (prim-putcc args)
           '%ensure-heap  -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
           ;; --------------- FFI ---------------
+          '%malloc       -> (prim-malloc parm args)
+          '%free         -> (prim-free args)
           '%ffi2         -> (prim-ffi2 parm args)
-          '%cget3        -> (prim-cget3 parm)
           '%c-aref       -> (prim-c-aref args)
           '%c-get-int    -> (prim-c-get-int parm args)
           '%c-set-int    -> (prim-c-set-int parm args)
