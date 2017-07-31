@@ -588,18 +588,22 @@ static
 object *
 offset_foreign (object * foreign, pxll_int offset)
 {
-  // Note: offset is in bytes
-  if (GET_TUPLE_LENGTH (*foreign) == 1) {
-    // TC_FOREIGN <pointer>
-    object * r = allocate (TC_FOREIGN, 1);
-    r[1] = (uint8_t *) (foreign[1]) + offset;
-    return r;
+  if (offset == 0) {
+    return foreign;
   } else {
-    // TC_FOREIGN <buffer> <offset>
-    object * r = allocate (TC_FOREIGN, 2);
-    r[1] = foreign[1];
-    r[2] = (object*) BOX_INTEGER ((UNBOX_INTEGER (foreign[2]) + offset));
-    return r;
+    // Note: offset is in bytes
+    if (GET_TUPLE_LENGTH (*foreign) == 1) {
+      // TC_FOREIGN <pointer>
+      object * r = allocate (TC_FOREIGN, 1);
+      r[1] = (uint8_t *) (foreign[1]) + offset;
+      return r;
+    } else {
+      // TC_FOREIGN <buffer> <offset>
+      object * r = allocate (TC_FOREIGN, 2);
+      r[1] = foreign[1];
+      r[2] = (object*) BOX_INTEGER ((UNBOX_INTEGER (foreign[2]) + offset));
+      return r;
+    }
   }
 }
 
@@ -765,6 +769,7 @@ make_string (pxll_int len)
   return (object *) result;
 }
 
+#if 0
 // --------------------------------------------------------------------------------
 // invoke-closure is used by the bytecode VM to call back into Irken.
 // It could theoretically be used by any C code that needed e.g. a
@@ -796,6 +801,7 @@ void invoke_closure_1 (void)
   // if there *was* a PXLL_RETURN here, it would actually call exit_continuation(),
   //  and exit the entire program.
 }
+#endif
 
 // --------------------------------------------------------------------------------
 
