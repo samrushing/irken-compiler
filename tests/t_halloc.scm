@@ -14,5 +14,7 @@
     (let ((int* (%c-aref int buf i)))
       (printf (lpad 3 (int i)) " " (lpad 8 (int (%c-get-int int int*))) "\n")
       ))
+  (let ((thing (halloc int 1)))
+    (free thing))
   )
 

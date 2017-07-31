@@ -1442,8 +1442,7 @@ vm_go (void)
   }
  l_free: {
     // FREE src
-    object * src = get_foreign (REG1);
-    free (src);
+    free_foreign (REG1);
     pc += 2;
     DISPATCH();
   }

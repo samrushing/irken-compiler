@@ -587,7 +587,7 @@
                    (error1 "%malloc: dead target?" type)))))
 
         (define (prim-free args)
-          (o.write (format "free (get_foreign (r" (int (car args)) "));"))
+          (o.write (format "free_foreign (r" (int (car args)) ");"))
           (when (>= target 0)
             (o.write (format "O r" (int target) " = PXLL_UNDEFINED;"))))
 

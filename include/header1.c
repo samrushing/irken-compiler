@@ -607,6 +607,16 @@ offset_foreign (object * foreign, pxll_int offset)
   }
 }
 
+static
+object *
+free_foreign (object * foreign)
+{
+  if (GET_TUPLE_LENGTH (*foreign) == 1) {
+    free (foreign[1]);
+  }
+  return (object*) PXLL_UNDEFINED;
+}
+
 // used to lookup record elements when the index
 //  cannot be computed at compile-time.
 object *
