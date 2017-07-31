@@ -485,6 +485,11 @@
   (malloc type nelem) -> (%malloc type nelem)
   )
 
+(defmacro halloc
+  (halloc type)       -> (%c-aref type (%halloc type 1) 0)
+  (halloc type nelem) -> (%halloc type nelem)
+  )
+
 (defmacro free
   (free ob) -> (%free #f ob))
 
