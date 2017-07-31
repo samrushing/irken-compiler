@@ -572,7 +572,7 @@ static
 void *
 get_foreign (object * ob)
 {
-  if (GET_TUPLE_SIZE (*ob) == 1) {
+  if (GET_TUPLE_LENGTH (*ob) == 1) {
     // TC_FOREIGN <pointer>
     return (void *) ob[1];
   } else {

@@ -61,9 +61,7 @@ object * heap1 = NULL;
 #define GET_TYPECODE(p)		(((pxll_int)(p))&0xff)
 #define GET_PAYLOAD(p)		(((pxll_int)(p))>>8)
 #define GET_TUPLE_LENGTH(p)	(((pxll_int)(p))>>8)
-#define GET_TUPLE_SIZE(p)	((GET_TUPLE_LENGTH(p)+1)<<2)
 #define GET_ENV_LENGTH(p)	(((pxll_int)(p))>>8)
-#define GET_ENV_SIZE(p)	        ((GET_ENV_LENGTH(p)+1)<<2)
 #define TAG_VALUE(tag,value)	((object)((tag&0xff)|(value<<8)))
 #define GET_STRING_POINTER(s)   (((pxll_string *)(s))->data)
 
