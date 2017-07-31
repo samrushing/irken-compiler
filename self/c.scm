@@ -629,7 +629,6 @@
           (match args type with
             (src index) (type:pred 'cref (subtype) _)
             -> (let ((ctype (irken-type->c-type subtype)))
-                 (printf "prim-c-aref: ctype = " ctype "\n")
                  (o.write (format "// ctype = " ctype))
                  (o.write (format "O r" (int target)
                                   " = offset_foreign (r" (int src)", sizeof(" ctype
@@ -675,8 +674,9 @@
 
         (define prim-c-sref
           refexp (src)
-          -> (o.write (format "O r" (int target) " = make_foreign (&"
-                              (sref->c refexp (format "get_foreign (r" (int src))) "));"))
+          -> (o.write (format "O r" (int target) " = offset_foreign (r" (int src)
+                              ;; this is very similar to the offsetof macro
+                              ", ((size_t)&(" (sref->c refexp "0") ")));"))
           _ _ -> (primop-error))
 
         (define prim-c-sfromc
