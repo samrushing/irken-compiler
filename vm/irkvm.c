@@ -336,6 +336,8 @@ object * vm_top = PXLL_NIL;
 object * vm_result = PXLL_NIL;
 
 // Use the higher, (likely) unused user tags for these.
+// XXX consider instead using TC_CLOSURE/etc with
+//   these and using conditional code in the gc.
 #define TC_VM_CLOSURE (63<<2)
 #define TC_VM_LENV    (62<<2)
 #define TC_VM_CONT    (61<<2)
