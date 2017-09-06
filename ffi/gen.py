@@ -248,6 +248,7 @@ def parse_type (ctype, tmap):
 
     ctype = re.sub (anon, '', ctype)
     tokens = ctype.split()
+    tokens = [x for x in tokens if x not in ('const',)]
     ntok = len(tokens)
 
     def match (p, i):
@@ -464,8 +465,9 @@ def main():
     args = p.parse_args()
 
     incs = []
-    for path in args.include:
-        incs.append ('-I%s' % (path,))
+    if args.include is not None:
+        for path in args.include:
+            incs.append ('-I%s' % (path,))
     incs = ' '.join (incs)
     args.incs = incs
 
