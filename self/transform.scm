@@ -573,7 +573,7 @@
 
   (define expand-%%cexp
     (sig template . args)
-    -> (sexp:list (append (LIST (sexp:symbol '%%cexp) sig template)
+    -> (sexp:list (append (LIST (sexp:symbol '%%cexp) sig (expand template))
 			  (map expand args)))
     x -> (error1 "malformed %%cexp" x))
 
@@ -598,6 +598,11 @@
     ((sexp:symbol dtname) (sexp:symbol altname))
     -> (sexp:cons dtname altname)
     x -> (error1 "malformed %%constructor" x))
+
+  (define expand-%%stringify
+    ((sexp:symbol sym))
+    -> (sexp:string (symbol->string sym))
+    x -> (error1 "malformed %%stringify" x))
 
   ;; --------------------------------------------------------------------------------
   ;; constant folding. this *really* needs to go into analyze.scm, so that it can
@@ -677,6 +682,7 @@
       ('%%ffitype expand-%%ffitype)
       ('%%attr expand-%%attr)
       ('%%constructor expand-%%constructor)
+      ('%%stringify expand-%%stringify)
       ('<< expand-<<)
       ('binary- expand-binary-)
       ('binary+ expand-binary+)
