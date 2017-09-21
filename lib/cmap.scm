@@ -18,6 +18,12 @@
 	 (set! m.count (+ 1 m.count))
 	 index)))
 
+(define (cmap/present? m item)
+  (match (tree/member m.map m.cmp item) with
+    (maybe:yes _) -> #t
+    (maybe:no)    -> #f
+    ))
+
 (define (cmap->index m item)
   (match (tree/member m.map m.cmp item) with
     (maybe:yes index) -> index
