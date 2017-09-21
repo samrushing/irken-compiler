@@ -216,6 +216,7 @@
     ))
 
 ;; meant for *compile-time* use.
+;; XXX this distinction not needed.
 (define require-ffi*
   (let ((loaded (map-maker magic-cmp)))
     (lambda (name)
@@ -229,15 +230,18 @@
               (parse-spec info forms)
               (loaded::add name info)
               (merge-ffi-info info)
-              info)
+              info
+              )
             except
             (:OSError x)
             -> (begin
                  (printf "unable to load spec for interface " (sym name) "\n")
                  (raise (:OSError x)))
-            )))))
+            )
+        ))))
 
 ;; this is meant for *runtime* use.
+;; XXX this distinction not needed.
 (define (require-ffi name)
   (require-ffi* name))
 
@@ -291,6 +295,11 @@
 
 (define (lookup-tdef name)
   (ffi-info.tdefs::get name))
+
+(define (lookup-constant name) : (symbol -> int)
+  (match (ffi-info.cons::get name) with
+    (maybe:yes val) -> val
+    (maybe:no) -> (error1 "lookup-constant: unknown name" name)))
 
 (define ctype->size
   (ctype:pointer _)    -> *word-size*
@@ -396,6 +405,15 @@
     (build-ffi-ob name ztname obtype obcode)
     -> (%ffi2 name))
 
+  (defmacro fetch-ffi-constant
+    ;; we have the correct value at compile time... but in order
+    ;;  for the generated C to be portable, we need to emit a %%cexp here.
+    ;;-> (%%cexp int (%unimplemented-stringify-operator name))
+    (fetch-ffi-constant name val)
+    -> (%%cexp int (%%stringify name))
+    ;;-> val
+    )
+
   )
 
 (%backend bytecode
@@ -413,6 +431,11 @@
   (defmacro build-ffi-ob
     (build-ffi-ob name ztname obtype obcode)
     -> (%%cexp (string -> (cref obtype)) "dlsym2" ztname))
+
+  (defmacro fetch-ffi-constant
+    ;; we need to fetch the correct value at runtime.
+    (fetch-ffi-constant name val)
+    -> (lookup-constant (quote name)))
 
   )
 
@@ -447,6 +470,7 @@
   ;;   sharing metadata with the runtime.  This hack is ok, ONCE.  But not
   ;;   seven times.
   ;; this will be replaced by the VM with the contents of the sizeoff table.
+
   (define sizeoff-table (literal #((sexp:symbol &&sizeoff-sentinel&&))))
 
   (define (update-sizeoff-table)
