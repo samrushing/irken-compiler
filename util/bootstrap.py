@@ -69,6 +69,10 @@ open ('self/flags.scm', 'wb').write (
 print 'copying the bootstrap compiler'
 copy ('self/bootstrap.byc', 'self/compile.byc')
 
+print 'building VM'
+# system ('make vm')
+execfile ('util/build_vm.py')
+
 print 'compiling with vm...'
 system ('vm/irkvm self/compile.byc self/compile.scm -q')
 
