@@ -258,7 +258,9 @@ read_literals (FILE * f)
     pxll_int sizeoff_index = 1 + UNBOX_INTEGER (sizeoff_index_ob);
     object * sizeoff_literal;
     CHECK (read_literal (f, (object *) &sizeoff_literal));
-    bytecode_literals[sizeoff_index] = sizeoff_literal;
+    if (sizeoff_index > 0) {
+      bytecode_literals[sizeoff_index] = sizeoff_literal;
+    }
     return 0;
   } else {
     fprintf (stderr, "bytecode file does not start with vector.\n");
@@ -816,7 +818,17 @@ vm_go (void)
   };
 
   // XXX what happens when the opcode is out of range? (segfault)
-#define DISPATCH() goto *dispatch_table[code[pc]]
+#define NORMAL_DISPATCH() goto *dispatch_table[code[pc]]
+
+#define DEBUG_DISPATCH()                                        \
+  do {                                                          \
+    fprintf (stderr, "--- %ld %s\n", pc, op_names[code[pc]]);   \
+    goto *dispatch_table[code[pc]];                             \
+  } while (0)
+
+
+//#define DISPATCH() DEBUG_DISPATCH()
+#define DISPATCH() NORMAL_DISPATCH()
 
   // print_regs ((object*)vm_regs, 10);
   // print_stack (vm_k);

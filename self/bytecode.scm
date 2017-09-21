@@ -940,6 +940,11 @@
     (define sizeoff-sentinel
       (literal:vector (LIST (literal:cons 'sexp 'symbol (LIST (literal:symbol '&&sizeoff-sentinel&&))))))
 
+    (define (get-sizeoff-sentinel-index)
+      (if (cmap/present? the-context.literals sizeoff-sentinel)
+          (cmap->index the-context.literals sizeoff-sentinel)
+          -1))
+
     ;; --------------------------------------------------------------------------------
 
     (notquiet (printf "output...\n"))
@@ -955,8 +960,9 @@
 
     ;; find prims that generate sizeoff info.
     (find-sizeoff-prims cps)
+
     ;; record the index of the sizeoff sentinel (so it can be replaced)
-    (let ((index (cmap->index the-context.literals sizeoff-sentinel))
+    (let ((index (get-sizeoff-sentinel-index))
           (sizeoff-literal (build-sizeoff-literal)))
       (printf "sizeoff sentinel index = " (int index) "\n")
       ;; ensure that all symbols used in sizeoff are singletons
