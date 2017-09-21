@@ -259,7 +259,7 @@
 (define (lookup-union-size name)
   (match (ffi-info.unions::get name) with
     (maybe:yes (cdef:union size _ _)) -> size
-    _ -> (error1 "lookup-struct-size: unknown struct" name)
+    _ -> (error1 "lookup-union-size: unknown union" name)
     ))
 
 (define (lookup-tdef-size name)
@@ -271,13 +271,13 @@
 (define (lookup-struct-fields name)
   (match (ffi-info.structs::get name) with
     (maybe:yes (cdef:struct _ _ fields)) -> fields
-    _ -> (error1 "lookup-struct-size: unknown struct" name)
+    _ -> (error1 "lookup-struct-fields: unknown struct" name)
     ))
 
 (define (lookup-union-fields name)
   (match (ffi-info.unions::get name) with
     (maybe:yes (cdef:union _ _ fields)) -> fields
-    _ -> (error1 "lookup-struct-size: unknown struct" name)
+    _ -> (error1 "lookup-union-fields: unknown union" name)
     ))
 
 (define lookup-field
