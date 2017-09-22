@@ -427,6 +427,13 @@ pxll_int vm (int argc, char * argv[]);
 
 #include "rdtsc.h"
 
+#ifdef __aarch64__
+// disable llvm.readcyclecounter on arm, where it is expensive and privileged.
+#define USE_CYCLECOUNTER 0
+#else
+#define USE_CYCLECOUNTER 1
+#endif
+
 uint64_t gc_ticks = 0;
 
 #if 1
@@ -718,9 +725,12 @@ static void prof_dump (void);
 typedef void(*kfun)(void);
 void exit_continuation (void)
 {
+#if USE_CYCLECOUNTER
   program_end_time = rdtsc();
+#endif
   dump_object ((object *) result, 0);
   fprintf (stdout, "\n");
+#if USE_CYCLECOUNTER
   if (verbose_gc) {
     fprintf (
       stderr, "{total ticks: %" PRIu64 " gc ticks: %" PRIu64 "}\n",
@@ -728,6 +738,7 @@ void exit_continuation (void)
       gc_ticks
     );
   }
+#endif
   prof_dump();
   if (is_int (result)) {
     exit ((int)(intptr_t)UNBOX_INTEGER(result));
@@ -841,7 +852,9 @@ main (int _argc, char * _argv[])
     k[1] = (object *) PXLL_NIL; // top of stack
     k[2] = (object *) PXLL_NIL; // null environment
     k[3] = (object *) exit_continuation;
+#if USE_CYCLECOUNTER
     program_start_time = rdtsc();
+#endif
     toplevel();
     return 0;
   }

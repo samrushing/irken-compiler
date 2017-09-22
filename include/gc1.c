@@ -148,7 +148,9 @@ gc_flip (int nregs)
 {
   uint64_t t0, t1;
   object nwords;
+#if USE_CYCLECOUNTER
   t0 = rdtsc();
+#endif
   // copy roots
   heap1[0] = (object) lenv;
   heap1[1] = (object) k;
@@ -161,8 +163,10 @@ gc_flip (int nregs)
   top  = (object *) heap0[2];
   // set new limit
   limit = heap0 + (heap_size - 4096);
+#if USE_CYCLECOUNTER
   t1 = rdtsc();
   gc_ticks += (t1 - t0);
+#endif
   return nwords;
 }
 

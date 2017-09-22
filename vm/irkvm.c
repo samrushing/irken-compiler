@@ -458,7 +458,9 @@ vm_gc (int nreg)
   uint64_t t0, t1;
   object nwords;
 
+#if USE_CYCLECOUNTER
   t0 = rdtsc();
+#endif
   // copy roots
   heap1[0] = (object) vm_lenv;
   heap1[1] = (object) vm_k;
@@ -475,8 +477,10 @@ vm_gc (int nreg)
   vm_field_lookup_table = (object *) heap0[4];
   // set new limit
   limit = heap0 + (heap_size - 1024);
+#if USE_CYCLECOUNTER
   t1 = rdtsc();
   gc_ticks += (t1 - t0);
+#endif
   return nwords;
 }
 
