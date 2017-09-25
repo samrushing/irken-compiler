@@ -109,10 +109,6 @@
 		     tl
 		     (list:cons hd (remove-eq x tl))))
 
-(defmacro remove-eq!
-  (remove! item list) -> (set! list (remove-eq item list))
-  )
-
 (define nth
   ()       _ -> (error "list index out of range")
   (hd . _) 0 -> hd
@@ -302,7 +298,7 @@
       (hd . tl)
       -> (match (halve tl) with
 	   (:pair t0 t1) -> (:pair (list:cons hd t1) t0))))
-  
+
   (define (merge-sort l)
     (match l with
       ()   -> l
