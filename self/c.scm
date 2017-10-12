@@ -10,8 +10,6 @@
 	 'bool         -> (format "PXLL_IS_TRUE(" arg ")")
 	 'string       -> (format "((pxll_string*)(" arg "))->data")
 	 'cstring      -> (format "(char*)" arg)
-         ;; cmem is either a buffer or a pointer
-         ;;'cmem         -> (format "(" (irken-type->c-type type) ")(mem2ptr(" arg "))")
 	 'buffer       -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
          'cref         -> (format "(" (irken-type->c-type type) ") get_foreign(" arg ")")
 	 'arrow	       -> arg

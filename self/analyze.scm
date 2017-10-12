@@ -233,7 +233,8 @@
 					    (not recursive)))
 				  (if (> calls 1)
 				      (set-multiplier name calls))
-				  ;; (printf "inline: " (sym name) " calls " (int calls)" escapes " (bool escapes) " recursive " (bool recursive) "\n")
+				  ;; (printf "inline: " (sym name) " calls " (int calls)
+                                  ;; " escapes " (bool escapes) " recursive " (bool recursive) "\n")
 				  (let ((r (inline-application fun rands)))
 				    ;; record the new variables...
 				    (add-vars r)
