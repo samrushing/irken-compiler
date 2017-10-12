@@ -189,7 +189,7 @@ default flags:
 	(_ (find-tail noden))
 	(_ (find-leaves noden))
 	(_ (find-free-refs noden))
-	(_ (verbose (print-string "after second round:\n") (pp-node noden)))
+	(_ (verbose (print-string "after opt:\n") (pp-node noden)))
 	;; rebuild the graph yet again, so strongly will work.
         (_ (notquiet (printf "depgraph...\n")))
 	(_ (build-dependency-graph noden))
@@ -253,7 +253,5 @@ default flags:
     (compile-with-backend base cps)
     )
   )
-
-(%backend bytecode (update-sizeoff-table))
 
 (main)

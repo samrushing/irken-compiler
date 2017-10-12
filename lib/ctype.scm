@@ -215,6 +215,14 @@
         (reader path0 (lambda () (file/read-char file)))))
     ))
 
+;; how many interfaces are needed in this compilation unit?
+(define (interface-count)
+  (match (%%compile-time-meta 'ffi-interfaces) with
+    (sexp:list ifaces)
+    -> (length ifaces)
+    x -> (error1 "bad result from %%compile-time-meta" (repr x))
+    ))
+
 ;; meant for *compile-time* use.
 ;; XXX this distinction not needed.
 (define require-ffi*
@@ -230,6 +238,10 @@
               (parse-spec info forms)
               (loaded::add name info)
               (merge-ffi-info info)
+              (%backend bytecode
+                (if (= (interface-count) (length (loaded::keys)))
+                    ;; we have all the interfaces, so...
+                    (update-sizeoff-table)))
               info
               )
             except

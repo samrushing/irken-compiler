@@ -414,6 +414,8 @@
 	      -> (node/ffi gens type name (map walk args))))
        ((sexp:symbol '%%ffitype) ctype)
        -> (node/literal (ctype->literal (parse-ctype ctype)))
+       ((sexp:symbol '%%compile-time-meta) (sexp:list ((sexp:symbol 'quote) (sexp:symbol name))))
+       -> (node/literal (unsexp (get-compile-time-meta name)))
        ((sexp:symbol '%nvcase) (sexp:symbol dt) val-exp (sexp:list tags) (sexp:list arities) (sexp:list alts) ealt)
        -> (node/nvcase dt (map sexp->symbol tags) (map sexp->int arities) (walk val-exp) (map walk alts) (walk ealt))
        ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) type . body)
@@ -507,6 +509,19 @@
   (ctype:pointer t)    -> (literal:cons 'ctype 'pointer (LIST (ctype->literal t)))
   (ctype:struct name)  -> (literal:cons 'ctype 'struct (LIST (literal:symbol name)))
   (ctype:union name)   -> (literal:cons 'ctype 'union (LIST (literal:symbol name)))
+  )
+
+;; purpose: when we need compile time metadata at runtime.
+;; currently, the only use for this is to fetch the list of
+;;   FFI interfaces needed by this compilation unit.
+;; eventually, we might want to expose data that is computed
+;;   later in the compilation process, and this function should
+;;   be moved to another file.
+(define get-compile-time-meta
+  'ffi-interfaces
+  -> (sexp:list (map sexp:symbol (cmap/keys the-context.ffi-map)))
+  x
+  -> (error1 "get-compile-time-meta: unknown key" x)
   )
 
 (define (frob name num)
