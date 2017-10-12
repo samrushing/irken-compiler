@@ -106,8 +106,22 @@
 (define remove-eq
   x () -> '()
   x (hd . tl) -> (if (eq? hd x)
-		     tl
+		     (remove-eq x tl)
 		     (list:cons hd (remove-eq x tl))))
+
+(define remove
+  eq? item ()        -> '()
+  eq? item (hd . tl) -> (if (eq? hd item)
+                            (remove eq? item tl)
+                            (list:cons hd (remove eq? item tl)))
+  )
+
+(defmacro remove!
+  (remove! item list)
+  -> (set! list (remove-eq item list))
+  (remove! item list eq?)
+  -> (set! list (remove eq? item list))
+  )
 
 (define nth
   ()       _ -> (error "list index out of range")
