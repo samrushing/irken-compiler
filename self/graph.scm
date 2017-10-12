@@ -176,7 +176,8 @@
 				   (begin
 				     (PUSH part val.index)
 				     (set! val.done #t)
-				     (remove-eq! val.index leftover)))))
+                                     (remove! val.index leftover)
+                                     ))))
 	component))
      scc-graph)
     (if (> (length part) 0)
