@@ -1,5 +1,8 @@
 // http://www-unix.mcs.anl.gov/~kazutomo/rdtsc.html
 
+#ifndef IRK_RDTSC_H
+#define IRK_RDTSC_H
+
 #if defined(__llvm__)
 uint64_t rdtsc(void) __asm__ ("llvm.readcyclecounter");
 
@@ -74,3 +77,4 @@ static __inline__ unsigned long long rdtsc(void)
 error ("no rdtsc() on this platform?");
 #endif
 
+#endif // IRK_RDTSC_H
