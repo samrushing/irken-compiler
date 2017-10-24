@@ -59,6 +59,18 @@ def unlink (p):
     except OSError:
         pass
 
+class WorkInDir(object):
+    def __init__ (self, path):
+        self.orig = os.getcwd()
+        self.path = path
+    def __enter__ (self):
+        os.chdir (self.path)
+    def __exit__ (self, *args):
+        os.chdir (self.orig)
+
+def sys_in_dir (where, what):
+    with WorkInDir (where):
+        system (what)
 
 open ('self/flags.scm', 'wb').write (
 """
@@ -72,6 +84,9 @@ copy ('self/bootstrap.byc', 'self/compile.byc')
 print 'building VM'
 # system ('make vm')
 execfile ('util/build_vm.py')
+
+print 'generating posix FFI...'
+sys_in_dir ('ffi', 'python gen.py posix.ffi')
 
 print 'compiling with vm...'
 system ('vm/irkvm self/compile.byc self/compile.scm -q')
@@ -101,7 +116,7 @@ def diff (p0, p1):
             if not b0:
                 break
         return True
-            
+
 # file comparison on windows?  duh, should just do it in python.
 samesame = diff ('self/compile.1.c', 'self/compile.2.c')
 if samesame:
