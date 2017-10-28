@@ -1,5 +1,29 @@
 ;; -*- Mode: Irken -*-
 
+;; XXX consider a separate 'cint' type for those cases
+;;  where the type is always an int.
+
+;; yes, I think we need something like this:
+;; (datatype cint
+;;   (:short bool)
+;;   (:int bool)
+;;   (:long bool)
+;;   (:longlong bool)
+;;   (:t int bool)
+;;   )
+;;
+;; -or-
+;; (datatype cint
+;;   (:char)
+;;   (:short)
+;;   (:int)
+;;   (:long)
+;;   (:longlong)
+;;   (:width int)
+;;   )
+;; and then have (ctype:int cint bool)
+
+
 (datatype ctype
   (:name symbol)  ;; void, char, thing_t, etc...
   (:int int bool) ;; size (in bytes), signed?
@@ -451,32 +475,33 @@
 
   )
 
+(define sexp->ref
+  (sexp:attr (sexp:symbol sname) fname)
+  -> (let ((ref0 {off=0 ctype=(ctype:struct sname)}))
+       (cref-field fname ref0))
+  (sexp:attr sub fname)
+  -> (let ((ref0 (sexp->ref sub)))
+       (cref-field fname ref0))
+  x -> (raise (:SexpRefError x))
+  )
+
+(define sexp->sizeoff
+  (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
+  -> (ctype->size (ctype:struct name))
+  (sexp:list ((sexp:symbol 'union) (sexp:symbol name)))
+  -> (ctype->size (ctype:union name))
+  (sexp:symbol tdef)
+  -> (ctype->size (ctype:name tdef))
+  exp
+  -> (let ((ref (sexp->ref exp)))
+       ;;(printf "sexp->sizeoff sref " (repr exp) " " (int ref.off) "\n")
+       ref.off)
+  )
+
 (%backend bytecode
 
   ;; ----------------- sizeoff table -----------------
 
-  (define sexp->ref
-    (sexp:attr (sexp:symbol sname) fname)
-    -> (let ((ref0 {off=0 ctype=(ctype:struct sname)}))
-         (cref-field fname ref0))
-    (sexp:attr sub fname)
-    -> (let ((ref0 (sexp->ref sub)))
-         (cref-field fname ref0))
-    x -> (raise (:SexpRefError x))
-    )
-
-  (define sexp->sizeoff
-    (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
-    -> (ctype->size (ctype:struct name))
-    (sexp:list ((sexp:symbol 'union) (sexp:symbol name)))
-    -> (ctype->size (ctype:union name))
-    (sexp:symbol tdef)
-    -> (ctype->size (ctype:name tdef))
-    exp
-    -> (let ((ref (sexp->ref exp)))
-         ;;(printf "sexp->sizeoff sref " (repr exp) " " (int ref.off) "\n")
-         ref.off)
-    )
 
   ;; XXX it would be really nice if we just had some generic mechanism for
   ;;   sharing metadata with the runtime.  This hack is ok, ONCE.  But not
