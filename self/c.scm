@@ -630,11 +630,7 @@
                  (o.write (format "// ctype = " ctype))
                  (o.write (format "O r" (int target)
                                   " = offset_foreign (r" (int src)", sizeof(" ctype
-                                  ") * UNBOX_INTEGER(r" (int index)"));"))
-                 ;; (o.write (format "O r" (int target)
-                 ;;                  " = make_foreign((void*)((" ctype " *)(get_foreign (r" (int src) "))) "
-                 ;;                  "+ UNBOX_INTEGER(r" (int index) "));"))
-                 )
+                                  ") * UNBOX_INTEGER(r" (int index)"));")))
             _ _ -> (primop-error)))
 
 
