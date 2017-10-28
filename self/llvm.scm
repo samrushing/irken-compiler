@@ -1,9 +1,12 @@
 ;; -*- Mode: Irken -*-
 
+;; LLVM backend: targets *only* LP64.
 
 ;; XXX shouldn't be global (or should be kept in the-context).
 (define fatbar-free (map-maker int-cmp))
 (define litcons (set2-maker int-cmp))
+(define llvm-decls (set2-maker magic-cmp))
+(define ffifuns (set2-maker symbol-index-cmp))
 
 ;; CPS registers are mapped to LLVM idents like this:
 ;;  r5 -> "%r5"
@@ -13,6 +16,21 @@
 
 (defmacro oformat
   (oformat item ...) -> (o.write (format item ...))
+  )
+
+;; convert a ctype to its llvm representation.
+(define ctype->llvm
+  (ctype:name 'void)  -> "void"
+  (ctype:name 'char)  -> "i8"
+  (ctype:name x)      -> (error1 "ctype->llvm: unsupported ctype:name" x)
+  (ctype:int 0 _)     -> "i32" ;; XXX 'int' in C.  still rethinking this decision.
+  (ctype:int width _) -> (format "i" (int (* 8 width)))
+  (ctype:array len t) -> (format "[" (int len) " x " (ctype->llvm t) "]")
+  (ctype:pointer t)   -> (format (ctype->llvm t) "*")
+  ;; XXX we do not represent c structs in llvm (yet)
+  ;; XXX do we need something like [24 x i8] ?
+  (ctype:struct _)    -> (format "i8*")
+  (ctype:union _)     -> (format "i8*")
   )
 
 ;; when ready, cname will become name, and called first as 'toplevel
@@ -25,13 +43,22 @@
 	(fun-stack '())
 	(label-counter (make-counter 1))
 	(arg-counter (make-counter 0))
+        (tid-counter (make-counter 0))
 	(renamed (map-maker int-cmp))
 	)
+
+    ;; various difficulties are caused by trying to match up with llvm's
+    ;;  sense of 'automatically numbered' variables.  we should instead
+    ;;  just number them sequentially with a common prefix that doesn't
+    ;;  conflict with the auto-numbered ones.
 
     (define (ID)
       (set! ident (+ 1 ident))
       ident
       )
+
+    (define (TID)
+      (format "%t" (int (tid-counter.inc))))
 
     (define (make-idents n)
       (let ((v (make-vector n 0)))
@@ -149,6 +176,25 @@
 	(walk else)
 	))
 
+    ;; Note: like all of this file, this is defined as LP64.  This
+    ;;  covers most unix-like platforms, but leaves out Windows, which
+    ;;  is LLP64 (difference being 'long' == i32).
+    (define lp64->cint
+      'int   -> (ctype:int 4 #t)
+      'uint  -> (ctype:int 4 #f)
+      'long  -> (ctype:int 8 #t)
+      'ulong -> (ctype:int 8 #f)
+      'i8    -> (ctype:int 1 #t)
+      'u8    -> (ctype:int 1 #f)
+      'i16   -> (ctype:int 2 #t)
+      'u16   -> (ctype:int 2 #f)
+      'i32   -> (ctype:int 4 #t)
+      'u32   -> (ctype:int 4 #f)
+      'i64   -> (ctype:int 8 #t)
+      'u64   -> (ctype:int 8 #f)
+      x -> (error1 "llvm/parse-c-int failed" x)
+      )
+
     (define (emit-primop name params type args target)
       (match name params args with
 	'%llarith (sexp:symbol op) (arg0 arg1)             -> (emit-arith op arg0 arg1 target)
@@ -208,6 +254,84 @@
 	     (o.write (format "%r" (int target) " = bitcast i8** %r" (int rv) " to i8**"))
 	     )
 
+        ;; ------------------------------------------------------------------------------------------
+        ;; needed for FFI:
+        ;; %malloc %halloc %free %ffi2 %c-aref %c-get-int %c-set-int %c-sref
+        ;; %cref->string %string->cref %c-sizeof %cref->int
+        ;; for FFI runtime we need get_foreign, offset_foreign, make_foreign, make_halloc, free_foreign
+        '%malloc params (count)
+        -> (let ((ctype (parse-ctype params))
+                 (size (ctype->size ctype))
+                 (id0 (TID)))
+             (printf "%malloc type param = " (repr params) " size = " (int size) "\n")
+             (if (< target 0)
+                 (error "dead %malloc target"))
+             (oformat id0 " = call i64 @insn_unbox (i8** %r" (int count) ")")
+             (oformat "%r" (int target) " = call i8** @make_malloc (i64 " (int size) ", i64 " id0 ")")
+             )
+
+        '%c-aref params (ref index)
+        -> (let ((ctype (parse-ctype params))
+                 (size (ctype->size ctype))
+                 (id0 (TID))
+                 (id1 (TID)))
+             (if (< target 0)
+                 (error "dead %c-aref target"))
+             (oformat id0 " = call i64 @insn_unbox (i8** %r" (int index) ")")
+             (oformat id1 " = mul i64 " id0 ", " (int size))
+             (oformat "%r" (int target) " = call i8** @offset_foreign (i8** %r" (int ref) ", i64 " id1 ")"))
+
+        '%c-sref refexp (src)
+        -> (let ((ref0 (sexp->ref refexp)))
+             (if (< target 0)
+                 (error "dead %c-sref target"))
+             (oformat "%r" (int target) " = call i8** @offset_foreign (i8** %r" (int src) ", i64 " (int ref0.off) ")")
+             )
+
+        '%c-get-int (sexp:symbol itype) (src)
+        -> (let ((cint (lp64->cint itype))
+                 (iname (ctype->llvm cint))
+                 (id0 (TID))
+                 (id1 (TID))
+                 (id2 (TID))
+                 (id3 (TID))
+                 )
+             (oformat id0 " = call i8** @get_foreign (i8** %r" (int src) ")")
+             (oformat id1 " = bitcast i8** " id0 " to " iname "*")
+             (oformat id2 " = load " iname ", " iname "* " id1)
+             (match cint with
+               (ctype:int 8 _) ;; already i64
+               -> (begin
+                    (warning (format "64-bit int fetched into irken int.\n"))
+                    (oformat "%r" (int target) " = call i8** @insn_box (i64 " id2 ")"))
+               (ctype:int _ signed?)
+               -> (begin
+                    (if signed?
+                        (oformat id3 " = sext " iname " " id2 " to i64")
+                        (oformat id3 " = zext " iname " " id2 " to i64"))
+                    (oformat "%r" (int target) " = call i8** @insn_box (i64 " id3 ")")
+                    )
+               _ -> (impossible)
+               )
+             )
+
+        '%ffi2 params args
+        -> (emit-ffi2 params args target)
+
+        '%free _ (ref)
+        -> (oformat (TID) " = call i8** @free_foreign (i8** %r" (int ref) ")")
+
+        '%string->cref params (src)
+        -> (oformat "%r" (int target) " = call i8** @irk_string_2_cref (i8** %r" (int src) ")")
+
+        '%cref->string params (src len)
+        -> (oformat "%r" (int target) " = call i8** @irk_cref_2_string (i8** %r" (int src) ", i8** %r" (int len) ")")
+
+        '%cref->int params (src)
+        -> (oformat "%r" (int target) " = call i8** @irk_cref_2_int (i8** %r" (int src) ")")
+
+
+        ;; ------------------------------------------------------------------------------------------
 	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x (repr params) args))
 	))
 
@@ -281,6 +405,21 @@
     ;;  maybe we can emit a "sizeof(struct X)" constant that can be referenced from llvm ir.
 
     ;; provide automatic conversions of base types for inputs to %%ffi
+    ;; NOTE: this is not the same as wrap-in as used by cexp.  As such, this probably needs to
+    ;;  be changed to support the csig interface used by 'ffi2'.
+
+    ;; XXX: need to think more about this. as it stands this will not work with functions that
+    ;;   take non int64 args.  Or will it?  In C obviously we can just pass an int64 arg to a
+    ;;   function that takes an int16.  What do we do about this?  In C we just updoot everything
+    ;;   to pxll_int.  Presumably this will work here, too.  So do we just auto-convert all (ctype:int)
+    ;;   to i64?
+
+    ;; XXX from the C funcall perspective, there are only two kinds of arguments: pointers and integers.
+    ;;   because of this, nearly all the nuances of types can be ignored when making a foreign function
+    ;;   call.  C silently promotes all integers to word size.
+    ;;  Question: if a function returns an int16 value, is the result already sign extended, or
+    ;;    do _we_ need to do it?
+
     (define (wrap-in type arg)
       (match type with
       	(type:tvar id _)
@@ -293,10 +432,34 @@
 	       'bool	-> (begin (oformat arg0 " = call i64 @irk_is_true (i8** %r" (int arg) ")") (format "i64 " arg0))
 	       'string	-> (begin (oformat arg0 " = call i8** @irk_get_cstring (i8** %r" (int arg) ")") (format "i8* " arg0))
 	       'cstring	-> (begin (oformat arg0 " = bitcast i8** to i8*") (format "i8* " arg0))
+               'cref    -> (begin (oformat arg0 " = call i8** @get_foreign (i8** %r" (int arg) ")") (format "i8** " arg0))
 	       ;;'buffer -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
 	       x -> (error1 "wrap-in:" type)
 	       ))
 	))
+
+    (define (wrap-out-int width signed? val result)
+      (let ((iname (if (= width 0) "i32" (format "i" (int (* width 8))))))
+        (if (= width 8)
+            (begin
+              (warning (format "64-bit int fetched into irken int.\n"))
+              (oformat result " = call i8** @insn_box (i64 " val ")"))
+            (let ((id0 (TID)))
+              (if signed?
+                  (oformat id0 " = sext " iname " " val " to i64")
+                  (oformat id0 " = zext " iname " " val " to i64"))
+              (oformat result " = call i8** @insn_box (i64 " id0 ")")
+              ))))
+
+    (define (wrap-out ctype val result)
+      (match ctype with
+        (ctype:int width signed?) -> (wrap-out-int width signed? val result)
+        (ctype:pointer _)         -> (oformat result " = call i8** @make_foreign (i8* " val ")")
+        (ctype:array _ _)         -> (oformat result " = call i8** @make_foreign (i8* " val ")")
+        x -> (error1 "llvm/wrap-out: unsupported return type" (ctype-repr x))
+        ))
+
+    ;; for integer-like results, I think this is similar to the problem that c-get-int solves.
 
     (define (emit-ffi sig type name args target)
       (match sig with
@@ -308,6 +471,32 @@
 	     (oformat "call i8** @" (sym name) "(" (join ", " args0) ")"))
 	x -> (error1 "bad ffi type" (type-repr sig))
 	))
+
+    ;; XXX next step: we need to emit declarations for each foreign function called.
+    (define (emit-ffi2 params args target)
+      (match params with
+        (sexp:symbol name)
+        -> (match (ffi-info.sigs::get name) with
+             (maybe:yes (csig:fun name rtype argtypes0))
+             -> (let ((argtypes1 (map ctype->irken-type argtypes0))
+                      ;; NOTE: wrap-in emits code as a side-effect.
+                      (args1 (map2 wrap-in argtypes1 args))
+                      (lrtype (ctype->llvm rtype))
+                      (id0 (TID)))
+                  (ffifuns::add name) ;; so we can declare it later
+                  (oformat id0 " = call " lrtype " @" (sym name) "(" (join ", " args1) ")")
+                  (wrap-out rtype id0 (format "%r" (int target)))
+                  )
+             (maybe:yes (csig:obj name obtype))
+             -> (begin
+                  (ffifuns::add name)
+                  ;; XXX probably need a bitcast here from x* -> i8**
+                  (oformat "%r" (int target) " = call i8** @make_foreign (" (ctype->llvm obtype) "* @" (sym name) ")"))
+             (maybe:no)
+             -> (error1 "ffi2 unknown symbol" name)
+             )
+        x -> (error1 "bad ffi2 param" x)
+        ))
 
     ;; this will just call the generated C function.
     (define (emit-cexp sig type template args target)
@@ -772,6 +961,20 @@
 	   )
     ))
 
+(define (emit-ffi-declarations o)
+  (o.write (format ";; declarations for called foreign functions (FFI)"))
+  (ffifuns::iterate
+   (lambda (name)
+     (match (ffi-info.sigs::get name) with
+       (maybe:yes (csig:fun name rtype argtypes0))
+       -> (let ((argtypes1 (map ctype->llvm argtypes0))
+                (lrtype (ctype->llvm rtype)))
+            (o.write (format "declare " lrtype " @" (sym name) " (" (join ", " argtypes1) ")")))
+       (maybe:yes (csig:obj name obtype))
+       ;; XXX all external objects can probably be declared 'i8*'
+       -> (o.write (format "@" (sym name) " = external global " (ctype->llvm obtype)))
+       _ -> (error1 "emit-ffi-declarations: bad name" name)))))
+
 (define (emit-llvm co o cname cps)
   (printf "scanning for cexp...\n")
   (let ((cexp-map (find-cexps cps)))
@@ -798,4 +1001,5 @@
     (litcons::iterate
      (lambda (index)
        (oformat "@constructed_" (int index) " = external global i8**")))
+    (emit-ffi-declarations o)
     ))
