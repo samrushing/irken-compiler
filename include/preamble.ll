@@ -33,6 +33,17 @@ declare void @DO (i8** %ob)
 declare void @DENV()
 declare i8** @putchar (i64 %ch)
 declare void @TRACE(i8* %name)
+declare i8** @irk_get_errno()
+
+;; FFI
+declare i8** @make_malloc (i64 %size, i64 %count)
+declare i8** @make_halloc (i64 %size)
+declare i8** @get_foreign (i8** %ob)
+declare i8** @offset_foreign (i8** %foreign, i64 %offset)
+declare i8** @free_foreign (i8** %foreign)
+declare i8** @irk_cref_2_string (i8** %src, i8** %len)
+declare i8** @irk_string_2_cref (i8** %src)
+declare i8** @irk_cref_2_int (i8** %src)
 
 ;; Note: at some point near llvm3/4, they changed the syntax
 ;;   of some of the insns: at least load/getelementptr. urgh.
