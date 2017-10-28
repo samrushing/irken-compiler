@@ -566,6 +566,14 @@ make_foreign (void * ptr)
 }
 
 object *
+make_malloc (pxll_int size, pxll_int count)
+{
+  object * r = allocate (TC_FOREIGN, 1);
+  r[1] = (object *) malloc (size * count);
+  return r;
+}
+
+object *
 make_halloc (pxll_int size)
 {
   object * buffer = alloc_no_clear (TC_BUFFER, HOW_MANY (size, sizeof(object)));
@@ -575,7 +583,6 @@ make_halloc (pxll_int size)
   return result;
 }
 
-static
 void *
 get_foreign (object * ob)
 {
@@ -591,7 +598,6 @@ get_foreign (object * ob)
   }
 }
 
-static
 object *
 offset_foreign (object * foreign, pxll_int offset)
 {
@@ -614,7 +620,6 @@ offset_foreign (object * foreign, pxll_int offset)
   }
 }
 
-static
 object *
 free_foreign (object * foreign)
 {
@@ -623,6 +628,39 @@ free_foreign (object * foreign)
   }
   return (object*) PXLL_UNDEFINED;
 }
+
+object *
+irk_cref_2_string (object * src, object * len)
+{
+  pxll_int len0 = UNBOX_INTEGER (len);
+  object * result = make_string (len0);
+  uint8_t * src0 = (uint8_t * ) get_foreign (src);
+  void * dst = GET_STRING_POINTER (result);
+  memcpy (dst, src, len0);
+  return result;
+}
+
+object *
+irk_string_2_cref (object * src)
+{
+  return make_foreign (GET_STRING_POINTER (src));
+}
+
+object *
+irk_cref_2_int (object * src)
+{
+  return BOX_INTEGER (((pxll_int *) src)[1]);
+}
+
+// Note: 'errno' is no longer simply an external int.  It can be defined in any of several ways,
+//   which means that our llvm generated code cannot access it without going through the C api.
+//   (for example, on OSX its location is the result of a call to `_error()`)
+object *
+irk_get_errno (void)
+{
+  return BOX_INTEGER ((pxll_int) errno);
+}
+
 
 // used to lookup record elements when the index
 //  cannot be computed at compile-time.
