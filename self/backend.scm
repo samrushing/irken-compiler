@@ -31,7 +31,7 @@
       )
     (define (get-total)
       total)
-    {write=write-string indent=indent dedent=dedent copy=push close=close-file get-total=get-total}
+    {write=write-string indent=indent dedent=dedent copy=push close=close-file get-total=get-total flush=flush}
     ))
 
 (define (make-name-frobber)
