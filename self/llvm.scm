@@ -295,8 +295,8 @@
                  (id2 (TID))
                  (id3 (TID))
                  )
-             (oformat id0 " = call i8** @get_foreign (i8** %r" (int src) ")")
-             (oformat id1 " = bitcast i8** " id0 " to " iname "*")
+             (oformat id0 " = call i8* @get_foreign (i8** %r" (int src) ")")
+             (oformat id1 " = bitcast i8* " id0 " to " iname "*")
              (oformat id2 " = load " iname ", " iname "* " id1)
              (match cint with
                (ctype:int cint signed?)
@@ -413,12 +413,6 @@
     ;;   to pxll_int.  Presumably this will work here, too.  So do we just auto-convert all (ctype:int)
     ;;   to i64?
 
-    ;; XXX from the C funcall perspective, there are only two kinds of arguments: pointers and integers.
-    ;;   because of this, nearly all the nuances of types can be ignored when making a foreign function
-    ;;   call.  C silently promotes all integers to word size.
-    ;;  Question: if a function returns an int16 value, is the result already sign extended, or
-    ;;    do _we_ need to do it?
-
     (define (wrap-in type arg)
       (match type with
       	(type:tvar id _)
@@ -431,11 +425,22 @@
 	       'bool	-> (begin (oformat arg0 " = call i64 @irk_is_true (i8** %r" (int arg) ")") (format "i64 " arg0))
 	       'string	-> (begin (oformat arg0 " = call i8** @irk_get_cstring (i8** %r" (int arg) ")") (format "i8* " arg0))
 	       'cstring	-> (begin (oformat arg0 " = bitcast i8** to i8*") (format "i8* " arg0))
-               'cref    -> (begin (oformat arg0 " = call i8** @get_foreign (i8** %r" (int arg) ")") (format "i8** " arg0))
-	       ;;'buffer -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
+               'cref    -> (begin (oformat arg0 " = call i8* @get_foreign (i8** %r" (int arg) ")") (format "i8* " arg0))
 	       x -> (error1 "wrap-in:" type)
 	       ))
 	))
+
+    (define (maybe-trunc ctype arg)
+      (match ctype with
+        (ctype:int cint signed?)
+        -> (let ((width (cint-size cint)))
+             (if (= width 8) ;; already i64
+                 arg
+                 (let ((id0 (TID))
+                       (lt (ctype->llvm ctype)))
+                   (oformat id0 " = trunc " arg " to " lt)
+                   (format lt " " id0))))
+        _ -> arg))
 
     (define (wrap-out-int cint signed? val result)
       (let ((width (cint-size cint))
@@ -454,8 +459,8 @@
     (define (wrap-out ctype val result)
       (match ctype with
         (ctype:int cint signed?)  -> (wrap-out-int cint signed? val result)
-        (ctype:pointer _)         -> (oformat result " = call i8** @make_foreign (i8* " val ")")
-        (ctype:array _ _)         -> (oformat result " = call i8** @make_foreign (i8* " val ")")
+        (ctype:pointer _)         -> (oformat result " = call i8** @make_foreign (" (ctype->llvm ctype) " " val ")")
+        (ctype:array _ _)         -> (oformat result " = call i8** @make_foreign (" (ctype->llvm ctype) " " val ")")
         x -> (error1 "llvm/wrap-out: unsupported return type" (ctype-repr x))
         ))
 
@@ -481,17 +486,20 @@
              -> (let ((argtypes1 (map ctype->irken-type argtypes0))
                       ;; NOTE: wrap-in emits code as a side-effect.
                       (args1 (map2 wrap-in argtypes1 args))
+                      (args2 (map2 maybe-trunc argtypes0 args1))
                       (lrtype (ctype->llvm rtype))
                       (id0 (TID)))
                   (ffifuns::add name) ;; so we can declare it later
-                  (oformat id0 " = call " lrtype " @" (sym name) "(" (join ", " args1) ")")
+                  (oformat id0 " = call " lrtype " @" (sym name) "(" (join ", " args2) ")")
                   (wrap-out rtype id0 (format "%r" (int target)))
                   )
              (maybe:yes (csig:obj name obtype))
-             -> (begin
+             -> (let ((lt (ctype->llvm obtype))
+                      (arg (if (string=? lt "i8")
+                               (format lt "* @" (sym name))
+                               (format "i8* bitcast (" lt "* @" (sym name) " to i8*)"))))
                   (ffifuns::add name)
-                  ;; XXX probably need a bitcast here from x* -> i8**
-                  (oformat "%r" (int target) " = call i8** @make_foreign (" (ctype->llvm obtype) "* @" (sym name) ")"))
+                  (oformat "%r" (int target) " = call i8** @make_foreign (" arg ")"))
              (maybe:no)
              -> (error1 "ffi2 unknown symbol" name)
              )
