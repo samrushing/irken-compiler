@@ -14,7 +14,7 @@
 
 (define ctype->sexp
   (ctype:name name)    -> (sexp:symbol name)
-  (ctype:int size s?)  -> (sexp:symbol 'int)
+  (ctype:int _ s?)     -> (sexp:symbol 'int)
   (ctype:array size t) -> (sexp (sexp:symbol 'cref) (ctype->sexp t))
   (ctype:pointer t)    -> (sexp (sexp:symbol 'cref) (ctype->sexp t))
   (ctype:struct name)  -> (sexp (sexp:symbol 'struct) (sexp:symbol name))

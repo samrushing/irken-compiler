@@ -504,7 +504,7 @@
 
 (define ctype->literal
   (ctype:name name)    -> (literal:cons 'ctype 'name (LIST (literal:symbol name)))
-  (ctype:int size s?)  -> (literal:cons 'ctype 'int (LIST (literal:int size) (literal:bool s?)))
+  (ctype:int size s?)  -> (literal:cons 'ctype 'int (LIST (literal:int (cint-size size)) (literal:bool s?)))
   (ctype:array size t) -> (literal:cons 'ctype 'array (LIST (literal:int size) (ctype->literal t)))
   (ctype:pointer t)    -> (literal:cons 'ctype 'pointer (LIST (ctype->literal t)))
   (ctype:struct name)  -> (literal:cons 'ctype 'struct (LIST (literal:symbol name)))

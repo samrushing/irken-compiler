@@ -317,34 +317,29 @@
   (let ((sig (get-record-sig t)))
     (sexp:list (map sexp:symbol sig))))
 
-(define (int-ctype->itype size signed?)
+(define (int-ctype->itype cint signed?)
   (pred
-   (match size signed? with
-     0 #t  -> 'int
-     0 #f  -> 'unsigned
-     1 #t  -> 'i8
-     1 #f  -> 'u8
-     2 #t  -> 'i16
-     2 #f  -> 'u16
-     4 #t  -> 'i32
-     4 #f  -> 'u32
-     8 #t  -> 'i64
-     8 #f  -> 'u64
-     32 #t -> 'i256
-     32 #f -> 'u256
-     _ _   -> (error1 "unsupported int type"
-                      (format "size=" (int size)
-                              " signed=" (bool signed?)))
+   (match cint signed? with
+     (cint:char) #t   -> 'char
+     (cint:char) #f   -> 'uchar
+     (cint:int)  #t   -> 'int
+     (cint:int)  #f   -> 'uint
+     (cint:long) #t   -> 'long
+     (cint:long) #f   -> 'ulong
+     (cint:width w) _ -> (string->symbol (format (if signed? "i" "u") (int (* w 8))))
+     _ _              -> (error1 "unsupported cint type"
+                                 (format "cint=" (cint-repr cint signed?)
+                                         " signed=" (bool signed?)))
      )
    '()))
 
 (define ctype->irken-type
-  (ctype:name name) -> (pred name '())
-  (ctype:int n s)   -> (int-ctype->itype n s)
-  (ctype:array _ t) -> (pred 'array (LIST (ctype->irken-type t)))
-  (ctype:pointer t) -> (pred 'cref (LIST (ctype->irken-type t)))
-  (ctype:struct n)  -> (pred 'struct (LIST (pred n '())))
-  (ctype:union n)   -> (pred 'union (LIST (pred n '())))
+  (ctype:name name)  -> (pred name '())
+  (ctype:int cint s) -> (int-ctype->itype cint s)
+  (ctype:array _ t)  -> (pred 'array (LIST (ctype->irken-type t)))
+  (ctype:pointer t)  -> (pred 'cref (LIST (ctype->irken-type t)))
+  (ctype:struct n)   -> (pred 'struct (LIST (pred n '())))
+  (ctype:union n)    -> (pred 'union (LIST (pred n '())))
   )
 
 ;; (define (test-types)

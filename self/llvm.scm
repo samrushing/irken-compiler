@@ -23,8 +23,7 @@
   (ctype:name 'void)  -> "void"
   (ctype:name 'char)  -> "i8"
   (ctype:name x)      -> (error1 "ctype->llvm: unsupported ctype:name" x)
-  (ctype:int 0 _)     -> "i32" ;; XXX 'int' in C.  still rethinking this decision.
-  (ctype:int width _) -> (format "i" (int (* 8 width)))
+  (ctype:int size _)  -> (format "i" (int (* 8 (cint-size size))))
   (ctype:array len t) -> (format "[" (int len) " x " (ctype->llvm t) "]")
   (ctype:pointer t)   -> (format (ctype->llvm t) "*")
   ;; XXX we do not represent c structs in llvm (yet)
@@ -180,18 +179,18 @@
     ;;  covers most unix-like platforms, but leaves out Windows, which
     ;;  is LLP64 (difference being 'long' == i32).
     (define lp64->cint
-      'int   -> (ctype:int 4 #t)
-      'uint  -> (ctype:int 4 #f)
-      'long  -> (ctype:int 8 #t)
-      'ulong -> (ctype:int 8 #f)
-      'i8    -> (ctype:int 1 #t)
-      'u8    -> (ctype:int 1 #f)
-      'i16   -> (ctype:int 2 #t)
-      'u16   -> (ctype:int 2 #f)
-      'i32   -> (ctype:int 4 #t)
-      'u32   -> (ctype:int 4 #f)
-      'i64   -> (ctype:int 8 #t)
-      'u64   -> (ctype:int 8 #f)
+      'int   -> (ctype:int (cint:width 4) #t)
+      'uint  -> (ctype:int (cint:width 4) #f)
+      'long  -> (ctype:int (cint:width 8) #t)
+      'ulong -> (ctype:int (cint:width 8) #f)
+      'i8    -> (ctype:int (cint:width 1) #t)
+      'u8    -> (ctype:int (cint:width 1) #f)
+      'i16   -> (ctype:int (cint:width 2) #t)
+      'u16   -> (ctype:int (cint:width 2) #f)
+      'i32   -> (ctype:int (cint:width 4) #t)
+      'u32   -> (ctype:int (cint:width 4) #f)
+      'i64   -> (ctype:int (cint:width 8) #t)
+      'u64   -> (ctype:int (cint:width 8) #f)
       x -> (error1 "llvm/parse-c-int failed" x)
       )
 
@@ -300,20 +299,20 @@
              (oformat id1 " = bitcast i8** " id0 " to " iname "*")
              (oformat id2 " = load " iname ", " iname "* " id1)
              (match cint with
-               (ctype:int 8 _) ;; already i64
-               -> (begin
-                    (warning (format "64-bit int fetched into irken int.\n"))
-                    (oformat "%r" (int target) " = call i8** @insn_box (i64 " id2 ")"))
-               (ctype:int _ signed?)
-               -> (begin
-                    (if signed?
-                        (oformat id3 " = sext " iname " " id2 " to i64")
-                        (oformat id3 " = zext " iname " " id2 " to i64"))
-                    (oformat "%r" (int target) " = call i8** @insn_box (i64 " id3 ")")
-                    )
-               _ -> (impossible)
-               )
-             )
+               (ctype:int cint signed?)
+               -> (if (= (cint-size cint) 8) ;; already i64
+                      (begin
+                        (warning (format "64-bit int fetched into irken int.\n"))
+                        (oformat "%r" (int target) " = call i8** @insn_box (i64 " id2 ")"))
+                      (begin
+                        (if signed?
+                            (oformat id3 " = sext " iname " " id2 " to i64")
+                            (oformat id3 " = zext " iname " " id2 " to i64"))
+                        (oformat "%r" (int target) " = call i8** @insn_box (i64 " id3 ")"))
+                      )
+               _ -> (error1 "llvm/%c-get-int: unexpected ctype" (ctype-repr cint))
+               ))
+
 
         '%ffi2 params args
         -> (emit-ffi2 params args target)
@@ -438,8 +437,9 @@
 	       ))
 	))
 
-    (define (wrap-out-int width signed? val result)
-      (let ((iname (if (= width 0) "i32" (format "i" (int (* width 8))))))
+    (define (wrap-out-int cint signed? val result)
+      (let ((width (cint-size cint))
+            (iname (format "i" (int (* width 8)))))
         (if (= width 8)
             (begin
               (warning (format "64-bit int fetched into irken int.\n"))
@@ -453,7 +453,7 @@
 
     (define (wrap-out ctype val result)
       (match ctype with
-        (ctype:int width signed?) -> (wrap-out-int width signed? val result)
+        (ctype:int cint signed?)  -> (wrap-out-int cint signed? val result)
         (ctype:pointer _)         -> (oformat result " = call i8** @make_foreign (i8* " val ")")
         (ctype:array _ _)         -> (oformat result " = call i8** @make_foreign (i8* " val ")")
         x -> (error1 "llvm/wrap-out: unsupported return type" (ctype-repr x))

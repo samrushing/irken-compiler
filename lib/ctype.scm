@@ -1,32 +1,41 @@
 ;; -*- Mode: Irken -*-
 
-;; XXX consider a separate 'cint' type for those cases
-;;  where the type is always an int.
+(datatype cint
+  (:char)
+  (:short)
+  (:int)
+  (:long)
+  (:longlong)
+  (:width int)
+  )
 
-;; yes, I think we need something like this:
-;; (datatype cint
-;;   (:short bool)
-;;   (:int bool)
-;;   (:long bool)
-;;   (:longlong bool)
-;;   (:t int bool)
-;;   )
-;;
-;; -or-
-;; (datatype cint
-;;   (:char)
-;;   (:short)
-;;   (:int)
-;;   (:long)
-;;   (:longlong)
-;;   (:width int)
-;;   )
-;; and then have (ctype:int cint bool)
+(define (cint-repr t signed?)
+  (let ((suffix
+         (match t with
+           (cint:char)      -> "char"
+           (cint:short)     -> "short"
+           (cint:int)       -> "int"
+           (cint:long)      -> "long"
+           (cint:longlong)  -> "longlong"
+           (cint:width w)   -> (format (int w)))))
+    (match t with
+      (cint:width _) -> (format (if signed? "i" "u") suffix)
+      _              -> (format (if signed? "" "u") suffix)
+      )))
 
+;; lp64
+(define cint-size
+  (cint:char)     -> 1
+  (cint:short)    -> 2
+  (cint:int)      -> 4
+  (cint:long)     -> 8
+  (cint:longlong) -> 8
+  (cint:width w)  -> w
+  )
 
 (datatype ctype
-  (:name symbol)  ;; void, char, thing_t, etc...
-  (:int int bool) ;; size (in bytes), signed?
+  (:name symbol)   ;; void, thing_t, etc...
+  (:int cint bool) ;; size, signed?
   (:array int ctype)
   (:pointer ctype)
   (:struct symbol)
@@ -35,7 +44,7 @@
 
 (define ctype-repr
   (ctype:name name)    -> (symbol->string name)
-  (ctype:int size s?)  -> (format (if s? "i" "u") (int (* size 8)))
+  (ctype:int cint s?)  -> (cint-repr cint s?)
   (ctype:array size t) -> (format "(array " (int size) " " (ctype-repr t) ")")
   (ctype:pointer t)    -> (format "(* " (ctype-repr t) ")")
   (ctype:struct name)  -> (format "(struct " (sym name) ")")
@@ -86,9 +95,9 @@
 
 (define parse-ctype
   (sexp:symbol 'int)
-  -> (ctype:int 0 #t) ;; indicates 'int' type, with no size qualification.
+  -> (ctype:int (cint:int) #t)
   (sexp:list ((sexp:symbol 'int) (sexp:list ((sexp:int size) (sexp:int signed?)))))
-  -> (ctype:int size (if (= signed? 1) #t #f))
+  -> (ctype:int (cint:width size) (if (= signed? 1) #t #f))
   (sexp:list ((sexp:symbol '*) sub))
   -> (ctype:pointer (parse-ctype sub))
   (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
@@ -304,7 +313,7 @@
 
 (define (lookup-tdef-size name)
   (match (ffi-info.tdefs::get name) with
-    (maybe:yes (ctype:int size _)) -> size
+    (maybe:yes (ctype:int ci _)) -> (cint-size ci)
     _ -> (base-type-size name)
     ))
 
@@ -339,8 +348,7 @@
 
 (define ctype->size
   (ctype:pointer _)    -> *word-size*
-  (ctype:int 0 _)      -> *int-size*
-  (ctype:int size _)   -> size
+  (ctype:int ci _)     -> (cint-size ci)
   (ctype:array size t) -> (* size (ctype->size t))
   (ctype:name name)    -> (lookup-tdef-size name)
   (ctype:struct name)  -> (lookup-struct-size name)
@@ -382,16 +390,20 @@
 
 ;; convert a ctype to an `op_cget` code (used by the VM).
 (define ctype->code
-  (ctype:int 0 #f)                  -> #\i ;; 'int'
-  (ctype:int 0 #t)                  -> #\I ;; 'unsigned int'
-  (ctype:int 1 #f)                  -> #\B
-  (ctype:int 1 #t)                  -> #\b
-  (ctype:int 2 #f)                  -> #\H
-  (ctype:int 2 #t)                  -> #\h
-  (ctype:int 4 #f)                  -> #\M
-  (ctype:int 4 #t)                  -> #\m
-  (ctype:int 8 #f)                  -> #\Q
-  (ctype:int 8 #t)                  -> #\q
+  (ctype:int (cint:char) #f)        -> #\B
+  (ctype:int (cint:char) #t)        -> #\b
+  (ctype:int (cint:int) #f)         -> #\i
+  (ctype:int (cint:int) #t)         -> #\I
+  (ctype:int (cint:long) #f)        -> #\l
+  (ctype:int (cint:long) #t)        -> #\L
+  (ctype:int (cint:width 1) #f)     -> #\B
+  (ctype:int (cint:width 1) #t)     -> #\b
+  (ctype:int (cint:width 2) #f)     -> #\H
+  (ctype:int (cint:width 2) #t)     -> #\h
+  (ctype:int (cint:width 4) #f)     -> #\M
+  (ctype:int (cint:width 4) #t)     -> #\m
+  (ctype:int (cint:width 8) #f)     -> #\Q
+  (ctype:int (cint:width 8) #t)     -> #\q
   (ctype:array _ (ctype:name char)) -> #\s
   (ctype:array _ _)                 -> #\p
   (ctype:pointer _)                 -> #\p
