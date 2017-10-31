@@ -2,10 +2,10 @@
 
 (define (printn x)
   (%backend (c llvm)
-    (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
+    (%%cexp ('a -> int) "dump_object (%0, 0)" x))
   (%backend bytecode
-    (print x)
-    (newline)))
+    (print x))
+  (newline))
 
 (define (print x)
   (%backend (c llvm) (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
@@ -461,7 +461,7 @@
   (cinclude "sys/errno.h")
 
   (define (set-verbose-gc b)
-    (%%cexp (bool -> undefined) "(verbose_gc = %0, PXLL_UNDEFINED)" b))
+    (%%cexp (bool -> bool) "verbose_gc = %0" b))
 
   (define (get-word-size)
     (%%cexp (-> int) "sizeof(pxll_int)"))
