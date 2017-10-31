@@ -1,18 +1,23 @@
 ;; -*- Mode: Irken -*-
 
-;; LLVM backend: targets *only* LP64.
+;; LLVM backend: targets *only* LP64.  Note that this covers most operating systems
+;;   that anyone cares about, *except* for Win64, which is LLP64.
+
+;; TODO:
+;;  in order to move toward full JIT capability, we need to remove
+;;  all dependency on an external C file; or, at least as much as we
+;;  can.
+;;  1) we need to generate our *own* constructed literals.
+;;  2) get rid of all external cexp.
 
 ;; XXX shouldn't be global (or should be kept in the-context).
+;; [alternatively, we can make a wrapper for cps->llvm that defines these]
 (define fatbar-free (map-maker int-cmp))
 (define litcons (set2-maker int-cmp))
-(define llvm-decls (set2-maker magic-cmp))
 (define ffifuns (set2-maker symbol-index-cmp))
 
 ;; CPS registers are mapped to LLVM idents like this:
 ;;  r5 -> "%r5"
-;;  other idents are assigned sequentially like most llvm.
-;;  [I may experiment with using unique names instead, though
-;;   this might impact compile times]
 
 (defmacro oformat
   (oformat item ...) -> (o.write (format item ...))
@@ -26,19 +31,16 @@
   (ctype:int size _)  -> (format "i" (int (* 8 (cint-size size))))
   (ctype:array len t) -> (format "[" (int len) " x " (ctype->llvm t) "]")
   (ctype:pointer t)   -> (format (ctype->llvm t) "*")
-  ;; XXX we do not represent c structs in llvm (yet)
-  ;; XXX do we need something like [24 x i8] ?
-  (ctype:struct _)    -> (format "i8*")
-  (ctype:union _)     -> (format "i8*")
+  (ctype:struct _)    -> (format "i8") ;; note: `struct *` becomes `i8*`.
+  (ctype:union _)     -> (format "i8")
   )
 
 ;; when ready, cname will become name, and called first as 'toplevel
-(define (cps->llvm cps co o first-id name cname args external?)
+(define (cps->llvm cps co o name cname args external?)
 
   (let ((current-function-cname cname)
 	(current-function-part (make-counter 1))
 	(used-jumps (find-jumps cps))
-	(ident first-id)
 	(fun-stack '())
 	(label-counter (make-counter 1))
 	(arg-counter (make-counter 0))
@@ -46,21 +48,11 @@
 	(renamed (map-maker int-cmp))
 	)
 
-    ;; various difficulties are caused by trying to match up with llvm's
-    ;;  sense of 'automatically numbered' variables.  we should instead
-    ;;  just number them sequentially with a common prefix that doesn't
-    ;;  conflict with the auto-numbered ones.
-
     (define (ID)
-      (set! ident (+ 1 ident))
-      ident
-      )
-
-    (define (TID)
       (format "%t" (int (tid-counter.inc))))
 
     (define (make-idents n)
-      (let ((v (make-vector n 0)))
+      (let ((v (make-vector n "")))
 	(for-range i n
 	   (set! v[i] (ID)))
 	v))
@@ -74,8 +66,13 @@
 	   (set! v[i] (new-label)))
 	v))
 
+    (define (maybe-target target)
+      (if (= -1 target)
+          (ID)
+          (format "%r" (int target))))
+
     (define (push-continuation name cname cps args)
-      (PUSH fun-stack (lambda () (cps->llvm cps co o 0 name cname args #f))))
+      (PUSH fun-stack (lambda () (cps->llvm cps co o name cname args #f))))
 
     (define (push-fail-continuation cps jump args)
       (push-continuation 'fail (format "FAIL_" (int jump)) cps args))
@@ -106,19 +103,19 @@
 
     (define (emit-arith op arg0 arg1 trg)
       (let ((ids (make-idents 3)))
-	(oformat "%" (int ids[0]) " = call i64 @insn_unbox (i8** %r" (int arg0) ")")
-	(oformat "%" (int ids[1]) " = call i64 @insn_unbox (i8** %r" (int arg1) ")")
-	(oformat "%" (int ids[2]) " = " (sym op) " i64 %" (int ids[0]) ", %" (int ids[1]))
-	(oformat "%r" (int trg) " = call i8** @insn_box (i64 %" (int ids[2]) ")")
+	(oformat ids[0] " = call i64 @insn_unbox (i8** %r" (int arg0) ")")
+	(oformat ids[1] " = call i64 @insn_unbox (i8** %r" (int arg1) ")")
+	(oformat ids[2] " = " (sym op) " i64 " ids[0] ", " ids[1])
+	(oformat "%r" (int trg) " = call i8** @insn_box (i64 " ids[2] ")")
 	))
 
     (define (emit-icmp op arg0 arg1 trg)
       (let ((ids (make-idents 4)))
-	(oformat "%" (int ids[0]) " = call i64 @insn_unbox (i8** %r" (int arg0) ")")
-	(oformat "%" (int ids[1]) " = call i64 @insn_unbox (i8** %r" (int arg1) ")")
-	(oformat "%" (int ids[2]) " = icmp " (sym op) " i64 %" (int ids[0]) ", %" (int ids[1]))
-	(oformat "%" (int ids[3]) " = select i1 %" (int ids[2]) ", i64 " (int immediate-true) ", i64 " (int immediate-false))
-	(oformat "%r" (int trg) " = inttoptr i64 %" (int ids[3]) " to i8**")
+	(oformat ids[0] " = call i64 @insn_unbox (i8** %r" (int arg0) ")")
+	(oformat ids[1] " = call i64 @insn_unbox (i8** %r" (int arg1) ")")
+	(oformat ids[2] " = icmp " (sym op) " i64 " ids[0] ", " ids[1])
+	(oformat ids[3] " = select i1 " ids[2] ", i64 " (int immediate-true) ", i64 " (int immediate-false))
+	(oformat "%r" (int trg) " = inttoptr i64 " ids[3] " to i8**")
 	))
 
     (define (emit-dtcon dtname altname args target)
@@ -165,8 +162,8 @@
       (let ((id0 (ID))
 	    (lthen (new-label))
 	    (lelse (new-label)))
-	(oformat "%" (int id0) " = ptrtoint i8** %r" (int val) " to i64")
-	(oformat "switch i64 %" (int id0) ", label %" lelse " [")
+	(oformat id0 " = ptrtoint i8** %r" (int val) " to i64")
+	(oformat "switch i64 " id0 ", label %" lelse " [")
 	(oformat "  i64 " (int immediate-true) ", label %" lthen)
 	(oformat "]")
 	(emit-label lthen)
@@ -175,9 +172,7 @@
 	(walk else)
 	))
 
-    ;; Note: like all of this file, this is defined as LP64.  This
-    ;;  covers most unix-like platforms, but leaves out Windows, which
-    ;;  is LLP64 (difference being 'long' == i32).
+    ;; currently used only by %c-get-int
     (define lp64->cint
       'int   -> (ctype:int (cint:width 4) #t)
       'uint  -> (ctype:int (cint:width 4) #f)
@@ -234,9 +229,9 @@
 	       -> (match (the-context.callocates::get type0) with
 		    (maybe:yes index)
 		    -> (begin
-			 (oformat "%" (int id0) " = load i64, i64* @size_" (int index))
-			 (oformat "%" (int id1) " = call i64 @insn_unbox (i8** %r" (int count) ")")
-			 (oformat "%r" (int target) " = call i8** @insn_callocate (i64 %" (int id0) ", i64 %" (int id1) ")")
+			 (oformat id0 " = load i64, i64* @size_" (int index))
+			 (oformat id1 " = call i64 @insn_unbox (i8** %r" (int count) ")")
+			 (oformat "%r" (int target) " = call i8** @insn_callocate (i64 " id0 ", i64 " id1 ")")
 			 )
 		    (maybe:no)
 		    -> (error1 "%callocate failed type lookup" (type-repr type))
@@ -254,14 +249,13 @@
 	     )
 
         ;; ------------------------------------------------------------------------------------------
-        ;; needed for FFI:
-        ;; %malloc %halloc %free %ffi2 %c-aref %c-get-int %c-set-int %c-sref
-        ;; %cref->string %string->cref %c-sizeof %cref->int
-        ;; for FFI runtime we need get_foreign, offset_foreign, make_foreign, make_halloc, free_foreign
+        ;; still needed for FFI:
+        ;; %halloc %c-set-int %c-sizeof
+        ;; for FFI runtime we need make_halloc
         '%malloc params (count)
         -> (let ((ctype (parse-ctype params))
                  (size (ctype->size ctype))
-                 (id0 (TID)))
+                 (id0 (ID)))
              (printf "%malloc type param = " (repr params) " size = " (int size) "\n")
              (if (< target 0)
                  (error "dead %malloc target"))
@@ -269,11 +263,22 @@
              (oformat "%r" (int target) " = call i8** @make_malloc (i64 " (int size) ", i64 " id0 ")")
              )
 
+        '%halloc params (count)
+        -> (let ((ctype (parse-ctype params))
+                 (size (ctype->size ctype))
+                 (id0 (ID)))
+             (printf "%halloc type param = " (repr params) " size = " (int size) "\n")
+             (if (< target 0)
+                 (error "dead %halloc target"))
+             (oformat id0 " = call i64 @insn_unbox (i8** %r" (int count) ")")
+             (oformat "%r" (int target) " = call i8** @make_halloc (i64 " (int size) ", i64 " id0 ")")
+             )
+
         '%c-aref params (ref index)
         -> (let ((ctype (parse-ctype params))
                  (size (ctype->size ctype))
-                 (id0 (TID))
-                 (id1 (TID)))
+                 (id0 (ID))
+                 (id1 (ID)))
              (if (< target 0)
                  (error "dead %c-aref target"))
              (oformat id0 " = call i64 @insn_unbox (i8** %r" (int index) ")")
@@ -287,14 +292,14 @@
              (oformat "%r" (int target) " = call i8** @offset_foreign (i8** %r" (int src) ", i64 " (int ref0.off) ")")
              )
 
+        ;; XXX I think we need to make helper funs for sext/zext/trunc.
         '%c-get-int (sexp:symbol itype) (src)
         -> (let ((cint (lp64->cint itype))
                  (iname (ctype->llvm cint))
-                 (id0 (TID))
-                 (id1 (TID))
-                 (id2 (TID))
-                 (id3 (TID))
-                 )
+                 (id0 (ID))
+                 (id1 (ID))
+                 (id2 (ID))
+                 (id3 (ID)))
              (oformat id0 " = call i8* @get_foreign (i8** %r" (int src) ")")
              (oformat id1 " = bitcast i8* " id0 " to " iname "*")
              (oformat id2 " = load " iname ", " iname "* " id1)
@@ -312,24 +317,16 @@
                       )
                _ -> (error1 "llvm/%c-get-int: unexpected ctype" (ctype-repr cint))
                ))
-
-
         '%ffi2 params args
         -> (emit-ffi2 params args target)
-
         '%free _ (ref)
-        -> (oformat (TID) " = call i8** @free_foreign (i8** %r" (int ref) ")")
-
+        -> (oformat (maybe-target target) " = call i8** @free_foreign (i8** %r" (int ref) ")")
         '%string->cref params (src)
         -> (oformat "%r" (int target) " = call i8** @irk_string_2_cref (i8** %r" (int src) ")")
-
         '%cref->string params (src len)
         -> (oformat "%r" (int target) " = call i8** @irk_cref_2_string (i8** %r" (int src) ", i8** %r" (int len) ")")
-
         '%cref->int params (src)
         -> (oformat "%r" (int target) " = call i8** @irk_cref_2_int (i8** %r" (int src) ")")
-
-
         ;; ------------------------------------------------------------------------------------------
 	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x (repr params) args))
 	))
@@ -375,26 +372,26 @@
 
     (define (emit-make-vector vlen vval target)
       (let ((id0 (ID)))
-	(oformat "%" (int id0) " = call i64 @insn_unbox (i8** %r" (int vlen) ")")
-	(oformat "%r" (int target) " = call i8** @make_vector (i64 %" (int id0) ", i8** %r" (int vval) ")")
+	(oformat id0 " = call i64 @insn_unbox (i8** %r" (int vlen) ")")
+	(oformat "%r" (int target) " = call i8** @make_vector (i64 " id0 ", i8** %r" (int vval) ")")
 	))
 
     (define (emit-array-ref vec index target)
       (let ((id0 (ID)) (id1 (ID)))
-	(oformat "%" (int id0) " = call i64 @insn_unbox (i8** %r" (int index) ")")
+	(oformat id0 " = call i64 @insn_unbox (i8** %r" (int index) ")")
 	(when (not the-context.options.no-range-check)
-	      (oformat "call void @vector_range_check (i8** %r" (int vec) ", i64 %" (int id0) ")"))
-	(oformat "%" (int id1) " = add i64 %" (int id0) ", 1")
-	(oformat "%r" (int target) " = call i8** @insn_fetch (i8** %r" (int vec) ", i64 %" (int id1) ")")
+	      (oformat "call void @vector_range_check (i8** %r" (int vec) ", i64 " id0 ")"))
+	(oformat id1 " = add i64 " id0 ", 1")
+	(oformat "%r" (int target) " = call i8** @insn_fetch (i8** %r" (int vec) ", i64 " id1 ")")
 	))
 
     (define (emit-array-set vec index val target)
       (let ((id0 (ID)) (id1 (ID)))
-	(oformat "%" (int id0) " = call i64 @insn_unbox (i8** %r" (int index) ")")
+	(oformat id0 " = call i64 @insn_unbox (i8** %r" (int index) ")")
 	(when (not the-context.options.no-range-check)
-	      (oformat "call void @vector_range_check (i8** %r" (int vec) ", i64 %" (int id0) ")"))
-	(oformat "%" (int id1) " = add i64 %" (int id0) ", 1")
-	(oformat "call void @insn_store (i8** %r" (int vec) ", i64 %" (int id1) ", i8** %r" (int val) ")")
+	      (oformat "call void @vector_range_check (i8** %r" (int vec) ", i64 " id0 ")"))
+	(oformat id1 " = add i64 " id0 ", 1")
+	(oformat "call void @insn_store (i8** %r" (int vec) ", i64 " id1 ", i8** %r" (int val) ")")
 	(dead-set target)
 	))
 
@@ -404,14 +401,6 @@
     ;;  maybe we can emit a "sizeof(struct X)" constant that can be referenced from llvm ir.
 
     ;; provide automatic conversions of base types for inputs to %%ffi
-    ;; NOTE: this is not the same as wrap-in as used by cexp.  As such, this probably needs to
-    ;;  be changed to support the csig interface used by 'ffi2'.
-
-    ;; XXX: need to think more about this. as it stands this will not work with functions that
-    ;;   take non int64 args.  Or will it?  In C obviously we can just pass an int64 arg to a
-    ;;   function that takes an int16.  What do we do about this?  In C we just updoot everything
-    ;;   to pxll_int.  Presumably this will work here, too.  So do we just auto-convert all (ctype:int)
-    ;;   to i64?
 
     (define (wrap-in type arg)
       (match type with
@@ -436,7 +425,7 @@
         -> (let ((width (cint-size cint)))
              (if (= width 8) ;; already i64
                  arg
-                 (let ((id0 (TID))
+                 (let ((id0 (ID))
                        (lt (ctype->llvm ctype)))
                    (oformat id0 " = trunc " arg " to " lt)
                    (format lt " " id0))))
@@ -449,7 +438,7 @@
             (begin
               (warning (format "64-bit int fetched into irken int.\n"))
               (oformat result " = call i8** @insn_box (i64 " val ")"))
-            (let ((id0 (TID)))
+            (let ((id0 (ID)))
               (if signed?
                   (oformat id0 " = sext " iname " " val " to i64")
                   (oformat id0 " = zext " iname " " val " to i64"))
@@ -488,10 +477,10 @@
                       (args1 (map2 wrap-in argtypes1 args))
                       (args2 (map2 maybe-trunc argtypes0 args1))
                       (lrtype (ctype->llvm rtype))
-                      (id0 (TID)))
+                      (id0 (ID)))
                   (ffifuns::add name) ;; so we can declare it later
                   (oformat id0 " = call " lrtype " @" (sym name) "(" (join ", " args2) ")")
-                  (wrap-out rtype id0 (format "%r" (int target)))
+                  (wrap-out rtype id0 (maybe-target target))
                   )
              (maybe:yes (csig:obj name obtype))
              -> (let ((lt (ctype->llvm obtype))
@@ -511,7 +500,7 @@
       ;; llvm automatically assigns a target to any non-void function call, so
       ;;  we have to put the result somewhere even if dead.
       (let ((target (if (= target -1)
-			(format "%" (int (ID)) " = ")
+			(format (ID) " = ")
 			(format "%r" (int target) " = "))))
 	(match (the-context.cexps::get (:tuple sig template)) with
 	  (maybe:yes index)
@@ -534,9 +523,9 @@
     (define (emit-store off arg tup i)
       ;; XXX rewrite to use @insn_store
       (let ((id0 (ID)) (id1 (ID)))
-	(oformat "%" (int id0) " = getelementptr i8*, i8** %r" (int tup) ", i64 " (int (+ 1 i off)))
-	(oformat "%" (int id1) " = bitcast i8** %r" (int arg) " to i8*")
-	(oformat "store i8* %" (int id1) ", i8** %" (int id0))
+	(oformat id0 " = getelementptr i8*, i8** %r" (int tup) ", i64 " (int (+ 1 i off)))
+	(oformat id1 " = bitcast i8** %r" (int arg) " to i8*")
+	(oformat "store i8* " id1 ", i8** " id0)
 	))
 
     (define (safe-known-fun name)
@@ -584,15 +573,15 @@
 	    (ids (make-idents 2))
 	    )
 	;; save
-	(oformat "%" (int ids[0]) " = call i8** @allocate (i64 " (int TC_SAVE) ", i64 " (int (+ 3 nregs)) ")")
-	(oformat "%" (int ids[1]) " = bitcast void()* @" kfun " to i8**")
+	(oformat ids[0] " = call i8** @allocate (i64 " (int TC_SAVE) ", i64 " (int (+ 3 nregs)) ")")
+	(oformat ids[1] " = bitcast void()* @" kfun " to i8**")
 	(for-range i nregs
 	   (oformat "call void @insn_store ("
-		    "i8** %" (int ids[0])
+		    "i8** " ids[0]
 		    ", i64 " (int (+ i 4))
 		    ", i8** %r" (int (nth free i))
 		    ")"))
-	(oformat "call void @push_k (i8** %" (int ids[0]) ", i8** %" (int ids[1]) ")")
+	(oformat "call void @push_k (i8** " ids[0] ", i8** " ids[1] ")")
 	;; push env
 	(if (>= args 0)
 	    (oformat "call void @link_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
@@ -604,8 +593,6 @@
 	(PUSH fun-stack
 	      (lambda ()
 		(oformat "\ndefine internal void @" kfun "() {")
-		;; XXX kludge
-		(set! ident 0)
 		(o.indent)
 		;; restore
 		(for-range i nregs
@@ -655,7 +642,7 @@
       (let ((cname (gen-function-cname name 0)))
 	(PUSH fun-stack
 	      (lambda ()
-		(cps->llvm body co o 0 name cname '() #f)))
+		(cps->llvm body co o name cname '() #f)))
 	(oformat "%r" (int target) " = call i8** @insn_close (void()* @" cname ")")
 	))
 
@@ -695,8 +682,8 @@
 		   (lelse (new-label))
 		   (labs (make-labels ntags)))
 	       (push-jump-continuation k jump-num)
-	       (oformat "%" (int id0) " = call i64 @get_case (i8** %r" (int test) ")")
-	       (oformat "switch i64 %" (int id0) ", label %" lelse " [")
+	       (oformat id0 " = call i64 @get_case (i8** %r" (int test) ")")
+	       (oformat "switch i64 " id0 ", label %" lelse " [")
 	       (for-range i ntags
 		  (let ((label (nth tags i))
 			(alt (dt.get label))
@@ -719,8 +706,8 @@
 	      (lelse (new-label))
 	      (labs (make-labels ntags)))
 	  (push-jump-continuation k jump-num)
-	  (oformat "%" (int id0) " = call i64 @get_case (i8** %r" (int test) ")")
-	  (oformat "switch i64 %" (int id0) ", label %" lelse " [")
+	  (oformat id0 " = call i64 @get_case (i8** %r" (int test) ")")
+	  (oformat "switch i64 " id0 ", label %" lelse " [")
 	  (for-range i ntags
 	     (let ((label (nth tags i))
 		   (tag0 (match (alist/lookup the-context.variant-labels label) with
@@ -1003,7 +990,7 @@
        (co.write (format "pxll_int size_" (int v) " = sizeof (" (irken-type->c-type k) ");"))
        (o.write (format "@size_" (int v) " = external global i64"))
        ))
-    (cps->llvm cps co o 0 'toplevel cname '() #t)
+    (cps->llvm cps co o 'toplevel cname '() #t)
     ;; emit litcon externals
     ;; *SOOOO* nice that llvm supports forward references...
     (litcons::iterate
