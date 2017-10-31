@@ -88,6 +88,7 @@
     (OI 'heap    2      #f     #f)   ;; size nreg
     (OI 'readf   2      #f     #t)   ;; target path
     (OI 'malloc  3      #f     #t)   ;; target sindex size
+    (OI 'halloc  3      #f     #t)   ;; target sindex size
     (OI 'cget    3      #f     #t)   ;; target src code
     (OI 'cset    3      #f     #f)   ;; src code val
     (OI 'free    1      #f     #f)   ;; src
@@ -500,6 +501,11 @@
            (printf "adding %malloc call, sindex=" (int sindex) " parm = " (repr parm) "\n")
            (LINSN 'malloc target sindex (car args))))
 
+       (define (prim-halloc parm args)
+         (let ((sindex (get-sizeoff parm)))
+           (printf "adding %halloc call, sindex=" (int sindex) " parm = " (repr parm) "\n")
+           (LINSN 'halloc target sindex (car args))))
+
        (define (prim-free args)
          (LINSN 'free (car args)))
 
@@ -566,6 +572,7 @@
          ;; currently done with %%cexp (needs to be fixed)
          ;; '%ffi2         ->
          '%malloc       -> (prim-malloc parm args)
+         '%halloc       -> (prim-halloc parm args)
          '%free         -> (prim-free args)
          '%c-aref       -> (prim-c-aref parm args)
          '%cref->string -> (prim-c-sfromc args)

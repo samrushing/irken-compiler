@@ -24,7 +24,7 @@ char * op_names[] = {
   "nvcase", "tupref", "vlen", "vref", "vset", "vmake", "alloc",
   "rref", "rset", "getcc", "putcc", /* "irk", "getc", */ "dlsym", "ffi",
   "smake", "slen", "sref", "sset", "scopy", "unchar", "gist",
-  "argv", "quiet", "heap", "readf", "malloc","cget","cset", "free",
+  "argv", "quiet", "heap", "readf", "malloc","halloc", "cget","cset", "free",
   "sizeoff", "sgetp", "caref", "csref", "dlsym2", "csize", "cref2int",
 };
 
@@ -705,7 +705,7 @@ vm_cget (object ** result, object * src, pxll_int code)
     *result = vm_copy_string ((char *) p);
     break;
   default:
-    fprintf (stderr, "vm_cget: unknown result code\n");
+    fprintf (stderr, "vm_cget: unknown result code: `%d`\n", (int)code);
     return -1;
   }
   return 0;
@@ -816,7 +816,7 @@ vm_go (void)
     &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc, /* &&l_irk, */
     /* &&l_getc, */ &&l_dlsym, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist,
-    &&l_argv, &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_cget,
+    &&l_argv, &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
     &&l_dlsym2, &&l_csize, &&l_cref2int,
   };
@@ -1433,6 +1433,15 @@ vm_go (void)
       pc += 4;
       DISPATCH();
     }
+  }
+ l_halloc: {
+    // HALLOC target sindex nelem
+    pxll_int sindex = BC2;
+    pxll_int nelem = UNBOX_INTEGER (REG3);
+    pxll_int sizeoff = get_sizeoff_entry (sindex);
+    REG1 = make_halloc (sizeoff, nelem);
+    pc += 4;
+    DISPATCH();
   }
  l_cget: {
     // CGET target src code
