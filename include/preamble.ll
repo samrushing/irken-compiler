@@ -37,7 +37,7 @@ declare i8** @irk_get_errno()
 
 ;; FFI
 declare i8** @make_malloc (i64 %size, i64 %count)
-declare i8** @make_halloc (i64 %size)
+declare i8** @make_halloc (i64 %size, i64 %count)
 declare i8** @make_foreign (i8* %p)
 declare i8*  @get_foreign (i8** %ob)
 declare i8** @offset_foreign (i8** %foreign, i64 %offset)
