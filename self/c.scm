@@ -70,11 +70,10 @@
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
     (type:pred 'cref _ _)    -> (format "(make_foreign((void*)" exp "))")
     (type:pred '* _ _)       -> (format "(make_foreign((void*)" exp "))")
-    (type:pred 'void _ _)    -> (format "(" exp ", (object*)PXLL_UNDEFINED)")
     (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
 				    (format "box((pxll_int)" exp ")")
 				    exp)
-    _			     -> exp
+    _                        -> exp
     ))
 
 ;; substitute <values> into <template>, e.g. "%0 + %1" ("unbox(r3)" "unbox(r5)") => "r3
@@ -579,7 +578,7 @@
             (cond ((>= target 0)
                    (o.write (format "O r" (int target)
                                     " = make_halloc (sizeof ("
-                                    (irken-type->c-type type) ") * unbox(r" (int (car args))
+                                    (irken-type->c-type type) ") , unbox(r" (int (car args))
                                     "));")))
                   (else
                    (error1 "%malloc: dead target?" type)))))
