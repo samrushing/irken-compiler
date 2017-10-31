@@ -1,13 +1,9 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/basis.scm")
-(include "lib/ctype.scm")
 (include "lib/map.scm")
-(include "lib/lisp_reader.scm")
 
 (require-ffi 'posix)
-
-(%backend bytecode (update-sizeoff-table))
 
 ;; note: timezone.tz_dsttime is not really useful, since the DST rules
 ;;  are complex and variable.
@@ -74,9 +70,6 @@
 
 (printf (format-civil (civil #t)) "\n")
 (printf (format-civil (civil #f)) "\n")
-
-;(let ((c (civil-from-timestamp (string->int sys.argv[1]))))
-;  (printf (int c.y) "/" (int c.m) "/" (int c.d) "\n"))
 
 
 
