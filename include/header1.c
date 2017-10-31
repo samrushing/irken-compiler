@@ -574,9 +574,9 @@ make_malloc (pxll_int size, pxll_int count)
 }
 
 object *
-make_halloc (pxll_int size)
+make_halloc (pxll_int size, pxll_int count)
 {
-  object * buffer = alloc_no_clear (TC_BUFFER, HOW_MANY (size, sizeof(object)));
+  object * buffer = alloc_no_clear (TC_BUFFER, HOW_MANY (size * count, sizeof(object)));
   object * result = allocate (TC_FOREIGN, 2);
   result[1] = buffer;
   result[2] = BOX_INTEGER (0);
@@ -636,7 +636,7 @@ irk_cref_2_string (object * src, object * len)
   object * result = make_string (len0);
   uint8_t * src0 = (uint8_t * ) get_foreign (src);
   void * dst = GET_STRING_POINTER (result);
-  memcpy (dst, src, len0);
+  memcpy (dst, src0, len0);
   return result;
 }
 
@@ -652,6 +652,8 @@ irk_cref_2_int (object * src)
   return BOX_INTEGER (((pxll_int *) src)[1]);
 }
 
+// XXX this needs more thought
+#include <errno.h>
 // Note: 'errno' is no longer simply an external int.  It can be defined in any of several ways,
 //   which means that our llvm generated code cannot access it without going through the C api.
 //   (for example, on OSX its location is the result of a call to `_error()`)
