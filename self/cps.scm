@@ -801,6 +801,7 @@
 	   (print-info))
       ))
 
+  ;; XXX note: this print code is a mess because it predates the format macro. TO BE FIXED!
   (define (ps x) (print x) (print-string " "))
   (define (ps2 x) (print-string x) (print-string " "))
   (match insn with

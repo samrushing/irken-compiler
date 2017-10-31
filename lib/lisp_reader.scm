@@ -2,6 +2,16 @@
 
 ;; XXX consider rewriting with more experience
 
+;; XXX: for debug info:
+;; 1) attach path/line/pos info to each symbol (this should be enough for most debugging)
+;; but another approach might be to
+;; 2) add a (sexp:pos ...) arm that can be inserted literally anywhere in a sexp,
+;;   and ignored by most code.
+;;
+;; #2 seems much more lispy, and feels cleaner. fingers crossed.
+;; also, I think #2 could push pos info into node records pretty easily.
+;; [and it should be an optional feature of `read`]
+
 (datatype field
   (:t symbol sexp)
   )

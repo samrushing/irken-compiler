@@ -534,10 +534,6 @@
         (%%cexp (int int -> undefined) "sizeoff" (+ 5 i) val)))
     )
 
-  ;; this doesn't work here: it *has* to come after all require-ffi calls.
-  ;; still an open problem on how to arrange that.
-  ;; (update-sizeoff-table)
-
   )
 
 ;; --------------------------------------------------------------------------------
