@@ -1,8 +1,8 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/basis.scm")
+(include "lib/map.scm")
 (include "lib/os.scm")
-(include "lib/lisp_reader.scm")
 
 ;; --- s-expression input ---
 
@@ -14,7 +14,7 @@
 ;; --- universal datatype ---
 ;;
 ;; this datatype covers all the types known by the interpreter.
-;; 
+;;
 
 (datatype univ
   (:int int)
