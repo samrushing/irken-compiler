@@ -2,6 +2,7 @@
 
 (include "lib/basis.scm")
 (include "lib/os.scm")
+(include "lib/map.scm")
 
 (datatype big
   (:zero)
@@ -11,6 +12,10 @@
 
 ;; NOTE: multiply and divide algorithms require that
 ;;  the base be half the word size.
+
+;; XXX revisit this to figure out the exact digit size
+;;  we can use on 64-bit.  Because obviously 32 and 64
+;;  bit shouldn't be using the same size.
 
 ;; for 64-bit platforms:
 (define big/base #x20000000)
@@ -382,7 +387,7 @@
   (match (canon x) pos? with
     () _ -> (big:zero)
     y  #t -> (big:pos y)
-    y  #f -> (big:neg y))))
+    y  #f -> (big:neg y)))
 
 (define (digits-div da db pos?)
   ;; XXX test for zero
@@ -619,10 +624,10 @@
 ;      (test1))
 
 ;; 65536 tests
-;(exhaustive #x100)
+(exhaustive #x100)
 ;(test0)
 ;(test2)
-;(test3)
+(test3)
 ;(test4)
 (printf "(big-fact 1000) => \n" (big->dec (big-fact 1000)) "\n")
 
