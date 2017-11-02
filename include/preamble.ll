@@ -34,6 +34,7 @@ declare void @DENV()
 declare i8** @putchar (i64 %ch)
 declare void @TRACE(i8* %name)
 declare i8** @irk_get_errno()
+declare i64  @magic_cmp (i8**, i8**)
 
 ;; FFI
 declare i8** @make_malloc (i64 %size, i64 %count)
@@ -46,10 +47,7 @@ declare i8** @irk_cref_2_string (i8** %src, i8** %len)
 declare i8** @irk_string_2_cref (i8** %src)
 declare i8** @irk_cref_2_int (i8** %src)
 
-;; Note: at some point near llvm3/4, they changed the syntax
-;;   of some of the insns: at least load/getelementptr. urgh.
-
-define internal i8** @insn_varref(i64 %depth, i64 %index) {
+define internal fastcc i8** @insn_varref(i64 %depth, i64 %index) {
   %1 = load i8**, i8*** @lenv
   %2 = icmp eq i64 %depth, 0
   br i1 %2, label %._crit_edge, label %.lr.ph
@@ -74,7 +72,7 @@ define internal i8** @insn_varref(i64 %depth, i64 %index) {
 }
 
 ; Function Attrs: nounwind ssp uwtable
-define internal void @insn_varset(i64 %depth, i64 %index, i8** %val) {
+define internal fastcc void @insn_varset(i64 %depth, i64 %index, i8** %val) {
   %1 = load i8**, i8*** @lenv
   %2 = icmp eq i64 %depth, 0
   br i1 %2, label %._crit_edge, label %.lr.ph
@@ -101,7 +99,7 @@ define internal void @insn_varset(i64 %depth, i64 %index, i8** %val) {
 ;; consider using llvm.memset to clear allocated space
 ;;  [and thus remove the need to clear tospace after gc]
 
-define internal i8** @allocate(i64 %tc, i64 %size) {
+define internal fastcc i8** @allocate(i64 %tc, i64 %size) {
   %1 = load i8**, i8*** @freep
   %2 = shl i64 %size, 8
   %3 = and i64 %tc, 255
@@ -115,7 +113,7 @@ define internal i8** @allocate(i64 %tc, i64 %size) {
   ret i8** %1
 }
 
-define internal i64 @get_case(i8** %ob) {
+define internal fastcc i64 @get_case(i8** %ob) {
   %1 = ptrtoint i8** %ob to i64
   %2 = and i64 %1, 3
   %3 = icmp eq i64 %2, 0
@@ -134,7 +132,7 @@ define internal i64 @get_case(i8** %ob) {
   ret i64 %10
 }
 
-define internal void @link_env_with_args (i8** %env, i8** %fun) {
+define internal fastcc void @link_env_with_args (i8** %env, i8** %fun) {
   %1 = getelementptr i8*, i8** %fun, i64 2
   %2 = load i8*, i8** %1
   %3 = getelementptr i8*, i8** %env, i64 1
@@ -143,7 +141,7 @@ define internal void @link_env_with_args (i8** %env, i8** %fun) {
   ret void
 }
 
-define internal void @link_env_noargs (i8** readonly %fun) {
+define internal fastcc void @link_env_noargs (i8** readonly %fun) {
   %1 = getelementptr inbounds i8*, i8** %fun, i64 2
   %2 = load i8*, i8** %1
   %3 = bitcast i8* %2 to i8**
@@ -151,7 +149,7 @@ define internal void @link_env_noargs (i8** readonly %fun) {
   ret void
 }
 
-define internal i8** @fetch (i8*** %src, i64 %off) {
+define internal fastcc i8** @fetch (i8*** %src, i64 %off) {
   %1 = load i8**, i8*** %src
   %2 = getelementptr i8*, i8** %1, i64 %off
   %3 = load i8*, i8** %2
@@ -159,7 +157,7 @@ define internal i8** @fetch (i8*** %src, i64 %off) {
   ret i8** %4
 }
 
-define internal void @push_env (i8** %env)
+define internal fastcc void @push_env (i8** %env)
 {
   %1 = load i8**, i8*** @lenv
   %2 = bitcast i8** %1 to i8*
@@ -169,7 +167,7 @@ define internal void @push_env (i8** %env)
   ret void
 }
 
-define internal void @pop_env() {
+define internal fastcc void @pop_env() {
   %1 = load i8**, i8*** @lenv
   %2 = getelementptr inbounds i8*, i8** %1, i64 1
   %3 = load i8*, i8** %2
@@ -187,7 +185,7 @@ define internal void @pop_env() {
 ;   k = t;
 ; }
 
-define internal void @push_k(i8** %t, i8** %fp) {
+define internal fastcc void @push_k(i8** %t, i8** %fp) {
   %1 = load i8**, i8*** @k
   %2 = bitcast i8** %1 to i8*
   %3 = getelementptr i8*, i8** %t, i64 1
@@ -210,7 +208,7 @@ define internal void @push_k(i8** %t, i8** %fp) {
 ;   k = k[1];
 ; }
 
-define internal void @pop_k() {
+define internal fastcc void @pop_k() {
   %1 = load i8**, i8*** @k
   %2 = getelementptr i8*, i8** %1, i64 2
   %3 = load i8*, i8** %2
@@ -223,7 +221,7 @@ define internal void @pop_k() {
   ret void
 }
 
-define internal i8** @insn_fetch (i8** %ob, i64 %i)
+define internal fastcc i8** @insn_fetch (i8** %ob, i64 %i)
 {
   %1 = getelementptr i8*, i8** %ob, i64 %i
   %2 = load i8*, i8** %1
@@ -231,7 +229,7 @@ define internal i8** @insn_fetch (i8** %ob, i64 %i)
   ret i8** %3
 }
 
-define internal i8** @insn_topref (i64 %index) {
+define internal fastcc i8** @insn_topref (i64 %index) {
   %1 = load i8**, i8*** @top
   %2 = add i64 %index, 2 ;; skip lenv:header,next
   %3 = getelementptr i8*, i8** %1, i64 %2
@@ -240,54 +238,54 @@ define internal i8** @insn_topref (i64 %index) {
   ret i8** %5
 }
 
-define internal i64 @insn_unbox (i8** %val) {
+define internal fastcc i64 @insn_unbox (i8** %val) {
   %1 = ptrtoint i8** %val to i64
   %2 = ashr i64 %1, 1
   ret i64 %2
 }
 
-define internal i8** @insn_box (i64 %val) {
+define internal fastcc i8** @insn_box (i64 %val) {
   %1 = shl i64 %val, 1
   %2 = or i64 %1, 1
   %3 = inttoptr i64 %2 to i8**
   ret i8** %3
 }
 
-define internal i8** @insn_add (i8** %a, i8** %b) {
-  %1 = call i64 @insn_unbox (i8** %a)
-  %2 = call i64 @insn_unbox (i8** %b)
+define internal fastcc i8** @insn_add (i8** %a, i8** %b) {
+  %1 = call fastcc i64 @insn_unbox (i8** %a)
+  %2 = call fastcc i64 @insn_unbox (i8** %b)
   %3 = add i64 %1, %2
-  %4 = call i8** @insn_box (i64 %3)
+  %4 = call fastcc i8** @insn_box (i64 %3)
   ret i8** %4
 }
 
-define internal void @insn_return (i8** %val) {
+define internal fastcc void @insn_return (i8** %val) {
   store i8** %val, i8*** @result
   %1 = load i8**, i8*** @k
   %2 = getelementptr i8*, i8** %1, i64 3
   %3 = bitcast i8** %2 to void ()**
   %4 = load void ()*, void ()** %3
-  tail call void %4()
+  tail call fastcc void %4()
   ret void
 }
 
-define internal void @tail_call (i8** %fun) {
+define internal fastcc void @tail_call (i8** %fun) {
   %1 = getelementptr i8*, i8** %fun, i64 1
   %2 = bitcast i8** %1 to void ()**
   %3 = load void ()*, void ()** %2
-  tail call void %3()
+  tail call fastcc void %3()
   ret void
 }
 
-define internal void @insn_store (i8** %dst, i64 %off, i8** %src) {
+define internal fastcc void @insn_store (i8** %dst, i64 %off, i8** %src) {
   %1 = getelementptr i8*, i8** %dst, i64 %off
   %2 = bitcast i8** %src to i8*
   store i8* %2, i8** %1
   ret void
 }
 
-define internal i8** @insn_close (void()* %fun) {
-  %1 = call i8** @allocate (i64 8, i64 2)
+define internal fastcc i8** @insn_close (void()* %fun) {
+  %1 = call fastcc i8** @allocate (i64 8, i64 2)
   %2 = getelementptr i8*, i8** %1, i64 1
   %3 = bitcast void()* %fun to i8*
   store i8* %3, i8** %2

@@ -27,7 +27,8 @@
 (define ctype->llvm
   (ctype:name 'void)  -> "void"
   (ctype:name 'char)  -> "i8"
-  (ctype:name x)      -> (error1 "ctype->llvm: unsupported ctype:name" x)
+  ;;(ctype:name x)      -> (error1 "ctype->llvm: unsupported ctype:name" x)
+  (ctype:name x)      -> "i8"
   (ctype:int size _)  -> (format "i" (int (* 8 (cint-size size))))
   (ctype:array len t) -> (format "[" (int len) " x " (ctype->llvm t) "]")
   (ctype:pointer t)   -> (format (ctype->llvm t) "*")
@@ -103,16 +104,16 @@
 
     (define (emit-arith op arg0 arg1 trg)
       (let ((ids (make-idents 3)))
-	(oformat ids[0] " = call i64 @insn_unbox (i8** %r" (int arg0) ")")
-	(oformat ids[1] " = call i64 @insn_unbox (i8** %r" (int arg1) ")")
+	(oformat ids[0] " = call fastcc i64 @insn_unbox (i8** %r" (int arg0) ")")
+	(oformat ids[1] " = call fastcc i64 @insn_unbox (i8** %r" (int arg1) ")")
 	(oformat ids[2] " = " (sym op) " i64 " ids[0] ", " ids[1])
-	(oformat "%r" (int trg) " = call i8** @insn_box (i64 " ids[2] ")")
+	(oformat "%r" (int trg) " = call fastcc i8** @insn_box (i64 " ids[2] ")")
 	))
 
     (define (emit-icmp op arg0 arg1 trg)
       (let ((ids (make-idents 4)))
-	(oformat ids[0] " = call i64 @insn_unbox (i8** %r" (int arg0) ")")
-	(oformat ids[1] " = call i64 @insn_unbox (i8** %r" (int arg1) ")")
+	(oformat ids[0] " = call fastcc i64 @insn_unbox (i8** %r" (int arg0) ")")
+	(oformat ids[1] " = call fastcc i64 @insn_unbox (i8** %r" (int arg1) ")")
 	(oformat ids[2] " = icmp " (sym op) " i64 " ids[0] ", " ids[1])
 	(oformat ids[3] " = select i1 " ids[2] ", i64 " (int immediate-true) ", i64 " (int immediate-false))
 	(oformat "%r" (int trg) " = inttoptr i64 " ids[3] " to i8**")
@@ -128,16 +129,16 @@
 		 (oformat "%r" (int target) " = inttoptr i64 "
 				  (int (get-uitag dtname altname alt.index)) " to i8**")
 		 (if (= target -1)
-		     (warning (format "dead target in primop " (sym dtname) ":" (sym altname) "\n"))
+		     (warning (format "dead target in primop " (sym dtname) ":" (sym altname)))
 		     (begin
 		       ;; XXX in the c backend this was alloc_no_clear()
-		       (oformat "%r" (int target) " = call i8** @allocate ("
+		       (oformat "%r" (int target) " = call fastcc i8** @allocate ("
 				"i64 " (int (get-uotag dtname altname alt.index))
 				", i64 " (int nargs)
 				")")
 		       (for-range
 			   i nargs
-			   (oformat "call void @insn_store ("
+			   (oformat "call fastcc void @insn_store ("
 				    "  i8** %r" (int target)
 				    ", i64 " (int (+ i 1))
 				    ", i8** %r" (int (nth args i))
@@ -147,7 +148,7 @@
 	))
 
     (define (emit-nvget target reg index)
-      (oformat "%r" (int target) " = call i8** @insn_fetch (i8** %r" (int reg) ", i64 " (int (+ 1 index)) ")"))
+      (oformat "%r" (int target) " = call fastcc i8** @insn_fetch (i8** %r" (int reg) ", i64 " (int (+ 1 index)) ")"))
 
     (define (emit-move val src target)
       ;; XXX the semantics of insn:move are very confusing.
@@ -206,8 +207,8 @@
 	'%record-set (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec arg)
 	-> (emit-record-set label sig rec arg target)
 
-	'%call (sexp:list ((sexp:symbol name) sig)) args
-	-> (emit-ccall name (parse-cexp-sig sig) args target)
+	'%llvm-call (sexp:list ((sexp:string name) sig)) args
+	-> (emit-llvm-call name args target)
 
 	'%exit _ (arg)
 	-> (begin
@@ -230,7 +231,7 @@
 		    (maybe:yes index)
 		    -> (begin
 			 (oformat id0 " = load i64, i64* @size_" (int index))
-			 (oformat id1 " = call i64 @insn_unbox (i8** %r" (int count) ")")
+			 (oformat id1 " = call fastcc i64 @insn_unbox (i8** %r" (int count) ")")
 			 (oformat "%r" (int target) " = call i8** @insn_callocate (i64 " id0 ", i64 " id1 ")")
 			 )
 		    (maybe:no)
@@ -259,7 +260,7 @@
              (printf "%malloc type param = " (repr params) " size = " (int size) "\n")
              (if (< target 0)
                  (error "dead %malloc target"))
-             (oformat id0 " = call i64 @insn_unbox (i8** %r" (int count) ")")
+             (oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int count) ")")
              (oformat "%r" (int target) " = call i8** @make_malloc (i64 " (int size) ", i64 " id0 ")")
              )
 
@@ -270,7 +271,7 @@
              (printf "%halloc type param = " (repr params) " size = " (int size) "\n")
              (if (< target 0)
                  (error "dead %halloc target"))
-             (oformat id0 " = call i64 @insn_unbox (i8** %r" (int count) ")")
+             (oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int count) ")")
              (oformat "%r" (int target) " = call i8** @make_halloc (i64 " (int size) ", i64 " id0 ")")
              )
 
@@ -316,13 +317,13 @@
                (ctype:int cint signed?)
                -> (if (= (cint-size cint) 8) ;; already i64
                       (begin
-                        (warning (format "64-bit int fetched into irken int.\n"))
-                        (oformat "%r" (int target) " = call i8** @insn_box (i64 " id2 ")"))
+                        (warning (format "64-bit int fetched into irken int."))
+                        (oformat "%r" (int target) " = call fastcc i8** @insn_box (i64 " id2 ")"))
                       (begin
                         (if signed?
                             (oformat id3 " = sext " iname " " id2 " to i64")
                             (oformat id3 " = zext " iname " " id2 " to i64"))
-                        (oformat "%r" (int target) " = call i8** @insn_box (i64 " id3 ")"))
+                        (oformat "%r" (int target) " = call fastcc i8** @insn_box (i64 " id3 ")"))
                       )
                _ -> (error1 "llvm/%c-get-int: unexpected ctype" (ctype-repr cint))
                ))
@@ -364,7 +365,7 @@
       (let ((label-code (lookup-label-code label)))
 	(match (guess-record-type sig) with
 	  (maybe:yes sig0)
-	  -> (oformat "call void @insn_store ("
+	  -> (oformat "call fastcc void @insn_store ("
 		      "i8** %r" (int rec)
 		      ", i64 " (int (+ 1 (index-eq label sig0)))
 		      ", i8** %r" (int val)
@@ -380,13 +381,13 @@
 
     (define (emit-make-vector vlen vval target)
       (let ((id0 (ID)))
-	(oformat id0 " = call i64 @insn_unbox (i8** %r" (int vlen) ")")
+	(oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int vlen) ")")
 	(oformat "%r" (int target) " = call i8** @make_vector (i64 " id0 ", i8** %r" (int vval) ")")
 	))
 
     (define (emit-array-ref vec index target)
       (let ((id0 (ID)) (id1 (ID)))
-	(oformat id0 " = call i64 @insn_unbox (i8** %r" (int index) ")")
+	(oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int index) ")")
 	(when (not the-context.options.no-range-check)
 	      (oformat "call void @vector_range_check (i8** %r" (int vec) ", i64 " id0 ")"))
 	(oformat id1 " = add i64 " id0 ", 1")
@@ -395,11 +396,11 @@
 
     (define (emit-array-set vec index val target)
       (let ((id0 (ID)) (id1 (ID)))
-	(oformat id0 " = call i64 @insn_unbox (i8** %r" (int index) ")")
+	(oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int index) ")")
 	(when (not the-context.options.no-range-check)
 	      (oformat "call void @vector_range_check (i8** %r" (int vec) ", i64 " id0 ")"))
 	(oformat id1 " = add i64 " id0 ", 1")
-	(oformat "call void @insn_store (i8** %r" (int vec) ", i64 " id1 ", i8** %r" (int val) ")")
+	(oformat "call fastcc void @insn_store (i8** %r" (int vec) ", i64 " id1 ", i8** %r" (int val) ")")
 	(dead-set target)
 	))
 
@@ -418,9 +419,9 @@
       	-> (let ((arg0 (format "%arg" (int (arg-counter.inc)))))
 	     (match name with
 	       ;; XXX consider - if we could always use a helper fun this could be simplified.
-	       'int     -> (begin (oformat arg0 " = call i64 @insn_unbox (i8** %r" (int arg) ")") (format "i64 " arg0))
-	       'bool	-> (begin (oformat arg0 " = call i64 @irk_is_true (i8** %r" (int arg) ")") (format "i64 " arg0))
-	       'string	-> (begin (oformat arg0 " = call i8** @irk_get_cstring (i8** %r" (int arg) ")") (format "i8* " arg0))
+	       'int     -> (begin (oformat arg0 " = call fastcc i64 @insn_unbox (i8** %r" (int arg) ")") (format "i64 " arg0))
+	       'bool	-> (begin (oformat arg0 " = call fastcc i64 @irk_is_true (i8** %r" (int arg) ")") (format "i64 " arg0))
+	       'string	-> (begin (oformat arg0 " = call fastcc i8** @irk_get_cstring (i8** %r" (int arg) ")") (format "i8* " arg0))
 	       'cstring	-> (begin (oformat arg0 " = bitcast i8** to i8*") (format "i8* " arg0))
                'cref    -> (begin (oformat arg0 " = call i8* @get_foreign (i8** %r" (int arg) ")") (format "i8* " arg0))
 	       x -> (error1 "wrap-in:" type)
@@ -444,16 +445,16 @@
             (iname (format "i" (int (* width 8)))))
         (if (= width 8)
             (begin
-              (warning (format "64-bit int fetched into irken int.\n"))
-              (oformat result " = call i8** @insn_box (i64 " val ")"))
+              (warning (format "64-bit int fetched into irken int."))
+              (oformat result " = call fastcc i8** @insn_box (i64 " val ")"))
             (let ((id0 (ID)))
               (if signed?
                   (oformat id0 " = sext " iname " " val " to i64")
                   (oformat id0 " = zext " iname " " val " to i64"))
-              (oformat result " = call i8** @insn_box (i64 " id0 ")")
+              (oformat result " = call fastcc i8** @insn_box (i64 " id0 ")")
               ))))
 
-    (define (wrap-out ctype val result)
+    (define (wrap-out-ctype ctype val result)
       (match ctype with
         (ctype:int cint signed?)  -> (wrap-out-int cint signed? val result)
         (ctype:pointer _)         -> (oformat result " = call i8** @make_foreign (" (ctype->llvm ctype) " " val ")")
@@ -488,7 +489,7 @@
                       (id0 (ID)))
                   (ffifuns::add name) ;; so we can declare it later
                   (oformat id0 " = call " lrtype " @" (sym name) "(" (join ", " args2) ")")
-                  (wrap-out rtype id0 (maybe-target target))
+                  (wrap-out-ctype rtype id0 (maybe-target target))
                   )
              (maybe:yes (csig:obj name obtype))
              -> (let ((lt (ctype->llvm obtype))
@@ -524,7 +525,7 @@
 	  )))
 
     (define (emit-new-env size top? types target)
-      (oformat "%r" (int target) " = call i8** @allocate (i64 " (int TC_ENV) ", i64 " (int (+ size 1)) ")")
+      (oformat "%r" (int target) " = call fastcc i8** @allocate (i64 " (int TC_ENV) ", i64 " (int (+ size 1)) ")")
       (if top?
 	  (oformat "store i8** %r" (int target) ", i8*** @top")))
 
@@ -543,17 +544,17 @@
     (define (emit-call* mname funreg)
       (match mname with
         (maybe:no)
-        -> (oformat "tail call void @tail_call (i8** %r" (int funreg) ")")
+        -> (oformat "tail call fastcc void @tail_call (i8** %r" (int funreg) ")")
         (maybe:yes name)
         -> (if (safe-known-fun name)
-               (oformat "tail call void @" (gen-function-cname name 0) "()")
-               (oformat "tail call void @tail_call (i8** %r" (int funreg) ")"))
+               (oformat "tail call fastcc void @" (gen-function-cname name 0) "()")
+               (oformat "tail call fastcc void @tail_call (i8** %r" (int funreg) ")"))
         ))
 
     (define (emit-tail name fun args)
       (if (>= args 0)
-	  (oformat "call void @link_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
-	  (oformat "call void @link_env_noargs (i8** %r" (int fun) ")"))
+	  (oformat "call fastcc void @link_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
+	  (oformat "call fastcc void @link_env_noargs (i8** %r" (int fun) ")"))
       (emit-call* name fun)
       (oformat "ret void")
       )
@@ -566,11 +567,11 @@
     	    ;; a zero-arg trcall needs an extra level of pop
     	    (set! npop (+ npop 1)))
 	(for-range i npop
-	    (oformat "call void @pop_env()"))
+	    (oformat "call fastcc void @pop_env()"))
     	(for-range i nargs
-	    (oformat "call void @insn_varset (i64 0, i64 "
+	    (oformat "call fastcc void @insn_varset (i64 0, i64 "
 		     (int i) ", i8** %r" (int (nth regs i)) ")"))
-	(oformat "tail call void @" cname "()")
+	(oformat "tail call fastcc void @" cname "()")
 	(oformat "ret void")
 	))
 
@@ -581,33 +582,33 @@
 	    (ids (make-idents 2))
 	    )
 	;; save
-	(oformat ids[0] " = call i8** @allocate (i64 " (int TC_SAVE) ", i64 " (int (+ 3 nregs)) ")")
+	(oformat ids[0] " = call fastcc i8** @allocate (i64 " (int TC_SAVE) ", i64 " (int (+ 3 nregs)) ")")
 	(oformat ids[1] " = bitcast void()* @" kfun " to i8**")
 	(for-range i nregs
-	   (oformat "call void @insn_store ("
+	   (oformat "call fastcc void @insn_store ("
 		    "i8** " ids[0]
 		    ", i64 " (int (+ i 4))
 		    ", i8** %r" (int (nth free i))
 		    ")"))
-	(oformat "call void @push_k (i8** " ids[0] ", i8** " ids[1] ")")
+	(oformat "call fastcc void @push_k (i8** " ids[0] ", i8** " ids[1] ")")
 	;; push env
 	(if (>= args 0)
-	    (oformat "call void @link_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
-	    (oformat "call void @link_env_noargs (i8** %r" (int fun) ")"))
+	    (oformat "call fastcc void @link_env_with_args (i8** %r" (int args) ", i8** %r" (int fun) ")")
+	    (oformat "call fastcc void @link_env_noargs (i8** %r" (int fun) ")"))
 	;; call
         (emit-call* name fun)
 	(oformat "ret void")
 	;; emit a new c function to represent the continuation of the current irken function
 	(PUSH fun-stack
 	      (lambda ()
-		(oformat "\ndefine internal void @" kfun "() {")
+		(oformat "\ndefine internal fastcc void @" kfun "() {")
 		(o.indent)
 		;; restore
 		(for-range i nregs
 		   (oformat "%r" (int (nth free i))
-			    " = call i8** @fetch (i8*** @k, i64 "
+			    " = call fastcc i8** @fetch (i8*** @k, i64 "
 			    (int (+ 4 i)) ")"))
-		(oformat "call void @pop_k()")
+		(oformat "call fastcc void @pop_k()")
 		(if (>= target 0)
 		    (oformat "%r" (int target) " = load i8**, i8*** @result"))
 		(walk k)
@@ -627,19 +628,19 @@
 
     (define (emit-fail label npop free)
       (for-range i npop
-	 (oformat "call void @pop_env()"))
+	 (oformat "call fastcc void @pop_env()"))
       (let ((jname (format "FAIL_" (int label))))
     	(match (fatbar-free::get label) with
     	  (maybe:yes free)
 	  -> (begin
-	       (oformat "tail call void @" jname "(" (build-args free) ")")
+	       (oformat "tail call fastcc void @" jname "(" (build-args free) ")")
 	       (o.write "ret void"))
     	  (maybe:no)
 	  -> (error1 "emit-fail: failed to lookup fatbar" label) ;; (impossible)
     	  )))
 
     (define (emit-jump reg trg jn free)
-      (begin (oformat "tail call void @JUMP_" (int jn) "("
+      (begin (oformat "tail call fastcc void @JUMP_" (int jn) "("
 		      ;; note: c back end does a move from reg to target, we
 		      ;;  achieve the same effect by passing reg as first arg.
 		      (build-args (if (= trg -1) free (list:cons reg free)))
@@ -651,7 +652,7 @@
 	(PUSH fun-stack
 	      (lambda ()
 		(cps->llvm body co o name cname '() #f)))
-	(oformat "%r" (int target) " = call i8** @insn_close (void()* @" cname ")")
+	(oformat "%r" (int target) " = call fastcc i8** @insn_close (void()* @" cname ")")
 	))
 
     (define (emit-litcon index kind target)
@@ -690,7 +691,7 @@
 		   (lelse (new-label))
 		   (labs (make-labels ntags)))
 	       (push-jump-continuation k jump-num)
-	       (oformat id0 " = call i64 @get_case (i8** %r" (int test) ")")
+	       (oformat id0 " = call fastcc i64 @get_case (i8** %r" (int test) ")")
 	       (oformat "switch i64 " id0 ", label %" lelse " [")
 	       (for-range i ntags
 		  (let ((label (nth tags i))
@@ -714,7 +715,7 @@
 	      (lelse (new-label))
 	      (labs (make-labels ntags)))
 	  (push-jump-continuation k jump-num)
-	  (oformat id0 " = call i64 @get_case (i8** %r" (int test) ")")
+	  (oformat id0 " = call fastcc i64 @get_case (i8** %r" (int test) ")")
 	  (oformat "switch i64 " id0 ", label %" lelse " [")
 	  (for-range i ntags
 	     (let ((label (nth tags i))
@@ -754,7 +755,7 @@
 
       (insn:return reg)
       -> (begin
-	   (oformat "tail call void @insn_return (i8** %r" (int reg) ")")
+	   (oformat "tail call fastcc void @insn_return (i8** %r" (int reg) ")")
 	   (o.write "ret void"))
 
       (insn:literal lit (cont:k reg _ k))
@@ -766,8 +767,8 @@
       (insn:varref depth index (cont:k reg _ k))
       -> (begin
 	   (if (= depth -1)
-	       (oformat "%r" (int reg) " = call i8** @insn_topref (i64 " (int index) ")")
-	       (oformat "%r" (int reg) " = call i8** @insn_varref "
+	       (oformat "%r" (int reg) " = call fastcc i8** @insn_topref (i64 " (int index) ")")
+	       (oformat "%r" (int reg) " = call fastcc i8** @insn_varref "
 			"(i64 " (int depth) ", i64 " (int index) ")"))
 	   (walk k))
 
@@ -775,7 +776,7 @@
       -> (begin
 	   (if (= depth -1)
 	       (oformat "call void @insn_topset (i64 " (int index) ", i8** %r" (int val) ")")
-	       (oformat "call void @insn_varset "
+	       (oformat "call fastcc void @insn_varset "
 			"(i64 " (int depth) ", i64 " (int index) ", i8** %r" (int val) ")"))
 	   (dead-set target)
 	   (walk k))
@@ -809,17 +810,17 @@
       -> (begin (emit-new-env size top? types target) (walk k))
 
       (insn:push r (cont:k target _ k))
-      -> (begin (oformat "call void @push_env (i8** %r" (int r) ")") (walk k))
+      -> (begin (oformat "call fastcc void @push_env (i8** %r" (int r) ")") (walk k))
 
       (insn:pop r (cont:k target _ k))
       -> (begin
-	   (oformat "call void @pop_env()")
+	   (oformat "call fastcc void @pop_env()")
 	   (move r target)
 	   (walk k))
 
       (insn:store off arg tup i (cont:k target _ k))
       -> (begin
-	   (oformat "call void @insn_store ("
+	   (oformat "call fastcc void @insn_store ("
 		    "i8** %r" (int tup)
 		    ", i64 " (int (+ 1 i off))
 		    ", i8** %r" (int arg)
@@ -844,7 +845,7 @@
 		  (tag:uobj v) -> (if (= size 0) (UITAG v) (UOTAG v)))))
 	   (if (= size 0)
 	       (oformat "%r" (int target) " = inttoptr i64 " (int tag0) " to i8**")
-	       (oformat "%r" (int target) " = call i8** @allocate (i64 " (int tag0) ", i64 " (int size) ")"))
+	       (oformat "%r" (int target) " = call fastcc i8** @allocate (i64 " (int tag0) ", i64 " (int size) ")"))
 	   (walk k))
 
       (insn:fatbar lab jn k0 k1 (cont:k _ free k))
@@ -876,7 +877,7 @@
 		   cname
 		   "\\00\", align 1"))
 
-    (oformat "\ndefine " (if external? "external" "internal")
+    (oformat "\ndefine " (if external? "external" "internal fastcc")
 	     " void @" cname "("
 	     (join (lambda (x) (format "i8** %r" (int x))) ", " args)
 	     ") {")
