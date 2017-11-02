@@ -61,7 +61,9 @@
   ;; XXX distinguish between signed and unsigned!
   ;; XXX also need to handle 64-bit types on a 32-bit platform.
   '(uint8_t uint16_t uint32_t uint64_t
-    int8_t int16_t int32_t int64_t))
+    int8_t int16_t int32_t int64_t
+    uint long ulong longlong ulonglong
+    ))
 
 (define (wrap-out type exp)
   (match type with
