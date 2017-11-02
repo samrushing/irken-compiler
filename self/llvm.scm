@@ -331,17 +331,16 @@
 	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x (repr params) args))
 	))
 
-    (define (emit-ccall name sig args target)
-      ;; XXX process the sig to transform args/results.
-      ;;     until then assume all are i8**
-      (oformat "%r" (int target) " = call i8** @" (sym name) "(" (build-args args) ")")
+    (define (emit-llvm-call name args target)
+      ;; assumes all arguments and retval are irken objects.
+      (oformat "%r" (int target) " = call fastcc i8** " name " (" (build-args args) ")")
       )
 
     (define (emit-record-get label sig rec target)
       (let ((label-code (lookup-label-code label)))
 	(match (guess-record-type sig) with
 	  (maybe:yes sig0)
-	  -> (oformat "%r" (int target) " = call i8** @insn_fetch ("
+	  -> (oformat "%r" (int target) " = call fastcc i8** @insn_fetch ("
 		      "i8** %r" (int rec)
 		      ", i64 " (int (+ 1 (index-eq label sig0)))
 		      ")")

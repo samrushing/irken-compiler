@@ -43,15 +43,19 @@
     r))
 
 (define (ascii->char n)
-  (%backend (c llvm)
+  (%backend c
     (%%cexp (int -> char) "TO_CHAR(%0)" n))
+  (%backend llvm
+    (%llvm-call ("@irk_makei" (int int -> char)) #x02 n))
   (%backend bytecode
     (%%cexp (int int -> char) "makei" #x02 n))
   )
 
 (define (char->ascii c)
-  (%backend (c llvm)
+  (%backend c
     (%%cexp (char -> int) "GET_CHAR(%0)" c))
+  (%backend llvm
+    (%llvm-call ("@irk_get_char" (char -> int)) c))
   (%backend bytecode
     (%%cexp (char -> int) "unchar" c))
   )
@@ -66,9 +70,11 @@
   (copy-string (if b "#t" "#f") 2))
 
 (define (string-ref s n)
-  (%backend (c llvm)
+  (%backend c
     (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
     (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
+  (%backend llvm
+    (%llvm-call ("@irk_string_ref" (string int -> char)) s n))
   (%backend bytecode
     (%%cexp (string int -> char) "sref" s n)))
 

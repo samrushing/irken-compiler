@@ -298,4 +298,77 @@ define internal i8** @insn_close (void()* %fun) {
   ret i8** %1
 }
 
+define internal fastcc i8** @irk_makei (i8** %tag, i8** %val) {
+  %tag0 = call fastcc i64 @insn_unbox (i8** %tag)
+  %val0 = call fastcc i64 @insn_unbox (i8** %val)
+  %1 = shl i64 %val0, 8
+  %2 = and i64 %tag0, 255
+  %3 = or i64 %1, %2
+  %4 = inttoptr i64 %3 to i8**
+  ret i8** %4
+}
+
+define internal fastcc i8** @irk_get_char (i8** %char) {
+  %1 = ptrtoint i8** %char to i64
+  %2 = ashr i64 %1, 8
+  %3 = call fastcc i8** @insn_box (i64 %2)
+  ret i8** %3
+}
+
+; object *
+; irk_string_ref (object * src, object * idx)
+; {
+;   pxll_int index = UNBOX_INTEGER (idx);
+;   pxll_string * src0 = (pxll_string *) src;
+;   return TO_CHAR ((uint8_t)(src0->data[index]));
+; }
+
+define internal fastcc i8** @irk_string_ref(i8**, i8**) {
+  %3 = ptrtoint i8** %1 to i64
+  %4 = ashr i64 %3, 1
+  %5 = bitcast i8** %0 to %struct._string*
+  %6 = getelementptr inbounds %struct._string, %struct._string* %5, i64 0, i32 2, i64 %4
+  %7 = load i8, i8* %6
+  %8 = zext i8 %7 to i64
+  %9 = shl nuw nsw i64 %8, 8
+  %10 = or i64 %9, 2
+  %11 = inttoptr i64 %10 to i8**
+  ret i8** %11
+}
+
+; object *
+; irk_string_set (object * src, object * idx, object *val)
+; {
+;   pxll_int index = UNBOX_INTEGER (idx);
+;   pxll_string * src0 = (pxll_string *) src;
+;   src0->data[index] = GET_CHAR(val);
+;   return (object *) PXLL_UNDEFINED;
+; }
+
+define internal fastcc i8** @irk_string_set(i8**, i8**, i8**) {
+  %4 = ptrtoint i8** %1 to i64
+  %5 = ashr i64 %4, 1
+  %6 = bitcast i8** %0 to %struct._string*
+  %7 = ptrtoint i8** %2 to i64
+  %8 = lshr i64 %7, 8
+  %9 = trunc i64 %8 to i8
+  %10 = getelementptr inbounds %struct._string, %struct._string* %6, i64 0, i32 2, i64 %5
+  store i8 %9, i8* %10
+  ret i8** inttoptr (i64 14 to i8**)
+}
+
+; object *
+; irk_magic_cmp (object * a, object * b)
+; {
+;   return (object *) UITAG (1 + magic_cmp (a, b));
+; }
+
+define internal fastcc i8** @irk_magic_cmp(i8**, i8**) {
+  %3 = tail call i64 @magic_cmp(i8** %0, i8** %1)
+  %4 = shl i64 %3, 8
+  %5 = add i64 %4, 278
+  %6 = inttoptr i64 %5 to i8**
+  ret i8** %6
+}
+
 ;; --- generated code follows ---

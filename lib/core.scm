@@ -210,8 +210,10 @@
 (define (magic-cmp a b)
   ;; note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
   ;;  to match the 'cmp' datatype.
-  (%backend (c llvm)
+  (%backend c
     (%%cexp ('a 'a -> cmp) "(object*)UITAG(1+magic_cmp(%0, %1))" a b))
+  (%backend llvm
+    (%llvm-call ("@irk_magic_cmp" ('a 'a -> cmp)) a b))
   (%backend bytecode
     (%%cexp ('a 'a -> cmp) "cmp" a b))
   )
