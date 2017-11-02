@@ -391,7 +391,7 @@
 	(when (not the-context.options.no-range-check)
 	      (oformat "call void @vector_range_check (i8** %r" (int vec) ", i64 " id0 ")"))
 	(oformat id1 " = add i64 " id0 ", 1")
-	(oformat "%r" (int target) " = call i8** @insn_fetch (i8** %r" (int vec) ", i64 " id1 ")")
+	(oformat "%r" (int target) " = call fastcc i8** @insn_fetch (i8** %r" (int vec) ", i64 " id1 ")")
 	))
 
     (define (emit-array-set vec index val target)
