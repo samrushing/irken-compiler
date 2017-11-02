@@ -632,6 +632,13 @@
                                   ") * UNBOX_INTEGER(r" (int index)"));")))
             _ _ -> (primop-error)))
 
+        (define prim-c-pref
+          (src)
+          -> (begin
+               (o.write (format "// %c-pref"))
+               (o.write (format "O r" (int target) " = make_foreign (*(void**)get_foreign (r" (int src) "));")))
+          _ -> (primop-error)
+          )
 
         (define (prim-c-sizeof ctexp)
           (let ((t0 (parse-type ctexp))
@@ -716,6 +723,7 @@
           '%free         -> (prim-free args)
           '%ffi2         -> (prim-ffi2 parm args)
           '%c-aref       -> (prim-c-aref args)
+          '%c-pref       -> (prim-c-pref args)
           '%c-get-int    -> (prim-c-get-int parm args)
           '%c-set-int    -> (prim-c-set-int parm args)
           '%c-sref       -> (prim-c-sref parm args)

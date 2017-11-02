@@ -604,6 +604,8 @@
       '%free   -> (:scheme (LIST T0) (arrow undefined-type (LIST (pred 'cref (LIST T0)))))
       '%c-aref -> (:scheme (LIST T0) (arrow (pred 'cref (LIST T0))
                                             (LIST (pred 'cref (LIST (pred 'array (LIST T0)))) int-type)))
+      ;; forall(t0).cref(*(t0)) -> cref(t0)
+      '%c-pref -> (:scheme (LIST T0) (arrow (pred 'cref (LIST T0)) (LIST (pred 'cref (LIST (pred 'cref (LIST T0)))))))
       '%c-get-int -> (get-c-get-int-scheme params)
       '%c-set-int -> (get-c-set-int-scheme params)
       '%c-sref    -> (get-sref-scheme params)
@@ -614,8 +616,19 @@
                                         (LIST (pred 'cref (LIST T0)))))
       '%c-sizeof     -> (:scheme '() (arrow int-type '()))
       '%cref->int    -> (:scheme (LIST T0) (arrow int-type (LIST (pred 'cref (LIST T0)))))
+      ;; for calling internal functions of the form `(object, object, ...) -> object`
+      '%llvm-call    -> (make-llvm-scheme params)
       ;; -------------------- FFI --------------------
       _ -> (error1 "lookup-primapp" name)))
+
+  (define (ffi-type-wrap-out type)
+    (match type with
+      ;; promote all c int types to irken ints.
+      (type:pred kind _ _) -> (if (member-eq? kind c-int-types)
+                                  int-type
+                                  type)
+      _ -> type
+      ))
 
   (define get-c-get-int-scheme
     (sexp:symbol cint-type)
@@ -668,12 +681,17 @@
     (sexp:symbol name)
     -> (match (ffi-info.sigs::get name) with
          (maybe:yes (csig:fun _ rtype argtypes))
-         -> (:scheme '() (arrow (ctype->irken-type rtype) (map ctype->irken-type argtypes)))
+         -> (:scheme '() (arrow (ffi-type-wrap-out (ctype->irken-type rtype)) (map ctype->irken-type argtypes)))
          (maybe:yes (csig:obj _ obtype))
-         -> (:scheme '() (arrow (pred 'cref (LIST (ctype->irken-type obtype))) '()))
+         -> (:scheme '() (arrow (pred 'cref (LIST (ffi-type-wrap-out (ctype->irken-type obtype)))) '()))
          (maybe:no)
          -> (error1 "lookup-ffi-scheme: unknown name" name))
     x -> (error1 "lookup-ffi-scheme: malformed" (repr x))
+    )
+
+  (define make-llvm-scheme
+    (sexp:list ((sexp:string name) sig)) -> (parse-cexp-sig sig)
+    x -> (error1 "make-llvm-scheme: malformed" (repr x))
     )
 
   ;; each exception is stored in a global table along with a tvar
