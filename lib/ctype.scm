@@ -96,6 +96,8 @@
 (define parse-ctype
   (sexp:symbol 'int)
   -> (ctype:int (cint:int) #t)
+  (sexp:symbol 'long)
+  -> (ctype:int (cint:long) #t)
   (sexp:list ((sexp:symbol 'int) (sexp:list ((sexp:int size) (sexp:int signed?)))))
   -> (ctype:int (cint:width size) (if (= signed? 1) #t #f))
   (sexp:list ((sexp:symbol '*) sub))
@@ -569,6 +571,9 @@
   (let ((s0* (%c-aref char s* 0))
         (slen (posix/strlen s0*)))
     (%cref->string #f s0* slen)))
+
+(define (cstring s)
+  (%string->cref #f (zero-terminate s)))
 
 (define (raise-system-error)
   (let ((errno (%c-get-int int posix/errno))
