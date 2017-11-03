@@ -31,7 +31,7 @@
     (match n with
       (tree:empty)
       -> (tree:red (tree:empty) (tree:empty) k v)
-      
+
       (tree:red l r k2 v2)
       -> (match (cmp k k2) with
            (cmp:<) -> (tree:red (ins l) r k2 v2)
@@ -44,13 +44,13 @@
            (cmp:>) -> (rbalance l (ins r) k2 v2)
            (cmp:=) -> n
            )))
-  
+
   (let ((s (ins root)))
     (match s with
       (tree:red l r k0 v0) -> (tree:black l r k0 v0)
       _ -> s
       ))
-  
+
   )
 
 ;; deletion translated from https://github.com/bmeurer/ocaml-rbtrees
@@ -239,7 +239,7 @@
   (tree/insert! root cmp k v) -> (set! root (tree/insert root cmp k v)))
 
 (defmacro for-map
-  (for-map k v map body ...) 
+  (for-map k v map body ...)
   -> (tree/inorder (lambda (k v) body ...) map)
   )
 
@@ -263,7 +263,7 @@
 (define (tree/make-generator t)
   (make-generator
    (lambda (consumer)
-     (tree/inorder 
+     (tree/inorder
       (lambda (k v)
 	(consumer (maybe:yes (:tuple k v))))
       t)
