@@ -157,16 +157,16 @@
 				       (maybe:no) -> t)))))
 
   (define (occurs-in-type tvar type)
-    (let/cc return
-	(if (eq? tvar type)
-	    #t
-	    (match type with
-	      (type:tvar _ _) -> #f
-	      (type:pred _ args _)
-	      -> (begin
-                   (for-list arg args
-                     (if (occurs-in-type tvar arg) (return #t) #u))
-		   #f)))))
+    (let walk ((type type))
+      (match type with
+        (type:pred _ args _)
+        -> (let loop ((args args))
+             (match args with
+               ()         -> #f
+               (arg . tl) -> (if (walk arg) #t (loop tl))
+               ))
+        _ -> (eq? type tvar)
+        )))
 
   ;; occurs-free and build-type-scheme could obviously
   ;;   be made more efficient - build-type-scheme walks
