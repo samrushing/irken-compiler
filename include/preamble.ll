@@ -369,4 +369,25 @@ define internal fastcc i8** @irk_magic_cmp(i8**, i8**) {
   ret i8** %6
 }
 
+; object *
+; irk_int_cmp (object *a, object * b)
+; {
+;   pxll_int a0 = UNBOX_INTEGER (a);
+;   pxll_int b0 = UNBOX_INTEGER (b);
+;   pxll_int r = (a0 < b0) ? 0 : ((b0 < a0) ? 2 : 1);
+;   return (object *) UITAG(r);
+; }
+
+define internal fastcc i8** @irk_int_cmp(i8**, i8**) {
+  %3 = ptrtoint i8** %0 to i64
+  %4 = ashr i64 %3, 1
+  %5 = ptrtoint i8** %1 to i64
+  %6 = ashr i64 %5, 1
+  %7 = icmp slt i64 %4, %6
+  %8 = icmp slt i64 %6, %4
+  %9 = select i1 %8, i8** inttoptr (i64 534 to i8**), i8** inttoptr (i64 278 to i8**)
+  %10 = select i1 %7, i8** inttoptr (i64 22 to i8**), i8** %9
+  ret i8** %10
+}
+
 ;; --- generated code follows ---

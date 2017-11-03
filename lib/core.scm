@@ -202,10 +202,19 @@
   (cmp:>) -> ">"
   )
 
-(define (int-cmp a b)
-  (cond ((< a b) (cmp:<))
-	((> a b) (cmp:>))
-	(else (cmp:=))))
+;; int-cmp is important enough to be a primitive.
+(%backend c
+  (define (int-cmp a b)
+    (%%cexp (int int -> cmp) "(object*)(pxll_int)UITAG((%0 < %1) ? 0 : ((%1 < %0) ? 2 : 1))" a b)))
+(%backend llvm
+  (define (int-cmp a b)
+    (%llvm-call ("@irk_int_cmp" (int int -> cmp)) a b)))
+(%backend bytecode
+  ;; XXX needs an opcode, to be fair.
+  (define (int-cmp a b)
+    (cond ((< a b) (cmp:<))
+          ((> a b) (cmp:>))
+          (else (cmp:=)))))
 
 (define (magic-cmp a b)
   ;; note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
