@@ -25,11 +25,10 @@
   )
 
 (define (string->symbol str)
-  (let ((probe (tree/member the-symbol-table string-compare str)))
-    (match probe with
-      (maybe:no) -> (intern-symbol (symbol:t str symbol-table-size))
-      (maybe:yes sym) -> sym
-      )))
+  (match (tree/member the-symbol-table string-compare str) with
+    (maybe:no) -> (intern-symbol (symbol:t str symbol-table-size))
+    (maybe:yes sym) -> sym
+    ))
 
 (define (symbol<? s1 s2)
   (string<? (symbol->string s1) (symbol->string s2)))
