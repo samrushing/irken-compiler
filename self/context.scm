@@ -29,7 +29,7 @@
   {datatypes            = (alist/make)
     aliases             = (alist/make)
     macros              = (alist/make)
-    dep-graph           = (map-maker symbol-cmp)
+    dep-graph           = (map-maker symbol-index-cmp)
     scc-graph           = '()
     vars                = (tree/empty)
     funs                = (tree/empty)

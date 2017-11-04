@@ -22,7 +22,7 @@
 	;;(tree/insert! self.t < (symbol->index sym) sym)
 	(set! self.t (tree/insert self.t int-cmp (symbol->index sym) sym))
 	))
-  
+
   (define (get self)
     (tree/values self.t))
 
@@ -75,7 +75,7 @@
     (set! the-context.dep-graph g)))
 
 (define (transpose g)
-  (let ((gt (map-maker symbol-cmp)))
+  (let ((gt (map-maker symbol-index-cmp)))
     (g::iterate
      (lambda (k _)
        (gt::add k (symbol-set-maker '()))))
@@ -156,7 +156,7 @@
 (define (partition-fix names scc-graph)
   ;; partition the functions of this fix into sets of mutually-recursive functions
   (let ((n (length names))
-	(name-map (map-maker symbol-cmp))
+	(name-map (map-maker symbol-index-cmp))
 	(leftover (range n))
 	(parts '())
 	(part '()))
