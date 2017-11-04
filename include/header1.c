@@ -294,6 +294,8 @@ magic_cmp (object * a, object * b)
       } else {
         return 1;
       }
+    } else if (tca == TC_SYMBOL) {
+      return magic_cmp_int ((pxll_int)a[2],(pxll_int)b[2]);
     } else {
       // tags are the same: do per-element comparison.
       // XXX check special internal types like TC_CLOSURE!
