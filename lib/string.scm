@@ -42,24 +42,6 @@
     (buffer-copy src start n r 0)
     r))
 
-(define (ascii->char n)
-  (%backend c
-    (%%cexp (int -> char) "TO_CHAR(%0)" n))
-  (%backend llvm
-    (%llvm-call ("@irk_makei" (int int -> char)) #x02 n))
-  (%backend bytecode
-    (%%cexp (int int -> char) "makei" #x02 n))
-  )
-
-(define (char->ascii c)
-  (%backend c
-    (%%cexp (char -> int) "GET_CHAR(%0)" c))
-  (%backend llvm
-    (%llvm-call ("@irk_get_char" (char -> int)) c))
-  (%backend bytecode
-    (%%cexp (char -> int) "unchar" c))
-  )
-
 (define (char->string ch)
   (let ((r (make-string 1)))
     (string-set! r 0 ch)

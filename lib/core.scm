@@ -242,11 +242,34 @@
 (define (char=? a b)
   (eq? a b))
 
+(define (int->char n)
+  (%backend c
+    (%%cexp (int -> char) "TO_CHAR(%0)" n))
+  (%backend llvm
+    (%llvm-call ("@irk_makei" (int int -> char)) #x02 n))
+  (%backend bytecode
+    (%%cexp (int int -> char) "makei" #x02 n))
+  )
+
+(define (char->int c)
+  (%backend c
+    (%%cexp (char -> int) "GET_CHAR(%0)" c))
+  (%backend llvm
+    (%llvm-call ("@irk_get_char" (char -> int)) c))
+  (%backend bytecode
+    (%%cexp (char -> int) "unchar" c))
+  )
+
+;; close enough for now.
+(define char->ascii char->int)
+(define ascii->char int->char)
+
 (define (char< a b)
-  (%%cexp (char char -> bool) "%0<%1" a b))
+  (< (char->int a) (char->int b)))
 
 (define (string-length s)
-  (%backend (c llvm) (%%cexp ((raw string) -> int) "%0->len" s))
+  (%backend c (%%cexp ((raw string) -> int) "%0->len" s))
+  (%backend llvm (%llvm-call ("@irk_string_len" (string -> int)) s))
   (%backend bytecode (%%cexp (string -> int) "slen" s))
   )
 
