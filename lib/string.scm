@@ -126,9 +126,9 @@
     (let ((alen (string-length a))
           (blen (string-length b))
           (cmp (%%cexp (string string int -> int) "memcmp (%0, %1, %2)" a b (min alen blen))))
-      (cond ((= cmp 0)
-             (int-cmp alen blen))
-            (else (int-cmp cmp 0)))))
+      (if (= cmp 0)
+          (int-cmp alen blen)
+          (int-cmp cmp 0))))
   (%backend bytecode
     (magic-cmp a b))
   )
