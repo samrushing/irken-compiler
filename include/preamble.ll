@@ -26,8 +26,6 @@ declare i8** @make_vector (i64 %size, i8** %val)
 declare void @vector_range_check (i8** %vec, i64 %index)
 declare i8** @record_fetch (i8** %rec, i64 %label)
 declare void @record_store (i8** %rec, i64 %label, i8** %val)
-declare void @insn_topset (i64 %index, i8** %val)
-declare i8** @insn_callocate (i64 %size, i64 %count)
 declare void @exit_continuation()
 declare void @DO (i8** %ob)
 declare void @DENV()
@@ -238,6 +236,15 @@ define internal fastcc i8** @insn_topref (i64 %index) {
   ret i8** %5
 }
 
+define internal fastcc void @insn_topset(i64, i8**) {
+  %3 = load i8**, i8*** @top
+  %4 = add nsw i64 %0, 2
+  %5 = getelementptr inbounds i8*, i8** %3, i64 %4
+  %6 = bitcast i8** %5 to i8***
+  store i8** %1, i8*** %6
+  ret void
+}
+
 define internal fastcc i64 @insn_unbox (i8** %val) {
   %1 = ptrtoint i8** %val to i64
   %2 = ashr i64 %1, 1
@@ -388,6 +395,42 @@ define internal fastcc i8** @irk_int_cmp(i8**, i8**) {
   %9 = select i1 %8, i8** inttoptr (i64 534 to i8**), i8** inttoptr (i64 278 to i8**)
   %10 = select i1 %7, i8** inttoptr (i64 22 to i8**), i8** %9
   ret i8** %10
+}
+
+define internal fastcc i8** @insn_callocate(i64, i64) {
+  %3 = mul nsw i64 %1, %0
+  %4 = add i64 %3, 7
+  %5 = lshr i64 %4, 3
+  %6 = load i8**, i8*** @freep
+  %7 = shl i64 %5, 8
+  %8 = or i64 %7, 32
+  %9 = inttoptr i64 %8 to i8*
+  store i8* %9, i8** %6
+  %10 = add nuw nsw i64 %5, 1
+  %11 = load i8**, i8*** @freep
+  %12 = getelementptr inbounds i8*, i8** %11, i64 %10
+  store i8** %12, i8*** @freep
+  ret i8** %6
+}
+
+define internal fastcc i8** @irk_string_len(i8**) {
+  %2 = getelementptr inbounds i8*, i8** %0, i64 1
+  %3 = bitcast i8** %2 to i32*
+  %4 = load i32, i32* %3
+  %5 = zext i32 %4 to i64
+  %6 = shl nuw nsw i64 %5, 1
+  %7 = or i64 %6, 1
+  %8 = inttoptr i64 %7 to i8**
+  ret i8** %8
+}
+
+define internal fastcc i8** @irk_tuple_len(i8**) {
+  %2 = bitcast i8** %0 to i64*
+  %3 = load i64, i64* %2
+  %4 = ashr i64 %3, 7
+  %5 = or i64 %4, 1
+  %6 = inttoptr i64 %5 to i8**
+  ret i8** %6
 }
 
 ;; --- generated code follows ---
