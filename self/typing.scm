@@ -28,6 +28,82 @@
 	    ))))
   (p t))
 
+;; --------- tenv API ---------
+
+;; (define (tenv/extend tenv name scheme)
+;;   (alist:entry name scheme tenv))
+
+;; (defmacro tenv/extend!
+;;   (tenv-extend! tenv name scheme) -> (set! tenv (tenv/extend tenv name scheme))
+;;   )
+
+;; (define (tenv/lookup tenv name)
+;;   (alist/lookup tenv name))
+
+;; (define (tenv/make)
+;;   (alist/make))
+
+;; (define (tenv/iterate p tenv)
+;;   (alist/iterate p tenv))
+
+(define (dump-tenv tenv)
+  (printf "tenv {\n")
+  (tenv/iterate
+   (lambda (name scheme)
+     (printf "  " (sym name) " = " (scheme-repr scheme) "\n"))
+   tenv.env)
+  (printf "}\n"))
+
+(define (tenv/make)
+  {free=(tree:empty) env=(tree:empty)})
+
+(define (tenv/lookup tenv name)
+  (tree/member tenv.env symbol-index-cmp name))
+
+(define (tenv/extend tenv name scheme)
+  (let ((free (scheme/free scheme))
+        (n (tree/size free))
+        (free0 tenv.free))
+    ;; (when (> n 0)
+    ;;   (printf (int (tree/size free)) " free " (sym name) " " (scheme-repr scheme) "\n"))
+    ;; merge into tenv.free
+    (tree/inorder
+     (lambda (k v)
+       (set! free0 (tree/insert free0 magic-cmp k #f)))
+     free)
+    {free=free0 env=(tree/insert tenv.env symbol-index-cmp name scheme)}))
+
+(define (occurs-free-in-tenv* tvar tenv)
+  (match (tree/member tenv.free magic-cmp tvar) with
+    (maybe:yes _) -> #t
+    (maybe:no)    -> #f
+    ))
+
+(defmacro tenv/extend!
+  (tenv-extend! tenv name scheme) -> (set! tenv (tenv/extend tenv name scheme))
+  )
+
+(define (tenv/iterate p tenv)
+  (tree/inorder p tenv.env))
+
+;; collect all the free tvars in scheme
+(define scheme/free
+  (:scheme gens type)
+  -> (let ((free (tree:empty)))
+       (let walk ((type type))
+         (match type with
+           (type:pred _ args _)
+           -> (let loop ((args args))
+                (match args with
+                  ()           -> #u
+                  (arg . args) -> (begin (walk arg) (loop args))))
+           _ -> (if (not (member-eq? type gens))
+                    (tree/insert! free magic-cmp type #f))
+           ))
+       free))
+
+;; ----------------------------
+
 (define scheme-repr
   (:scheme gens type)
   -> (format "forall(" (join type-repr "," gens) ")." (type-repr type)))
@@ -171,9 +247,9 @@
   ;; occurs-free and build-type-scheme could obviously
   ;;   be made more efficient - build-type-scheme walks
   ;;   the entire environment repeatedly.
-  (define (occurs-free-in-tenv tvar tenv)
+  (define (occurs-free-in-tenv0 tvar tenv)
     (let/cc return
-	(alist/iterate
+	(tenv/iterate
 	 (lambda (name scheme)
 	   (match scheme with
 	     (:scheme gens type)
@@ -182,6 +258,16 @@
 			(return #t)))))
 	 tenv)
       #f))
+
+  ;; (define (occurs-free-in-tenv tvar tenv)
+  ;;   (let ((r0 (occurs-free-in-tenv0 tvar tenv))
+  ;;         (r1 (occurs-free-in-tenv* tvar tenv)))
+  ;;     (if (not (eq? r0 r1))
+  ;;         (printf "OFIT: disagreement\n"))
+  ;;     r1))
+
+  (define (occurs-free-in-tenv tvar tenv)
+    (occurs-free-in-tenv* tvar tenv))
 
   (define (build-type-scheme type tenv)
     (let ((gens (set-maker '())))
@@ -212,14 +298,6 @@
       (node:nvcase dt tags arities) -> (type-of-vcase dt tags arities exp tenv)
       (node:subst _ _)              -> (impossible)
       ))
-
-  (define (dump-tenv tenv)
-    (printf "tenv {\n")
-    (tree/inorder
-     (lambda (name scheme)
-       (printf "  " (sym name) " = " (scheme-repr scheme) "\n"))
-     tenv)
-    (printf "}\n"))
 
   (define (type-of exp tenv)
     (when the-context.options.debugtyping
@@ -314,7 +392,7 @@
 	  (for-list formal formals
             (let ((type (optional-type formal tenv)))
               (PUSH arg-types type)
-              (alist/push tenv formal (:scheme '() type))))
+              (tenv/extend! tenv formal (:scheme '() type))))
 	  (arrow (type-of body tenv) (reverse arg-types)))
 	;; user-supplied type (do we need to instantiate?)
 	(let ((solved (type-of-function formals body no-type tenv)))
@@ -324,14 +402,14 @@
 	  )))
 
   (define (apply-tenv name tenv)
-;;     (print-string "apply-tenv: ") (printn name)
-;;     (print-string " tenv= {\n")
-;;     (alist/iterate
-;;      (lambda (k v)
-;;        (printf " " (sym k) " " (scheme-repr v) "\n"))
-;;      tenv)
-;;     (print-string "}\n")
-    (match (alist/lookup tenv name) with
+    ;; (print-string "apply-tenv: ") (printn name)
+    ;; (print-string " tenv= {\n")
+    ;; (tenv/iterate
+    ;;  (lambda (k v)
+    ;;    (printf " " (sym k) " " (scheme-repr v) "\n"))
+    ;;  tenv)
+    ;; (print-string "}\n")
+    (match (tenv/lookup tenv name) with
       (maybe:no) -> (error1 "apply-tenv: unbound variable" name)
       (maybe:yes (:scheme gens type))
       -> (instantiate-type-scheme gens type)))
@@ -371,12 +449,14 @@
 	       (init-types (make-vector n no-type))
 	       )
 	   ;;(print-string "reordered: ") (printn names0)
+           ;; XXX temp - dump tenv
+           ;;(dump-tenv tenv)
 	   (for-list part partition
              ;; build temp tenv for typing the inits
              (let ((temp-tenv
                     (foldr
-                     (lambda (i al)
-                       (alist:entry names[i] (:scheme '() init-tvars[i]) al))
+                     (lambda (i tenv0)
+                       (tenv/extend tenv0 names[i] (:scheme '() init-tvars[i])))
                      tenv (reverse part))))
                ;; type each init in temp-tenv
                (for-list i part
@@ -388,7 +468,7 @@
                ;; now extend the environment with type schemes instead
                (for-list i part
                  (let ((scheme (build-type-scheme init-types[i] tenv)))
-                   (alist/push tenv names[i] scheme)))
+                   (tenv/extend! tenv names[i] scheme)))
                part))
 	   ;; type the body in the new polymorphic environment
 	   (type-of body tenv))))
@@ -403,7 +483,7 @@
 		(ta (type-of init tenv)))
 	    ;; XXX user-supplied type
 	    ;; extend environment
-	    (alist/push tenv name (:scheme '() ta))))
+            (tenv/extend! tenv name (:scheme '() ta))))
       ;; type body in the new env
       (type-of (nth inits n) tenv)))
 
@@ -786,7 +866,7 @@
     (set-node-type! n (apply-subst (noderec->type n)))
     (for-each apply-subst-to-program (noderec->subs n)))
 
-  (let ((t (type-of node (alist/make))))
+  (let ((t (type-of node (tenv/make))))
     ;;(printf "applying subst...") (flush)
     (apply-subst-to-program node)
     ;;(printf "done.\n")
