@@ -30,21 +30,72 @@
 
 ;; --------- tenv API ---------
 
+(define (tenv/make)
+  {free=(tree:empty) env=(alist/make)})
+
+(define (tenv/lookup tenv name)
+  (alist/lookup tenv.env name))
+
+(define (tenv/iterate p tenv)
+  (alist/iterate p tenv.env))
+
+(defmacro tenv/extend!
+  (tenv-extend! tenv name scheme) -> (set! tenv (tenv/extend tenv name scheme))
+  )
+
+(define *max-free-tenv-size* 0)
+
 ;; (define (tenv/extend tenv name scheme)
-;;   (alist:entry name scheme tenv))
+;;   (let ((free0 (scheme/free scheme))
+;;         (free1 tenv.free))
+;;     ;; merge into tenv.free
+;;     (tree/inorder
+;;      (lambda (k v)
+;;        (set! free1 (tree/insert free1 int-cmp k #f)))
+;;      free0)
+;;     {free=free1 env=(alist:entry name scheme tenv.env)}
+;;     ))
+
+(define (tenv/extend tenv name scheme)
+  {free=tenv.free env=(alist:entry name scheme tenv.env)})
+
+;; (define (tenv/make)
+;;   {free=(tree:empty) env=(tree:empty)})
+
+;; (define (tenv/lookup tenv name)
+;;   (tree/member tenv.env symbol-index-cmp name))
+
+;; (define (tenv/extend tenv name scheme)
+;;   (let ((free (scheme/free scheme))
+;;         ;;(n (tree/size free))
+;;         (free0 tenv.free))
+;;     ;; (when (> n 0)
+;;     ;;   (printf (int (tree/size free)) " free " (sym name) " " (scheme-repr scheme) "\n"))
+;;     ;; merge into tenv.free
+;;     (tree/inorder
+;;      (lambda (k v)
+;;        (set! free0 (tree/insert free0 magic-cmp k #f)))
+;;      free)
+;;     {free=free0 env=(tree/insert tenv.env symbol-index-cmp name scheme)}))
 
 ;; (defmacro tenv/extend!
 ;;   (tenv-extend! tenv name scheme) -> (set! tenv (tenv/extend tenv name scheme))
 ;;   )
 
-;; (define (tenv/lookup tenv name)
-;;   (alist/lookup tenv name))
-
-;; (define (tenv/make)
-;;   (alist/make))
-
 ;; (define (tenv/iterate p tenv)
-;;   (alist/iterate p tenv))
+;;   (tree/inorder p tenv.env))
+
+;; ----------------------------
+
+(define (occurs-free-in-tenv* tvar tenv)
+  (match tvar with
+    (type:tvar id _)
+    -> (match (tree/member tenv.free int-cmp id) with
+         (maybe:yes _) -> #t
+         (maybe:no)    -> #f
+         )
+    _ -> (impossible)
+    ))
 
 (define (dump-tenv tenv)
   (printf "tenv {\n")
@@ -53,38 +104,6 @@
      (printf "  " (sym name) " = " (scheme-repr scheme) "\n"))
    tenv.env)
   (printf "}\n"))
-
-(define (tenv/make)
-  {free=(tree:empty) env=(tree:empty)})
-
-(define (tenv/lookup tenv name)
-  (tree/member tenv.env symbol-index-cmp name))
-
-(define (tenv/extend tenv name scheme)
-  (let ((free (scheme/free scheme))
-        (n (tree/size free))
-        (free0 tenv.free))
-    ;; (when (> n 0)
-    ;;   (printf (int (tree/size free)) " free " (sym name) " " (scheme-repr scheme) "\n"))
-    ;; merge into tenv.free
-    (tree/inorder
-     (lambda (k v)
-       (set! free0 (tree/insert free0 magic-cmp k #f)))
-     free)
-    {free=free0 env=(tree/insert tenv.env symbol-index-cmp name scheme)}))
-
-(define (occurs-free-in-tenv* tvar tenv)
-  (match (tree/member tenv.free magic-cmp tvar) with
-    (maybe:yes _) -> #t
-    (maybe:no)    -> #f
-    ))
-
-(defmacro tenv/extend!
-  (tenv-extend! tenv name scheme) -> (set! tenv (tenv/extend tenv name scheme))
-  )
-
-(define (tenv/iterate p tenv)
-  (tree/inorder p tenv.env))
 
 ;; collect all the free tvars in scheme
 (define scheme/free
@@ -97,12 +116,11 @@
                 (match args with
                   ()           -> #u
                   (arg . args) -> (begin (walk arg) (loop args))))
-           _ -> (if (not (member-eq? type gens))
-                    (tree/insert! free magic-cmp type #f))
+           (type:tvar id _)
+           -> (if (not (member-eq? type gens))
+                  (tree/insert! free int-cmp id #f))
            ))
        free))
-
-;; ----------------------------
 
 (define scheme-repr
   (:scheme gens type)
@@ -247,16 +265,17 @@
   ;; occurs-free and build-type-scheme could obviously
   ;;   be made more efficient - build-type-scheme walks
   ;;   the entire environment repeatedly.
+
   (define (occurs-free-in-tenv0 tvar tenv)
     (let/cc return
-	(tenv/iterate
-	 (lambda (name scheme)
-	   (match scheme with
-	     (:scheme gens type)
-	     -> (if (not (member-eq? tvar gens))
-		    (if (occurs-in-type tvar type)
-			(return #t)))))
-	 tenv)
+        (tenv/iterate
+         (lambda (name scheme)
+           (match scheme with
+             (:scheme gens type)
+             -> (if (not (member-eq? tvar gens))
+        	    (if (occurs-in-type tvar type)
+        		(return #t)))))
+         tenv)
       #f))
 
   ;; (define (occurs-free-in-tenv tvar tenv)
@@ -267,7 +286,8 @@
   ;;     r1))
 
   (define (occurs-free-in-tenv tvar tenv)
-    (occurs-free-in-tenv* tvar tenv))
+    ;;(occurs-free-in-tenv* tvar tenv))
+    (occurs-free-in-tenv0 tvar tenv))
 
   (define (build-type-scheme type tenv)
     (let ((gens (set-maker '())))
