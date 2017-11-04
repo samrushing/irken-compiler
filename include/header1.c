@@ -704,21 +704,6 @@ check_heap()
   }
 }
 
-object *
-topref (pxll_int index) {
-  return (object*)top[index+2];
-}
-
-void
-insn_topset (pxll_int index, object * val) {
-  top[index+2] = val;
-}
-
-object *
-insn_callocate (pxll_int size, pxll_int count) {
-  return alloc_no_clear (TC_BUFFER, HOW_MANY (size * count, sizeof(object)));
-}
-
 void
 DENV0 (object * env)
 {
