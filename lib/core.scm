@@ -217,9 +217,9 @@
           (else (cmp:=)))))
 
 (define (magic-cmp a b)
-  ;; note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
-  ;;  to match the 'cmp' datatype.
   (%backend c
+    ;; note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
+    ;;  to match the 'cmp' datatype.
     (%%cexp ('a 'a -> cmp) "(object*)UITAG(1+magic_cmp(%0, %1))" a b))
   (%backend llvm
     (%llvm-call ("@irk_magic_cmp" ('a 'a -> cmp)) a b))
@@ -284,10 +284,11 @@
   )
 
 (define (vector-length v)
-  (%backend (c llvm)
+  (%backend c
     (%%cexp
      ((vector 'a) -> int)
      "(%0 == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%0)" v))
+  (%backend llvm (if (eq? v #()) 0 (%llvm-call ("@irk_tuple_len" ((vector 'a) -> int)) v)))
   (%backend bytecode
     (%%cexp ((vector 'a) -> int) "vlen" v))
   )
