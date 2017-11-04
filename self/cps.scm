@@ -203,6 +203,8 @@
 	;; non-immediate literals are 'constructed' and referenced by index.
 	(literal:symbol s)	-> (insn:litcon (get-symbol-index s) 'symbol k)
 	(literal:string s)	-> (insn:litcon (get-literal-index lit id) 'string k)
+        ;; note: empty vector is an immediate.
+        (literal:vector ())     -> (insn:literal lit k)
 	(literal:vector args)	-> (begin
 				     (scan-literals args)
 				     (insn:litcon (get-literal-index lit id) 'vector k))

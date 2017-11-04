@@ -83,6 +83,7 @@
   (literal:undef)   -> #x0e
   (literal:bool #t) -> #x106
   (literal:bool #f) -> #x006
+  (literal:vector ()) -> #x12
   ;; (literal:cons 'bool 'true _) -> #x106
   ;; (literal:cons 'bool 'false _) -> #x006
   x -> (error1 "expected immediate literal " x))
@@ -229,6 +230,8 @@ static void prof_dump (void)
 		   (format "UPTR(" (int litnum) "," (int addr) ")"))
 		 ;; nullary constructor - immediate
 		 (uitag dt variant alt.index)))
+        (literal:vector ())
+        -> (int->string (encode-immediate exp))
 	(literal:vector args)
 	-> (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
 		 (nargs (length args))
