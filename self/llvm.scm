@@ -139,7 +139,7 @@
 		       (for-range
 			   i nargs
 			   (oformat "call fastcc void @insn_store ("
-				    "  i8** %r" (int target)
+				    "i8** %r" (int target)
 				    ", i64 " (int (+ i 1))
 				    ", i8** %r" (int (nth args i))
 				    ")"))
@@ -232,7 +232,7 @@
 		    -> (begin
 			 (oformat id0 " = load i64, i64* @size_" (int index))
 			 (oformat id1 " = call fastcc i64 @insn_unbox (i8** %r" (int count) ")")
-			 (oformat "%r" (int target) " = call i8** @insn_callocate (i64 " id0 ", i64 " id1 ")")
+			 (oformat "%r" (int target) " = call fastcc i8** @insn_callocate (i64 " id0 ", i64 " id1 ")")
 			 )
 		    (maybe:no)
 		    -> (error1 "%callocate failed type lookup" (type-repr type))
@@ -529,14 +529,6 @@
       (if top?
 	  (oformat "store i8** %r" (int target) ", i8*** @top")))
 
-    (define (emit-store off arg tup i)
-      ;; XXX rewrite to use @insn_store
-      (let ((id0 (ID)) (id1 (ID)))
-	(oformat id0 " = getelementptr i8*, i8** %r" (int tup) ", i64 " (int (+ 1 i off)))
-	(oformat id1 " = bitcast i8** %r" (int arg) " to i8*")
-	(oformat "store i8* " id1 ", i8** " id0)
-	))
-
     (define (safe-known-fun name)
       (let ((var (vars-get-var name)))
         (= 0 var.sets)))
@@ -775,7 +767,7 @@
       (insn:varset depth index val (cont:k target _ k))
       -> (begin
 	   (if (= depth -1)
-	       (oformat "call void @insn_topset (i64 " (int index) ", i8** %r" (int val) ")")
+	       (oformat "call fastcc void @insn_topset (i64 " (int index) ", i8** %r" (int val) ")")
 	       (oformat "call fastcc void @insn_varset "
 			"(i64 " (int depth) ", i64 " (int index) ", i8** %r" (int val) ")"))
 	   (dead-set target)
