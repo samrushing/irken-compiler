@@ -12,7 +12,7 @@
 typedef intptr_t pxll_int;
 typedef void * object;
 
-const size_t heap_size = 25000000; // about 200MB on 64-bit machine
+const size_t heap_size = 50000000; // about 400MB on 64-bit machine
 const size_t head_room = 8192;
 
 object * heap0 = NULL;
