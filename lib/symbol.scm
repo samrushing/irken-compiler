@@ -43,8 +43,10 @@
   (int-cmp (symbol->index s1) (symbol->index s2)))
 
 (define (get-internal-symbols)
-  (%backend (c llvm)
+  (%backend c
     (%%cexp (vector symbol) "(object *) pxll_internal_symbols"))
+  (%backend llvm
+    (%llvm-get ("@irk_internal_symbols_p" (-> (vector symbol)))))
   (%backend bytecode
     (list->vector (%%cexp (list symbol) "gist")))
   )

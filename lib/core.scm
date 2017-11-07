@@ -1,33 +1,33 @@
 ;; -*- Mode: Irken -*-
 
-(define (printn x)
-  (%backend (c llvm)
-    (%%cexp ('a -> int) "dump_object (%0, 0)" x))
-  (%backend bytecode
-    (print x))
-  (newline))
-
 (define (print x)
-  (%backend (c llvm) (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
+  (%backend c (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
+  (%backend llvm (%llvm-call (ccc "@irk_dump_object" ('a -> undefined)) x))
   (%backend bytecode (%%cexp ('a -> undefined) "printo" x))
   )
 
+(define (printn x)
+  (print x)
+  (newline))
+
 ;; note: discards return value.
 (define (print-string s)
-  (%backend (c llvm) (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)) #u)
+  (%backend c (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)) #u)
+  (%backend llvm (%llvm-call (ccc "@irk_write_stdout" (string int -> int)) s (string-length s)) #u)
   (%backend bytecode (%%cexp (string -> int) "prints" s) #u)
   )
 
 (define (flush)
-  (%backend (c llvm) (%%cexp (-> int) "fflush (stdout)"))
+  (%backend c (%%cexp (-> int) "fflush (stdout)"))
+  (%backend llvm (%llvm-call (ccc "@irk_flush" (-> int))))
   ;; not using stdio
   (%backend bytecode #u))
 
 (define (print-char ch)
-  (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" ch))
-
-(define (terpri)
-  (print-char #\newline))
+  (%backend c (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" ch))
+  (%backend llvm (%llvm-call (ccc "@irk_putc" (char -> undefined)) ch))
+  (%backend bytecode (print-string (char->string ch)))
+  )
 
 (define (newline)
   (%backend (c llvm) (print-char #\newline))
@@ -36,8 +36,7 @@
 (define (= a b)
   (%backend c (%%cexp (int int -> bool) "%0==%1" a b))
   (%backend llvm (%llicmp eq a b))
-  (%backend bytecode (%%cexp (int int -> bool) "eq" a b))
-  )
+  (%backend bytecode (%%cexp (int int -> bool) "eq" a b)))
 
 (define (zero? a)
   (%backend c (%%cexp (int -> bool) "%0==0" a))
@@ -189,6 +188,9 @@
   (if (> x y) x y))
 
 (define (abs x) (if (< x 0) (- 0 x) x))
+
+(define (how-many x n)
+  (/ (- (+ x n) 1) n))
 
 (datatype cmp
   (:<)
@@ -492,18 +494,21 @@
   (try body0 body1 ...)                   -> (try (begin body0) body1 ...)
   )
 
-(%backend (c llvm)
+(%backend c
   (cinclude "sys/errno.h")
-
   (define (set-verbose-gc b)
     (%%cexp (bool -> bool) "verbose_gc = %0" b))
-
   (define (get-word-size)
     (%%cexp (-> int) "sizeof(pxll_int)"))
-
   (define (get-int-size)
     (%%cexp (-> int) "sizeof(int)"))
-
+  )
+(%backend llvm
+  (define (set-verbose-gc b)
+    (%llvm-call (ccc "@irk_set_verbose_gc" (bool -> bool)) b))
+  ;; these are fixed by the LP64 target
+  (define (get-word-size) 8)
+  (define (get-int-size)  4)
   )
 
 (%backend bytecode
@@ -533,7 +538,5 @@
     ;; [only one I've used: old-school 64-bit OSF/1 on DEC Alpha]
     4)
 
-  (define (how-many x n)
-    (/ (- (+ x n) 1) n))
 
   )

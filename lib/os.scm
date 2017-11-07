@@ -32,27 +32,15 @@
 (define (unlink name)
   (syscall (posix/unlink (%string->cref #f (zero-terminate name)))))
 
-(%backend bytecode
-  (define sys
-    (let ((argv0 (%%cexp (-> (vector string)) "argv"))
-          (argc (vector-length argv0)))
-      { argc=argc argv=argv0 }
-      ))
+(define (get-argv)
+  (%backend c (%%cexp (-> (vector string)) "irk_make_argv()"))
+  (%backend llvm (%llvm-call (ccc "@irk_make_argv" (-> (vector string)))))
+  (%backend bytecode (%%cexp (-> (vector string)) "argv"))
   )
 
-(%backend (c llvm)
-  (define sys
-    ;; XXX rename argc/argv to irk_argc/irk_argv
-    (let ((argc (%%cexp (-> int) "argc"))
-          (argv
-           (let ((v (make-vector argc "")))
-             (define (get-arg n)
-               (copy-cstring (%%cexp (int -> cstring) "argv[%0]" n)))
-             (let loop ((n argc))
-               (cond ((zero? n) v)
-                     (else
-                      (set! v[(- n 1)] (get-arg (- n 1)))
-                      (loop (- n 1))))))))
-      { argc=argc argv=argv }
-      ))
-  )
+;; note: argc is redundant, but convenient.
+(define sys
+  (let ((argv (get-argv))
+        (argc (vector-length argv)))
+    { argc=argc argv=argv }
+    ))

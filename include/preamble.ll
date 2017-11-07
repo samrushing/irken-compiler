@@ -19,8 +19,12 @@
 
 %struct._string = type { i64, i32, [0 x i8] }
 
+;; intrinsics
+declare void @llvm.memcpy.p0i8.p0i8.i64(i8* %dst, i8* %src, i64 %len, i32 %align, i1 %isvolatile)
+
 ;; with LTO, many/most of these functions could be written in C.
 
+;; these functions are written in C, mostly in include/header1.c
 declare void @check_heap()
 declare i8** @make_vector (i64 %size, i8** %val)
 declare void @vector_range_check (i8** %vec, i64 %index)
@@ -29,10 +33,17 @@ declare void @record_store (i8** %rec, i64 %label, i8** %val)
 declare void @exit_continuation()
 declare void @DO (i8** %ob)
 declare void @DENV()
-declare i8** @putchar (i64 %ch)
 declare void @TRACE(i8* %name)
 declare i8** @irk_get_errno()
 declare i64  @magic_cmp (i8**, i8**)
+declare i8** @irk_write_stdout (i8**, i8**)
+declare i8** @irk_dump_object (i8**)
+declare i8** @irk_putc (i8**)
+declare i8** @irk_flush (i8**)
+declare i8** @irk_make_argv()
+declare i8** @irk_set_verbose_gc(i8**)
+declare i8** @irk_string_cmp (i8** %a, i8** %b)
+declare i8** @irk_make_string (i8** %len)
 
 ;; FFI
 declare i8** @make_malloc (i64 %size, i64 %count)
@@ -44,6 +55,10 @@ declare i8** @free_foreign (i8** %foreign)
 declare i8** @irk_cref_2_string (i8** %src, i8** %len)
 declare i8** @irk_string_2_cref (i8** %src)
 declare i8** @irk_cref_2_int (i8** %src)
+
+;; the following functions are written in llvm, often based on (or
+;; compiled from) a prototype written in C.  Having them here, and
+;; declared 'internal fastcc', allows llvm to inline them.
 
 define internal fastcc i8** @insn_varref(i64 %depth, i64 %index) {
   %1 = load i8**, i8*** @lenv
@@ -431,6 +446,34 @@ define internal fastcc i8** @irk_tuple_len(i8**) {
   %5 = or i64 %4, 1
   %6 = inttoptr i64 %5 to i8**
   ret i8** %6
+}
+
+; object *
+; irk_buffer_copy (object * src, object * sstart, object * n, object * dst, object * dstart)
+; {
+;   void * src0 = GET_STRING_POINTER (src);
+;   pxll_int sstart0 = unbox (sstart);
+;   pxll_int n0 = unbox (n);
+;   void * dst0 = GET_STRING_POINTER (dst);
+;   pxll_int dstart0 = unbox (dstart);
+;   memcpy (dst0 + dstart0, src0 + sstart0, n0);
+;   return (object *) PXLL_UNDEFINED;
+; }
+
+;; note: @llvm.objectsize + @__memcpy_chk rewritten to use @llvm.memcpy
+define internal fastcc i8** @irk_buffer_copy(i8**, i8**, i8**, i8**, i8**) {
+  %6 = bitcast i8** %0 to %struct._string*
+  %7 = ptrtoint i8** %1 to i64
+  %8 = ashr i64 %7, 1
+  %9 = ptrtoint i8** %2 to i64
+  %10 = ashr i64 %9, 1
+  %11 = bitcast i8** %3 to %struct._string*
+  %12 = ptrtoint i8** %4 to i64
+  %13 = ashr i64 %12, 1
+  %14 = getelementptr %struct._string, %struct._string* %11, i64 0, i32 2, i64 %13
+  %15 = getelementptr %struct._string, %struct._string* %6, i64 0, i32 2, i64 %8
+  tail call void @llvm.memcpy.p0i8.p0i8.i64 (i8* %14, i8* %15, i64 %10, i32 0, i1 0)
+  ret i8** inttoptr (i64 14 to i8**)
 }
 
 ;; --- generated code follows ---

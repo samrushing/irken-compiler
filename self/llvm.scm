@@ -15,6 +15,7 @@
 (define fatbar-free (map-maker int-cmp))
 (define litcons (set2-maker int-cmp))
 (define ffifuns (set2-maker symbol-index-cmp))
+(define extobjs (set2-maker string-compare))
 
 ;; CPS registers are mapped to LLVM idents like this:
 ;;  r5 -> "%r5"
@@ -27,8 +28,7 @@
 (define ctype->llvm
   (ctype:name 'void)  -> "void"
   (ctype:name 'char)  -> "i8"
-  ;;(ctype:name x)      -> (error1 "ctype->llvm: unsupported ctype:name" x)
-  (ctype:name x)      -> "i8"
+  (ctype:name x)      -> "i8" ;; e.g. FILE, any random data
   (ctype:int size _)  -> (format "i" (int (* 8 (cint-size size))))
   (ctype:array len t) -> (format "[" (int len) " x " (ctype->llvm t) "]")
   (ctype:pointer t)   -> (format (ctype->llvm t) "*")
@@ -208,7 +208,15 @@
 	-> (emit-record-set label sig rec arg target)
 
 	'%llvm-call (sexp:list ((sexp:string name) sig)) args
-	-> (emit-llvm-call name args target)
+	-> (emit-llvm-call name args target 'fastcc)
+
+	'%llvm-call (sexp:list ((sexp:symbol cconv) (sexp:string name) sig)) args
+	-> (emit-llvm-call name args target cconv)
+
+        '%llvm-get (sexp:list ((sexp:string name) sig)) args
+        -> (begin
+             (extobjs::add name)
+             (oformat "%r" (int target) " = load i8**, i8*** " name))
 
 	'%exit _ (arg)
 	-> (begin
@@ -341,9 +349,9 @@
 	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x (repr params) args))
 	))
 
-    (define (emit-llvm-call name args target)
+    (define (emit-llvm-call name args target cconv)
       ;; assumes all arguments and retval are irken objects.
-      (oformat "%r" (int target) " = call fastcc i8** " name " (" (build-args args) ")")
+      (oformat (maybe-target target) " = call " (sym cconv) " i8** " name " (" (build-args args) ")")
       )
 
     (define (emit-record-get label sig rec target)
@@ -969,7 +977,11 @@
        (maybe:yes (csig:obj name obtype))
        ;; XXX all external objects can probably be declared 'i8*'
        -> (o.write (format "@" (sym name) " = external global " (ctype->llvm obtype)))
-       _ -> (error1 "emit-ffi-declarations: bad name" name)))))
+       _ -> (error1 "emit-ffi-declarations: bad name" name))))
+  (extobjs::iterate
+   (lambda (name)
+     (oformat name " = external global i8**")))
+  )
 
 (define (emit-llvm co o cname cps)
   (printf "scanning for cexp...\n")

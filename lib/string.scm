@@ -1,29 +1,34 @@
 ;; -*- Mode: Irken -*-
 
 (define (string-tuple-length n)
-  (%backend (c llvm)
+  (%backend c
     (%%cexp (int -> int) "string_tuple_length (%0)" n))
-  (%backend bytecode
-    (how-many (+ n 4) (get-word-size))))
+  (%backend (bytecode llvm)
+    (how-many (+ n 4) (get-word-size)))
+  )
 
 (define (make-string n)
-  (%backend (c llvm)
-    (%ensure-heap #f (string-tuple-length n))
+  (%ensure-heap #f (string-tuple-length n))
+  (%backend c
     (%%cexp
      (int -> string)
      "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((pxll_string*)(t))->len = %0, t)"
      n))
+  (%backend llvm
+    (%llvm-call (ccc "@irk_make_string" (int -> string)) n))
   (%backend bytecode
-    (%ensure-heap #f (string-tuple-length n))
     (%%cexp (int -> string) "smake" n))
   )
 
 (define (buffer-copy src src-start n dst dst-start)
-  (%backend (c llvm)
+  (%backend c
     ;; XXX range check
     (%%cexp
      (string int string int int -> undefined)
      "memcpy (%0+%1, %2+%3, %4)" dst dst-start src src-start n))
+  (%backend llvm
+    (%llvm-call ("@irk_buffer_copy" (string int int string int -> undefined))
+                src src-start n dst dst-start))
   (%backend bytecode
     (%%cexp (string int int string int -> undefined)
             "scopy"
@@ -56,14 +61,18 @@
     (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
     (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
   (%backend llvm
+    ;; XXX range check
     (%llvm-call ("@irk_string_ref" (string int -> char)) s n))
   (%backend bytecode
     (%%cexp (string int -> char) "sref" s n)))
 
 (define (string-set! s n c)
-  (%backend (c llvm)
+  (%backend c
     (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
     (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c))
+  (%backend llvm
+    ;; XXX range check
+    (%llvm-call ("@irk_string_set" (string int char -> undefined)) s n c))
   (%backend bytecode
     (%%cexp (string int char -> undefined) "sset" s n c)))
 
@@ -104,13 +113,10 @@
 	   (loop (+ i 1) j acc)))))
 
 (define (string-compare a b) : (string string -> cmp)
-  (%backend (c llvm)
-    (let ((alen (string-length a))
-          (blen (string-length b))
-          (cmp (%%cexp (string string int -> int) "memcmp (%0, %1, %2)" a b (min alen blen))))
-      (if (= cmp 0)
-          (int-cmp alen blen)
-          (int-cmp cmp 0))))
+  (%backend c
+    (%%cexp ((raw string) (raw string) -> cmp) "irk_string_cmp (%0, %1)" a b))
+  (%backend llvm
+    (%llvm-call (ccc "@irk_string_cmp" (string string -> cmp)) a b))
   (%backend bytecode
     (magic-cmp a b))
   )

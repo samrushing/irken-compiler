@@ -637,6 +637,8 @@
       '%cref->int    -> (:scheme (LIST T0) (arrow int-type (LIST (pred 'cref (LIST T0)))))
       ;; for calling internal functions of the form `(object, object, ...) -> object`
       '%llvm-call    -> (make-llvm-scheme params)
+      ;; for fetching irken objects in external symbols
+      '%llvm-get     -> (make-llvm-scheme params)
       ;; -------------------- FFI --------------------
       _ -> (error1 "lookup-primapp" name)))
 
@@ -709,7 +711,8 @@
     )
 
   (define make-llvm-scheme
-    (sexp:list ((sexp:string name) sig)) -> (parse-cexp-sig sig)
+    (sexp:list ((sexp:string _) sig))                 -> (parse-cexp-sig sig)
+    (sexp:list ((sexp:symbol _) (sexp:string _) sig)) -> (parse-cexp-sig sig)
     x -> (error1 "make-llvm-scheme: malformed" (repr x))
     )
 
