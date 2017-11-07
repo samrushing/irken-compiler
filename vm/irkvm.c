@@ -28,9 +28,6 @@ char * op_names[] = {
   "sizeoff", "sgetp", "caref", "csref", "dlsym2", "csize", "cref2int",
 };
 
-static int argc;
-static char ** argv;
-
 static object * allocate (pxll_int tc, pxll_int size);
 static object * alloc_no_clear (pxll_int tc, pxll_int size);
 static object * dump_object (object * ob, int depth);
@@ -485,29 +482,6 @@ vm_gc (int nreg)
 }
 
 static
-object *
-vm_copy_string (char * s)
-{
-  int slen = strlen (s);
-  pxll_string * r = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
-  r->len = slen;
-  memcpy (GET_STRING_POINTER (r), s, slen);
-  return (object *) r;
-}
-
-static
-object *
-vm_make_argv (void)
-{
-  // Note: skipping first arg.
-  object * r = allocate (TC_VECTOR, argc - 1);
-  for (int i=0; i < argc - 1; i++) {
-    r[i+1] = vm_copy_string (argv[i+1]);
-  }
-  return r;
-}
-
-static
 pxll_int
 vm_read_file (pxll_string * path, object ** result)
 {
@@ -627,9 +601,9 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
       case 's':
         if ((char*)rc == NULL) {
           // XXX silent error.
-          *result = vm_copy_string ("");
+          *result = irk_copy_string ("");
         } else {
-          *result = vm_copy_string ((char*)rc);
+          *result = irk_copy_string ((char*)rc);
         }
         break;
       case 'p':
@@ -702,7 +676,7 @@ vm_cget (object ** result, object * src, pxll_int code)
     *result = TO_CHAR (*p);
     break;
   case 's':
-    *result = vm_copy_string ((char *) p);
+    *result = irk_copy_string ((char *) p);
     break;
   default:
     fprintf (stderr, "vm_cget: unknown result code: `%d`\n", (int)code);
@@ -1382,7 +1356,7 @@ vm_go (void)
   DISPATCH();
  l_argv:
   // ARGV target
-  REG1 = vm_make_argv();
+  REG1 = irk_make_argv();
   pc += 2;
   DISPATCH();
  l_quiet:
@@ -1528,10 +1502,10 @@ vm_go (void)
 
 void
 toplevel (void) {
-  if (argc < 2) {
-    fprintf (stderr, "Usage: %s <bytecode-file> <arg0> <arg1> ...\n", argv[0]);
-  } else if (-1 == read_bytecode_file (argv[1])) {
-    fprintf (stderr, "failed to read bytecode file: %s\n", argv[1]);
+  if (irk_argc < 2) {
+    fprintf (stderr, "Usage: %s <bytecode-file> <arg0> <arg1> ...\n", irk_argv[0]);
+  } else if (-1 == read_bytecode_file (irk_argv[1])) {
+    fprintf (stderr, "failed to read bytecode file: %s\n", irk_argv[1]);
   } else {
     object * result = vm_go();
     print_object (result);
