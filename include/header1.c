@@ -242,6 +242,14 @@ dump_object (object * ob, int depth)
   return (object *) PXLL_UNDEFINED;
 }
 
+// 'magic' comparison function.
+// This is a generalized comparison function that takes any irken
+//   object.  It orders all objects with a lexicographic recursive
+//   comparison, and relies on the fact that all tuples are tagged
+//   with either builtin object type tags, or are made of tuples of
+//   such.  Any future boxless/tagless modification to irken will
+//   require automatically-generated comparison functions.
+
 static
 inline
 pxll_int min_int (pxll_int a, pxll_int b)
@@ -253,12 +261,27 @@ pxll_int min_int (pxll_int a, pxll_int b)
   }
 }
 
+static
 pxll_int
 magic_cmp_int (pxll_int a, pxll_int b)
 {
   if (a == b) {
     return 0;
   } else if (a < b) {
+    return -1;
+  } else {
+    return 1;
+  }
+}
+
+static
+pxll_int
+magic_cmp_string (pxll_string * sa, pxll_string * sb)
+{
+  int cmp = memcmp (sa->data, sb->data, min_int (sa->len, sb->len));
+  if (cmp == 0) {
+    return magic_cmp_int (sa->len, sb->len);
+  } else if (cmp < 0) {
     return -1;
   } else {
     return 1;
@@ -284,16 +307,7 @@ magic_cmp (object * a, object * b)
     } else if (tcb < tca) {
       return +1;
     } else if (tca == TC_STRING) {
-      pxll_string * sa = (pxll_string *) a;
-      pxll_string * sb = (pxll_string *) b;
-      int cmp = memcmp (sa->data, sb->data, min_int (sa->len, sb->len));
-      if (cmp == 0) {
-        return magic_cmp_int (sa->len, sb->len);
-      } else if (cmp < 0) {
-        return -1;
-      } else {
-        return 1;
-      }
+      return magic_cmp_string ((pxll_string *) a, (pxll_string *) b);
     } else if (tca == TC_SYMBOL) {
       return magic_cmp_int ((pxll_int)a[2],(pxll_int)b[2]);
     } else {
@@ -312,6 +326,34 @@ magic_cmp (object * a, object * b)
       return magic_cmp_int (len_a, len_b);
     }
   }
+}
+
+// needed by llvm to avoid dealing with `FILE * stdout`, which cannot be accessed
+//  portably by llvm code because it is a macro.
+
+object *
+irk_write_stdout (object * data, object * size)
+{
+  return box (fwrite (GET_STRING_POINTER (data), 1, unbox(size), stdout));
+}
+
+object *
+irk_putc (object * ch)
+{
+  fputc (GET_CHAR (ch), stdout);
+  return PXLL_UNDEFINED;
+}
+
+object *
+irk_flush()
+{
+  return box (fflush (stdout));
+}
+
+object *
+irk_dump_object (object * data)
+{
+  return dump_object (data, 0);
 }
 
 static
@@ -462,6 +504,9 @@ object * result;
 object * limit; // = heap0 + (heap_size - head_room);
 object * freep; // = heap0;
 static object * t = 0; // temp - for swaps & building tuples
+
+static int irk_argc;
+static char ** irk_argv;
 
 // for gdb...
 void
@@ -704,6 +749,13 @@ check_heap()
   }
 }
 
+object *
+irk_print_string (object * s)
+{
+  pxll_string * s0 = (pxll_string *) s;
+  return box (fwrite (s0->data, 1, s0->len, stdout));
+}
+
 void
 DENV0 (object * env)
 {
@@ -851,16 +903,56 @@ void invoke_closure_1 (void)
 }
 #endif
 
+static
+object *
+irk_copy_string (char * s)
+{
+  int slen = strlen (s);
+  pxll_string * r = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
+  r->len = slen;
+  memcpy (GET_STRING_POINTER (r), s, slen);
+  return (object *) r;
+}
+
+object *
+irk_make_argv()
+{
+  object * r = allocate (TC_VECTOR, irk_argc);
+  for (int i=0; i < irk_argc; i++) {
+    r[i+1] = irk_copy_string (irk_argv[i]);
+  }
+  return r;
+}
+
+object *
+irk_set_verbose_gc (object * data)
+{
+  pxll_int r = verbose_gc;
+  verbose_gc = PXLL_IS_TRUE (data);
+  return (object*) r;
+}
+
+object *
+irk_make_string (object * len)
+{
+  pxll_int len0 = unbox(len);
+  pxll_string * r = (pxll_string*) alloc_no_clear (TC_STRING, string_tuple_length (len0));
+  r->len = len0;
+  return (object *) r;
+}
+
+object *
+irk_string_cmp (pxll_string * a, pxll_string * b)
+{
+  return (object*) UITAG (1 + magic_cmp_string (a, b));
+}
+
 // --------------------------------------------------------------------------------
 
 void toplevel (void);
 
-// XXX rename these!
-static int argc;
-static char ** argv;
-
 int
-main (int _argc, char * _argv[])
+main (int argc, char * argv[])
 {
   heap0 = (object *) malloc (sizeof (object) * heap_size);
   heap1 = (object *) malloc (sizeof (object) * heap_size);
@@ -871,8 +963,8 @@ main (int _argc, char * _argv[])
     if (clear_tospace) {
       clear_space (heap0, heap_size);
     }
-    argc = _argc;
-    argv = _argv;
+    irk_argc = argc;
+    irk_argv = argv;
     limit = heap0 + (heap_size - head_room);
     freep = heap0;
     k = allocate (TC_SAVE, 3);
