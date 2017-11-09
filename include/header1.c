@@ -328,6 +328,52 @@ magic_cmp (object * a, object * b)
   }
 }
 
+// llvm literal relocation.
+
+object * llvm_all_lits;
+object * llvm_this_lit = NULL;
+
+// at entry, ob points to a tuple object of some kind.
+static
+void
+relocate_llvm_walk (object * ob)
+{
+  pxll_int tc = GET_TYPECODE (*ob);
+  if (tc == TC_STRING) {
+    return;
+  } else {
+    pxll_int len = GET_TUPLE_LENGTH(*ob);
+    for (int i=0; i < len; i++) {
+      object item = ob[i+1];
+      pxll_int item0 = (pxll_int) item;
+      if (item0 < 0) {
+        // negative values indicate an external relocation
+        ob[i+1] = llvm_all_lits[(-item0)];
+      } else if (item0 & 3) {
+        // an immediate value, leave it
+      } else {
+        // a relocatable pointer.
+        object * ob1 = llvm_this_lit + (item0 >> 2);
+        ob[i+1] = ob1;
+        relocate_llvm_walk (ob1);
+      }
+    }
+  }
+}
+
+void
+relocate_llvm_literals (object * vec, pxll_int * offsets)
+{
+  llvm_all_lits = vec;
+  pxll_int n = GET_TUPLE_LENGTH (*vec);
+  for (int i=0; i < n; i++) {
+    llvm_this_lit = vec[i+1];
+    object * offset_object = (object*)(vec[i+1]) + offsets[i];
+    relocate_llvm_walk (offset_object);
+    vec[i+1] = offset_object;
+  }
+}
+
 // needed by llvm to avoid dealing with `FILE * stdout`, which cannot be accessed
 //  portably by llvm code because it is a macro.
 
