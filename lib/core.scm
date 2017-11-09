@@ -421,10 +421,9 @@
 ;;  this might be the original message:
 ;;  http://list.cs.brown.edu/pipermail/plt-scheme/2006-April/012456.html
 
-;; NOTE: I think we're losing type safety across the generator boundary.
-
 ;; this simpler version uses getcc and putcc directly.
-(define (make-generator producer)
+;; note: the type annotation is necessary.
+(define (make-generator producer) : ((((maybe 'a) -> undefined) -> undefined) -> ( -> (maybe 'a)))
   (let ((ready #f)
         ;; holding useless continuations
         (caller (getcc))

@@ -19,17 +19,17 @@
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
-	(rparts (reverse parts)))
+        (rparts (reverse parts)))
     (if (not (string=? (first rparts) "scm"))
-	(error1 "find-base" path)
-	(string-join (reverse (cdr rparts)) "."))))
+        (error1 "find-base" path)
+        (string-join (reverse (cdr rparts)) "."))))
 
 (define (read-file-contents ifile)
   (let loop ((buf (file/read-buffer ifile))
-	     (l '()))
+             (l '()))
     (cond ((= (string-length buf) 0) (string-concat (reverse l)))
-	  (else (loop (file/read-buffer ifile)
-		      (list:cons buf l))))))
+          (else (loop (file/read-buffer ifile)
+                      (list:cons buf l))))))
 
 (define (join-paths a b)
   (let ((alen (string-length a)))
@@ -43,9 +43,9 @@
   (dir . dirs) name
   -> (try
       (let ((name0 (join-paths dir name)))
-	(when the-context.options.verbose
-	      (printf "trying " name0 "\n"))
-	(file/open-read name0))
+        (when the-context.options.verbose
+              (printf "trying " name0 "\n"))
+        (file/open-read name0))
       except
       (:OSError _) -> (find-file dirs name)
       ))
@@ -63,17 +63,17 @@
 (define (getenv-or var default)
   (let ((val (getenv var)))
     (if (= 0 (string-length val))
-	default
-	val)))
+        default
+        val)))
 
 (include "self/flags.scm")
 
 (define (invoke-cc base paths options extra)
   (let ((cc (getenv-or "CC" CC))
-	(cflags (getenv-or "CFLAGS" CFLAGS))
-	(cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
+        (cflags (getenv-or "CFLAGS" CFLAGS))
+        (cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
         (libs (format (join " " (map (lambda (lib) (format "-l" lib)) options.libraries))))
-	(cmd (format cc " " cflags " " (join " " paths) " " extra " " libs " -o " base)))
+        (cmd (format cc " " cflags " " (join " " paths) " " extra " " libs " -o " base)))
     (notquiet (print-string (format "system: " cmd "\n")))
     (if (not (= 0 (system cmd)))
         (raise (:CCFailed cmd))
@@ -103,33 +103,38 @@
           "-b"    -> (set! options.backend (backend:bytecode))
           "-h"    -> (usage)
           "-help" -> (usage)
+          "-types" -> (set! options.dumptypes #t)
 	  x       -> (if (char=? #\- (string-ref x 0) )
                          (raise (:UnknownOption "Unknown option" x))
                          (set! filename-index i))
 	  ))
     (set-verbose-gc (not options.quiet))
+    (when options.dumptypes
+      ;; disable inlining so every function has a type.
+      (set! options.noinline #t))
     filename-index))
 
 (define (usage)
   (printf "
 Usage: compile <irken-src-file> [options]
- -c : don't compile .c file
- -v : verbose (very!) output
- -t : generate trace-printing code (currently unimplemented)
- -f : set CFLAGS for C compiler
- -I : add include search directory
- -l : add a link library
- -m : debug macro expansion
- -dt : debug typing
- -ni : no inlining
- -p : generate profile-printing code
- -n : disable letreg optimization
+ -c     : don't compile .c file
+ -v     : verbose (very!) output
+ -t     : generate trace-printing code (currently unimplemented)
+ -f     : set CFLAGS for C compiler
+ -I     : add include search directory
+ -l     : add a link library
+ -m     : debug macro expansion
+ -dt    : debug typing
+ -types : dump all type signatures (do not compile)
+ -ni    : no inlining
+ -p     : generate profile-printing code
+ -n     : disable letreg optimization
  -O : rounds of optimization (default: 3)
- -q : quiet the compiler
- -nr : no range check (e.g. vector access)
- -h : display this usage
- -llvm : compile using the LLVM backend.
- -b : compile using the bytecode backend.
+ -q     : quiet the compiler
+ -nr    : no range check (e.g. vector access)
+ -h     : display this usage
+ -llvm  : compile using the LLVM backend.
+ -b     : compile using the bytecode backend.
 
 default flags:
   CC='" CC "'
@@ -150,17 +155,17 @@ default flags:
 
 (define (main)
   (when (< sys.argc 2)
-	(usage)
-	(raise (:NotEnoughArgs)))
+        (usage)
+        (raise (:NotEnoughArgs)))
   (let ((filearg (get-options sys.argv the-context.options))
-	(transform (transformer))
-	(path sys.argv[filearg])
-	(base (find-base path))
+        (transform (transformer))
+        (path sys.argv[filearg])
+        (base (find-base path))
         (_ (notquiet (printf "read...\n")))
-	(forms0 (read-file path))
-	(forms1 (prepend-standard-macros forms0))
-	(exp0 (sexp:list forms1))
-	(_ (verbose (pp exp0 80) (newline)))
+        (forms0 (read-file path))
+        (forms1 (prepend-standard-macros forms0))
+        (exp0 (sexp:list forms1))
+        (_ (verbose (pp exp0 80) (newline)))
         (_ (notquiet (printf "transform...\n")))
 	(exp1 (transform exp0))
 	(_ (verbose (pp exp1 80) (newline)))
@@ -184,66 +189,68 @@ default flags:
 	(_ (verbose (print-string "after opt:\n") (pp-node noden)))
 	;; rebuild the graph yet again, so strongly will work.
         (_ (notquiet (printf "depgraph...\n")))
-	(_ (build-dependency-graph noden))
-	;;(_ (print-graph the-context.dep-graph))
-	;; strongly-connected components is needed by the typing phase
-	;;(_ (print-string "strongly-connected components:\n"))
-	(strong (strongly the-context.dep-graph))
-	(_ (verbose (printn strong)))
-	(_ (set! the-context.scc-graph strong))
+        (_ (build-dependency-graph noden))
+        ;;(_ (print-graph the-context.dep-graph))
+        ;; strongly-connected components is needed by the typing phase
+        ;;(_ (print-string "strongly-connected components:\n"))
+        (strong (strongly the-context.dep-graph))
+        (_ (verbose (printn strong)))
+        (_ (set! the-context.scc-graph strong))
         (_ (notquiet (printf "typing...\n")))
-	(type0 (type-program noden))
-	;;(type-map (collect-all-types noden))
-	;;(_ (print-type-tree noden))
-	(_ (verbose (print-string "\n-- after typing --\n") (pp-node noden) (newline)))
-	(_ (remove-onearmed-nvcase noden)) ;; safe after typing
+        (_ (type-program noden))
+        ;;(type-map (collect-all-types noden))
+        ;;(_ (print-type-tree noden))
+        (_ (verbose (print-string "\n-- after typing --\n") (pp-node noden) (newline)))
+        (_ (remove-onearmed-nvcase noden)) ;; safe after typing
         (_ (notquiet (printf "cps...\n")))
-	(cps (compile noden))
-	(_ (set! noden (node/sequence '()))) ;; go easier on memory
-	)
+        )
+    (if the-context.options.dumptypes
+        (dump-types noden)
+        (main-compile base noden))
+    ))
+
+(define (main-compile base node)
+  (let ((cps (compile node)))
     (verbose
-     (print-string "\n-- RTL --\n")
+     (printf "\n-- RTL --\n")
      (print-insn cps 0)
      (newline)
-     (print-string "\n-- datatypes --\n")
+     (printf "\n-- datatypes --\n")
      (alist/iterate
       (lambda (name dt)
-	(print-datatype dt))
+        (print-datatype dt))
       the-context.datatypes)
-     (print-string "\n-- typealiases --\n")
+     (printf "\n-- typealiases --\n")
      (alist/iterate
       (lambda (name alias)
-	(print-string (format "  " (sym name) " : " (scheme-repr alias) "\n")))
+	(printf (format "  " (sym name) " : " (scheme-repr alias) "\n")))
       the-context.aliases)
-     (print-string "\n-- variables --\n")
+     (printf "\n-- variables --\n")
      (print-vars)
-     (print-string "\n-- labels --\n")
+     (printf "\n-- labels --\n")
      (printn the-context.labels)
-     (print-string "\n-- records --\n")
+     (printf "\n-- records --\n")
      (printn the-context.records)
-     (print-string "\n-- symbols --\n")
+     (printf "\n-- symbols --\n")
      (tree/inorder
       (lambda (sym index)
-	(print-string (format "  " (int index) " : " (sym sym) "\n")))
+	(printf "  " (int index) " : " (sym sym) "\n"))
       the-context.symbols)
-     (print-string "\n-- variant labels --\n")
+     (printf "\n-- variant labels --\n")
      (alist/iterate
       (lambda (sym index)
-	(print-string (format "  " (int index) " : " (sym sym) "\n")))
+	(printf "  " (int index) " : " (sym sym) "\n"))
       the-context.variant-labels)
-     (print-string "\n-- exceptions --\n")
+     (printf "\n-- exceptions --\n")
      (alist/iterate
       (lambda (name type)
-	(print-string (format "  " (sym name) " : " (type-repr (apply-subst type)) "\n")))
+	(printf "  " (sym name) " : " (type-repr (apply-subst type)) "\n"))
 	the-context.exceptions)
      (printf "\n-- FFI --\n")
      (dump-ffi-info)
      )
-
     (notquiet (printf "backend...\n"))
-
     (compile-with-backend base cps)
-    )
-  )
+    ))
 
 (main)

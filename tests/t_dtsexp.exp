@@ -1,0 +1,6 @@
+(thing
+  ((one 0 ())
+    (two 1 ())
+    (three 2 ())))
+thing:two has tag 1
+#u

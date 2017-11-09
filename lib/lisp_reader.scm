@@ -32,15 +32,52 @@
   (:attr sexp symbol)	;; attribute '.' syntax
   )
 
-;; idea: how about a set of macros, similar to the format macro,
-;;   to make sexps easier to build?  worth it?
+;; In retrospect, I think it may have been a mistake to embed 'list'
+;;   into sexp.  It forces all sexp-handling code to cover two cases,
+;;   often triggering the need for an auxiliary function.  Might be
+;;   cleaner to just have (sexp:nil) and (sexp:cons)...
 
-;; similar to the list macro.  think of this as the 'list' function
-;;   for s-expressions.
-(defmacro sexp
-  (sexp)       -> (sexp:list '())
-  (sexp x ...) -> (sexp:list (LIST x ...))
+;; ----- sexp format macro ------
+
+;; build a (list field)
+(defmacro sexprec
+  (sexprec) -> '()
+  (sexprec (name val) rest ...)
+  -> (list:cons
+      (field:t (quote name) (sexpf val))
+      (sexprec rest ...))
   )
+
+;; format one sexp
+(defmacro sexpf
+  (sexpf (<int> n))         -> (sexp:int n)
+  (sexpf (<char> ch))       -> (sexp:char ch)
+  (sexpf (<bool> b))        -> (sexp:bool b)
+  (sexpf (<sym> s))         -> (sexp:symbol s)
+  (sexpf (<string> s))      -> (sexp:string s)
+  (sexpf (<list> exp))      -> (sexp:list exp) ;; exp is (list sexp)
+  (sexpf (<rec> field ...)) -> (sexp:record (sexprec field ...))
+  (sexpf (<undef>))         -> (sexp:undef)
+  (sexpf (<cons> dt tag))   -> (sexp:cons dt tag)
+  (sexpf (<attr> exp name)) -> (sexp:attr (sexpf exp) name)
+  (sexpf (<vec> exp ...))   -> (sexp:vector (sexpl exp ...))
+  ;; XXX append & splice?
+  (sexpf exp)               -> exp ;; already a sexp
+  )
+
+;; build a (list sexp)
+(defmacro sexpl
+  (sexpl)              -> (list:nil)
+  (sexpl exp exps ...) -> (list:cons (sexpf exp) (sexpl exps ...))
+  )
+
+;; build a sexp:list
+(defmacro sexp
+  (sexp)         -> (sexp:list '())
+  (sexp exp ...) -> (sexp:list (sexpl exp ...))
+  )
+
+;; ------------------------------
 
 (define hex-map
   (literal
