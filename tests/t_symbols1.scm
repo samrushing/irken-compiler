@@ -12,6 +12,6 @@
   (printn (symbol->index 'thingy))
   (printn (symbol->index s0))
   (printn (symbol->index s1))
+  (printn the-symbol-table)
   )
-  
 
