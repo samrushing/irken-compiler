@@ -2,7 +2,7 @@
 
 (define (print x)
   (%backend c (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
-  (%backend llvm (%llvm-call (ccc "@irk_dump_object" ('a -> undefined)) x))
+  (%backend llvm (%llvm-call ("@irk_dump_object" ('a -> undefined) ccc) x))
   (%backend bytecode (%%cexp ('a -> undefined) "printo" x))
   )
 
@@ -13,19 +13,19 @@
 ;; note: discards return value.
 (define (print-string s)
   (%backend c (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)) #u)
-  (%backend llvm (%llvm-call (ccc "@irk_write_stdout" (string int -> int)) s (string-length s)) #u)
+  (%backend llvm (%llvm-call ("@irk_write_stdout" (string int -> int) ccc) s (string-length s)) #u)
   (%backend bytecode (%%cexp (string -> int) "prints" s) #u)
   )
 
 (define (flush)
   (%backend c (%%cexp (-> int) "fflush (stdout)"))
-  (%backend llvm (%llvm-call (ccc "@irk_flush" (-> int))))
+  (%backend llvm (%llvm-call ("@irk_flush" (-> int) ccc)))
   ;; not using stdio
   (%backend bytecode #u))
 
 (define (print-char ch)
   (%backend c (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" ch))
-  (%backend llvm (%llvm-call (ccc "@irk_putc" (char -> undefined)) ch))
+  (%backend llvm (%llvm-call ("@irk_putc" (char -> undefined) ccc) ch))
   (%backend bytecode (print-string (char->string ch)))
   )
 
@@ -505,7 +505,7 @@
   )
 (%backend llvm
   (define (set-verbose-gc b)
-    (%llvm-call (ccc "@irk_set_verbose_gc" (bool -> bool)) b))
+    (%llvm-call ("@irk_set_verbose_gc" (bool -> bool) ccc) b))
   ;; these are fixed by the LP64 target
   (define (get-word-size) 8)
   (define (get-int-size)  4)

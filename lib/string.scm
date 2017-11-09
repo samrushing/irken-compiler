@@ -15,7 +15,7 @@
      "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((pxll_string*)(t))->len = %0, t)"
      n))
   (%backend llvm
-    (%llvm-call (ccc "@irk_make_string" (int -> string)) n))
+    (%llvm-call ("@irk_make_string" (int -> string) ccc) n))
   (%backend bytecode
     (%%cexp (int -> string) "smake" n))
   )
@@ -116,7 +116,7 @@
   (%backend c
     (%%cexp ((raw string) (raw string) -> cmp) "irk_string_cmp (%0, %1)" a b))
   (%backend llvm
-    (%llvm-call (ccc "@irk_string_cmp" (string string -> cmp)) a b))
+    (%llvm-call ("@irk_string_cmp" (string string -> cmp) ccc) a b))
   (%backend bytecode
     (magic-cmp a b))
   )

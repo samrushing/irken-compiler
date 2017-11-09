@@ -711,8 +711,8 @@
     )
 
   (define make-llvm-scheme
-    (sexp:list ((sexp:string _) sig))                 -> (parse-cexp-sig sig)
-    (sexp:list ((sexp:symbol _) (sexp:string _) sig)) -> (parse-cexp-sig sig)
+    ;; after the sig are optional metadata
+    (sexp:list ((sexp:string _) sig . _)) -> (parse-cexp-sig sig)
     x -> (error1 "make-llvm-scheme: malformed" (repr x))
     )
 

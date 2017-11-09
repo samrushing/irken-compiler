@@ -46,7 +46,7 @@
   (%backend c
     (%%cexp (vector symbol) "(object *) pxll_internal_symbols"))
   (%backend llvm
-    (%llvm-get ("@irk_internal_symbols_p" (-> (vector symbol)))))
+    (%llvm-get ("@irk_internal_symbols_p" (-> (vector symbol)) #f)))
   (%backend bytecode
     (list->vector (%%cexp (list symbol) "gist")))
   )

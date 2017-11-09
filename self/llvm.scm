@@ -210,12 +210,12 @@
 	'%llvm-call (sexp:list ((sexp:string name) sig)) args
 	-> (emit-llvm-call name args target 'fastcc)
 
-	'%llvm-call (sexp:list ((sexp:symbol cconv) (sexp:string name) sig)) args
+	'%llvm-call (sexp:list ((sexp:string name) sig (sexp:symbol cconv))) args
 	-> (emit-llvm-call name args target cconv)
 
-        '%llvm-get (sexp:list ((sexp:string name) sig)) args
+        '%llvm-get (sexp:list ((sexp:string name) sig (sexp:bool external?))) args
         -> (begin
-             (extobjs::add name)
+             (if external? (extobjs::add name))
              (oformat "%r" (int target) " = load i8**, i8*** " name))
 
 	'%exit _ (arg)

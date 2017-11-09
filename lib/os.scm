@@ -34,7 +34,7 @@
 
 (define (get-argv)
   (%backend c (%%cexp (-> (vector string)) "irk_make_argv()"))
-  (%backend llvm (%llvm-call (ccc "@irk_make_argv" (-> (vector string)))))
+  (%backend llvm (%llvm-call ("@irk_make_argv" (-> (vector string)) ccc)))
   (%backend bytecode (%%cexp (-> (vector string)) "argv"))
   )
 
