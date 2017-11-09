@@ -78,16 +78,16 @@
       (format "L" (int (counter.inc))))))
 
 (define encode-immediate
-  (literal:int n)   -> (logior 1 (<< n 1))
-  (literal:char ch) -> (logior 2 (<< (char->ascii ch) 8))
-  (literal:undef)   -> #x0e
-  (literal:bool #t) -> #x106
-  (literal:bool #f) -> #x006
-  (literal:vector ()) -> #x12
-  ;; (literal:cons 'bool 'true _) -> #x106
-  ;; (literal:cons 'bool 'false _) -> #x006
+  (literal:int n)              -> (logior 1 (<< n 1))
+  (literal:char ch)            -> (logior 2 (<< (char->ascii ch) 8))
+  (literal:undef)              -> #x0e
+  (literal:bool #t)            -> #x106
+  (literal:bool #f)            -> #x006
+  (literal:vector ())          -> #x12
+  ;; it's a bug that this is here.  this is *only* needed for
+  ;;   a top-level nil literal.
+  (literal:cons 'list 'nil ()) -> TC_NIL
   x -> (error1 "expected immediate literal " x))
-
 
 (define immediate-true  (encode-immediate (literal:bool #t)))
 (define immediate-false (encode-immediate (literal:bool #f)))
