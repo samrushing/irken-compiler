@@ -41,7 +41,7 @@
     labels              = '()
     literals            = (cmap/make magic-cmp)
     literal-ids         = (tree/empty)
-    symbols             = (alist/make)
+    symbols             = (tree/empty)
     variant-labels      = (alist/make)
     options             = (make-options)
     exceptions          = (alist/make)

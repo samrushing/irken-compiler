@@ -240,7 +240,7 @@ static void prof_dump (void)
 	     (for-each (lambda (x) (PUSH output x)) args0)
 	     (format "UPTR(" (int litnum) "," (int addr) ")"))
 	(literal:symbol sym)
-	-> (let ((index (alist/get the-context.symbols sym "unknown symbol?")))
+        -> (let ((index (tree/get the-context.symbols symbol-index-cmp sym)))
 	     (format "UPTR(" (int index) ",1)"))
 	(literal:string s)
 	->  (format "UPTR0(" (int (cmap->index lits exp)) ")")
@@ -249,35 +249,35 @@ static void prof_dump (void)
 	))
     (o.dedent) ;; XXX fix this by defaulting to zero indent
     (for-map i lit lits.rev
-	(set! output '())
-        (match lit with
-          ;; strings are a special case here because they have a non-uniform structure: the existence of
-          ;;   the uint32_t <length> field means it's hard for us to put a UPTR in the front.
-          (literal:string s)
-          -> (let ((slen (string-length s)))
-               ;; this works because we want strings compared for eq? identity...
-               (o.write (format "pxll_string constructed_" (int i)
-                                " = {STRING_HEADER(" (int slen)
-                                "), " (int slen)
-                                ", \"" (c-string s) "\" };")))
-          ;; there's a temptation to skip the extra pointer at the front, but that would require additional smarts
-          ;;   in insn_constructed (as already exist for strings).
-          (literal:symbol s)
-          -> (begin
-               (o.write (format "// symbol " (sym s)))
-               (o.write (format "pxll_int constructed_" (int i)
-                                "[] = {UPTR(" (int i)
-                                ",1), SYMBOL_HEADER, UPTR0("
-                                (int (cmap->index lits (literal:string (symbol->string s))))
-                                "), INTCON(" (int symbol-counter) ")};"))
-               (set! symbol-counter (+ 1 symbol-counter))
-               )
-          _ -> (let ((val (walk lit i))
-                     (rout (list:cons val (reverse output))))
-                 (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
-          ))
+      (set! output '())
+      (match lit with
+        ;; strings are a special case here because they have a non-uniform structure: the existence of
+        ;;   the uint32_t <length> field means it's hard for us to put a UPTR in the front.
+        (literal:string s)
+        -> (let ((slen (string-length s)))
+             ;; this works because we want strings compared for eq? identity...
+             (o.write (format "pxll_string constructed_" (int i)
+                              " = {STRING_HEADER(" (int slen)
+                              "), " (int slen)
+                              ", \"" (c-string s) "\" };")))
+        ;; there's a temptation to skip the extra pointer at the front, but that would require additional smarts
+        ;;   in insn_constructed (as already exist for strings).
+        (literal:symbol s)
+        -> (begin
+             (o.write (format "// symbol " (sym s)))
+             (o.write (format "pxll_int constructed_" (int i)
+                              "[] = {UPTR(" (int i)
+                              ",1), SYMBOL_HEADER, UPTR0("
+                              (int (cmap->index lits (literal:string (symbol->string s))))
+                              "), INTCON(" (int symbol-counter) ")};"))
+             (set! symbol-counter (+ 1 symbol-counter))
+             )
+        _ -> (let ((val (walk lit i))
+                   (rout (list:cons val (reverse output))))
+               (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
+        ))
     (let ((symptrs '()))
-      (alist/iterate
+      (tree/inorder
        (lambda (symbol index)
 	 (PUSH symptrs (format "UPTR(" (int index) ",1)")))
        the-context.symbols)

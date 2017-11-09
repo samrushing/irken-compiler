@@ -222,7 +222,7 @@ default flags:
      (print-string "\n-- records --\n")
      (printn the-context.records)
      (print-string "\n-- symbols --\n")
-     (alist/iterate
+     (tree/inorder
       (lambda (sym index)
 	(print-string (format "  " (int index) " : " (sym sym) "\n")))
       the-context.symbols)

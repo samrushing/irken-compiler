@@ -178,13 +178,13 @@
 	     index)))
 
     (define (get-symbol-index sym)
-      (match (alist/lookup the-context.symbols sym) with
-	(maybe:yes index) -> index
-	(maybe:no)
-	-> (let ((string-index (add-literal (literal:string (symbol->string sym))))
-		 (symbol-index (add-literal (literal:symbol sym))))
-	     (alist/push the-context.symbols sym symbol-index)
-	     symbol-index)))
+      (match (tree/member the-context.symbols symbol-index-cmp sym) with
+        (maybe:yes index) -> index
+        (maybe:no)
+        -> (let ((string-index (add-literal (literal:string (symbol->string sym))))
+        	 (symbol-index (add-literal (literal:symbol sym))))
+             (tree/insert! the-context.symbols symbol-index-cmp sym symbol-index)
+             symbol-index)))
 
     ;; scan through a literal for symbols and strings, make sure they're recorded as well.
     (define scan-literals
