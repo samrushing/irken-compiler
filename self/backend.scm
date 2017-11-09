@@ -288,6 +288,7 @@ static void prof_dump (void)
     (o.indent)
     ))
 
+;; XXX quote and backslash probably don't belong here.
 (define c-string-safe?
   (char-class
    (string->list
@@ -412,7 +413,8 @@ static void prof_dump (void)
      (reverse the-context.lincludes))
     (for-each o.write (reverse the-context.cverbatim))
     (o.copy (get-file-contents "include/header1.c"))
-    (emit-constructed o)
+    (if (not llvm?)
+        (emit-constructed o))
     (emit-lookup-field o)
     (emit-datatype-table o)
     (number-profile-funs)

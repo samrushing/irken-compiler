@@ -9,6 +9,7 @@
 ;;  can.
 ;;  1) we need to generate our *own* constructed literals.
 ;;  2) get rid of all external cexp.
+;;  3) ***new!*** generate a table for lookup_field.
 
 ;; XXX shouldn't be global (or should be kept in the-context).
 ;; [alternatively, we can make a wrapper for cps->llvm that defines these]
@@ -658,10 +659,9 @@
     (define (emit-litcon index kind target)
       (when (>= target 0)
 	    (litcons::add index)
-	    (if (eq? kind 'string)
-		(oformat "%r" (int target) " = bitcast i8*** @constructed_" (int index) " to i8**")
-		(oformat "%r" (int target) " = load i8**, i8*** getelementptr (i8**, i8*** @constructed_" (int index) ", i64 0)")
-		)))
+            (oformat "%r" (int target) " = call fastcc i8** "
+                     "@insn_fetch (i8** bitcast ([" (int (+ 2 the-context.literals.count))
+                     " x i64*]* @lits.all to i8**), i64 " (int (+ 1 index)) ")")))
 
     (define split-last
       ()        acc -> (impossible)
@@ -890,6 +890,14 @@
 		   (int (+ 1 (string-length cname)))
 		   " x i8]* @." cname ", i64 0, i64 0))"))
 
+    (when (eq? name 'toplevel)
+      (let ((nlits the-context.literals.count))
+        (oformat "call void @relocate_llvm_literals ("
+                 ;; extra +1 is for the symbol table to be added to the end.
+                 "i8** bitcast ([" (int (+ nlits 2)) " x i64*]* @lits.all to i8**), "
+                 "i64* bitcast ([" (int (+ nlits 2)) " x i64]* @lits.offsets to i64*)"
+                 ")")))
+
     (if (and (not (member-eq? name '(toplevel fail jump)))
 	     (vars-get-flag name VFLAG-ALLOCATES))
 	(o.write (format "call void @check_heap()")))
@@ -965,6 +973,175 @@
 	   )
     ))
 
+(define llvm-string-safe?
+  (char-class
+   (string->list
+    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&'()*+,-./:;<=>?@[]^_`{|}~ ")))
+
+;; a 2-pass algorithm might be wanted here, with a string buffer and string-set!
+(define (llvm-string s)
+  (let loop ((r '())
+	     (s (string->list s)))
+    (match s with
+      () -> (string-concat (reverse r))
+      (ch . rest)
+      -> (loop
+	  (list:cons
+           (if (llvm-string-safe? ch)
+               (char->string ch)
+               ;; note: we need not worry about #\eof here because it
+               ;;  cannot be stored in a string.
+               (format "\\" (zpad 2 (hex (char->ascii ch)))))
+           r) rest)
+      )))
+
+;; literals are built in two primary ways:
+;; 1) symbols and strings are built directly.
+;; 2) complex literals are assembled as a stream of i64,
+;;    with relocations encoded in two ways:
+;;    a) external relocation: negative int specifies which
+;;       literal, by index.  [i.e., @lit.34 is -34]
+;;    b) internal relocation: offset is left-shifted 2 bits,
+;;       and will be added to the address of the beginning of
+;;       the current literal.
+;;
+;; All literals are built into a top-level irken vector object,
+;;   so insn:litcon now uses @insn_fetch like any vector-ref.
+;; All symbols are put in a single vector, added to the list of
+;;   all literals just before rendering.
+;; Finally, the address of the symbols-vector is placed where
+;;   %llvm-get can reach it.
+
+(define (llvm-emit-constructed o)
+  (let ((lits the-context.literals)
+	(output '())
+        (oindex 0)
+	(symbol-counter 0)
+        (info-map (map-maker int-cmp)))
+
+    (define (push-val n)
+      (PUSH output n)
+      (set! oindex (+ 1 oindex)))
+
+    ;; hacks for datatypes known by the runtime
+    (define (uotag dtname altname index)
+      (match dtname altname with
+	'list 'cons -> TC_PAIR
+	'symbol 't  -> TC_SYMBOL
+	_ _         -> (+ TC_USEROBJ (<< index 2))))
+
+    (define (uitag dtname altname index)
+      (match dtname altname with
+	'list 'nil   -> TC_NIL
+	'bool 'true  -> immediate-true
+	'bool 'false -> immediate-false
+	_ _          -> (+ TC_USERIMM (<< index 8))))
+
+    (define (uohead tag len)
+      (+ tag (<< len 8)))
+
+    (define (vector-header name n)
+      (format name " = global [" (int (+ 1 n)) " x i64*] [\n"
+              "  i64* inttoptr (i64 " (int (+ TC_VECTOR (<< n 8))) " to i64*) ,\n"))
+
+    (define (lit-ref i)
+      (match (info-map::get i) with
+        (maybe:yes (:tuple lltype _))
+        -> (format "  i64* bitcast (" lltype "* @lit." (int i) " to i64*)")
+        (maybe:no) -> (impossible)
+        ))
+
+    (define (walk exp litnum)
+      (match exp with
+	;; data constructor
+	(literal:cons dt variant args)
+	-> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
+		 (alt (dto.get variant))
+		 (nargs (length args)))
+	     (if (> nargs 0)
+		 ;; constructor with args
+		 (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
+                       (oindex0 oindex))
+		   (push-val (uohead (uotag dt variant alt.index) nargs))
+                   (for-each push-val args0)
+                   (<< oindex0 2))
+		 ;; nullary constructor - immediate
+		 (uitag dt variant alt.index)))
+        (literal:vector ())
+        -> (encode-immediate exp)
+        (literal:vector args)
+        -> (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
+                 (nargs (length args))
+                 (oindex0 oindex))
+             (push-val (uohead TC_VECTOR nargs))
+             (for-each push-val args0)
+             (<< oindex0 2))
+        ;; negative number indicates external pointer.
+        (literal:string s)
+        -> (- (+ 1 (cmap->index lits exp)))
+        (literal:symbol sym)
+        -> (- (+ 1 (cmap->index lits exp)))
+        ;; NOTE: sexp is missing from here.  without that, no sexp literals.
+	_ -> (encode-immediate exp)
+	))
+    ;; create a new vector literal of all symbols, add it to the cmap.
+    (let ((syms (tree/keys the-context.symbols))
+          (litsyms (map literal:symbol syms)))
+      (cmap/add lits (literal:vector litsyms)))
+    (oformat ";; constructed literals")
+    (for-map i lit lits.rev
+      (set! output '())
+      (set! oindex 0)
+      (match lit with
+        (literal:string s)
+        -> (let ((slen (string-length s))
+                 (tlen (string-tuple-length slen))
+                 (lltype (format "{i64, i32, [" (int slen) " x i8]}")))
+             (info-map::add i (:tuple lltype 0))
+             (oformat "@lit." (int i) " = local_unnamed_addr global "
+                      lltype " {i64 " (int (+ TC_STRING (<< tlen 8)))
+                      ", i32 " (int slen) ", [" (int slen) " x i8] c\"" (llvm-string s) "\" }"))
+        (literal:symbol sym)
+        -> (let ((oindex0 oindex)
+                 (lltype (format "{i64, i64, i64}"))
+                 (sindex (cmap->index lits (literal:string (symbol->string sym)))))
+             (info-map::add i (:tuple lltype 0))
+             (oformat "@lit." (int i) " = local_unnamed_addr global "
+                      lltype " {i64 " (int (+ TC_SYMBOL (<< 2 8)))
+                      ", i64 " (int (- (+ 1 sindex)))
+                      ", i64 " (int (logior 1 (<< symbol-counter 1))) "}"
+                      )
+             (set! symbol-counter (+ 1 symbol-counter)))
+        _
+        -> (let ((index (walk lit i))
+                 (vals (reverse output))
+                 (len (length vals))
+                 (lltype (format "[" (int len) " x i64]")))
+             (info-map::add i (:tuple lltype (>> index 2)))
+             (oformat "@lit." (int i) " = local_unnamed_addr global " lltype
+                      " [i64 " (join int->string ", i64 " vals) "]")
+             )
+        ))
+      ;; place all literals into a vector object.
+    (o.copy (vector-header "@lits.all" lits.count))
+    (let ((lines '()))
+      (for-map i lit lits.rev
+        (PUSH lines (lit-ref i)))
+      (oformat (join ",\n" (reverse lines)) "\n  ]"))
+    ;; emit table of offsets (into each i64[] literal)
+    (o.copy (format "@lits.offsets = global [" (int (+ 1 lits.count)) " x i64] ["))
+    (for-map i lit lits.rev
+      (match (info-map::get i) with
+        (maybe:yes (:tuple _ offset))
+        -> (o.copy (format "i64 " (int offset) ", "))
+        (maybe:no) -> (impossible)
+        ))
+    (oformat " i64 0]")
+    (oformat "@irk_internal_symbols_p = global i8** bitcast (["
+             (int (+ 1 (tree/size the-context.symbols)))
+             " x i64]* @lit." (int (- lits.count 1)) " to i8**)")
+    ))
+
 (define (emit-ffi-declarations o)
   (o.write (format ";; declarations for called foreign functions (FFI)"))
   (ffifuns::iterate
@@ -1004,10 +1181,6 @@
        (o.write (format "@size_" (int v) " = external global i64"))
        ))
     (cps->llvm cps co o 'toplevel cname '() #t)
-    ;; emit litcon externals
-    ;; *SOOOO* nice that llvm supports forward references...
-    (litcons::iterate
-     (lambda (index)
-       (oformat "@constructed_" (int index) " = external global i8**")))
+    (llvm-emit-constructed o)
     (emit-ffi-declarations o)
     ))
