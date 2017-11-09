@@ -716,6 +716,9 @@
             (literal:vector '())
             )))
 
+    ;; XXX why did I do this with a quasi-readable encoding?  seems like it would
+    ;;   have made more sense to just use the runtime encoding?  i.e., instead of
+    ;;   'T'==#t, use #106?
     (define (emit-one-literal ob)
       (match (lit-already::get ob) with
         (maybe:yes index)
