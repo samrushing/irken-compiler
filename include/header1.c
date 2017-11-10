@@ -995,6 +995,31 @@ irk_string_cmp (pxll_string * a, pxll_string * b)
 
 // --------------------------------------------------------------------------------
 
+static uint32_t irk_ambig_size;
+static int32_t G[];
+static int32_t V[];
+
+static
+uint32_t
+p_hash (uint32_t d, int k0, int k1)
+{
+  d = ((d * 0x01000193) ^ k1) & 0xffffffff;
+  d = ((d * 0x01000193) ^ k0) & 0xffffffff;
+  return d % irk_ambig_size;
+}
+
+static int lookup_field (int tag, int label)
+{
+  int32_t d = G[p_hash(0x01000193, tag, label)];
+  if (d < 0) {
+    return V[-d-1];
+  } else {
+    return V[p_hash(d, tag, label)];
+  }
+}
+
+// --------------------------------------------------------------------------------
+
 void toplevel (void);
 
 int

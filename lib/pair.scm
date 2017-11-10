@@ -323,3 +323,7 @@
   (merge-sort l)
 
   )
+
+;; XXX obviously this needs replacing 8^)
+(define (sort-vector < v)
+  (list->vector (sort < (vector->list v))))

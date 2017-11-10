@@ -5,11 +5,15 @@
 
 ;; TODO:
 ;;  in order to move toward full JIT capability, we need to remove
-;;  all dependency on an external C file; or, at least as much as we
-;;  can.
-;;  1) we need to generate our *own* constructed literals.
-;;  2) get rid of all external cexp.
+;;  all dependency on generated C code.
+;;  1) we need to generate our *own* constructed literals. [done]
+;;  2) get rid of all external cexp. [done]
 ;;  3) ***new!*** generate a table for lookup_field.
+;;  4) maybe remove callocate-related stuff (replaced with FFI)?
+
+;; #3 this table could probably be shrunk massively by emitting only
+;;   the parts needed for disambiguation.  If small enough, it could
+;;   probably be done with a generated function instead?
 
 ;; XXX shouldn't be global (or should be kept in the-context).
 ;; [alternatively, we can make a wrapper for cps->llvm that defines these]
@@ -154,11 +158,11 @@
     (define (emit-move val src target)
       ;; XXX the semantics of insn:move are very confusing.
       (cond ((and (>= src 0) (not (= src val)))
-	     ;; from varset
+	     ;; can't use reg varset with llvm because it re-uses an SSA.
 	     (raise (:LLVMRegVarset)))
 	    ((and (>= target 0) (not (= target val)))
 	     ;; from varref
-	     (oformat "%r" (int target) " = bitcast i8** %r" (int val) " to i8** ; // reg varref"))))
+	     (oformat "%r" (int target) " = bitcast i8** %r" (int val) " to i8** ; reg varref"))))
 
     (define (emit-test val then else)
       (let ((id0 (ID))
@@ -260,8 +264,7 @@
 
         ;; ------------------------------------------------------------------------------------------
         ;; still needed for FFI:
-        ;; %halloc %c-set-int %c-sizeof
-        ;; for FFI runtime we need make_halloc
+        ;; %c-set-int %c-sizeof
         '%malloc params (count)
         -> (let ((ctype (parse-ctype params))
                  (size (ctype->size ctype))
@@ -312,6 +315,8 @@
              )
 
         ;; XXX I think we need to make helper funs for sext/zext/trunc.
+        ;; XXX needs to go into a helper function.
+        ;; XXX can we use wrap-out-int here?
         '%c-get-int (sexp:symbol itype) (src)
         -> (let ((cint (lp64->cint itype))
                  (iname (ctype->llvm cint))
@@ -355,6 +360,9 @@
       (oformat (maybe-target target) " = call " (sym cconv) " i8** " name " (" (build-args args) ")")
       )
 
+    (define (ambig code)
+      (tree/insert! the-context.ambig-rec int-cmp code #u))
+
     (define (emit-record-get label sig rec target)
       (let ((label-code (lookup-label-code label)))
 	(match (guess-record-type sig) with
@@ -364,10 +372,12 @@
 		      ", i64 " (int (+ 1 (index-eq label sig0)))
 		      ")")
 	  (maybe:no)
-	  -> (oformat "%r" (int target) " = call i8** @record_fetch ("
-		      "i8** %r" (int rec)
-		      ", i64 " (int label-code)
-		      ")")
+	  -> (begin
+               (oformat "%r" (int target) " = call i8** @record_fetch ("
+                        "i8** %r" (int rec)
+                        ", i64 " (int label-code)
+                        ")")
+               (ambig label-code))
 	  )))
 
     (define (emit-record-set label sig rec val target)
@@ -380,11 +390,13 @@
 		      ", i8** %r" (int val)
 		      ")")
 	  (maybe:no)
-	  -> (oformat "call void @record_store ("
-		      "i8** %r" (int rec)
-		      ", i64 " (int label-code)
-		      ", i8** %r" (int val)
-		      ")")
+	  -> (begin
+               (oformat "call void @record_store ("
+                        "i8** %r" (int rec)
+                        ", i64 " (int label-code)
+                        ", i8** %r" (int val)
+                        ")")
+               (ambig label-code))
 	  )
 	(dead-set target)))
 

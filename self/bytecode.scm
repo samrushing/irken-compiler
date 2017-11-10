@@ -696,6 +696,8 @@
 
     ;; --------------------------------------------------------------------------------
 
+    ;; XXX consider switching to the hashtable technique used by the
+    ;;  other two backends.
     (define (build-field-lookup-table)
       ;; Note: this is built as a literal, which at runtime will
       ;;  have the type `(vector (vector int))`

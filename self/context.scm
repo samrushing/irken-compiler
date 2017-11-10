@@ -50,6 +50,7 @@
     cexps               = (map-maker magic-cmp)
     callocates          = (map-maker magic-cmp)
     ffi-map             = (cmap/make magic-cmp)
+    ambig-rec           = (tree/empty)
     }
   )
 

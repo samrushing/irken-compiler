@@ -81,14 +81,18 @@
   (when test body ...)
   -> (if test (begin body ...)))
 
-(defmacro for-range
-  (for-range vname num body ...)
-  -> (let (($n num))
-       (let $loop ((vname 0))
+(defmacro for-range*
+  (for-range* vname lo hi body ...)
+  -> (let (($n hi))
+       (let $loop ((vname lo))
 	 (if (= vname $n)
 	     #u
 	     (begin body ...
 		    ($loop (+ vname 1)))))))
+
+(defmacro for-range
+  (for-range vname num body ...)
+  -> (for-range* vname 0 num body ...))
 
 (defmacro for-vector
   (for-vector vname vec body ...)

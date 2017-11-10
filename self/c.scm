@@ -105,8 +105,7 @@
 	(env-stack '())
 	(used-jumps (find-jumps insns))
 	(fatbar-free (map-maker int-cmp))
-	(declared (set2-maker string-compare))
-	)
+	(declared (set2-maker string-compare)))
 
     (define emitk
       (cont:k _ _ k) -> (emit k)
@@ -524,6 +523,9 @@
                  (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error))
 
+        (define (ambig code)
+          (tree/insert! the-context.ambig-rec int-cmp code #u))
+
         (define prim-record-get
           (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
           -> (let ((label-code (lookup-label-code label)))
@@ -534,11 +536,14 @@
                                      ")->val[" (int (index-eq label sig0))
                                      "];"))
                  (maybe:no)
-                 -> (o.write (format "O r" (int target) ;; run-time lookup
-                                     " = ((pxll_vector*)r" (int rec-reg)
-                                     ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
-                                     ")-TC_USEROBJ)>>2," (int label-code)
-                                     ")]; // label=" (sym label)))))
+                 -> (begin
+                      (o.write (format "O r" (int target) ;; run-time lookup
+                                       " = ((pxll_vector*)r" (int rec-reg)
+                                       ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
+                                       ")-TC_USEROBJ)>>2," (int label-code)
+                                       ")]; // label=" (sym label)))
+                      (ambig label-code)
+                      )))
           _ _ -> (primop-error))
 
         ;; XXX very similar to record-get, maybe some way to collapse the code?
@@ -551,10 +556,13 @@
                                      ")->val[" (int (index-eq label sig0))
                                      "] = r" (int arg-reg) ";"))
                  (maybe:no)
-                 -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; run-time lookup
-                                     ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
-                                     ")-TC_USEROBJ)>>2," (int label-code)
-                                     ")] = r" (int arg-reg) ";")))
+                 -> (begin
+                      (o.write (format "((pxll_vector*)r" (int rec-reg) ;; run-time lookup
+                                       ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
+                                       ")-TC_USEROBJ)>>2," (int label-code)
+                                       ")] = r" (int arg-reg) ";"))
+                      (ambig label-code)
+                      ))
                (when (>= target 0)
                  (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
           _ _ -> (primop-error))

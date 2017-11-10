@@ -151,7 +151,8 @@
 	  ;; unambiguous - there's only one possible match.
 	  (maybe:yes (nth candidates 0))
 	  ;; this sig is ambiguous given the set of known records.
-	  (maybe:no)))))
+	  (maybe:no)
+          ))))
 
 ;; profiler currently works only on the C backend.
 
@@ -328,29 +329,146 @@ static void prof_dump (void)
 	   r)
 	  rest))))
 
-(define (emit-lookup-field o)
-  (if (> (length the-context.records) 0)
-      (begin
-	(o.write "static int lookup_field (int tag, int label)")
-	(o.write "{ switch (tag) {")
-	(for-each
-	 (lambda (pair)
-	   (match pair with
-		  (:pair sig index)
-	      -> (begin (o.write (format "  // {" (join symbol->string " " sig) "}"))
-			(o.write (format "  case " (int index) ":"))
-			(o.write "  switch (label) {")
-			(for-range
-			 i (length sig)
-			 (o.write (format "     case "
-					  (int (lookup-label-code (nth sig i)))
-					  ": return " (int i) "; break;")))
-			(o.write "  } break;"))))
-	 (reverse the-context.records))
-	(o.write "} return 0; }"))
-      ;; record_fetch/record_store refer to this function even when it's not needed.
-      (o.write "static int lookup_field (int tag, int label) { return 0; }")
-      ))
+;; perfect hash function for ambiguous record field lookups.
+;; some field-index lookups are unable to be resolved at compile time.
+;; we use a map (size N) of (tag, label)->index at runtime.
+;; this map is implemented using a two-stage hash,
+;; vectoring into two tables of length N.
+
+;; based directly on Steve Hanov's python code.
+;; http://stevehanov.ca/blog/index.php?id=119
+
+;; Note: this is obviously a bit overkill, but previously I used a
+;;  large generated function that was going to really complicate
+;;  independent LLVM code generation (e.g. for JIT) and I really
+;;  wanted something table-based.  This generates a really small
+;;  table!
+
+;; unrolled - our keys are always of length 2
+;; NOTE: this obviously must match the hash function in include/header1.c:p_hash().
+(define (hash2 d k0 k1)
+  (logand #xffffffff
+    (logxor k0
+      (* (logand #xffffffff
+            (logxor k1 (* d #x01000193)))
+         #x01000193))))
+
+(define (hash-item d item size)
+  (mod (hash2 d item.k0 item.k1) size))
+
+(define (create-minimal-perfect-hash table)
+
+  (define not-there 500000)
+
+  (let ((size (vector-length table))
+        (buckets (make-vector size (list:nil)))
+        (G (make-vector size 0))
+        (V (make-vector size not-there))
+        (split 0))
+    ;; Step 1: Place all of the keys into buckets.
+    (for-vector elem table
+      (let ((index (hash-item #x01000193 elem size)))
+        (set! buckets[index] (list:cons elem buckets[index]))))
+    ;; Step 2: Sort the buckets and process the ones with the most items first.
+    (set! buckets (sort-vector (lambda (a b) (> (length a) (length b))) buckets))
+    (let/cc break
+      (for-range i size
+        (let ((bucket buckets[i])
+              (blen (length bucket))
+              (d 1)
+              (item 0)
+              (slots (list:nil)))
+          (when (<= blen 1)
+            (set! split i)
+            (break #u))
+          ;; Repeatedly try different values of d until we find a hash function
+          ;; that places all items in the bucket into free slots
+          (while (< item blen)
+            (let ((slot (hash-item d (nth bucket item) size)))
+              (if (or (not (= V[slot] not-there))
+                      (member-eq? slot slots))
+                  (begin
+                    (set! d (+ 1 d))
+                    (set! item 0)
+                    (set! slots (list:nil)))
+                  (begin
+                    (PUSH slots slot)
+                    (set! item (+ item 1))))))
+          (set! slots (reverse slots))
+          (set! G[(hash-item #x01000193 (nth bucket 0) size)] d)
+          (for-range j blen
+            (let ((elem (nth bucket j)))
+              (set! V[(nth slots j)] elem.v)))
+          )))
+    ;; Only buckets with 1 item remain. Process them more quickly by directly
+    ;; placing them into a free slot. Use a negative value of d to indicate
+    ;; this.
+    (let ((freelist '()))
+      (for-range i size
+        (if (= V[i] not-there)
+            (PUSH freelist i)))
+      (for-range i size
+        (let ((bucket buckets[i])
+              (blen (length bucket)))
+          (when (= blen 1)
+            (let ((slot (pop freelist))
+                  (elem (nth bucket 0)))
+              ;; we subtract one to ensure it's negative even if the zeroeth slot was
+              ;; used.
+              (set! G[(hash-item #x01000193 elem size)] (- 0 slot 1))
+              (set! V[slot] elem.v)))))
+      )
+    (:tuple G V)))
+
+(define (emit-lookup-field-hashtables o)
+  (let ((ambig (build-ambig-table))
+        (size (tree/size ambig))
+        (table (make-vector size {k0=0 k1=0 v=0}))
+        (i 0))
+    (tree/inorder
+     (lambda (k v)
+       (match k with
+         (:tuple tag label)
+         -> (set! table[i] {k0= tag k1=label v=v}))
+       (set! i (+ i 1)))
+     ambig)
+    (let-values (((G V) (create-minimal-perfect-hash table)))
+      (oformat "static uint32_t irk_ambig_size = " (int size) ";")
+      (o.copy "static int32_t G[] = {")
+      (for-vector val G
+        (o.copy (format (int val) ", ")))
+      (oformat "0};")
+      (o.copy "static int32_t V[] = {")
+      (for-vector val V
+        (o.copy (format (int val) ", ")))
+      (oformat "0};")
+      )))
+
+;; the backend takes note whenever a field label's index cannot be
+;;  unambiguously resolved. rather than generating a table of all
+;;  tag,label->index tuples, we generate only the entries that resulted
+;;  in a call to `lookup_field()`.
+
+(define (build-ambig-table)
+  (let ((table (tree/empty)))
+    (for-list pair the-context.records
+      (match pair with
+        (:pair sig index)
+        -> (let ((ambs '()))
+             (for-range i (length sig)
+               (let ((label-code (lookup-label-code (nth sig i))))
+                 (match (tree/member the-context.ambig-rec int-cmp label-code) with
+                   (maybe:yes _)
+                   -> (PUSH ambs (:tuple i label-code))
+                   (maybe:no)
+                   -> #u)))
+             (when (> (length ambs) 0)
+               (for-list item ambs
+                 (match item with
+                   (:tuple i label-code)
+                   -> (tree/insert! table magic-cmp (:tuple index label-code) i))))
+             )))
+    table))
 
 (define (emit-datatype-table o)
   (o.write (format "// datatype table"))
@@ -415,7 +533,6 @@ static void prof_dump (void)
     (o.copy (get-file-contents "include/header1.c"))
     (if (not llvm?)
         (emit-constructed o))
-    (emit-lookup-field o)
     (emit-datatype-table o)
     (number-profile-funs)
     (if the-context.options.profile
@@ -433,6 +550,7 @@ static void prof_dump (void)
           (notquiet (printf "wrote " (int (ollvm.get-total)) " bytes to " llpath ".\n"))
 	  (PUSH sources llpath))
 	(emit-c o0 o cps))
+    (emit-lookup-field-hashtables o)
     (if the-context.options.profile (emit-profile-1 o))
     (notquiet (print-string "done.\n"))
     (o0.close)
