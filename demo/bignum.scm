@@ -1,7 +1,6 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/basis.scm")
-(include "lib/os.scm")
 (include "lib/map.scm")
 
 (datatype big
@@ -298,9 +297,6 @@
 	 (shift (digits-mul1 x y0 0 '()) n)))
     )
   (canon (recur y 0 '())))
-
-(define (shift digs n)
-  (append (n-of n 0) digs))
 
 ;; TODO: compute this.
 (define KARATSUBA-CUTOFF 10)
