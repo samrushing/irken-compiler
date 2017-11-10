@@ -30,17 +30,17 @@
     (maybe:yes sym) -> sym
     ))
 
-(define (symbol<? s1 s2)
-  (string<? (symbol->string s1) (symbol->string s2)))
+(define symbol<?
+  (symbol:t s0 _) (symbol:t s1 _) -> (string<? s0 s1))
 
-(define (symbol-cmp s1 s2)
-  (string-compare (symbol->string s1) (symbol->string s2)))
+(define symbol-cmp
+  (symbol:t s0 _) (symbol:t s1 _) -> (string-compare s0 s1))
 
-(define (symbol-index<? s1 s2)
-  (< (symbol->index s1) (symbol->index s2)))
+(define symbol-index<?
+  (symbol:t _ i0) (symbol:t _ i1) -> (< i0 i1))
 
-(define (symbol-index-cmp s1 s2)
-  (int-cmp (symbol->index s1) (symbol->index s2)))
+(define symbol-index-cmp
+  (symbol:t _ i0) (symbol:t _ i1) -> (int-cmp i0 i1))
 
 (define (get-internal-symbols)
   (%backend c
