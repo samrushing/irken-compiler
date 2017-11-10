@@ -15,9 +15,11 @@
 
 ;; unrolled - our keys are always of length 2
 (define (hash2 d k0 k1)
-  (set! d (logand #xffffffff (logxor k1 (* d #x01000193))))
-  (set! d (logand #xffffffff (logxor k0 (* d #x01000193))))
-  d)
+  (logand #xffffffff
+    (logxor k0
+      (* (logand #xffffffff
+            (logxor k1 (* d #x01000193)))
+         #x01000193))))
 
 (define input-table
   (literal #(#(2 6 0)
