@@ -225,8 +225,9 @@
 
 	'%exit _ (arg)
 	-> (begin
-	     (oformat "store i8** %r" (int arg) ", i8*** @result")
-	     (oformat "tail call void @exit_continuation()")
+	     ;;(oformat "store i8** %r" (int arg) ", i8*** @result")
+	     ;;(oformat "tail call void @exit_continuation()")
+             (oformat "tail call void @exit_continuation (i8** %r" (int arg) ")")
 	     (oformat "ret void")
 	     )
 
@@ -596,7 +597,7 @@
 	    )
 	;; save
 	(oformat ids[0] " = call fastcc i8** @allocate (i64 " (int TC_SAVE) ", i64 " (int (+ 3 nregs)) ")")
-	(oformat ids[1] " = bitcast void()* @" kfun " to i8**")
+	(oformat ids[1] " = bitcast void(i8**)* @" kfun " to i8**")
 	(for-range i nregs
 	   (oformat "call fastcc void @insn_store ("
 		    "i8** " ids[0]
@@ -614,7 +615,7 @@
 	;; emit a new c function to represent the continuation of the current irken function
 	(PUSH fun-stack
 	      (lambda ()
-		(oformat "\ndefine internal fastcc void @" kfun "() {")
+		(oformat "\ndefine internal fastcc void @" kfun "(i8** %rr) {")
 		(o.indent)
 		;; restore
 		(for-range i nregs
@@ -622,8 +623,9 @@
 			    " = call fastcc i8** @fetch (i8*** @k, i64 "
 			    (int (+ 4 i)) ")"))
 		(oformat "call fastcc void @pop_k()")
-		(if (>= target 0)
-		    (oformat "%r" (int target) " = load i8**, i8*** @result"))
+		;;(if (>= target 0)
+		;;    (oformat "%r" (int target) " = load i8**, i8*** @result"))
+                (oformat "%r" (int target) " = bitcast i8** %rr to i8**")
 		(walk k)
 		(o.dedent)
 		(oformat "}")
@@ -904,11 +906,12 @@
 
     (when (eq? name 'toplevel)
       (let ((nlits the-context.literals.count))
-        (oformat "call void @relocate_llvm_literals ("
-                 ;; extra +1 is for the symbol table to be added to the end.
-                 "i8** bitcast ([" (int (+ nlits 2)) " x i64*]* @lits.all to i8**), "
-                 "i64* bitcast ([" (int (+ nlits 2)) " x i64]* @lits.offsets to i64*)"
-                 ")")))
+        (when (> nlits 0)
+          (oformat "call void @relocate_llvm_literals ("
+                   ;; extra +1 is for the symbol table to be added to the end.
+                   "i8** bitcast ([" (int (+ nlits 2)) " x i64*]* @lits.all to i8**), "
+                   "i64* bitcast ([" (int (+ nlits 2)) " x i64]* @lits.offsets to i64*)"
+                   ")"))))
 
     (if (and (not (member-eq? name '(toplevel fail jump)))
 	     (vars-get-flag name VFLAG-ALLOCATES))
@@ -1024,6 +1027,12 @@
 ;; Finally, the address of the symbols-vector is placed where
 ;;   %llvm-get can reach it.
 
+;; XXX TODO
+;; need to handle no symbol table.
+;; 1) [done] assign TC_EMPTY_VECTOR to irk_internal_symbols_p
+;; 2) [done] skip adding the table to lits.all
+;; 3) adjust size of lits.all, damnit.
+
 (define (llvm-emit-constructed o)
   (let ((lits the-context.literals)
 	(output '())
@@ -1097,9 +1106,11 @@
 	_ -> (encode-immediate exp)
 	))
     ;; create a new vector literal of all symbols, add it to the cmap.
-    (let ((syms (tree/keys the-context.symbols))
-          (litsyms (map literal:symbol syms)))
-      (cmap/add lits (literal:vector litsyms)))
+    (when (not (tree/empty? the-context.symbols))
+      (let ((syms (tree/keys the-context.symbols))
+            (litsyms (map literal:symbol syms)))
+        (cmap/add lits (literal:vector litsyms))
+        #u))
     (oformat ";; constructed literals")
     (for-map i lit lits.rev
       (set! output '())
@@ -1149,9 +1160,11 @@
         (maybe:no) -> (impossible)
         ))
     (oformat " i64 0]")
-    (oformat "@irk_internal_symbols_p = global i8** bitcast (["
-             (int (+ 1 (tree/size the-context.symbols)))
-             " x i64]* @lit." (int (- lits.count 1)) " to i8**)")
+    (if (tree/empty? the-context.symbols)
+        (oformat "@irk_internal_symbols_p = global i8** inttoptr (i64 " (int TC_EMPTY_VECTOR) " to i8**)")
+        (oformat "@irk_internal_symbols_p = global i8** bitcast (["
+                 (int (+ 1 (tree/size the-context.symbols)))
+                 " x i64]* @lit." (int (- lits.count 1)) " to i8**)"))
     ))
 
 (define (emit-ffi-declarations o)
@@ -1193,6 +1206,7 @@
        (o.write (format "@size_" (int v) " = external global i64"))
        ))
     (cps->llvm cps co o 'toplevel cname '() #t)
-    (llvm-emit-constructed o)
+    (when (> the-context.literals.count 0)
+      (llvm-emit-constructed o))
     (emit-ffi-declarations o)
     ))

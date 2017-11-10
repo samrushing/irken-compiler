@@ -142,11 +142,11 @@
 	 )))
 
     ;; XXX arrange to avoid duplicates caused by jump conts
-    (define (declare-function name extern?)
+    (define (declare-function name extern? kfun?)
       (when (not (declared::member name))
 	    (declared::add name)
 	    (let ((linkage (if extern? "extern" "static")))
-	      (decls.write (format linkage " void " name "(void);")))))
+	      (decls.write (format linkage " void " name (if kfun? "(O);" "(void);"))))))
 
     (define (move src dst)
       (if (and (>= dst 0) (not (= src dst)))
@@ -165,7 +165,7 @@
 	  (cond ((eq? kind 'string)
 		 (o.write (format "O r" (int target) " = (object*) &constructed_" (int index) ";")))
 		(else
-		 (o.write (format "O r" (int target) " = (object *) constructed_" (int index) "[0];"))))))
+		 (o.write (format "O r" (int target) " = (object*) constructed_" (int index) "[0];"))))))
 
     (define (emit-test reg jn k0 k1 k)
       (push-jump-continuation k jn)
@@ -277,7 +277,7 @@
 
     (define (emit-close name nreg body target)
       (let ((cname (gen-function-cname name 0)))
-	(declare-function cname #f)
+	(declare-function cname #f #f)
 	(PUSH fun-stack (lambda () (emit-cfun o name cname body)))
 	(o.write (format "O r" (int target) " = allocate (TC_CLOSURE, 2);"))
 	(o.write (format "r" (int target) "[1] = " cname "; r" (int target) "[2] = lenv;"))
@@ -359,16 +359,16 @@
 
     (define (format-call mname funreg)
       (match mname with
-        (maybe:no) -> (format "((kfun)(r" (int funreg) "[1]))();") ;; unknown
+        (maybe:no) -> (format "((pfun)(r" (int funreg) "[1]))();") ;; unknown
         (maybe:yes name)
         -> (let ((var (vars-get-var name)))
              (if (= 0 var.sets)
                  (let ((cfun (gen-function-cname name 0))) ;; known
                    ;; include last-minute forward declaration
-                   (declare-function cfun #f)
+                   (declare-function cfun #f #f)
                    (format cfun "();")
                    )
-                 (format "((kfun)(r" (int funreg) "[1]))();") ;; mutated
+                 (format "((pfun)(r" (int funreg) "[1]))();") ;; mutated
                  ))
         ))
 
@@ -391,7 +391,7 @@
 	       (map-range
 		   i nregs
 		   (format "t[" (int (+ i 4)) "] = r" (int (nth free i))))))
-	  (declare-function kfun #f)
+	  (declare-function kfun #f #t)
 	  (o.write (format "t[1] = k; t[2] = lenv; t[3] = " kfun "; " (string-join saves "; ") "; k = t;")))
 	;; call
 	(let ((funcall (format-call name fun)))
@@ -402,7 +402,7 @@
 	(PUSH fun-stack
 	      (lambda ()
 		(set! current-function-cname kfun)
-		(o.write (format "static void " kfun " (void) {"))
+		(o.write (format "static void " kfun " (O rr) {"))
 		(o.indent)
 		;; restore
 		(let ((restores
@@ -411,7 +411,7 @@
 			   (format "O r" (int (nth free i)) " = k[" (int (+ i 4)) "]"))))
 		  (o.write (format (string-join restores "; ") "; lenv = k[2]; k = k[1];")))
 		(if (>= target 0)
-		    (o.write (format "O r" (int target) " = result;")))
+		    (o.write (format "O r" (int target) " = rr;")))
 		(emitk k)
 		(o.dedent)
 		(o.write (format "}"))
@@ -431,7 +431,7 @@
 	(for-range
 	    i nargs
 	    (o.write (format "lenv[" (int (+ 2 i)) "] = r" (int (nth regs i)) ";")))
-	(declare-function cname #f)
+	(declare-function cname #f #f)
 	(o.write (format cname "();"))
       ))
 
@@ -599,7 +599,7 @@
             (o.write (format "O r" (int target) " = PXLL_UNDEFINED;"))))
 
         (define (prim-exit args)
-          (o.write (format "result=r" (int (car args)) "; exit_continuation();"))
+          (o.write (format "exit_continuation(r" (int (car args)) ");"))
           (when (> target 0)
             (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 

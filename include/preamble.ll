@@ -13,7 +13,6 @@
 
 @k	= external global i8**
 @lenv	= external global i8**
-@result = external global i8**
 @top	= external global i8**
 @freep	= external global i8**
 
@@ -30,7 +29,7 @@ declare i8** @make_vector (i64 %size, i8** %val)
 declare void @vector_range_check (i8** %vec, i64 %index)
 declare i8** @record_fetch (i8** %rec, i64 %label)
 declare void @record_store (i8** %rec, i64 %label, i8** %val)
-declare void @exit_continuation()
+declare void @exit_continuation(i8**)
 declare void @DO (i8** %ob)
 declare void @DENV()
 declare void @TRACE(i8* %name)
@@ -283,12 +282,11 @@ define internal fastcc i8** @insn_add (i8** %a, i8** %b) {
 }
 
 define internal fastcc void @insn_return (i8** %val) {
-  store i8** %val, i8*** @result
   %1 = load i8**, i8*** @k
   %2 = getelementptr i8*, i8** %1, i64 3
-  %3 = bitcast i8** %2 to void ()**
-  %4 = load void ()*, void ()** %3
-  tail call fastcc void %4()
+  %3 = bitcast i8** %2 to void (i8**)**
+  %4 = load void (i8**)*, void (i8**)** %3
+  tail call fastcc void %4(i8** %val)
   ret void
 }
 

@@ -546,7 +546,6 @@ clear_space (object * p, pxll_int n)
 object * lenv = PXLL_NIL;
 object * k = PXLL_NIL;
 object * top = PXLL_NIL; // top-level (i.e. 'global') environment
-object * result;
 object * limit; // = heap0 + (heap_size - head_room);
 object * freep; // = heap0;
 static object * t = 0; // temp - for swaps & building tuples
@@ -847,8 +846,9 @@ static uint64_t program_start_time;
 static uint64_t program_end_time;
 static void prof_dump (void);
 
-typedef void(*kfun)(void);
-void exit_continuation (void)
+typedef void(*kfun)(object *);
+typedef void(*pfun)(void);
+void exit_continuation (object * result)
 {
 #if USE_CYCLECOUNTER
   program_end_time = rdtsc();
@@ -1051,5 +1051,5 @@ main (int argc, char * argv[])
 }
 
 
-#define PXLL_RETURN(d) result = r##d; ((kfun)(k[3]))();
+#define PXLL_RETURN(d) ((kfun)(k[3]))(r##d);
 #define O object *
