@@ -391,11 +391,6 @@
 
   (let ((escaping-funs '()))
 
-    ;; for each variable, we need to know if it might potentially
-    ;;  escape.  a variable 'escapes' when it is referenced while free
-    ;;  inside a function that escapes (i.e., any function that is
-    ;;  varref'd outside of the operator position).
-
     (define (fun-escapes name)
       (vars-set-flag! name VFLAG-ESCAPES)
       (PUSH escaping-funs name))
@@ -420,37 +415,7 @@
 	_ -> #u)
       (for-each (lambda (x) (find-escaping-functions x node)) (noderec->subs node)))
 
-    (define (maybe-var-escapes name lenv)
-      ;;(printf "maybe-var-escapes: " (sym name) "\n")
-      (if (not (member-eq? name lenv))
-	  ;; reference to a free variable. flag it as escaping.
-	  (vars-set-flag! name VFLAG-ESCAPES)))
-
-    ;; XXX make sure we still need to know if particular variables escape.
-
-    ;; within each escaping function, we search for escaping variables.
-    (define (find-escaping-variables node lenv)
-      (match (noderec->t node) with
-	;; the three binding constructs extend the environment...
-	(node:function _ formals) -> (set! lenv (append formals lenv))
-	(node:fix names)	  -> (set! lenv (append names lenv))
-	(node:let names)	  -> (set! lenv (append names lenv))
-	;; ... and here we search the environment.
-	(node:varref name)	  -> (maybe-var-escapes name lenv)
-	(node:varset name)	  -> (maybe-var-escapes name lenv)
-	_ -> #u)
-      (for-each (lambda (x) (find-escaping-variables x lenv)) (noderec->subs node)))
-
-    ;; first we identify escaping functions
     (find-escaping-functions root (node/literal (literal:int 0)))
-    (for-each
-     (lambda (name)
-       ;;(printf "searching escaping fun " (sym name) "\n")
-       (let ((fun (match (tree/member the-context.funs symbol-index-cmp name) with
-		    (maybe:yes fun) -> fun
-		    (maybe:no) -> (error1 "find-escaping-funs: failed lookup" name))))
-       (find-escaping-variables fun '())))
-     escaping-funs)
     ))
 
 ;; simple cascading optimizations - these only work from the
