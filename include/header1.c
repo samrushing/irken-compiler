@@ -362,7 +362,7 @@ relocate_llvm_walk (object * ob)
 }
 
 void
-relocate_llvm_literals (object * vec, pxll_int * offsets)
+relocate_llvm_literals (object * vec, uint32_t * offsets)
 {
   llvm_all_lits = vec;
   pxll_int n = GET_TUPLE_LENGTH (*vec);

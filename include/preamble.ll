@@ -43,7 +43,7 @@ declare i8** @irk_make_argv()
 declare i8** @irk_set_verbose_gc(i8**)
 declare i8** @irk_string_cmp (i8** %a, i8** %b)
 declare i8** @irk_make_string (i8** %len)
-declare void @relocate_llvm_literals (i8**, i64*)
+declare void @relocate_llvm_literals (i8**, i32*)
 
 ;; FFI
 declare i8** @make_malloc (i64 %size, i64 %count)
