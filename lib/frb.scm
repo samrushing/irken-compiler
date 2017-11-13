@@ -287,20 +287,12 @@
   (walk root)
   )
 
-(define tree/least
-  (tree:empty)                     -> (error "tree/least on empty tree")
-  (tree:red (tree:empty) _ k v)    -> (:tuple k v)
-  (tree:black (tree:empty) _ k v)  -> (:tuple k v)
-  (tree:red l _ _ _)               -> (tree/least l)
-  (tree:black l _ _ _)             -> (tree/least l)
-  )
-
-(define (tree/pop-least s cmp)
-  (let-values (((k v) (tree/least s)))
+(define (tree/pop-min s cmp)
+  (let-values (((k v) (tree/min s)))
     (:tuple (:tuple k v) (tree/delete s cmp k))))
 
-(defmacro tree/pop-least!
-  (tree/pop-least! s cmp)
-  -> (let-values (((least s0) (tree/pop-least s cmp)))
+(defmacro tree/pop-min!
+  (tree/pop-min! s cmp)
+  -> (let-values (((min s0) (tree/pop-min s cmp)))
        (set! s s0)
-       least))
+       min))
