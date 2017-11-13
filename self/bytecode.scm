@@ -959,7 +959,7 @@
 
     ;; --------------------------------------------------------------------------------
 
-    (notquiet (printf "output...\n"))
+    (notquiet (printf "bytecode output...\n"))
 
     (o.copy "IRKVM0") ;; oh oh it's magic.
 
@@ -999,5 +999,5 @@
       (o.close)
       (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
       )
-    #u
+    (list:nil)
     ))
