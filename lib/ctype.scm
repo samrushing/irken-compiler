@@ -6,7 +6,7 @@
   (:int)
   (:long)
   (:longlong)
-  (:width int)
+  (:width int) ;; in bytes, not bits
   )
 
 (define (cint-repr t signed?)
@@ -17,7 +17,7 @@
            (cint:int)       -> "int"
            (cint:long)      -> "long"
            (cint:longlong)  -> "longlong"
-           (cint:width w)   -> (format (int w)))))
+           (cint:width w)   -> (format (int (* 8 w))))))
     (match t with
       (cint:width _) -> (format (if signed? "i" "u") suffix)
       _              -> (format (if signed? "" "u") suffix)
@@ -43,7 +43,7 @@
   )
 
 (define ctype-repr
-  (ctype:name name)    -> (symbol->string name)
+  (ctype:name name)    -> (format "(type " (symbol->string name) ")")
   (ctype:int cint s?)  -> (cint-repr cint s?)
   (ctype:array size t) -> (format "(array " (int size) " " (ctype-repr t) ")")
   (ctype:pointer t)    -> (format "(* " (ctype-repr t) ")")
@@ -94,10 +94,25 @@
   )
 
 (define parse-ctype
-  (sexp:symbol 'int)
-  -> (ctype:int (cint:int) #t)
-  (sexp:symbol 'long)
-  -> (ctype:int (cint:long) #t)
+  ;; many integer types
+  (sexp:symbol 'int)       -> (ctype:int (cint:int) #t)
+  (sexp:symbol 'uint)      -> (ctype:int (cint:int) #f)
+  (sexp:symbol 'short)     -> (ctype:int (cint:short) #t)
+  (sexp:symbol 'ushort)    -> (ctype:int (cint:short) #f)
+  (sexp:symbol 'long)      -> (ctype:int (cint:long) #t)
+  (sexp:symbol 'ulong)     -> (ctype:int (cint:long) #f)
+  (sexp:symbol 'longlong)  -> (ctype:int (cint:longlong) #t)
+  (sexp:symbol 'ulonglong) -> (ctype:int (cint:longlong) #f)
+  (sexp:symbol 'i8)        -> (ctype:int (cint:width 1) #t)
+  (sexp:symbol 'u8)        -> (ctype:int (cint:width 1) #f)
+  (sexp:symbol 'i16)       -> (ctype:int (cint:width 2) #t)
+  (sexp:symbol 'u16)       -> (ctype:int (cint:width 2) #f)
+  (sexp:symbol 'i32)       -> (ctype:int (cint:width 4) #t)
+  (sexp:symbol 'u32)       -> (ctype:int (cint:width 4) #f)
+  (sexp:symbol 'i64)       -> (ctype:int (cint:width 8) #t)
+  (sexp:symbol 'u64)       -> (ctype:int (cint:width 8) #f)
+  (sexp:symbol 'i256)      -> (ctype:int (cint:width 32) #t)
+  (sexp:symbol 'u256)      -> (ctype:int (cint:width 32) #f)
   (sexp:list ((sexp:symbol 'int) (sexp:list ((sexp:int size) (sexp:int signed?)))))
   -> (ctype:int (cint:width size) (if (= signed? 1) #t #f))
   (sexp:list ((sexp:symbol '*) sub))
