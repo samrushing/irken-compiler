@@ -567,9 +567,10 @@ int
 get_stack_depth()
 {
   int result = 0;
-  while (k != PXLL_NIL) {
+  object * k0 = k;
+  while (k0 != PXLL_NIL) {
     result++;
-    k = (object*) k[1];
+    k0 = (object*) k0[1];
   }
   return result;
 }
@@ -671,7 +672,7 @@ make_halloc (pxll_int size, pxll_int count)
   object * buffer = alloc_no_clear (TC_BUFFER, HOW_MANY (size * count, sizeof(object)));
   object * result = allocate (TC_FOREIGN, 2);
   result[1] = buffer;
-  result[2] = BOX_INTEGER (0);
+  result[2] = box(0);
   return result;
 }
 
@@ -1050,6 +1051,8 @@ main (int argc, char * argv[])
   }
 }
 
-
 #define PXLL_RETURN(d) ((kfun)(k[3]))(r##d);
 #define O object *
+
+// With the C backend, generated code follow this point.
+// With the LLVM backend, this file is linked with the generated code.
