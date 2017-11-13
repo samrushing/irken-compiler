@@ -494,7 +494,6 @@
   )
 
 (%backend c
-  (cinclude "sys/errno.h")
   (define (set-verbose-gc b)
     (%%cexp (bool -> bool) "verbose_gc = %0" b))
   (define (get-word-size)
