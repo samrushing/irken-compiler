@@ -119,7 +119,7 @@
 Usage: compile <irken-src-file> [options]
  -c     : don't compile .c file
  -v     : verbose (very!) output
- -t     : generate trace-printing code (currently unimplemented)
+ -t     : generate trace-printing code (C backend only)
  -f     : set CFLAGS for C compiler
  -I     : add include search directory
  -l     : add a link library
@@ -127,9 +127,9 @@ Usage: compile <irken-src-file> [options]
  -dt    : debug typing
  -types : dump all type signatures (do not compile)
  -ni    : no inlining
- -p     : generate profile-printing code
+ -p     : generate profile-printing code (C backend only)
  -n     : disable letreg optimization
- -O : rounds of optimization (default: 3)
+ -O     : rounds of optimization (default: 3)
  -q     : quiet the compiler
  -nr    : no range check (e.g. vector access)
  -h     : display this usage
