@@ -41,14 +41,6 @@
 
 ;; --------------------------------------------------------------------------
 
-(define (raise-system-error)
-  (let ((errno (%c-get-int int posix/errno))
-        (msg (posix/strerror errno)))
-    (printf "system error: " (int errno)
-            " " (string (%cref->string #f msg (posix/strlen msg)))
-            "\n")
-    (raise (:OSError errno))))
-
 (define (trysys val)
   (if (< val 0)
       (raise-system-error)
@@ -263,5 +255,3 @@
 (test-addresses)
 (test-echo (address/make4 "127.0.0.1" 9002) (tcp4-sock))
 (test-echo (address/make6 "::1" 9002) (tcp6-sock))
-
-
