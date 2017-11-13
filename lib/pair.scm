@@ -62,11 +62,12 @@
   (append a b ...) -> (append2 a (append b ...))
   )
 
+(define length*
+  ()        acc -> acc
+  (hd . tl) acc -> (length* tl (+ 1 acc)))
+
 (define (length l)
-  (define fun
-    () acc	  -> acc
-    (hd . tl) acc -> (fun tl (+ 1 acc)))
-  (fun l 0))
+  (length* l 0))
 
 (define (first x) (car x))
 (define (rest x) (cdr x))
