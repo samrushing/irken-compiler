@@ -1518,5 +1518,4 @@ toplevel (void) {
   }
 }
 
-static int lookup_field (int tag, int label) {return 0;}
 static void prof_dump() { }
