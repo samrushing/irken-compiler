@@ -1,73 +1,42 @@
 ;; -*- Mode: Irken -*-
 
+;; easy perfect minimal hash
+;; http://stevehanov.ca/blog/index.php?id=119
+
 (include "lib/basis.scm")
 (include "lib/map.scm")
 
-(define (hash d key)
-  (let loop ((key key)
-             (d d))
-    (match key with
-      ()         -> d
-      (k . rest) -> (loop rest
-                          (logand #xffffffff
-                                  (logxor k
-                                          (* d #x01000193)))))))
+(define hash
+  ()       d -> d
+  (k . tl) d -> (hash tl (logand #xffffffff (logxor k (* d #x01000193)))))
 
 ;; unrolled - our keys are always of length 2
 (define (hash2 d k0 k1)
   (logand #xffffffff
-    (logxor k0
+    (logxor k1
       (* (logand #xffffffff
-            (logxor k1 (* d #x01000193)))
+            (logxor k0 (* d #x01000193)))
          #x01000193))))
 
+;; format: #(k0 k1 v) - the key is a pair of integers mapping to an integer.
 (define input-table
-  (literal #(#(2 6 0)
-             #(5 6 1)
-             #(7 6 1)
-             #(7 16 2)
-             #(8 16 1)
-             #(9 16 7)
-             #(9 21 0)
-             #(9 22 1)
-             #(9 27 6)
-             #(12 16 1)
-             #(14 76 0)
-             #(15 21 0)
-             #(15 22 1)
-             #(15 27 3)
-             #(15 78 4)
-             #(17 16 1)
-             #(17 82 3)
-             #(20 76 4)
-             #(20 93 0)
-             #(21 76 1)
-             #(22 21 0)
-             #(22 27 1)
-             #(22 78 4)
-             #(23 21 0)
-             #(23 22 1)
-             #(23 27 4)
-             #(23 78 9)
-             #(23 101 3)
-             #(23 105 11)
-             #(26 22 0)
-             #(27 82 3)
-             #(27 93 1)
-             #(28 22 1)
-             #(30 21 0)
-             #(30 22 1)
-             #(30 27 4)
-             #(30 78 7)
-             #(30 101 3)
-             #(30 105 8)
-             #(31 124 0)
-             #(32 124 1)
-             )))
+  (literal
+   #(#(2 6 0) #(5 6 1) #(7 6 1) #(7 16 2) #(8 16 1) #(9 16 7)
+     #(9 21 0) #(9 22 1) #(9 27 6) #(12 16 1) #(14 76 0) #(15 21 0) #(15 22 1)
+     #(15 27 3) #(15 78 4) #(17 16 1) #(17 82 3) #(20 76 4) #(20 93 0) #(21 76 1)
+     #(22 21 0) #(22 27 1) #(22 78 4) #(23 21 0) #(23 22 1) #(23 27 4) #(23 78 9)
+     #(23 101 3) #(23 105 11) #(26 22 0) #(27 82 3) #(27 93 1) #(28 22 1) #(30 21 0)
+     #(30 22 1) #(30 27 4) #(30 78 7) #(30 101 3) #(30 105 8) #(31 124 0) #(32 124 1)
+     )))
 
 ;; (for-vector item input-table
 ;;   (printf "  " (int item[0]) "." (int item[1]) " = "
-;;           (zpad 10 (hex (hash2 #x01000193 item[0] item[1]))) "\n"))
+;;           (zpad 10 (hex (hash2 #x01000193 item[0] item[1])))
+;;           "\n")
+;;   (printf "  " (int item[0]) "." (int item[1]) " = "
+;;           (zpad 10 (hex (hash (LIST item[0] item[1]) #x01000193)))
+;;           "\n")
+;;   )
 
 (define (hash-item d item size)
   (mod (hash2 d item[0] item[1]) size))
@@ -146,5 +115,6 @@
   (printn V)
   (for-range i (vector-length input-table)
     (let ((item input-table[i]))
-      (printf "lookup " (lpad 3 (int i)) " = " (int (lookup G V item[0] item[1])) "\n"))))
+      (printf "lookup " (lpad 3 (int i)) " = "
+              (int (lookup G V item[0] item[1])) " = " (int item[2]) "\n"))))
 
