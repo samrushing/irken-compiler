@@ -313,59 +313,6 @@
         (maybe:no) -> (result i)
         ))))
 
-(define (get-formals l)
-  (define p
-    (sexp:symbol formal) acc -> (list:cons formal acc)
-    _			 acc -> (error1 "malformed formal" l))
-  (reverse (fold p '() l)))
-
-(define (unpack-bindings bindings)
-  (let loop ((l bindings)
-	     (names '())
-	     (inits '()))
-    (match l with
-      () -> (:pair (reverse names) (reverse inits))
-      ((sexp:list ((sexp:symbol name) init)) . l)
-      -> (loop l (list:cons name names) (list:cons init inits))
-      _ -> (error1 "unpack-bindings" (format (join repr " " l)))
-      )))
-
-(define (parse-cexp-sig sig)
-  (let ((generic-tvars (alist-maker))
-	(result (parse-type* sig generic-tvars)))
-    (:scheme (generic-tvars::values) result)))
-
-(define join-cexp-template
-  (sexp:string result) -> result
-  (sexp:list parts) -> (string-join
-			(map
-			 (lambda (x)
-			   (match x with
-			     (sexp:string part) -> part
-			     _ -> (error1 "cexp template must be a list of strings" x)))
-			 parts)
-			;;"\n  "
-			", "
-			)
-  x -> (error1 "malformed cexp template" x))
-
-;; sort the inits so that all function definitions come first.
-(define (sort-fix-inits names inits)
-  (let ((names0 '())
-	(names1 '())
-	(inits0 '())
-	(inits1 '())
-	(n (length names)))
-    (for-range
-	i n
-	(let ((name (nth names i))
-	      (init (nth inits i)))
-	  (match (noderec->t init) with
-	    (node:function _ _) -> (begin (PUSH names0 name) (PUSH inits0 init))
-	    _			-> (begin (PUSH names1 name) (PUSH inits1 init)))))
-    (:sorted-fix (append (reverse names0) (reverse names1))
-		 (append (reverse inits0) (reverse inits1)))))
-
 (define (sexp->node sexp)
 
   (define build-list-literal
@@ -409,6 +356,55 @@
     -> (error1 "get-compile-time-meta: unknown key" x)
     )
 
+  (define (get-formals l)
+    (define p
+      (sexp:symbol formal) acc -> (list:cons formal acc)
+      _                    acc -> (error1 "malformed formal" l))
+    (reverse (fold p '() l)))
+
+  ;; sort the inits so that all function definitions come first.
+  (define (sort-fix-inits names inits)
+    (let ((names0 '())
+          (names1 '())
+          (inits0 '())
+          (inits1 '())
+          (n (length names)))
+      (for-range
+          i n
+	(let ((name (nth names i))
+	      (init (nth inits i)))
+	  (match (noderec->t init) with
+	    (node:function _ _) -> (begin (PUSH names0 name) (PUSH inits0 init))
+	    _			-> (begin (PUSH names1 name) (PUSH inits1 init)))))
+      (:sorted-fix (append (reverse names0) (reverse names1))
+                   (append (reverse inits0) (reverse inits1)))))
+
+  (define (unpack-bindings bindings)
+    (let loop ((l bindings)
+               (names '())
+               (inits '()))
+      (match l with
+        () -> (:pair (reverse names) (reverse inits))
+        ((sexp:list ((sexp:symbol name) init)) . l)
+        -> (loop l (list:cons name names) (list:cons init inits))
+        _ -> (error1 "unpack-bindings" (format (join repr " " l)))
+        )))
+
+  (define join-cexp-template
+    (sexp:string result) -> result
+    (sexp:list parts)
+    -> (string-join
+        (map
+         (lambda (x)
+           (match x with
+             (sexp:string part) -> part
+             _ -> (error1 "cexp template must be a list of strings" x)))
+         parts)
+        ", "
+        )
+    x -> (error1 "malformed cexp template" x))
+
+  ;; sexp->node actual
   (define walk
     (sexp:symbol s)  -> (node/varref s)
     (sexp:string s)  -> (node/literal (literal:string s))

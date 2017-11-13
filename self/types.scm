@@ -318,6 +318,11 @@
       (printf "          parsed = " (type-repr result) "\n"))
     result))
 
+(define (parse-cexp-sig sig)
+  (let ((generic-tvars (alist-maker))
+        (result (parse-type* sig generic-tvars)))
+    (:scheme (generic-tvars::values) result)))
+
 ;; rproduct(rlabel(x, pre(bool), rlabel(y, pre(int), rdefault(abs))))
 ;; => '(x y)
 (define get-record-sig
