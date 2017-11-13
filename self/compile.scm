@@ -169,7 +169,7 @@ default flags:
         (_ (notquiet (printf "transform...\n")))
 	(exp1 (transform exp0))
 	(_ (verbose (pp exp1 80) (newline)))
-	(node0 (walk exp1))
+	(node0 (sexp->node exp1))
 	(node1 (apply-substs node0))
 	;; clear some memory usage
 	(_ (set! exp0 (sexp:int 0)))

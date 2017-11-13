@@ -366,121 +366,137 @@
     (:sorted-fix (append (reverse names0) (reverse names1))
 		 (append (reverse inits0) (reverse inits1)))))
 
-;; XXX this really needs to be lifted into a wrapper fun named `sexp->node`,
-;;   this name as a global is stupid.
-;; translate sexp => node.
-(define walk
-  (sexp:symbol s)  -> (node/varref s)
-  (sexp:string s)  -> (node/literal (literal:string s))
-  (sexp:int n)	   -> (node/literal (literal:int n))
-  (sexp:char c)	   -> (node/literal (literal:char c))
-  (sexp:bool b)	   -> (node/literal (literal:bool b))
-  (sexp:undef)	   -> (node/literal (literal:undef))
-  (sexp:record fl) -> (foldr (lambda (field rest)
-			       (match field with
-				 (field:t name value)
-				 -> (node/primapp '%rextend
-						  (sexp:symbol name)
-						  (LIST rest (walk value)))))
-			     (node/primapp '%rmake (sexp:bool #f) '())
-			     fl)
-  (sexp:attr exp sym) -> (node/primapp '%raccess (sexp:symbol sym) (LIST (walk exp)))
-  (sexp:vector l)     -> (node/literal (build-literal (sexp:vector l))) ;; some day work out issues with QUOTE/LITERAL etc.
-  (sexp:cons dt alt)  -> (node/varref (string->symbol (format (sym dt) ":" (sym alt))))
-  (sexp:list l)
-  -> (match l with
-       ((sexp:symbol 'begin) . exps)		    -> (node/sequence (map walk exps))
-       ((sexp:symbol 'set!) (sexp:symbol name) arg) -> (node/varset name (walk arg))
-       ((sexp:symbol 'quote) arg)		    -> (node/literal (build-literal arg))
-       ((sexp:symbol 'literal) arg)		    -> (node/literal (build-literal arg))
-       ((sexp:symbol 'if) test then else)	    -> (node/if (walk test) (walk then) (walk else))
-       ((sexp:symbol '%%sexp) . exps)               -> (node/literal (unsexp-list exps))
-       ((sexp:symbol '%typed) type exp)
-       -> (let ((exp0 (walk exp)))
-            (printf "user type in expression: " (repr type) "\n")
-            (set-node-type! exp0 (parse-type type))
-            exp0)
-       ((sexp:symbol '%%cexp) sig template . args)
-       -> (let ((scheme (parse-cexp-sig sig)))
-	    (match scheme with
-	      (:scheme gens type)
-	      -> (node/cexp gens type (join-cexp-template template) (map walk args))))
-       ((sexp:symbol '%%ffi) (sexp:symbol name) sig . args)
-       -> (let ((scheme (parse-cexp-sig sig)))
-	    (match scheme with
-	      (:scheme gens type)
-	      -> (node/ffi gens type name (map walk args))))
-       ((sexp:symbol '%%ffitype) ctype)
-       -> (node/literal (ctype->literal (parse-ctype ctype)))
-       ((sexp:symbol '%%compile-time-meta) (sexp:list ((sexp:symbol 'quote) (sexp:symbol name))))
-       -> (node/literal (unsexp (get-compile-time-meta name)))
-       ((sexp:symbol '%nvcase) (sexp:symbol dt) val-exp (sexp:list tags) (sexp:list arities) (sexp:list alts) ealt)
-       -> (node/nvcase dt (map sexp->symbol tags) (map sexp->int arities) (walk val-exp) (map walk alts) (walk ealt))
-       ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) type . body)
-       -> (node/function name (get-formals formals) type (node/sequence (map walk body)))
-       ((sexp:symbol 'fix) (sexp:list names) (sexp:list inits) . body)
-       -> (match (sort-fix-inits (get-formals names) (map walk inits)) with
-       	    (:sorted-fix names inits)
-       	    -> (node/fix names inits (node/sequence (map walk body))))
-       ((sexp:symbol 'let-splat) (sexp:list bindings) . body)
-       -> (match (unpack-bindings bindings) with
-	    (:pair names inits)
-	    -> (node/let names (map walk inits) (node/sequence (map walk body))))
-       ((sexp:symbol 'letrec) (sexp:list bindings) . body)
-       -> (match (unpack-bindings bindings) with
-	    (:pair names inits)
-	    -> (node/fix names (map walk inits) (node/sequence (map walk body))))
-       ((sexp:symbol 'let-subst) (sexp:list ((sexp:symbol from) (sexp:symbol to))) body)
-       -> (node/subst from to (walk body))
-       ((sexp:symbol 'let-subst) . _)
-       -> (error1 "syntax error (let-subst)" (format (join repr " " l)))
-       (rator . rands)
-       -> (match rator with
-	    (sexp:symbol name)
-	    -> (if (eq? (string-ref (symbol->string name) 0) #\%)
-		   (match rands with
-		     (params . rands)
-		     -> (node/primapp name params (map walk rands))
-		     _ -> (error1 "null primapp missing params?" l))
-		   (node/call (walk rator) (map walk rands)))
-	    (sexp:cons dt alt)
-	    -> (if (eq? dt 'nil)
-		   (node/primapp '%vcon (sexp (sexp:symbol alt) (sexp:int (length rands))) (map walk rands))
-		   ;; automatically inline all constructors:
-		   ;;(node/primapp '%dtcon rator (map walk rands))
-		   ;; let the inliner do it, correctly.
-		   (node/call (walk rator) (map walk rands)))
-	    _ -> (node/call (walk rator) (map walk rands)))
-       _ -> (error1 "syntax error 1: " l)
-       )
-  x -> (error1 "syntax error 2: " x)
-  )
+(define (sexp->node sexp)
 
-(define build-list-literal
-  ((sexp:cons dt alt) . args) -> (literal:cons dt alt (map build-literal args))
-  (hd . tl)		      -> (literal:cons 'list 'cons (LIST (build-literal hd) (build-list-literal tl)))
-  ()			      -> (literal:cons 'list 'nil '())
-  )
+  (define build-list-literal
+    ((sexp:cons dt alt) . args) -> (literal:cons dt alt (map build-literal args))
+    (hd . tl)                   -> (literal:cons 'list 'cons (LIST (build-literal hd) (build-list-literal tl)))
+    ()                          -> (literal:cons 'list 'nil '())
+    )
 
-(define build-literal
-  (sexp:string s)  -> (literal:string s)
-  (sexp:int n)     -> (literal:int n)
-  (sexp:char c)    -> (literal:char c)
-  (sexp:bool b)    -> (literal:bool b)
-  (sexp:undef)     -> (literal:undef)
-  (sexp:symbol s)  -> (literal:symbol s)
-  (sexp:list l)    -> (build-list-literal l)
-  (sexp:vector l)  -> (literal:vector (map build-literal l))
-  ;; XXX the rest
-  exp -> (error1 "unhandled literal type" exp)
-  )
+  (define build-literal
+    (sexp:string s)  -> (literal:string s)
+    (sexp:int n)     -> (literal:int n)
+    (sexp:char c)    -> (literal:char c)
+    (sexp:bool b)    -> (literal:bool b)
+    (sexp:undef)     -> (literal:undef)
+    (sexp:symbol s)  -> (literal:symbol s)
+    (sexp:list l)    -> (build-list-literal l)
+    (sexp:vector l)  -> (literal:vector (map build-literal l))
+    ;; XXX the rest
+    exp -> (error1 "unhandled literal type" exp)
+    )
 
-(define (walk-literal lit p)
-  (match lit with
-    (literal:cons _ _ l) -> (begin (p lit) (for-list x l (walk-literal x p)))
-    (literal:vector l)   -> (begin (p lit) (for-list x l (walk-literal x p)))
-    _                    -> (begin (p lit) #u)
-    ))
+  (define ctype->literal
+    (ctype:name name)    -> (literal:cons 'ctype 'name (LIST (literal:symbol name)))
+    (ctype:int size s?)  -> (literal:cons 'ctype 'int (LIST (literal:int (cint-size size)) (literal:bool s?)))
+    (ctype:array size t) -> (literal:cons 'ctype 'array (LIST (literal:int size) (ctype->literal t)))
+    (ctype:pointer t)    -> (literal:cons 'ctype 'pointer (LIST (ctype->literal t)))
+    (ctype:struct name)  -> (literal:cons 'ctype 'struct (LIST (literal:symbol name)))
+    (ctype:union name)   -> (literal:cons 'ctype 'union (LIST (literal:symbol name)))
+    )
+
+  ;; purpose: when we need compile time metadata at runtime.
+  ;; currently, the only use for this is to fetch the list of
+  ;;   FFI interfaces needed by this compilation unit.
+  ;; eventually, we might want to expose data that is computed
+  ;;   later in the compilation process, and this function should
+  ;;   be moved to another file.
+  (define get-compile-time-meta
+    'ffi-interfaces
+    -> (sexp:list (map sexp:symbol (cmap/keys the-context.ffi-map)))
+    x
+    -> (error1 "get-compile-time-meta: unknown key" x)
+    )
+
+  (define walk
+    (sexp:symbol s)  -> (node/varref s)
+    (sexp:string s)  -> (node/literal (literal:string s))
+    (sexp:int n)     -> (node/literal (literal:int n))
+    (sexp:char c)    -> (node/literal (literal:char c))
+    (sexp:bool b)    -> (node/literal (literal:bool b))
+    (sexp:undef)     -> (node/literal (literal:undef))
+    (sexp:record fl) -> (foldr (lambda (field rest)
+                                 (match field with
+                                   (field:t name value)
+                                   -> (node/primapp '%rextend
+                                                    (sexp:symbol name)
+                                                    (LIST rest (walk value)))))
+                               (node/primapp '%rmake (sexp:bool #f) '())
+                               fl)
+    (sexp:attr exp sym) -> (node/primapp '%raccess (sexp:symbol sym) (LIST (walk exp)))
+    (sexp:vector l)     -> (node/literal (build-literal (sexp:vector l))) ;; some day work out issues with QUOTE/LITERAL etc.
+    (sexp:cons dt alt)  -> (node/varref (string->symbol (format (sym dt) ":" (sym alt))))
+    (sexp:list l)
+    -> (match l with
+         ((sexp:symbol 'begin) . exps)                -> (node/sequence (map walk exps))
+         ((sexp:symbol 'set!) (sexp:symbol name) arg) -> (node/varset name (walk arg))
+         ((sexp:symbol 'quote) arg)                   -> (node/literal (build-literal arg))
+         ((sexp:symbol 'literal) arg)                 -> (node/literal (build-literal arg))
+         ((sexp:symbol 'if) test then else)           -> (node/if (walk test) (walk then) (walk else))
+         ((sexp:symbol '%%sexp) . exps)               -> (node/literal (unsexp-list exps))
+         ((sexp:symbol '%typed) type exp)
+         -> (let ((exp0 (walk exp)))
+              (printf "user type in expression: " (repr type) "\n")
+              (set-node-type! exp0 (parse-type type))
+              exp0)
+         ((sexp:symbol '%%cexp) sig template . args)
+         -> (let ((scheme (parse-cexp-sig sig)))
+              (match scheme with
+                (:scheme gens type)
+                -> (node/cexp gens type (join-cexp-template template) (map walk args))))
+         ((sexp:symbol '%%ffi) (sexp:symbol name) sig . args)
+         -> (let ((scheme (parse-cexp-sig sig)))
+              (match scheme with
+                (:scheme gens type)
+                -> (node/ffi gens type name (map walk args))))
+         ((sexp:symbol '%%ffitype) ctype)
+         -> (node/literal (ctype->literal (parse-ctype ctype)))
+         ((sexp:symbol '%%compile-time-meta) (sexp:list ((sexp:symbol 'quote) (sexp:symbol name))))
+         -> (node/literal (unsexp (get-compile-time-meta name)))
+         ((sexp:symbol '%nvcase) (sexp:symbol dt) val-exp (sexp:list tags) (sexp:list arities) (sexp:list alts) ealt)
+         -> (node/nvcase dt (map sexp->symbol tags) (map sexp->int arities) (walk val-exp) (map walk alts) (walk ealt))
+         ((sexp:symbol 'function) (sexp:symbol name) (sexp:list formals) type . body)
+         -> (node/function name (get-formals formals) type (node/sequence (map walk body)))
+         ((sexp:symbol 'fix) (sexp:list names) (sexp:list inits) . body)
+         -> (match (sort-fix-inits (get-formals names) (map walk inits)) with
+              (:sorted-fix names inits)
+              -> (node/fix names inits (node/sequence (map walk body))))
+         ((sexp:symbol 'let-splat) (sexp:list bindings) . body)
+         -> (match (unpack-bindings bindings) with
+              (:pair names inits)
+              -> (node/let names (map walk inits) (node/sequence (map walk body))))
+         ((sexp:symbol 'letrec) (sexp:list bindings) . body)
+         -> (match (unpack-bindings bindings) with
+              (:pair names inits)
+              -> (node/fix names (map walk inits) (node/sequence (map walk body))))
+         ((sexp:symbol 'let-subst) (sexp:list ((sexp:symbol from) (sexp:symbol to))) body)
+         -> (node/subst from to (walk body))
+         ((sexp:symbol 'let-subst) . _)
+         -> (error1 "syntax error (let-subst)" (format (join repr " " l)))
+         (rator . rands)
+         -> (match rator with
+              (sexp:symbol name)
+              -> (if (eq? (string-ref (symbol->string name) 0) #\%)
+                     (match rands with
+                       (params . rands)
+                       -> (node/primapp name params (map walk rands))
+                       _ -> (error1 "null primapp missing params?" l))
+                     (node/call (walk rator) (map walk rands)))
+              (sexp:cons dt alt)
+              -> (if (eq? dt 'nil)
+                     (node/primapp '%vcon (sexp (sexp:symbol alt) (sexp:int (length rands))) (map walk rands))
+                     ;; automatically inline all constructors:
+                     ;;(node/primapp '%dtcon rator (map walk rands))
+                     ;; let the inliner do it, correctly.
+                     (node/call (walk rator) (map walk rands)))
+              _ -> (node/call (walk rator) (map walk rands)))
+         _ -> (error1 "syntax error 1: " l)
+         )
+    x -> (error1 "syntax error 2: " x)
+    )
+  (walk sexp)
+  )
 
 (define unsexp-list
   ()        -> (literal:cons 'list 'nil '())
@@ -500,46 +516,31 @@
   exp -> (error1 "unsexp: unhandled literal type" exp)
   )
 
-(define ctype->literal
-  (ctype:name name)    -> (literal:cons 'ctype 'name (LIST (literal:symbol name)))
-  (ctype:int size s?)  -> (literal:cons 'ctype 'int (LIST (literal:int (cint-size size)) (literal:bool s?)))
-  (ctype:array size t) -> (literal:cons 'ctype 'array (LIST (literal:int size) (ctype->literal t)))
-  (ctype:pointer t)    -> (literal:cons 'ctype 'pointer (LIST (ctype->literal t)))
-  (ctype:struct name)  -> (literal:cons 'ctype 'struct (LIST (literal:symbol name)))
-  (ctype:union name)   -> (literal:cons 'ctype 'union (LIST (literal:symbol name)))
-  )
-
-;; purpose: when we need compile time metadata at runtime.
-;; currently, the only use for this is to fetch the list of
-;;   FFI interfaces needed by this compilation unit.
-;; eventually, we might want to expose data that is computed
-;;   later in the compilation process, and this function should
-;;   be moved to another file.
-(define get-compile-time-meta
-  'ffi-interfaces
-  -> (sexp:list (map sexp:symbol (cmap/keys the-context.ffi-map)))
-  x
-  -> (error1 "get-compile-time-meta: unknown key" x)
-  )
-
-(define make-vardef
-  (let ((counter (make-counter 0)))
-    (lambda (name)
-      (let ((serial (counter.inc))
-            (frobbed (string->symbol (format (sym name) "_" (int serial)))))
-        {name=name name2=frobbed assigns='() refs='() serial=serial}
-        ))
+(define (walk-literal lit p)
+  (match lit with
+    (literal:cons _ _ l) -> (begin (p lit) (for-list x l (walk-literal x p)))
+    (literal:vector l)   -> (begin (p lit) (for-list x l (walk-literal x p)))
+    _                    -> (begin (p lit) #u)
     ))
 
-(define (check-for-duplicates names)
-  (let ((nmap (tree:empty)))
-    (for-list name names
-      (match (tree/member nmap symbol-index-cmp name) with
-        (maybe:yes other) -> (raise (:DuplicateName name other))
-        (maybe:no)    -> (tree/insert! nmap symbol-index-cmp name name)
-        ))))
-
 (define (rename-variables n)
+
+  (define make-vardef
+    (let ((counter (make-counter 0)))
+      (lambda (name)
+        (let ((serial (counter.inc))
+              (frobbed (string->symbol (format (sym name) "_" (int serial)))))
+          {name=name name2=frobbed assigns='() refs='() serial=serial}
+          ))
+      ))
+
+  (define (check-for-duplicates names)
+    (let ((nmap (tree:empty)))
+      (for-list name names
+        (match (tree/member nmap symbol-index-cmp name) with
+          (maybe:yes other) -> (raise (:DuplicateName name other))
+          (maybe:no)    -> (tree/insert! nmap symbol-index-cmp name name)
+          ))))
 
   (define (rename-all exps lenv)
     (for-each (lambda (exp) (rename exp lenv)) exps))
