@@ -39,23 +39,26 @@
   p (alist:entry k v tl) -> (begin (p k v) (alist/iterate p tl))
   )
 
-;; XXX this should return a new alist?
-(define alist/map
-  p (alist:nil) -> (list:nil)
-  p (alist:entry k v tl) -> (list:cons (p k v) (alist/map p tl))
-  )
+(define alist->keys*
+  (alist:nil)          acc -> acc
+  (alist:entry k _ tl) acc -> (alist->keys* tl (list:cons k acc)))
 
-(define alist->keys
-  (alist:nil) -> (list:nil)
-  (alist:entry k _ tl) -> (list:cons k (alist->keys tl)))
+(define (alist->keys al)
+  (alist->keys* al (list:nil)))
 
-(define alist->values
-  (alist:nil) -> (list:nil)
-  (alist:entry _ v tl) -> (list:cons v (alist->values tl)))
+(define alist->values*
+  (alist:nil)          acc -> acc
+  (alist:entry _ v tl) acc -> (alist->values* tl (list:cons v acc)))
 
-(define alist/length
-  (alist:nil) -> 0
-  (alist:entry _ _ tl) -> (+ 1 (alist/length tl)))
+(define (alist->values al)
+  (alist->values* al (list:nil)))
+
+(define alist/length*
+  (alist:nil)          acc -> acc
+  (alist:entry _ _ tl) acc -> (alist/length* tl (+ 1 acc)))
+
+(define (alist/length al)
+  (alist/length* al 0))
 
 ;; create a inverse map of an existing alist.
 (define (alist/inverse al)
