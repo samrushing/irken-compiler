@@ -168,7 +168,7 @@ typedef struct {
 static pxll_prof prof_funs[];
 static int prof_current_fun;
 static int prof_num_funs;
-static void prof_dump (void)
+void prof_dump (void)
 {
  int i=0;
  fprintf (stderr, \"%20s\\t%20s\\t%s\\n\", \"calls\", \"ticks\", \"name\");
@@ -420,30 +420,6 @@ static void prof_dump (void)
       )
     (:tuple G V)))
 
-(define (emit-lookup-field-hashtables o)
-  (let ((ambig (build-ambig-table))
-        (size (tree/size ambig))
-        (table (make-vector size {k0=0 k1=0 v=0}))
-        (i 0))
-    (tree/inorder
-     (lambda (k v)
-       (match k with
-         (:tuple tag label)
-         -> (set! table[i] {k0= tag k1=label v=v}))
-       (set! i (+ i 1)))
-     ambig)
-    (let-values (((G V) (create-minimal-perfect-hash table)))
-      (oformat "static uint32_t irk_ambig_size = " (int size) ";")
-      (o.copy "static int32_t G[] = {")
-      (for-vector val G
-        (o.copy (format (int val) ", ")))
-      (oformat "0};")
-      (o.copy "static int32_t V[] = {")
-      (for-vector val V
-        (o.copy (format (int val) ", ")))
-      (oformat "0};")
-      )))
-
 ;; the backend takes note whenever a field label's index cannot be
 ;;  unambiguously resolved. rather than generating a table of all
 ;;  tag,label->index tuples, we generate only the entries that resulted
@@ -502,26 +478,13 @@ static void prof_dump (void)
 (include "self/llvm.scm")
 (include "self/bytecode.scm")
 
-(define (compile-with-backend base cps)
-  (match the-context.options.backend with
-    (backend:bytecode)
-    -> (compile-to-bytecode base cps)
-    _ -> (compile-with-backend0 base cps)
-    ))
-
-;; note: the llvm backend relies on the C backend to some extent.
-
-(define (compile-with-backend0 base cps)
-
+(define (compile-to-c base cps)
   (let ((opath (string-append base ".c"))
-	(ofile (file/open-write opath #t #o644))
-	(o (make-writer ofile))
-	(tmp-path (format base ".tmp.c"))
-	(tfile (file/open-write tmp-path #t #o644))
-	(o0 (make-writer tfile))
-	(llvm? (eq? the-context.options.backend (backend:llvm)))
-	(sources (LIST opath))
-	)
+        (ofile (file/open-write opath #t #o644))
+        (o (make-writer ofile))
+        (tmp-path (format base ".tmp.c"))
+        (tfile (file/open-write tmp-path #t #o644))
+        (o0 (make-writer tfile)))
     (notquiet (printf "\n-- C output --\n : " opath "\n"))
     (for-each
      (lambda (path) (o.write (format "#include <" path ">")))
@@ -531,26 +494,13 @@ static void prof_dump (void)
      (reverse the-context.lincludes))
     (for-each o.write (reverse the-context.cverbatim))
     (o.copy (get-file-contents "include/header1.c"))
-    (if (not llvm?)
-        (emit-constructed o))
+    (emit-constructed o)
     (emit-datatype-table o)
     (number-profile-funs)
     (if the-context.options.profile
-	(emit-profile-0 o)
-	(o.write "static void prof_dump (void) {}"))
-    (if llvm?
-	(let ((llpath (format base ".ll"))
-	      (llvm-file (file/open-write llpath #t #o644))
-	      (ollvm (make-writer llvm-file)))
-	  (printf " : " llpath "\n")
-	  (ollvm.copy
-	   (get-file-contents "include/preamble.ll"))
-	  (emit-llvm o ollvm "toplevel" cps)
-	  (ollvm.close)
-          (notquiet (printf "wrote " (int (ollvm.get-total)) " bytes to " llpath ".\n"))
-	  (PUSH sources llpath))
-	(emit-c o0 o cps))
-    (emit-lookup-field-hashtables o)
+        (emit-profile-0 o)
+        (o.write "void prof_dump (void) {}"))
+    (emit-c o0 o cps)
     (if the-context.options.profile (emit-profile-1 o))
     (notquiet (print-string "done.\n"))
     (o0.close)
@@ -559,10 +509,36 @@ static void prof_dump (void)
     (o.close)
     (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
     (unlink tmp-path)
-    (when (not the-context.options.nocompile)
+    (LIST opath)))
+
+(define (compile-to-llvm base cps)
+  (let ((llpath (format base ".ll"))
+        (llvm-file (file/open-write llpath #t #o644))
+        (ollvm (make-writer llvm-file)))
+    (notquiet (printf "\n-- LLVM output --\n : " llpath "\n"))
+    (ollvm.copy
+     (get-file-contents "include/preamble.ll"))
+    (emit-llvm ollvm "toplevel" cps)
+    (ollvm.close)
+    (notquiet (printf "wrote " (int (ollvm.get-total)) " bytes to " llpath ".\n"))
+    ;; XXX header1.c needs something like find-file, but that currently returns
+    ;;  an open file, not a valid pathname.
+    (LIST llpath "include/header1.c")))
+
+(define (compile-with-backend base cps)
+  (let ((sources
+         (match the-context.options.backend with
+           (backend:c)
+           -> (compile-to-c base cps)
+           (backend:llvm)
+           -> (compile-to-llvm base cps)
+           (backend:bytecode)
+           -> (compile-to-bytecode base cps)
+           )))
+    (when (and (not (null? sources))
+               (not the-context.options.nocompile))
       (notquiet (print-string "compiling...\n"))
       (invoke-cc base sources the-context.options "")
-      #u
-      )
-    )
-  )
+      #u)
+    ))
+

@@ -844,7 +844,7 @@ void T (pxll_int n)
 
 static uint64_t program_start_time;
 static uint64_t program_end_time;
-static void prof_dump (void);
+void prof_dump (void);
 
 typedef void(*kfun)(object *);
 typedef void(*pfun)(void);
@@ -995,9 +995,9 @@ irk_string_cmp (pxll_string * a, pxll_string * b)
 
 // --------------------------------------------------------------------------------
 
-static uint32_t irk_ambig_size;
-static int32_t G[];
-static int32_t V[];
+extern uint32_t irk_ambig_size;
+extern int32_t G[];
+extern int32_t V[];
 
 static
 uint32_t

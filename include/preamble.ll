@@ -475,4 +475,8 @@ define internal fastcc i8** @irk_buffer_copy(i8**, i8**, i8**, i8**, i8**) {
   ret i8** inttoptr (i64 14 to i8**)
 }
 
+;; this is just to make the linker happy.
+;; currently there is no support for profiling the LLVM backend.
+define void @prof_dump() { ret void }
+
 ;; --- generated code follows ---

@@ -8,12 +8,8 @@
 ;;  all dependency on generated C code.
 ;;  1) we need to generate our *own* constructed literals. [done]
 ;;  2) get rid of all external cexp. [done]
-;;  3) ***new!*** generate a table for lookup_field.
-;;  4) maybe remove callocate-related stuff (replaced with FFI)?
-
-;; #3 this table could probably be shrunk massively by emitting only
-;;   the parts needed for disambiguation.  If small enough, it could
-;;   probably be done with a generated function instead?
+;;  3) ***new!*** generate a table for lookup_field. [done]
+;;  4) maybe remove callocate-related stuff (replaced with FFI)? [done]
 
 ;; XXX shouldn't be global (or should be kept in the-context).
 ;; [alternatively, we can make a wrapper for cps->llvm that defines these]
@@ -29,20 +25,20 @@
   (oformat item ...) -> (o.write (format item ...))
   )
 
-;; convert a ctype to its llvm representation.
+;; convert a ctype to its llvm representation (actually, into the int-or-pointer space)
+;; XXX simplify this, most of the arms are unused.
 (define ctype->llvm
-  (ctype:name 'void)  -> "void"
   (ctype:name 'char)  -> "i8"
   (ctype:name x)      -> "i8" ;; e.g. FILE, any random data
   (ctype:int size _)  -> (format "i" (int (* 8 (cint-size size))))
   (ctype:array len t) -> (format "[" (int len) " x " (ctype->llvm t) "]")
-  (ctype:pointer t)   -> (format (ctype->llvm t) "*")
   (ctype:struct _)    -> (format "i8") ;; note: `struct *` becomes `i8*`.
   (ctype:union _)     -> (format "i8")
+  (ctype:pointer t)   -> "i8*" ;; all pointers are void*
   )
 
 ;; when ready, cname will become name, and called first as 'toplevel
-(define (cps->llvm cps co o name cname args external?)
+(define (cps->llvm cps o name cname args external?)
 
   (let ((current-function-cname cname)
 	(current-function-part (make-counter 1))
@@ -78,7 +74,7 @@
           (format "%r" (int target))))
 
     (define (push-continuation name cname cps args)
-      (PUSH fun-stack (lambda () (cps->llvm cps co o name cname args #f))))
+      (PUSH fun-stack (lambda () (cps->llvm cps o name cname args #f))))
 
     (define (push-fail-continuation cps jump args)
       (push-continuation 'fail (format "FAIL_" (int jump)) cps args))
@@ -264,41 +260,20 @@
 	     )
 
         ;; ------------------------------------------------------------------------------------------
-        ;; still needed for FFI:
-        ;; %c-set-int %c-sizeof
+        ;; FFI prims
         '%malloc params (count)
-        -> (let ((ctype (parse-ctype params))
-                 (size (ctype->size ctype))
-                 (id0 (ID)))
-             (printf "%malloc type param = " (repr params) " size = " (int size) "\n")
-             (if (< target 0)
-                 (error "dead %malloc target"))
-             (oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int count) ")")
-             (oformat "%r" (int target) " = call i8** @make_malloc (i64 " (int size) ", i64 " id0 ")")
-             )
-
+        -> (emit-malloc-halloc params count #t target)
         '%halloc params (count)
-        -> (let ((ctype (parse-ctype params))
-                 (size (ctype->size ctype))
-                 (id0 (ID)))
-             (printf "%halloc type param = " (repr params) " size = " (int size) "\n")
-             (if (< target 0)
-                 (error "dead %halloc target"))
-             (oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int count) ")")
-             (oformat "%r" (int target) " = call i8** @make_halloc (i64 " (int size) ", i64 " id0 ")")
-             )
-
+        -> (emit-malloc-halloc params count #f target)
         '%c-aref params (ref index)
         -> (let ((ctype (parse-ctype params))
                  (size (ctype->size ctype))
                  (id0 (ID))
                  (id1 (ID)))
-             (if (< target 0)
-                 (error "dead %c-aref target"))
+             (printf "c-aref: ctype= " (ctype-repr ctype) " size = " (int size) "\n")
              (oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int index) ")")
              (oformat id1 " = mul i64 " id0 ", " (int size))
-             (oformat "%r" (int target) " = call i8** @offset_foreign (i8** %r" (int ref) ", i64 " id1 ")"))
-
+             (oformat (maybe-target target) " = call i8** @offset_foreign (i8** %r" (int ref) ", i64 " id1 ")"))
         '%c-pref params (src)
         -> (let ((id0 (ID))
                  (id1 (ID))
@@ -306,42 +281,18 @@
              (oformat id0 " = call i8* @get_foreign (i8** %r" (int src) ")")
              (oformat id1 " = bitcast i8* " id0 " to i8**")
              (oformat id2 " = load i8*, i8** " id1)
-             (oformat "%r" (int target) " = call i8** @make_foreign (i8* " id2 ")"))
-
+             (oformat (maybe-target target) " = call i8** @make_foreign (i8* " id2 ")"))
         '%c-sref refexp (src)
         -> (let ((ref0 (sexp->ref refexp)))
-             (if (< target 0)
-                 (error "dead %c-sref target"))
-             (oformat "%r" (int target) " = call i8** @offset_foreign (i8** %r" (int src) ", i64 " (int ref0.off) ")")
+             (oformat (maybe-target target) " = call i8** @offset_foreign (i8** %r" (int src) ", i64 " (int ref0.off) ") ;; sref")
              )
-
-        ;; XXX I think we need to make helper funs for sext/zext/trunc.
-        ;; XXX needs to go into a helper function.
-        ;; XXX can we use wrap-out-int here?
+        '%c-sizeof ctexp ()
+        -> (let ((ctype (parse-ctype ctexp)))
+             (oformat (maybe-target target) " = call fastcc i8** @insn_box (i64 " (int (ctype->size ctype)) ") ;; sizeof"))
         '%c-get-int (sexp:symbol itype) (src)
-        -> (let ((cint (lp64->cint itype))
-                 (iname (ctype->llvm cint))
-                 (id0 (ID))
-                 (id1 (ID))
-                 (id2 (ID))
-                 (id3 (ID)))
-             (oformat id0 " = call i8* @get_foreign (i8** %r" (int src) ")")
-             (oformat id1 " = bitcast i8* " id0 " to " iname "*")
-             (oformat id2 " = load " iname ", " iname "* " id1)
-             (match cint with
-               (ctype:int cint signed?)
-               -> (if (= (cint-size cint) 8) ;; already i64
-                      (begin
-                        (warning (format "64-bit int fetched into irken int."))
-                        (oformat "%r" (int target) " = call fastcc i8** @insn_box (i64 " id2 ")"))
-                      (begin
-                        (if signed?
-                            (oformat id3 " = sext " iname " " id2 " to i64")
-                            (oformat id3 " = zext " iname " " id2 " to i64"))
-                        (oformat "%r" (int target) " = call fastcc i8** @insn_box (i64 " id3 ")"))
-                      )
-               _ -> (error1 "llvm/%c-get-int: unexpected ctype" (ctype-repr cint))
-               ))
+        -> (emit-c-get-int itype src target)
+        '%c-set-int (sexp:symbol itype) (src dst)
+        -> (emit-c-set-int itype src dst)
         '%ffi2 params args
         -> (emit-ffi2 params args target)
         '%free _ (ref)
@@ -353,7 +304,7 @@
         '%cref->int params (src)
         -> (oformat "%r" (int target) " = call i8** @irk_cref_2_int (i8** %r" (int src) ")")
         ;; ------------------------------------------------------------------------------------------
-	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x (repr params) args))
+	x _ _ -> (error1 "unsupported/malformed llvm primop" (:tuple x params args))
 	))
 
     (define (emit-llvm-call name args target cconv)
@@ -426,76 +377,88 @@
 	(dead-set target)
 	))
 
-    ;; thoughts on C interface: we might need to keep %%cexp because of stuff like EV_SET,
-    ;;  (i.e., macros are the official interface to some feature).  For actual expressions,
-    ;;  we can maybe emit small C functions (and hope LTO can inline them), and for %callocate,
-    ;;  maybe we can emit a "sizeof(struct X)" constant that can be referenced from llvm ir.
+    ;; given an irken object, place it into an llvm variable of the appropriate type.
+    ;; returns: the var name/type holding the result, e.g. "i32 %t23"
+    (define (irken->ctype ctype arg)
+      (let ((id0 (ID)))
+        (match ctype with
+          (ctype:int cint signed?)
+          -> (let ((width (cint-size cint)))
+               (oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int arg) ")")
+               (if (= width 8) ;; already i64
+                   (format "i64 " id0)
+                   (let ((id1 (ID))
+                         (lltype (ctype->llvm ctype)))
+                     ;; note: just like in C, this cast ignores signedness.
+                     (oformat id1 " = trunc i64 " id0 " to " lltype)
+                     (format lltype " " id1))))
+          _ -> (begin (oformat id0 "= call i8* @get_foreign (i8** %r" (int arg) ")") (format "i8* " id0))
+          )))
 
-    ;; provide automatic conversions of base types for inputs to %%ffi
-
-    (define (wrap-in type arg)
-      (match type with
-      	(type:tvar id _)
-	-> (format "i8** %r" (int arg))
-      	(type:pred name predargs _)
-      	-> (let ((arg0 (format "%arg" (int (arg-counter.inc)))))
-	     (match name with
-	       ;; XXX consider - if we could always use a helper fun this could be simplified.
-	       'int     -> (begin (oformat arg0 " = call fastcc i64 @insn_unbox (i8** %r" (int arg) ")") (format "i64 " arg0))
-	       'bool	-> (begin (oformat arg0 " = call fastcc i64 @irk_is_true (i8** %r" (int arg) ")") (format "i64 " arg0))
-	       'string	-> (begin (oformat arg0 " = call fastcc i8** @irk_get_cstring (i8** %r" (int arg) ")") (format "i8* " arg0))
-	       'cstring	-> (begin (oformat arg0 " = bitcast i8** to i8*") (format "i8* " arg0))
-               'cref    -> (begin (oformat arg0 " = call i8* @get_foreign (i8** %r" (int arg) ")") (format "i8* " arg0))
-	       x -> (error1 "wrap-in:" type)
-	       ))
-	))
-
-    (define (maybe-trunc ctype arg)
+    ;; given a ctype object, place it into an llvm variable as an irken object.
+    ;; returns: the var name/type holding the result.
+    (define (ctype->irken ctype val)
       (match ctype with
-        (ctype:int cint signed?)
-        -> (let ((width (cint-size cint)))
-             (if (= width 8) ;; already i64
-                 arg
-                 (let ((id0 (ID))
-                       (lt (ctype->llvm ctype)))
-                   (oformat id0 " = trunc " arg " to " lt)
-                   (format lt " " id0))))
-        _ -> arg))
-
-    (define (wrap-out-int cint signed? val result)
-      (let ((width (cint-size cint))
-            (iname (format "i" (int (* width 8)))))
-        (if (= width 8)
-            (begin
-              (warning (format "64-bit int fetched into irken int."))
-              (oformat result " = call fastcc i8** @insn_box (i64 " val ")"))
-            (let ((id0 (ID)))
-              (if signed?
-                  (oformat id0 " = sext " iname " " val " to i64")
-                  (oformat id0 " = zext " iname " " val " to i64"))
-              (oformat result " = call fastcc i8** @insn_box (i64 " id0 ")")
-              ))))
-
-    (define (wrap-out-ctype ctype val result)
-      (match ctype with
-        (ctype:int cint signed?)  -> (wrap-out-int cint signed? val result)
-        (ctype:pointer _)         -> (oformat result " = call i8** @make_foreign (" (ctype->llvm ctype) " " val ")")
-        (ctype:array _ _)         -> (oformat result " = call i8** @make_foreign (" (ctype->llvm ctype) " " val ")")
-        x -> (error1 "llvm/wrap-out: unsupported return type" (ctype-repr x))
+        (ctype:int cint signed?) -> (cint->irken cint signed? val)
+        _ -> (let ((id0 (ID))) ;; anything else is a pointer
+               (oformat id0 " = call i8** @make_foreign (" (ctype->llvm ctype) " " val ") ;; ctype->irken")
+               (format "i8** " id0))
         ))
 
-    ;; for integer-like results, I think this is similar to the problem that c-get-int solves.
+    (define (cint->irken cint signed? val)
+      (let ((width (cint-size cint))
+            (iname (format "i" (int (* width 8))))
+            (id0 (ID))
+            (id1 (ID)))
+        (if (= width 8)
+            (oformat id0 " = bitcast i64 " val " to i64")
+            (if signed?
+                (oformat id0 " = sext " iname " " val " to i64")
+                (oformat id0 " = zext " iname " " val " to i64")))
+        (oformat id1 " = call fastcc i8** @insn_box (i64 " id0 ")")
+        (format "i8** " id1)))
 
-    (define (emit-ffi sig type name args target)
-      (match sig with
-	(type:pred 'arrow (result-type . arg-types) _)
-	-> (let ((args0 (map2 wrap-in arg-types args)))
-	     (if (not (= target -1))
-		 (oformat "%r" (int target) " = "))
-	     ;; XXX wrap-out
-	     (oformat "call i8** @" (sym name) "(" (join ", " args0) ")"))
-	x -> (error1 "bad ffi type" (type-repr sig))
-	))
+    (define (emit-malloc-halloc params count malloc? target)
+      (let ((ctype (parse-ctype params))
+            (size (ctype->size ctype))
+            (id0 (ID)))
+        (if (< target 0)
+            (error "dead %halloc target"))
+        (oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int count) ")")
+        (oformat "%r" (int target) " = call i8** @make_"
+                 (if malloc? "malloc" "halloc") " (i64 " (int size) ", i64 " id0 ")")))
+
+    (define (emit-c-get-int itype src target)
+      (let ((cint (lp64->cint itype))
+            (iname (ctype->llvm cint))
+            (src0 (ID))
+            (src1 (ID))
+            (trg0 (ID)))
+        (oformat src0 " = call i8* @get_foreign (i8** %r" (int src) ")")
+        (oformat src1 " = bitcast i8* " src0 " to " iname "*")
+        (oformat trg0 " = load " iname ", " iname "* " src1)
+        (match cint with
+          (ctype:int cint signed?)
+          -> (oformat (maybe-target target) " = bitcast " (cint->irken cint signed? trg0) " to i8**")
+          _ -> (impossible)
+          )))
+
+    (define (emit-c-set-int itype src dst)
+      (let ((cint (lp64->cint itype))
+            (iname (ctype->llvm cint))
+            (width (ctype->size cint))
+            (dst0 (ID))
+            (dst1 (ID))
+            (src0 (ID))
+            (src1 (ID)))
+        (printf "c-set-int itype " (sym itype) " width " (int width) "\n")
+        (oformat dst0 " = call i8* @get_foreign (i8** %r" (int dst) ")")
+        (oformat dst1 " = bitcast i8* " dst0 " to " iname "*")
+        (oformat src0 " = call fastcc i64 @insn_unbox (i8** %r" (int src) ")")
+        (oformat "store " iname " "
+                 (if (< width 8) (begin (oformat src1 " = trunc i64 " src0 " to " iname) src1) src0)
+                 ", " iname "* " dst1)
+        ))
 
     ;; XXX next step: we need to emit declarations for each foreign function called.
     (define (emit-ffi2 params args target)
@@ -503,15 +466,12 @@
         (sexp:symbol name)
         -> (match (ffi-info.sigs::get name) with
              (maybe:yes (csig:fun name rtype argtypes0))
-             -> (let ((argtypes1 (map ctype->irken-type argtypes0))
-                      ;; NOTE: wrap-in emits code as a side-effect.
-                      (args1 (map2 wrap-in argtypes1 args))
-                      (args2 (map2 maybe-trunc argtypes0 args1))
+             -> (let ((args1 (map2 irken->ctype argtypes0 args))
                       (lrtype (ctype->llvm rtype))
                       (id0 (ID)))
                   (ffifuns::add name) ;; so we can declare it later
-                  (oformat id0 " = call " lrtype " @" (sym name) "(" (join ", " args2) ")")
-                  (wrap-out-ctype rtype id0 (maybe-target target))
+                  (oformat id0 " = call " lrtype " @" (sym name) "(" (join ", " args1) ")")
+                  (oformat (maybe-target target) " = bitcast " (ctype->irken rtype id0) " to i8**")
                   )
              (maybe:yes (csig:obj name obtype))
              -> (let ((lt (ctype->llvm obtype))
@@ -525,26 +485,6 @@
              )
         x -> (error1 "bad ffi2 param" x)
         ))
-
-    ;; this will just call the generated C function.
-    (define (emit-cexp sig type template args target)
-      ;; llvm automatically assigns a target to any non-void function call, so
-      ;;  we have to put the result somewhere even if dead.
-      (let ((target (if (= target -1)
-			(format (ID) " = ")
-			(format "%r" (int target) " = "))))
-	(match (the-context.cexps::get (:tuple sig template)) with
-	  (maybe:yes index)
-	  -> (match sig with
-	       (type:pred 'arrow _ _)
-	       -> (oformat target "call i8** @cexp_" (int index) "("
-			   (join (lambda (r) (format "i8** %r" (int r))) ", " args)
-			   ")")
-	       _ -> (oformat target "load i8**, i8*** @cexp_" (int index))
-	       )
-	  (maybe:no)
-	  -> (error1 "unknown cexp" (format (type-repr sig) " : "template))
-	  )))
 
     (define (emit-new-env size top? types target)
       (oformat "%r" (int target) " = call fastcc i8** @allocate (i64 " (int TC_ENV) ", i64 " (int (+ size 1)) ")")
@@ -666,16 +606,16 @@
       (let ((cname (gen-function-cname name 0)))
 	(PUSH fun-stack
 	      (lambda ()
-		(cps->llvm body co o name cname '() #f)))
+		(cps->llvm body o name cname '() #f)))
 	(oformat "%r" (int target) " = call fastcc i8** @insn_close (void()* @" cname ")")
 	))
 
     (define (emit-litcon index kind target)
       (when (>= target 0)
 	    (litcons::add index)
-            (oformat "%r" (int target) " = call fastcc i8** "
-                     "@insn_fetch (i8** bitcast ([" (int (+ 2 the-context.literals.count))
-                     " x i64*]* @lits.all to i8**), i64 " (int (+ 1 index)) ")")))
+            ;;(oformat "%r" (int target) " = call fastcc i8** @insn_fetch (i8** @lits.all.p, i64 " (int (+ 1 index)) ")")
+            (oformat "%r" (int target) " = call fastcc i8** @insn_getlit (i64 " (int (+ 1 index)) ")")
+            ))
 
     (define split-last
       ()        acc -> (impossible)
@@ -815,10 +755,10 @@
       -> (begin (emit-primop name params type args target) (walk k))
 
       (insn:cexp sig type template args (cont:k target _ k))
-      -> (begin (emit-cexp sig type template args target) (walk k))
+      -> (raise (:LLVMNoCexp "llvm: no cexps"))
 
       (insn:ffi sig type name args (cont:k target _ k))
-      -> (begin (emit-ffi sig type name args target) (walk k))
+      -> (raise (:TempNoFFI "llvm: temp no ffi"))
 
       (insn:new-env size top? types (cont:k target _ k))
       -> (begin (emit-new-env size top? types target) (walk k))
@@ -900,18 +840,15 @@
     (o.indent)
 
     (when the-context.options.trace
-	  (oformat "call void @TRACE (i8* getelementptr (["
-		   (int (+ 1 (string-length cname)))
-		   " x i8]* @." cname ", i64 0, i64 0))"))
+      (let ((ltype (format "[" (int (+ 1 (string-length cname))) " x i8]")))
+        (oformat "call void @TRACE (i8* getelementptr ("
+                 ltype ", " ltype "* @." cname
+                 ", i64 0, i64 0))")))
 
     (when (eq? name 'toplevel)
       (let ((nlits the-context.literals.count))
         (when (> nlits 0)
-          (oformat "call void @relocate_llvm_literals ("
-                   ;; extra +1 is for the symbol table to be added to the end.
-                   "i8** bitcast ([" (int (+ nlits 2)) " x i64*]* @lits.all to i8**), "
-                   "i64* bitcast ([" (int (+ nlits 2)) " x i64]* @lits.offsets to i64*)"
-                   ")"))))
+          (oformat "call fastcc void @relocate_llvm_literals0()"))))
 
     (if (and (not (member-eq? name '(toplevel fail jump)))
 	     (vars-get-flag name VFLAG-ALLOCATES))
@@ -923,69 +860,8 @@
 
     ;; emit JUMP and FAIL functions...
     (while (not (null? fun-stack))
-	   ((pop fun-stack)))
+      ((pop fun-stack)))
 
-    ))
-
-;; collect all unique cexp templates and generate a C function for each one.
-
-(define cexp<?
-  (:tuple s0 t0) (:tuple s1 t1)
-  -> (cond ((type<? s0 s1) #t)
-	   ((type<? s1 s0) #f)
-	   (else (string<? t0 t1))))
-
-(define (find-cexps cps)
-  (let ((cexp-map the-context.cexps)
-	(counter (make-counter 0)))
-    (walk-insns
-     (lambda (insn _)
-       (match insn with
-	 (insn:cexp sig type template args _)
-	 -> (match (cexp-map::get (:tuple sig template)) with
-	      (maybe:yes _) -> #u
-	      (maybe:no) -> (cexp-map::add (:tuple sig template) (counter.inc)))
-	 _ -> #u
-	 ))
-     cps)
-    cexp-map))
-
-;; XXX combine this pass with find-cexps
-(define (find-callocate cps)
-  (let ((cmap the-context.callocates)
-	(counter (make-counter 0)))
-    (walk-insns
-     (lambda (insn _)
-       (match insn with
-	 (insn:primop '%callocate _ (type:pred 'buffer (type) _) _ _)
-	 -> (match (cmap::get type) with
-	      (maybe:yes _) -> #u
-	      (maybe:no)    -> (cmap::add type (counter.inc)))
-	 _ -> #u
-	 ))
-     cps)
-    ))
-
-(define (emit-cexp-fun co o num sig template)
-  (match sig with
-    (type:pred 'arrow (result-type . arg-types) _)
-    -> (let ((args0 (range (length arg-types)))
-	     (args1 (map (lambda (x) (format "r" (int x))) args0))
-	     (args2 (map2 wrap-in arg-types args1))
-	     (args3 (format (join (lambda (x) (format "O " x)) ", " args1))))
-	 (co.write (format "object* cexp_" (int num) "(" args3 ") { "
-			   (if (is-pred? result-type 'undefined)
-			       (format (cexp-subst template args2) "; return PXLL_UNDEFINED")
-			       (format "return " (wrap-out result-type (cexp-subst template args2))))
-			       ";}"))
-	 (o.write (format "declare i8** @cexp_" (int num) "("
-			  (join ", " (n-of (length arg-types) "i8**"))
-			  ")"))
-	 )
-    _ -> (begin
-	   (co.write (format "const object * cexp_" (int num) " = " (wrap-out sig template) ";"))
-	   (o.write (format "@cexp_" (int num) " = external global i8**"))
-	   )
     ))
 
 (define llvm-string-safe?
@@ -1105,66 +981,95 @@
         ;; NOTE: sexp is missing from here.  without that, no sexp literals.
 	_ -> (encode-immediate exp)
 	))
-    ;; create a new vector literal of all symbols, add it to the cmap.
-    (when (not (tree/empty? the-context.symbols))
-      (let ((syms (tree/keys the-context.symbols))
-            (litsyms (map literal:symbol syms)))
-        (cmap/add lits (literal:vector litsyms))
-        #u))
-    (oformat ";; constructed literals")
-    (for-map i lit lits.rev
-      (set! output '())
-      (set! oindex 0)
-      (match lit with
-        (literal:string s)
-        -> (let ((slen (string-length s))
-                 (tlen (string-tuple-length slen))
-                 (lltype (format "{i64, i32, [" (int slen) " x i8]}")))
-             (info-map::add i (:tuple lltype 0))
-             (oformat "@lit." (int i) " = local_unnamed_addr global "
-                      lltype " {i64 " (int (+ TC_STRING (<< tlen 8)))
-                      ", i32 " (int slen) ", [" (int slen) " x i8] c\"" (llvm-string s) "\" }"))
-        (literal:symbol sym)
-        -> (let ((oindex0 oindex)
-                 (lltype (format "{i64, i64, i64}"))
-                 (sindex (cmap->index lits (literal:string (symbol->string sym)))))
-             (info-map::add i (:tuple lltype 0))
-             (oformat "@lit." (int i) " = local_unnamed_addr global "
-                      lltype " {i64 " (int (+ TC_SYMBOL (<< 2 8)))
-                      ", i64 " (int (- (+ 1 sindex)))
-                      ", i64 " (int (logior 1 (<< symbol-counter 1))) "}"
-                      )
-             (set! symbol-counter (+ 1 symbol-counter)))
-        _
-        -> (let ((index (walk lit i))
-                 (vals (reverse output))
-                 (len (length vals))
-                 (lltype (format "[" (int len) " x i64]")))
-             (info-map::add i (:tuple lltype (>> index 2)))
-             (oformat "@lit." (int i) " = local_unnamed_addr global " lltype
-                      " [i64 " (join int->string ", i64 " vals) "]")
-             )
-        ))
-      ;; place all literals into a vector object.
-    (o.copy (vector-header "@lits.all" lits.count))
-    (let ((lines '()))
+
+    (define (go)
+      ;; create a new vector literal of all symbols, add it to the cmap.
+      ;; (so it will be the very last literal).
+      (when (not (tree/empty? the-context.symbols))
+        (let ((syms (tree/keys the-context.symbols))
+              (litsyms (map literal:symbol syms)))
+          (cmap/add lits (literal:vector litsyms))
+          #u))
+      (oformat ";; constructed literals")
       (for-map i lit lits.rev
-        (PUSH lines (lit-ref i)))
-      (oformat (join ",\n" (reverse lines)) "\n  ]"))
-    ;; emit table of offsets (into each i64[] literal)
-    (o.copy (format "@lits.offsets = global [" (int (+ 1 lits.count)) " x i64] ["))
-    (for-map i lit lits.rev
-      (match (info-map::get i) with
-        (maybe:yes (:tuple _ offset))
-        -> (o.copy (format "i64 " (int offset) ", "))
-        (maybe:no) -> (impossible)
-        ))
-    (oformat " i64 0]")
-    (if (tree/empty? the-context.symbols)
-        (oformat "@irk_internal_symbols_p = global i8** inttoptr (i64 " (int TC_EMPTY_VECTOR) " to i8**)")
-        (oformat "@irk_internal_symbols_p = global i8** bitcast (["
-                 (int (+ 1 (tree/size the-context.symbols)))
-                 " x i64]* @lit." (int (- lits.count 1)) " to i8**)"))
+        (set! output '())
+        (set! oindex 0)
+        (match lit with
+          (literal:string s)
+          -> (let ((slen (string-length s))
+                   (tlen (string-tuple-length slen))
+                   (lltype (format "{i64, i32, [" (int slen) " x i8]}")))
+               (info-map::add i (:tuple lltype 0))
+               (oformat "@lit." (int i) " = local_unnamed_addr global "
+                        lltype " {i64 " (int (+ TC_STRING (<< tlen 8)))
+                        ", i32 " (int slen) ", [" (int slen) " x i8] c\"" (llvm-string s) "\" }"))
+          (literal:symbol sym)
+          -> (let ((oindex0 oindex)
+                   (lltype (format "{i64, i64, i64}"))
+                   (sindex (cmap->index lits (literal:string (symbol->string sym)))))
+               (info-map::add i (:tuple lltype 0))
+               (oformat "@lit." (int i) " = local_unnamed_addr global "
+                        lltype " {i64 " (int (+ TC_SYMBOL (<< 2 8)))
+                        ", i64 " (int (- (+ 1 sindex)))
+                        ", i64 " (int (logior 1 (<< symbol-counter 1))) "}"
+                        )
+               (set! symbol-counter (+ 1 symbol-counter)))
+          _
+          -> (let ((index (walk lit i))
+                   (vals (reverse output))
+                   (len (length vals))
+                   (lltype (format "[" (int len) " x i64]")))
+               (info-map::add i (:tuple lltype (>> index 2)))
+               (oformat "@lit." (int i) " = local_unnamed_addr global " lltype
+                        " [i64 " (join int->string ", i64 " vals) "]")
+               )
+          ))
+      ;; place all literals into a vector object.
+      (o.copy (vector-header "@lits.all" lits.count))
+      (let ((lines '()))
+        (for-map i lit lits.rev
+          (PUSH lines (lit-ref i)))
+        (oformat (join ",\n" (reverse lines)) "\n  ]"))
+      ;; emit table of offsets (into each i64[] literal)
+      (o.copy (format "@lits.offsets = global [" (int (+ 1 lits.count)) " x i32] ["))
+      (for-map i lit lits.rev
+        (match (info-map::get i) with
+          (maybe:yes (:tuple _ offset))
+          -> (o.copy (format "i32 " (int offset) ", "))
+          (maybe:no) -> (impossible)
+          ))
+      (oformat " i32 0]")
+      ;; the only purpose of these two wrapper functions is to avoid having to know the exact
+      ;;   size of the literal vector in order to refer to it in the above generated code.
+      ;; if there was some way to 'cast away' the size of the vectors and treat them like C pointers,
+      ;;   this would be unnecessary. suggestions welcome.
+      (let ((LS (format (int (+ 1 lits.count)))))
+        (oformat
+         "define internal fastcc void @relocate_llvm_literals0() {\n"
+         "  %t0 = bitcast [" LS " x i64*]* @lits.all to i8**\n"
+         "  %t1 = bitcast [" LS " x i32]* @lits.offsets to i32*\n"
+         "  call void @relocate_llvm_literals (i8** %t0, i32* %t1)\n"
+         "  ret void\n"
+         "}\n"
+         "define internal fastcc i8** @insn_getlit (i64 %index) {\n"
+         "  %t0 = bitcast [" LS " x i64*]* @lits.all to i8**\n"
+         "  %1 = getelementptr i8*, i8** %t0, i64 %index\n"
+         "  %2 = load i8*, i8** %1\n"
+         "  %3 = bitcast i8* %2 to i8**\n"
+         "  ret i8** %3\n"
+         "}\n"
+         ))
+      (if (tree/empty? the-context.symbols)
+          (oformat "@irk_internal_symbols_p = global i8** inttoptr (i64 " (int TC_EMPTY_VECTOR) " to i8**)")
+          (oformat "@irk_internal_symbols_p = global i8** bitcast (["
+                   (int (+ 1 (tree/size the-context.symbols)))
+                   " x i64]* @lit." (int (- lits.count 1)) " to i8**)"))
+      )
+    ;; body of llvm-emit-constructed
+    (if (> lits.count 0)
+        (go)
+        ;; even if there are no lits we still need this...
+        (oformat "@irk_internal_symbols_p = global i8** inttoptr (i64 " (int TC_EMPTY_VECTOR) " to i8**)"))
     ))
 
 (define (emit-ffi-declarations o)
@@ -1185,28 +1090,33 @@
      (oformat name " = external global i8**")))
   )
 
-(define (emit-llvm co o cname cps)
-  (printf "scanning for cexp...\n")
-  (let ((cexp-map (find-cexps cps)))
-    (cexp-map::iterate
+(define (emit-llvm-lookup-field-hashtables o)
+  (let ((ambig (build-ambig-table))
+        (size (tree/size ambig))
+        (table (make-vector size {k0=0 k1=0 v=0}))
+        (i 0))
+    (tree/inorder
      (lambda (k v)
        (match k with
-	 (:tuple sig template)
-	 -> (begin
-	      (printf (lpad 5 (int v)) " " (type-repr sig) " '" template "'\n")
-	      (emit-cexp-fun co o v sig template)
-	      )
-	 )))
-    (printf "scanning for callocate...\n")
-    (find-callocate cps)
-    (the-context.callocates::iterate
-     (lambda (k v)
-       (printf (lpad 5 (int v)) " " (type-repr k) "\n")
-       (co.write (format "pxll_int size_" (int v) " = sizeof (" (irken-type->c-type k) ");"))
-       (o.write (format "@size_" (int v) " = external global i64"))
-       ))
-    (cps->llvm cps co o 'toplevel cname '() #t)
-    (when (> the-context.literals.count 0)
-      (llvm-emit-constructed o))
-    (emit-ffi-declarations o)
-    ))
+         (:tuple tag label)
+         -> (set! table[i] {k0= tag k1=label v=v}))
+       (set! i (+ i 1)))
+     ambig)
+    (let-values (((G V) (create-minimal-perfect-hash table)))
+      (oformat "@irk_ambig_size = global i32 " (int size))
+      (o.copy (format "@G = global [" (int (+ 1 size)) " x i32] ["))
+      (for-vector val G
+        (o.copy (format "i32 " (int val) ", ")))
+      (oformat "i32 0];")
+      (o.copy (format "@V = global [" (int (+ 1 size)) " x i32] ["))
+      (for-vector val V
+        (o.copy (format "i32 " (int val) ", ")))
+      (oformat "i32 0];")
+      )))
+
+(define (emit-llvm o cname cps)
+  (cps->llvm cps o 'toplevel cname '() #t)
+  (llvm-emit-constructed o)
+  (emit-llvm-lookup-field-hashtables o)
+  (emit-ffi-declarations o)
+  )

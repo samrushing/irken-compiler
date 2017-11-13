@@ -95,6 +95,31 @@
 							  r)
 						 tl))))))
 
+
+(define (emit-c-lookup-field-hashtables o)
+  (let ((ambig (build-ambig-table))
+        (size (tree/size ambig))
+        (table (make-vector size {k0=0 k1=0 v=0}))
+        (i 0))
+    (tree/inorder
+     (lambda (k v)
+       (match k with
+         (:tuple tag label)
+         -> (set! table[i] {k0= tag k1=label v=v}))
+       (set! i (+ i 1)))
+     ambig)
+    (let-values (((G V) (create-minimal-perfect-hash table)))
+      (oformat "uint32_t irk_ambig_size = " (int size) ";")
+      (o.copy "int32_t G[] = {")
+      (for-vector val G
+        (o.copy (format (int val) ", ")))
+      (oformat "0};")
+      (o.copy "int32_t V[] = {")
+      (for-vector val V
+        (o.copy (format (int val) ", ")))
+      (oformat "0};")
+      )))
+
 (define (emit-c o decls insns)
 
   (let ((fun-stack '())
@@ -902,4 +927,5 @@
 	() -> #u
 	_  -> (begin ((pop fun-stack)) (loop))
 	))
+    (emit-c-lookup-field-hashtables o)
     ))
