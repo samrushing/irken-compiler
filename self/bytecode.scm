@@ -938,6 +938,13 @@
         (printf "done...\n")
         (reverse r)))
 
+    (define (walk-literal lit p)
+      (match lit with
+        (literal:cons _ _ l) -> (begin (p lit) (for-list x l (walk-literal x p)))
+        (literal:vector l)   -> (begin (p lit) (for-list x l (walk-literal x p)))
+        _                    -> (begin (p lit) #u)
+        ))
+
     (define (find-symbols lit)
       (walk-literal
        lit
