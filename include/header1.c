@@ -145,11 +145,6 @@ dump_object (object * ob, int depth)
       fprintf (stdout, "<u%" PRIuPTR ">", (((pxll_int)ob)>>8));
       break;
     case 0: {
-      // if (!((ob >= heap0) && (ob < (heap0 + heap_size)))) {
-      //   // pointer is outside our heap (i.e., foreign)
-      //   fprintf (stdout, "<%p>", ob);
-      //   break;
-      // }
       // structure
       header h = (header) (ob[0]);
       int tc = h & 0xff;
@@ -455,6 +450,17 @@ print_list (pxll_pair * l)
       fprintf (stdout, ")");
       break;
     }
+  }
+}
+
+static
+pxll_int
+irk_get_vector_length (object * vec)
+{
+  if (vec == (object *) TC_EMPTY_VECTOR) {
+    return 0;
+  } else {
+    return GET_TUPLE_LENGTH (*vec);
   }
 }
 

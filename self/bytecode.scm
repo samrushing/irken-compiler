@@ -462,6 +462,9 @@
          -> (LINSN 'vset vec index-reg val)
          _ -> (primop-error))
 
+       (define (ambig code)
+         (tree/insert! the-context.ambig-rec int-cmp code #u))
+
        (define prim-record-get
          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
          -> (let ((label-code (lookup-label-code label)))
@@ -469,7 +472,9 @@
                 (maybe:yes sig0)
                 -> (LINSN 'tupref target rec-reg (index-eq label sig0))
                 (maybe:no)
-                -> (LINSN 'rref target rec-reg label-code)
+                -> (begin
+                     (ambig label-code)
+                     (LINSN 'rref target rec-reg label-code))
                 ))
          _ _ -> (primop-error))
 
@@ -480,7 +485,9 @@
                 (maybe:yes sig0)
                 -> (LINSN 'stor rec-reg (index-eq label sig0) arg-reg)
                 (maybe:no)
-                -> (LINSN 'rset rec-reg label-code arg-reg)))
+                -> (begin
+                     (ambig label-code)
+                     (LINSN 'rset rec-reg label-code arg-reg))))
          _ _ -> (primop-error))
 
        (define prim-getcc
@@ -696,27 +703,23 @@
 
     ;; --------------------------------------------------------------------------------
 
-    ;; XXX consider switching to the hashtable technique used by the
-    ;;  other two backends.
     (define (build-field-lookup-table)
-      ;; Note: this is built as a literal, which at runtime will
-      ;;  have the type `(vector (vector int))`
-      (let ((recs (reverse the-context.records))
-            (nrecs (length recs)))
-        (if (> nrecs 0)
-            (let ((v0 '()))
-              (for-list pair recs
-                (match pair with
-                  (:pair sig index)
-                  -> (let ((v1 '()))
-                       (for-list x sig
-                         (PUSH v1 (literal:int (lookup-label-code x))))
-                       (PUSH v0 (literal:vector (reverse v1))))
-                  ))
-              (literal:vector (reverse v0)))
-            ;; no records used in this program.
-            (literal:vector '())
-            )))
+      (let ((ambig (build-ambig-table))
+            (size (tree/size ambig))
+            (table (make-vector size {k0=0 k1=0 v=0}))
+            (i 0))
+        (tree/inorder
+         (lambda (k v)
+           (match k with
+             (:tuple tag label)
+             -> (set! table[i] {k0= tag k1=label v=v}))
+           (set! i (+ i 1)))
+         ambig)
+        ;; Note: this is built as a literal, which at runtime will
+        ;;  have the type `(vector (vector int))`
+        (let-values (((G V) (create-minimal-perfect-hash table)))
+          (literal:vector (LIST (literal:vector (map literal:int (vector->list G)))
+                                (literal:vector (map literal:int (vector->list V))))))))
 
     ;; XXX why did I do this with a quasi-readable encoding?  seems like it would
     ;;   have made more sense to just use the runtime encoding?  i.e., instead of
@@ -981,7 +984,8 @@
     (find-sizeoff-prims cps)
 
     ;; record the index of the sizeoff sentinel (so it can be replaced)
-    (let ((index (get-sizeoff-sentinel-index))
+    (let ((s (peephole '() (emit cps)))
+          (index (get-sizeoff-sentinel-index))
           (sizeoff-literal (build-sizeoff-literal)))
       (printf "sizeoff sentinel index = " (int index) "\n")
       ;; ensure that all symbols used in sizeoff are singletons
@@ -993,16 +997,12 @@
       (emit-one-literal (literal:int index))
       (emit-one-literal (literal:vector sizeoff-literal))
       ;;(emit-one-literal (literal:int the-context.ffi-count))
-      )
-
-    (let ((s (peephole '() (emit cps))))
       (set! cps (insn:return 0))
       (verbose
        (printf "labels:\n")
        (print-stream s))
-      (let ((resolved (resolve-labels s)))
-        (set! s '())
-        (emit-stream resolved))
+      (emit-stream (resolve-labels s))
+      (set! s '())
       (o.close)
       (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
       )

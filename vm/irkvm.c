@@ -119,6 +119,10 @@ vm_list_cons (object * car, object * cdr)
 // eventually we'll need to move all these tables into a 'code object'
 //  in order to support running more than one code object at a time.
 
+int32_t G[] = {};
+int32_t V[] = {};
+uint32_t irk_ambig_size = 0;
+
 object * bytecode_literals;
 object * vm_field_lookup_table; // note: this is a GC root.
 // size/offset table for ffi ctypes (e.g. 'int', 'struct in6_addr', ...)
@@ -249,6 +253,7 @@ read_literals (FILE * f)
     }
     // field lookup table
     CHECK (read_literal (f, (object *) &vm_field_lookup_table));
+    irk_ambig_size = irk_get_vector_length (vm_field_lookup_table[1]);
     // sizeoff literal index
     object * sizeoff_index_ob;
     CHECK (read_literal (f, (object *) &sizeoff_index_ob));
@@ -420,20 +425,23 @@ vm_push_lenv (object * rib)
   vm_lenv = rib;
 }
 
-
+// this differs from the one in header1.c because G
+//   and V are irken vectors.
 static
 pxll_int
 vm_get_field_offset (pxll_int index, pxll_int label_code)
 {
-  object * table = vm_field_lookup_table[index+1];
-  pxll_int tlen = GET_TUPLE_LENGTH (*table);
-  for (int i=0; i < tlen; i++) {
-    if (label_code == UNBOX_INTEGER(table[i+1])) {
-      return i;
-    }
+  // vm_field_lookup_table: (vector (vector (int)))
+  object * G0 = vm_field_lookup_table[1];
+  object * V0 = vm_field_lookup_table[2];
+  uint32_t hash0 = p_hash (0x01000193, index, label_code);
+  pxll_int d = unbox(G0[hash0 + 1]);
+  if (d < 0) {
+    return unbox(V0[(-d-1) + 1]);
+  } else {
+    pxll_int hash1 = p_hash (d, index, label_code);
+    return unbox(V0[hash1 + 1]);
   }
-  fprintf (stderr, "vm_get_field_offset() failed\n");
-  abort();
 }
 
 object * vm_the_closure = PXLL_NIL;
@@ -1517,5 +1525,4 @@ toplevel (void) {
     }
   }
 }
-
-static void prof_dump() { }
+void prof_dump() { }
