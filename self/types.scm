@@ -349,6 +349,14 @@
   (let ((sig (get-record-sig t)))
     (sexp:list (map sexp:symbol sig))))
 
+(define c-int-types
+  ;; XXX distinguish between signed and unsigned!
+  ;; XXX also need to handle 64-bit types on a 32-bit platform.
+  '(uint8_t uint16_t uint32_t uint64_t
+    int8_t int16_t int32_t int64_t
+    uint long ulong longlong ulonglong
+    ))
+
 (define (int-ctype->itype cint signed?)
   (pred
    (match cint signed? with

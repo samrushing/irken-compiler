@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+;; this is a modified version of compile.scm that includes only the
+;;  bytecode backend.
+
 (include "lib/core.scm")
 (include "lib/pair.scm")
 (include "lib/string.scm")
@@ -66,41 +69,20 @@
         default
         val)))
 
-(include "self/flags.scm")
-
-(define (invoke-cc base paths options extra)
-  (let ((cc (getenv-or "CC" CC))
-        (cflags (getenv-or "CFLAGS" CFLAGS))
-        (cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
-        (libs (format (join " " (map (lambda (lib) (format "-l" lib)) options.libraries))))
-        (cmd (format cc " " cflags " " (join " " paths) " " extra " " libs " -o " base)))
-    (notquiet (print-string (format "system: " cmd "\n")))
-    (if (not (= 0 (system cmd)))
-        (raise (:CCFailed cmd))
-        #u)))
-
 (define (get-options argv options)
   (let ((filename-index 1))
     (for-range
 	i (vector-length argv)
 	(match sys.argv[i] with
-	  "-c"    -> (set! options.nocompile #t)
 	  "-v"    -> (set! options.verbose #t)
-	  "-t"    -> (set! options.trace #t)
-	  "-f"    -> (begin (set! i (+ i 1)) (set! options.extra-cflags argv[i]))
 	  "-I"    -> (begin (set! i (+ i 1)) (PUSH options.include-dirs argv[i]))
-          "-l"    -> (begin (set! i (+ i 1)) (PUSH options.libraries argv[i]))
           "-O"    -> (begin (set! i (+ i 1)) (set! options.opt-rounds (string->int argv[i])))
 	  "-m"    -> (set! options.debugmacroexpansion #t)
 	  "-dt"   -> (set! options.debugtyping #t)
 	  "-ni"   -> (set! options.noinline #t)
-	  "-p"    -> (set! options.profile #t)
 	  "-n"    -> (set! options.noletreg #t)
 	  "-q"    -> (set! options.quiet #t)
-	  "-nr"   -> (set! options.no-range-check #t)
           ;; XXX make these mutually exclusive?
-	  "-llvm" -> (set! options.backend (backend:llvm))
-          "-b"    -> (set! options.backend (backend:bytecode))
           "-h"    -> (usage)
           "-help" -> (usage)
           "-types" -> (set! options.dumptypes #t)
@@ -108,6 +90,7 @@
                          (raise (:UnknownOption "Unknown option" x))
                          (set! filename-index i))
 	  ))
+    (set! options.backend (backend:bytecode))
     (set-verbose-gc (not options.quiet))
     (when options.dumptypes
       ;; disable inlining so every function has a type.
@@ -117,28 +100,17 @@
 (define (usage)
   (printf "
 Usage: compile <irken-src-file> [options]
- -c     : don't compile .c file
  -v     : verbose (very!) output
- -t     : generate trace-printing code (C backend only)
- -f     : set CFLAGS for C compiler
  -I     : add include search directory
- -l     : add a link library
  -m     : debug macro expansion
  -dt    : debug typing
  -types : dump all type signatures (do not compile)
  -ni    : no inlining
- -p     : generate profile-printing code (C backend only)
  -n     : disable letreg optimization
  -O     : rounds of optimization (default: 3)
  -q     : quiet the compiler
- -nr    : no range check (e.g. vector access)
  -h     : display this usage
- -llvm  : compile using the LLVM backend.
- -b     : compile using the bytecode backend.
 
-default flags:
-  CC='" CC "'
-  CFLAGS='" CFLAGS "'
 "
 ))
 
@@ -209,6 +181,8 @@ default flags:
         (main-compile base noden))
     ))
 
+(include "self/bytecode.scm")
+
 (define (main-compile base node)
   (let ((cps (compile node)))
     (verbose
@@ -250,28 +224,8 @@ default flags:
      (dump-ffi-info)
      )
     (notquiet (printf "backend...\n"))
-    (compile-with-backend base cps)
-    ))
-
-(include "self/c.scm")
-(include "self/llvm.scm")
-(include "self/bytecode.scm")
-
-(define (compile-with-backend base cps)
-  (let ((sources
-         (match the-context.options.backend with
-           (backend:c)
-           -> (compile-to-c base cps)
-           (backend:llvm)
-           -> (compile-to-llvm base cps)
-           (backend:bytecode)
-           -> (compile-to-bytecode base cps)
-           )))
-    (when (and (not (null? sources))
-               (not the-context.options.nocompile))
-      (notquiet (print-string "compiling...\n"))
-      (invoke-cc base sources the-context.options "")
-      #u)
+    (compile-to-bytecode base cps)
+    #u
     ))
 
 (main)

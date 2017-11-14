@@ -57,14 +57,6 @@
 ;; We have to deal with both typing and code generation.
 ;;
 
-(define c-int-types
-  ;; XXX distinguish between signed and unsigned!
-  ;; XXX also need to handle 64-bit types on a 32-bit platform.
-  '(uint8_t uint16_t uint32_t uint64_t
-    int8_t int16_t int32_t int64_t
-    uint long ulong longlong ulonglong
-    ))
-
 (define (wrap-out type exp)
   (match type with
     (type:pred 'int _ _)     -> (format "BOX_INTEGER((pxll_int)" exp ")")
@@ -929,3 +921,36 @@
 	))
     (emit-c-lookup-field-hashtables o)
     ))
+
+(define (compile-to-c base cps)
+  (let ((opath (string-append base ".c"))
+        (ofile (file/open-write opath #t #o644))
+        (o (make-writer ofile))
+        (tmp-path (format base ".tmp.c"))
+        (tfile (file/open-write tmp-path #t #o644))
+        (o0 (make-writer tfile)))
+    (notquiet (printf "\n-- C output --\n : " opath "\n"))
+    (for-each
+     (lambda (path) (o.write (format "#include <" path ">")))
+     (reverse the-context.cincludes))
+    (for-each
+     (lambda (path) (o.write (format "#include \"" path "\"")))
+     (reverse the-context.lincludes))
+    (for-each o.write (reverse the-context.cverbatim))
+    (o.copy (get-file-contents "include/header1.c"))
+    (emit-constructed o)
+    (emit-datatype-table o)
+    (number-profile-funs)
+    (if the-context.options.profile
+        (emit-profile-0 o)
+        (o.write "void prof_dump (void) {}"))
+    (emit-c o0 o cps)
+    (if the-context.options.profile (emit-profile-1 o))
+    (notquiet (print-string "done.\n"))
+    (o0.close)
+    ;; copy code after declarations
+    (copy-file-contents o tmp-path)
+    (o.close)
+    (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
+    (unlink tmp-path)
+    (LIST opath)))

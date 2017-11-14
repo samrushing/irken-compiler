@@ -1120,3 +1120,18 @@
   (emit-llvm-lookup-field-hashtables o)
   (emit-ffi-declarations o)
   )
+
+(define (compile-to-llvm base cps)
+  (let ((llpath (format base ".ll"))
+        (llvm-file (file/open-write llpath #t #o644))
+        (ollvm (make-writer llvm-file)))
+    (notquiet (printf "\n-- LLVM output --\n : " llpath "\n"))
+    (ollvm.copy
+     (get-file-contents "include/preamble.ll"))
+    (emit-llvm ollvm "toplevel" cps)
+    (ollvm.close)
+    (notquiet (printf "wrote " (int (ollvm.get-total)) " bytes to " llpath ".\n"))
+    ;; XXX header1.c needs something like find-file, but that currently returns
+    ;;  an open file, not a valid pathname.
+    (LIST llpath "include/header1.c")))
+
