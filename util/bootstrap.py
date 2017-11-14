@@ -82,17 +82,14 @@ execfile ('util/build_vm.py')
 print 'generating posix FFI...'
 sys_in_dir ('ffi', 'python gen.py posix.ffi')
 
-print 'compiling with vm...'
+print 'compiling stage0 binary (with vm)...'
 system ('vm/irkvm self/compile.byc self/compile.scm -q')
 
-print 'compiling stage0 binary:'
-system ('%s %s self/compile.c -o self/compile' % (gcc, cflags))
-
-print 'compiling stage1 binary:'
+print 'compiling stage1 binary (with stage0):'
 system ('self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.1.c')
 
-print 'compiling stage2 binary:'
+print 'compiling stage2 binary (with stage1):'
 system ('self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.2.c')
 
