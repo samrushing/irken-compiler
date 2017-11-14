@@ -23,14 +23,9 @@
   ;; not using stdio
   (%backend bytecode #u))
 
-(define (print-char ch)
-  (%backend c (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" ch))
-  (%backend llvm (%llvm-call ("@irk_putc" (char -> undefined) ccc) ch))
-  (%backend bytecode (print-string (char->string ch)))
-  )
-
 (define (newline)
-  (%backend (c llvm) (print-char #\newline))
+  (%backend c (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" #\newline))
+  (%backend llvm (%llvm-call ("@irk_putc" (char -> undefined) ccc) #\newline))
   (%backend bytecode (print-string "\n")))
 
 (define (= a b)
