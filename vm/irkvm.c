@@ -839,66 +839,40 @@ vm_go (void)
     pc = UNBOX_INTEGER (vm_k[3]);
   }
   DISPATCH();
- l_add:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) + UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_sub:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) - UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_mul:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) * UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_div:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) / UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_srem:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) % UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_shl:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) << UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_ashr:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) >> UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_or:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) | UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_xor:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) ^ UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_and:
-  REG1 = BOX_INTEGER (UNBOX_INTEGER (REG2) & UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_eq:
-  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) == UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_lt:
-  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) < UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_gt:
-  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) > UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_le:
-  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) <= UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
- l_ge:
-  REG1 = PXLL_TEST (UNBOX_INTEGER (REG2) >= UNBOX_INTEGER (REG3));
-  pc += 4;
-  DISPATCH();
+
+#define BINOP(op)                               \
+  do {                                          \
+    REG1 = box(unbox(REG2) op unbox(REG3));     \
+    pc += 4;                                    \
+    DISPATCH();                                 \
+  } while (0)
+
+ l_add  : BINOP(+);
+ l_sub  : BINOP(-);
+ l_mul  : BINOP(*);
+ l_div  : BINOP(/);
+ l_srem : BINOP(%);
+ l_shl  : BINOP(<<);
+ l_ashr : BINOP(>>);
+ l_or   : BINOP(|);
+ l_xor  : BINOP(^);
+ l_and  : BINOP(&);
+#undef BINOP
+
+#define CMPOP(op)                                       \
+  do {                                                  \
+    REG1 = PXLL_TEST (unbox(REG2) op unbox(REG3));      \
+    pc += 4;                                            \
+    DISPATCH();                                         \
+  } while (0)
+
+ l_eq   : CMPOP(==);
+ l_lt   : CMPOP(<);
+ l_gt   : CMPOP(>);
+ l_le   : CMPOP(<=);
+ l_ge   : CMPOP(>=);
+#undef CMPOP
+
  l_cmp:
   // CMP target a b
   // note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
