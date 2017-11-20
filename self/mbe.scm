@@ -129,7 +129,7 @@
 	       (dolist tlp tle))
     _ _ -> '()
     )
-  (match p e with 
+  (match p e with
      (sexp:symbol k) e           -> (LIST (sexp p e))
      (sexp:list p) (sexp:list e) -> (dolist p e)
      _ _ -> '()
@@ -206,16 +206,16 @@
     (define (T s)
       ;; replace a single symbol.
       (match (tree/member sym-map symbol-index-cmp s) with
-	(maybe:yes replacement) 
+	(maybe:yes replacement)
 	-> replacement
-	(maybe:no) 
+	(maybe:no)
 	-> (let ((new (string->symbol (format (sym s) (int (gensym-counter.inc))))))
 	     (tree/insert! sym-map symbol-index-cmp s new)
 	     new)))
 
     (define walk
       (sexp:symbol s)
-      -> (sexp:symbol 
+      -> (sexp:symbol
 	  (if (eq? (string-ref (symbol->string s) 0) #\$)
 	      (T s)
 	      s))
@@ -226,7 +226,7 @@
 
     (walk out-pat)
     ))
-    
+
 (define (make-macro name patterns)
   (define (apply exp debug?)
     (let loop ((l patterns))
