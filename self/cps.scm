@@ -63,6 +63,9 @@
   _ -> #f
   )
 
+;; Note: this should match NREG in vm/irkvm.c.
+(define *max-bytecode-registers* 20)
+
 (define (make-register-allocator)
   (match the-context.options.backend with
     (backend:bytecode)
@@ -71,7 +74,12 @@
            (let loop ((i 0))
              (if (member? i free =)
                  (loop (+ i 1))
-                 (begin (set! max-reg (max i max-reg)) i))))
+                 (if (> i max-reg)
+                     (begin (set! max-reg i)
+                            (if (> i *max-bytecode-registers*)
+                                (raise (:TooManyRegisters "bytecode: ran out of registers!"))
+                                i))
+                     i))))
          (define (get-max) max-reg)
          {alloc=allocate get-max=get-max}
          )

@@ -749,6 +749,7 @@ vm_cset (object * dst, pxll_int code, object * val)
   return 0;
 }
 
+// note: must match the value in self/cps.scm:make-register-allocator
 #define NREGS 20
 #define BC1 code[pc+1]
 #define BC2 code[pc+2]
