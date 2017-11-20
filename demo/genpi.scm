@@ -37,7 +37,6 @@
   (define B* big-mul)
   (define B+ big-add)
   (define B- big-sub)
-  (define B/ big-div)
   (define IB int->big)
   (define emit (pi-digit-emitter))
 
