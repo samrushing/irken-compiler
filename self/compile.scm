@@ -228,9 +228,13 @@ default flags:
      (printf "\n-- variables --\n")
      (print-vars)
      (printf "\n-- labels --\n")
-     (printn the-context.labels)
+     (tree/inorder
+      (lambda (index label)
+        (printf "  " (int index) " : " (sym label) "\n"))
+      the-context.labels.rev)
      (printf "\n-- records --\n")
-     (printn the-context.records)
+     (for-map index sig the-context.records.rev
+       (printf "  " (int index) " : (" (join symbol->string " " sig) ")\n"))
      (printf "\n-- symbols --\n")
      (tree/inorder
       (lambda (sym index)

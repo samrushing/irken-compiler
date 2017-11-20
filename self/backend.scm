@@ -141,12 +141,10 @@
 	(sig (filter (lambda (x) (not (eq? x '...))) sig)))
     (let ((candidates '()))
       (for-each
-       (lambda (x)
-	 (match x with
-	   (:pair sig0 index0)
-	   -> (if (subset? sig sig0)
-		  (PUSH candidates sig0))))
-       the-context.records)
+       (lambda (sig0)
+         (if (subset? sig sig0)
+             (PUSH candidates sig0)))
+       (cmap/keys the-context.records))
       (if (= 1 (length candidates))
 	  ;; unambiguous - there's only one possible match.
 	  (maybe:yes (nth candidates 0))
@@ -427,23 +425,21 @@ void prof_dump (void)
 
 (define (build-ambig-table)
   (let ((table (tree/empty)))
-    (for-list pair the-context.records
-      (match pair with
-        (:pair sig index)
-        -> (let ((ambs '()))
-             (for-range i (length sig)
-               (let ((label-code (lookup-label-code (nth sig i))))
-                 (match (tree/member the-context.ambig-rec int-cmp label-code) with
-                   (maybe:yes _)
-                   -> (PUSH ambs (:tuple i label-code))
-                   (maybe:no)
-                   -> #u)))
-             (when (> (length ambs) 0)
-               (for-list item ambs
-                 (match item with
-                   (:tuple i label-code)
-                   -> (tree/insert! table magic-cmp (:tuple index label-code) i))))
-             )))
+    (for-map sig index the-context.records.map
+      (let ((ambs '()))
+        (for-range i (length sig)
+          (let ((label-code (lookup-label-code (nth sig i))))
+            (match (tree/member the-context.ambig-rec int-cmp label-code) with
+              (maybe:yes _)
+              -> (PUSH ambs (:tuple i label-code))
+              (maybe:no)
+              -> #u)))
+        (when (> (length ambs) 0)
+          (for-list item ambs
+            (match item with
+              (:tuple i label-code)
+              -> (tree/insert! table magic-cmp (:tuple index label-code) i))))
+        ))
     table))
 
 (define (emit-datatype-table o)

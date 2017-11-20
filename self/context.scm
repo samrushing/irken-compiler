@@ -38,8 +38,8 @@
     cincludes           = '()
     lincludes           = '()
     cverbatim           = '()
-    records             = '()
-    labels              = '()
+    records             = (cmap/make magic-cmp)
+    labels              = (cmap/make magic-cmp)
     literals            = (cmap/make magic-cmp)
     literal-ids         = (tree/empty)
     symbols             = (tree/empty)
@@ -116,20 +116,14 @@
   (add-var 'top))
 
 (define (lookup-label-code label)
-  (let loop ((pairs the-context.labels))
-    (match pairs with
-      () -> (error1 "lookup-label-code" label)
-      ((:pair key val) . rest)
-      -> (if (eq? key label)
-	     val
-	     (loop rest)))))
+  (cmap->index the-context.labels label))
 
 (define (print-vars)
   (let ((flagpad (+ 2 VFLAG-NFLAGS)))
     (print-string "vars = {\n")
     (print-string
      (format "  " (cpad  6 "refs") (cpad  6 "sets") (cpad 6 "calls")
-	     (cpad 6 "mult") (lpad flagpad "flags") "  " (rpad 30 "name") "\n"))
+	     (cpad 6 "mult") (lpad flagpad "flags") "  name\n"))
     (tree/inorder
      (lambda (k v)
        (print-string
@@ -140,7 +134,7 @@
 		(lpad 6 (int v.mult))
 		(lpad flagpad (flags-repr v.flags))
 		"  "
-		(rpad 30 (sym k))
+		(sym k)
 		"\n")))
      the-context.vars)
     (print-string "}\n")))

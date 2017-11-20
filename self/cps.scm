@@ -692,33 +692,11 @@
       (error "c-record-extension: NYI"))
 
     (define (record-label-tag label)
-      (let loop ((l the-context.labels))
-	(match l with
-	  ((:pair key val) . tl)
-	  -> (if (eq? key label)
-		 #u
-		 (loop tl))
-	  () -> (let ((index (length the-context.labels)))
-		  (PUSH the-context.labels (:pair label index)))
-	  )))
-
-    (define (sig=? sig0 sig1)
-      (and (= (length sig0) (length sig1))
-	   (every2? eq? sig0 sig1)))
+      (cmap/add the-context.labels label))
 
     (define (get-record-tag sig)
-      (let loop ((l the-context.records))
-	(match l with
-	  ((:pair key val) . tl)
-	  -> (if (sig=? key sig)
-		 val
-		 (loop tl))
-	  ;; create a new entry
-	  () -> (let ((index (length the-context.records)))
-		  (for-each record-label-tag sig)
-		  (PUSH the-context.records (:pair sig index))
-		  index)
-	  )))
+      (for-each record-label-tag sig)
+      (cmap/add the-context.records sig))
 
     (define (gen-return reg)
       (insn:return reg))
