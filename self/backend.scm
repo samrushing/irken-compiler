@@ -77,6 +77,13 @@
     (lambda ()
       (format "L" (int (counter.inc))))))
 
+(define (encode-user-immediate dtname altname)
+  (match (alist/lookup the-context.datatypes dtname) with
+    (maybe:no) -> (raise (:NoSuchDatatype "NoSuchDatatype" dtname))
+    (maybe:yes dt)
+    -> (let ((alt (dt.get altname)))
+         (+ TC_USERIMM (<< alt.index 8)))))
+
 (define encode-immediate
   (literal:int n)              -> (logior 1 (<< n 1))
   (literal:char ch)            -> (logior 2 (<< (char->ascii ch) 8))
@@ -84,9 +91,8 @@
   (literal:bool #t)            -> #x106
   (literal:bool #f)            -> #x006
   (literal:vector ())          -> #x12
-  ;; it's a bug that this is here.  this is *only* needed for
-  ;;   a top-level nil literal.
   (literal:cons 'list 'nil ()) -> TC_NIL
+  (literal:cons dt alt ())     -> (encode-user-immediate dt alt)
   x -> (error1 "expected immediate literal " x))
 
 (define immediate-true  (encode-immediate (literal:bool #t)))
@@ -238,6 +244,17 @@ void prof_dump (void)
 	     (PUSH output (format "(" (int nargs) "<<8)|TC_VECTOR"))
 	     (for-each (lambda (x) (PUSH output x)) args0)
 	     (format "UPTR(" (int litnum) "," (int addr) ")"))
+        (literal:record tag fields)
+        -> (let ((args0 (map (lambda (field)
+                               (match field with
+                                 (litfield:t name val)
+                                 -> (walk val litnum)))
+                             fields))
+                 (nargs (length args0))
+                 (addr (+ 1 (length output))))
+             (PUSH output (format "(" (int nargs) "<<8)|UOTAG(" (int tag) ")"))
+             (for-each (lambda (x) (PUSH output x)) args0)
+             (format "UPTR(" (int litnum) "," (int addr) ")"))
 	(literal:symbol sym)
         -> (let ((index (tree/get the-context.symbols symbol-index-cmp sym)))
 	     (format "UPTR(" (int index) ",1)"))

@@ -256,30 +256,39 @@
 
   (define (type-of-literal lit exp tenv)
     (match lit with
-      (literal:string _)    -> string-type
-      (literal:int _)	    -> int-type
-      (literal:char _)	    -> char-type
-      (literal:bool _)      -> bool-type
-      (literal:undef)	    -> undefined-type
-      (literal:symbol _)    -> symbol-type
-      (literal:sexp _)      -> sexp-type
-      (literal:cons dt v l) -> (let ((dto (alist/get the-context.datatypes dt "no such datatype")))
-				 (match (dto.get-alt-scheme v) with
-				   (:scheme gens type)
-				   -> (match (instantiate-type-scheme gens type) with
-					(type:pred 'arrow (result-type . arg-types) _)
-					-> (begin
-					     (for-range
-						 i (length arg-types)
-						 (let ((tx (type-of-literal (nth l i) exp tenv)))
-						   (unify exp tx (nth arg-types i))))
-					     result-type)
-					x -> (error1 "strange constructor scheme" x))))
-      (literal:vector l)    -> (let ((tv (new-tvar)))
-                                 (for-list x l
-                                   (unify exp tv (type-of-literal x exp tenv)))
-				 (pred 'vector (LIST tv))
-				 )
+      (literal:string _) -> string-type
+      (literal:int _)	 -> int-type
+      (literal:char _)	 -> char-type
+      (literal:bool _)   -> bool-type
+      (literal:undef)	 -> undefined-type
+      (literal:symbol _) -> symbol-type
+      (literal:sexp _)   -> sexp-type
+      (literal:cons dt v l)
+      -> (let ((dto (alist/get the-context.datatypes dt "no such datatype")))
+           (match (dto.get-alt-scheme v) with
+             (:scheme gens type)
+             -> (match (instantiate-type-scheme gens type) with
+                  (type:pred 'arrow (result-type . arg-types) _)
+                  -> (begin
+                       (for-range
+                           i (length arg-types)
+                         (let ((tx (type-of-literal (nth l i) exp tenv)))
+                           (unify exp tx (nth arg-types i))))
+                       result-type)
+                  x -> (error1 "strange constructor scheme" x))))
+      (literal:vector l)
+      -> (let ((tv (new-tvar)))
+           (for-list x l
+             (unify exp tv (type-of-literal x exp tenv)))
+           (pred 'vector (LIST tv)))
+      (literal:record tag fl)
+      -> (let loop ((t (rdefault (rabs)))
+                    (fl fl))
+           (match fl with
+             () -> (rproduct t)
+             ((litfield:t name val) . rest)
+             -> (loop (rlabel (make-label name) (rpre (type-of-literal val exp tenv)) t) rest)
+             ))
       ))
 
   ;; HACK: remove a raw predicate if present

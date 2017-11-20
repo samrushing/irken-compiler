@@ -786,7 +786,7 @@ vm_go (void)
   // http://eli.thegreenplace.net/2012/07/12/computed-goto-for-efficient-dispatch-tables
 
   static void* dispatch_table[] = {
-    &&l_lit, &&l_ret, &&l_add, &&l_sub, &&l_mul, &&l_div, &&l_srem,
+    &&l_lit, &&l_litc, &&l_ret, &&l_add, &&l_sub, &&l_mul, &&l_div, &&l_srem,
     &&l_shl, &&l_ashr, &&l_or, &&l_xor, &&l_and, &&l_eq, &&l_lt,
     &&l_gt, &&l_le, &&l_ge, &&l_cmp, &&l_tst, &&l_jmp, &&l_fun,
     &&l_tail, &&l_tail0, &&l_env, &&l_stor, &&l_ref, &&l_mov,
@@ -827,6 +827,10 @@ vm_go (void)
 
  l_lit:
   REG1 = bytecode_literals[BC2+1];
+  pc += 3;
+  DISPATCH();
+ l_litc:
+  REG1 = irk_copy_tuple (bytecode_literals[BC2+1]);
   pc += 3;
   DISPATCH();
  l_ret:

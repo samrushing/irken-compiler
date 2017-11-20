@@ -195,8 +195,16 @@
 		       (literal:string s)      -> (add-literal hd)
 		       (literal:cons _ _ args) -> (scan-literals args)
 		       (literal:vector args)   -> (scan-literals args)
+                       (literal:record _ args) -> (scan-fields args)
 		       _ -> 0)
 		     (scan-literals tl)))
+
+    (define (scan-fields fields)
+      (scan-literals
+       (map (lambda (f)
+              (match f with
+                (litfield:t _ val) -> val))
+            fields)))
 
     (define (c-literal lit id k)
       (match lit with
@@ -208,6 +216,9 @@
 	(literal:vector args)	-> (begin
 				     (scan-literals args)
 				     (insn:litcon (get-literal-index lit id) 'vector k))
+        (literal:record tag vals) -> (begin
+                                       (scan-fields vals)
+                                       (insn:litcon (get-literal-index lit id) 'record k))
 	;; problem: any literal without args should be encoded as an
 	;;   immediate, and not show up in 'constructed'.  I think it
 	;;   can be done like this:
@@ -389,11 +400,12 @@
       (let ((args0 (map-range
 		       i (length args)
 		       (:pair (nth args i) i)))
-	    (args1 (sort (lambda (a b)
-			   (match a b with
-			     (:pair arg_a _) (:pair arg_b _)
-			     -> (> (noderec->size arg_a) (noderec->size arg_b))))
-			 args0))
+	    ;; (args1 (sort (lambda (a b)
+	    ;;     	   (match a b with
+	    ;;     	     (:pair arg_a _) (:pair arg_b _)
+	    ;;     	     -> (> (noderec->size arg_a) (noderec->size arg_b))))
+	    ;;     	 args0))
+            (args1 args0) ;; do not rearrange
 	    (perm (map pair->second args1))
 	    (args2 (map pair->first args1)))
 	(collect-primargs* args2 '() perm lenv k ck)))
@@ -664,11 +676,11 @@
 	       _	  -> (error1 "malformed %rextend" exp))
 	  (node:primapp '%rmake _)
 	  -> (let ((fields0 (sort ;; done - put the names in canonical order
-			    (lambda (a b)
-			      (match a b with
-				(:pair f0 _) (:pair f1 _)
-				-> (symbol<? f0 f1)))
-			    fields))
+                             (lambda (a b)
+                               (match a b with
+                                 (:pair f0 _) (:pair f1 _)
+                                 -> (symbol<? f0 f1)))
+                             fields))
 		   (sig (map pair->first fields0))
 		   (args (map pair->second fields0))
 		   (tag (get-record-tag sig))
@@ -707,6 +719,7 @@
       (insn:tail name closure-reg args-reg))
 
     (compile #t exp (cpsenv:nil) (cont:nil))
+
     ))
 
 ;; this never completes because of an issue with type<? - a certain complex type

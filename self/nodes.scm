@@ -13,7 +13,12 @@
   (:symbol symbol)
   (:cons symbol symbol (list literal))
   (:vector (list literal))
+  (:record int (list litfield))
   (:sexp sexp)
+  )
+
+(datatype litfield
+  (:t symbol literal)
   )
 
 ;; node type holds metadata related to the node,
@@ -210,8 +215,13 @@
   (literal:cons dt v ()) -> (format "(" (sym dt) ":" (sym v) ")")
   (literal:cons dt v l)	 -> (format "(" (sym dt) ":" (sym v) " " (join literal->string " " l) ")")
   (literal:vector l)     -> (format "#(" (join literal->string " " l) ")")
+  (literal:record tag fl)-> (format "{" (join litfield->string " " fl) "}")
   (literal:sexp s)       -> (repr s)
   )
+
+(define litfield->string
+  (litfield:t name lit)
+  -> (format (sym name) "=" (literal->string lit)))
 
 (define (flags-repr n)
   (let loop ((bits '())
@@ -313,13 +323,54 @@
         (maybe:no) -> (result i)
         ))))
 
+
+;; --- can-haz-literal? ---
+;; this scans an s-expression to determine if it can be represented
+;;   as a literal or not.
+
+(define can-haz-literal-fields?
+  () -> #t
+  ((field:t sym val) . rest)
+  -> (and (can-haz-literal? val)
+          (can-haz-literal-fields? rest)))
+
+(define can-haz-literal?
+  (sexp:string s)  -> #t
+  (sexp:int n)     -> #t
+  (sexp:char c)    -> #t
+  (sexp:bool b)    -> #t
+  (sexp:undef)     -> #t
+  (sexp:symbol s)  -> #f ;; i.e., varref
+  (sexp:list ((sexp:symbol 'quote) . _)) -> #t
+  (sexp:list ((sexp:cons _ _) . args))   -> (every? can-haz-literal? args)
+  (sexp:list l)                          -> (every? can-haz-literal? l)
+  (sexp:vector l)                        -> (every? can-haz-literal? l)
+  ;; note: we cannot have embedded record literals (because mutability)
+  ;;(sexp:record fields)                   -> (can-haz-literal-fields? fields)
+  _                                      -> #f
+  )
+
 (define (sexp->node sexp)
 
   (define build-list-literal
     ((sexp:cons dt alt) . args) -> (literal:cons dt alt (map build-literal args))
+    ((sexp:symbol 'quote) arg)  -> (build-literal arg)
     (hd . tl)                   -> (literal:cons 'list 'cons (LIST (build-literal hd) (build-list-literal tl)))
     ()                          -> (literal:cons 'list 'nil '())
     )
+
+  (define build-field
+    (field:t name val)
+    -> (litfield:t name (build-literal val))
+    )
+
+  (define (build-record-literal fields)
+    (let ((fields0 (sort field<? fields))
+          (sig (map (lambda (x) (match x with (field:t name _) -> name)) fields0))
+          (tag (cmap/add the-context.records sig)))
+      (for-each (lambda (label) (cmap/add the-context.labels label)) sig)
+      (cmap/add the-context.records sig)
+      (literal:record tag (map build-field fields0))))
 
   (define build-literal
     (sexp:string s)  -> (literal:string s)
@@ -330,6 +381,7 @@
     (sexp:symbol s)  -> (literal:symbol s)
     (sexp:list l)    -> (build-list-literal l)
     (sexp:vector l)  -> (literal:vector (map build-literal l))
+    (sexp:record fs) -> (build-record-literal fs)
     ;; XXX the rest
     exp -> (error1 "unhandled literal type" exp)
     )
@@ -404,24 +456,45 @@
         )
     x -> (error1 "malformed cexp template" x))
 
+  (define (build-record fields)
+    ;; (printf "build-record.  can-haz? " (bool (can-haz-literal-fields? fields)) "\n")
+    ;; (printf "      record = {" (join repr-field " " fields) "}\n")
+    (if (can-haz-literal-fields? fields)
+        (node/literal (build-record-literal fields))
+        (foldr (lambda (field rest)
+                 (match field with
+                   (field:t name value)
+                   -> (node/primapp '%rextend
+                                    (sexp:symbol name)
+                                    (LIST rest (walk value)))))
+               (node/primapp '%rmake (sexp:bool #f) '())
+               fields)))
+
+  (define (build-vector vals)
+    (if (every? can-haz-literal? vals)
+        (node/literal (build-literal (sexp:vector vals)))
+        ;; last-second magic here
+        (walk (sexp (sym 'list->vector) (make-list vals)))))
+
+  ;; given a list of sexp, return runtime code to build that as a list.
+  ;; (i.e., this is the compiler's version of the LIST macro).
+  (define (make-list* val acc)
+    (sexp (sexp:cons 'list 'cons) val acc))
+
+  (define (make-list vals)
+    (foldr make-list* (sexp (sexp:cons 'list 'nil)) vals))
+
   ;; sexp->node actual
   (define walk
-    (sexp:symbol s)  -> (node/varref s)
-    (sexp:string s)  -> (node/literal (literal:string s))
-    (sexp:int n)     -> (node/literal (literal:int n))
-    (sexp:char c)    -> (node/literal (literal:char c))
-    (sexp:bool b)    -> (node/literal (literal:bool b))
-    (sexp:undef)     -> (node/literal (literal:undef))
-    (sexp:record fl) -> (foldr (lambda (field rest)
-                                 (match field with
-                                   (field:t name value)
-                                   -> (node/primapp '%rextend
-                                                    (sexp:symbol name)
-                                                    (LIST rest (walk value)))))
-                               (node/primapp '%rmake (sexp:bool #f) '())
-                               fl)
+    (sexp:symbol s)     -> (node/varref s)
+    (sexp:string s)     -> (node/literal (literal:string s))
+    (sexp:int n)        -> (node/literal (literal:int n))
+    (sexp:char c)       -> (node/literal (literal:char c))
+    (sexp:bool b)       -> (node/literal (literal:bool b))
+    (sexp:undef)        -> (node/literal (literal:undef))
+    (sexp:record fl)    -> (build-record fl)
+    (sexp:vector l)     -> (build-vector l)
     (sexp:attr exp sym) -> (node/primapp '%raccess (sexp:symbol sym) (LIST (walk exp)))
-    (sexp:vector l)     -> (node/literal (build-literal (sexp:vector l))) ;; some day work out issues with QUOTE/LITERAL etc.
     (sexp:cons dt alt)  -> (node/varref (string->symbol (format (sym dt) ":" (sym alt))))
     (sexp:list l)
     -> (match l with
@@ -470,23 +543,28 @@
          -> (node/subst from to (walk body))
          ((sexp:symbol 'let-subst) . _)
          -> (error1 "syntax error (let-subst)" (format (join repr " " l)))
+         ((sexp:cons 'nil alt) . rands)
+         -> (node/primapp '%vcon (sexp (sexp:symbol alt) (sexp:int (length rands))) (map walk rands))
+         ((sexp:cons dt alt) . rands)
+         -> (if (can-haz-literal? (sexp:list l))
+                (node/literal (build-literal (sexp:list l)))
+                ;; this will inline all constructors.  not a good idea with the bytecode
+                ;;  backend because it leads to runaway register allocation.
+                (match the-context.options.backend with
+                  (backend:bytecode) -> (node/call (walk (sexp:cons dt alt)) (map walk rands))
+                  _                  -> (node/primapp '%dtcon (sexp:cons dt alt) (map walk rands)))
+                )
+         ;;-> (node/call (walk (sexp:cons dt alt)) (map walk rands))
+         ((sexp:symbol name) . rands)
+         -> (if (eq? (string-ref (symbol->string name) 0) #\%)
+                (match rands with
+                  (params . rands)
+                  -> (node/primapp name params (map walk rands))
+                  _ -> (error1 "null primapp missing params?" l))
+                (node/call (node/varref name) (map walk rands)))
+         ;; all other call types
          (rator . rands)
-         -> (match rator with
-              (sexp:symbol name)
-              -> (if (eq? (string-ref (symbol->string name) 0) #\%)
-                     (match rands with
-                       (params . rands)
-                       -> (node/primapp name params (map walk rands))
-                       _ -> (error1 "null primapp missing params?" l))
-                     (node/call (walk rator) (map walk rands)))
-              (sexp:cons dt alt)
-              -> (if (eq? dt 'nil)
-                     (node/primapp '%vcon (sexp (sexp:symbol alt) (sexp:int (length rands))) (map walk rands))
-                     ;; automatically inline all constructors:
-                     ;;(node/primapp '%dtcon rator (map walk rands))
-                     ;; let the inliner do it, correctly.
-                     (node/call (walk rator) (map walk rands)))
-              _ -> (node/call (walk rator) (map walk rands)))
+         -> (node/call (walk rator) (map walk rands))
          _ -> (error1 "syntax error 1: " l)
          )
     x -> (error1 "syntax error 2: " x)

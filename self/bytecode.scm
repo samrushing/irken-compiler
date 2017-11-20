@@ -1,16 +1,16 @@
 ;; -*- Mode: Irken -*-
 
-(define (OI name nargs varargs target?)
-  {code=0 name=name nargs=nargs varargs=varargs target=target?})
+(defmacro OI
+  (OI name nargs varargs target?)
+  -> {code=0 name=name nargs=nargs varargs=varargs target=target?})
 
 ;; XXX some bunches of these opcodes could be collapsed.
 ;; e.g. vlen/vref/vset == rlen/rref/rset (and maybe slen/sref/sset with a quick TC_STRING check)
 
 (define opcode-info
-  (list->vector
-   (LIST
-    ;;  name   nargs varargs target? args
-    (OI 'lit     2      #f     #t)   ;; target index
+  ;;    name   nargs varargs target? args
+  #((OI 'lit     2      #f     #t)   ;; target index
+    (OI 'litc    2      #f     #t)   ;; target index
     (OI 'ret     1      #f     #f)   ;; val
     (OI 'add     3      #f     #t)   ;; target a b
     (OI 'sub     3      #f     #t)   ;; target a b
@@ -100,7 +100,7 @@
     (OI 'csize   2      #f     #t)   ;; target sindex
     (OI 'cref2int 2     #f     #t)   ;; target src
     ;;  name   nargs varargs target? args
-    )))
+    ))
 
 (for-range i (vector-length opcode-info)
   (let ((info opcode-info[i]))
@@ -245,7 +245,8 @@
     (define (emit-literal lit target)
       (if (= target -1)
           '() ;; pointless dead literal.
-          (LINSN 'lit target
+          (LINSN 'lit
+                 target
                  (cmap->index the-context.literals lit))))
 
     (define (emit-return reg)
@@ -691,7 +692,12 @@
            ))))
 
     (define (emit-litcon index kind target)
-      (LINSN 'lit target index))
+      (LINSN
+       (match kind with
+         'vector -> 'litc
+         'record -> 'litc
+         _       -> 'lit)
+       target index))
 
     (define (emit-alloc tag size target)
       ;; XXX get rid of `tag:bare`
@@ -761,6 +767,15 @@
                   (o.copy (format "V" (encode-int (length args))))
                   (for-list arg args
                     (emit-one-literal arg)))
+             (literal:record tag fields)
+             -> (begin
+                  (o.copy (format "C"
+                                  (encode-int (+ TC_USEROBJ (<< tag 2)))
+                                  (encode-int (length fields))))
+                  (for-list field fields
+                    (match field with
+                      (litfield:t _ val)
+                      -> (emit-one-literal val))))
              (literal:symbol s)
              -> (let ((s0 (symbol->string s)))
                   (o.copy (format "Y" (encode-int (string-length s0))))

@@ -179,10 +179,12 @@
 
     (define (emit-litcon index kind target)
       (if (>= target 0)
-	  (cond ((eq? kind 'string)
-		 (o.write (format "O r" (int target) " = (object*) &constructed_" (int index) ";")))
-		(else
-		 (o.write (format "O r" (int target) " = (object*) constructed_" (int index) "[0];"))))))
+          (match kind with
+            'string -> (o.write (format "O r" (int target) " = (O) &constructed_" (int index) ";"))
+            'record -> (o.write (format "O r" (int target) " = irk_copy_tuple ((O) constructed_" (int index) "[0]);"))
+            'vector -> (o.write (format "O r" (int target) " = irk_copy_tuple ((O) constructed_" (int index) "[0]);"))
+            _       -> (o.write (format "O r" (int target) " = (object*) constructed_" (int index) "[0];"))
+            )))
 
     (define (emit-test reg jn k0 k1 k)
       (push-jump-continuation k jn)

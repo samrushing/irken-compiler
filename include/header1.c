@@ -968,6 +968,26 @@ irk_copy_string (char * s)
 }
 
 object *
+irk_copy_tuple (object * ob)
+{
+  if (is_immediate (ob)) {
+    return ob;
+  } else {
+    header h = (header) (ob[0]);
+    int tag  = h & 0xff;
+    pxll_int len = GET_TUPLE_LENGTH (ob[0]);
+    //DO(ob);
+    object * r = allocate (tag, len);
+    for (int i=0; i < len; i++) {
+      // r[i+1] = copy(&ob[i+1]);
+      r[i+1] = ob[i+1];
+    }
+    return r;
+  }
+}
+
+
+object *
 irk_make_argv()
 {
   object * r = allocate (TC_VECTOR, irk_argc);

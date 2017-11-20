@@ -973,6 +973,17 @@
              (push-val (uohead TC_VECTOR nargs))
              (for-each push-val args0)
              (<< oindex0 2))
+        (literal:record tag fields)
+        -> (let ((args0 (map (lambda (field)
+                               (match field with
+                                 (litfield:t name val)
+                                 -> (walk val litnum)))
+                             fields))
+                 (nargs (length args0))
+                 (oindex0 oindex))
+             (push-val (uohead (+ TC_USEROBJ (<< tag 2)) nargs))
+             (for-each push-val args0)
+             (<< oindex0 2))
         ;; negative number indicates external pointer.
         (literal:string s)
         -> (- (+ 1 (cmap->index lits exp)))
