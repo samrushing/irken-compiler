@@ -425,6 +425,10 @@
   (field:t sa va) (field:t sb vb)
   -> (and (eq? sa sb) (sexp=? va vb)))
 
+(define field<?
+  (field:t sa va) (field:t sb vb)
+  -> (symbol<? sa sb))
+
 (define (sexp=? a b)
   (eq? (cmp:=) (magic-cmp a b)))
 
