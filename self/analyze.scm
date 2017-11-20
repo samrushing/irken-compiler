@@ -666,12 +666,10 @@
     (set-node-subs! exp (map search (noderec->subs exp)))
     exp
     )
-  
   (search root)
   )
 
-(define removed-count 0)
-
+;; remove unused functions/variables from fix nodes.
 (define (do-trim top)
   (let ((g the-context.dep-graph)
 	(seen (symbol-set-maker '())))
