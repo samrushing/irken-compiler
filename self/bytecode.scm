@@ -940,7 +940,7 @@
            (insn:primop name parm _ _ _)
            -> (if (member-eq? name sizeoff-prims)
                   (let ((sindex (get-sizeoff parm)))
-                    (printf "find-sizeoff-prims parm = " (repr parm) " sindex = " (int sindex) "\n")
+                    ;;(printf "find-sizeoff-prims parm = " (repr parm) " sindex = " (int sindex) "\n")
                     (if (not (< sindex 55))
                         (cmap/add sizeoff-map parm)
                         0))
@@ -950,10 +950,10 @@
 
     (define (build-sizeoff-literal)
       (let ((r '()))
-        (printf "build sizeoff vector...")
+        ;;(printf "build sizeoff vector...")
         (for-range i sizeoff-map.count
           (PUSH r (unsexp (cmap->item sizeoff-map i))))
-        (printf "done...\n")
+        ;;(printf "done...\n")
         (reverse r)))
 
     (define (walk-literal lit p)
@@ -1002,12 +1002,12 @@
     (let ((s (peephole '() (emit cps)))
           (index (get-sizeoff-sentinel-index))
           (sizeoff-literal (build-sizeoff-literal)))
-      (printf "sizeoff sentinel index = " (int index) "\n")
+      ;;(printf "sizeoff sentinel index = " (int index) "\n")
       ;; ensure that all symbols used in sizeoff are singletons
       (for-list lit sizeoff-literal (find-symbols lit))
-      (printf "emit literals...\n")
+      (verbose (printf "emit literals...\n"))
       (emit-literals)
-      (printf "done. (" (int the-context.literals.count) " literals).\n")
+      (verbose (printf "done. (" (int the-context.literals.count) " literals).\n"))
       (emit-one-literal (build-field-lookup-table))
       (emit-one-literal (literal:int index))
       (emit-one-literal (literal:vector sizeoff-literal))
