@@ -8,7 +8,7 @@ bootstrap: vm
 
 vm: vm/irkvm
 
-vm/irkvm: vm/irkvm.c
+vm/irkvm: vm/irkvm.c include/header1.c include/pxll.h
 	python util/build_vm.py
 
 test:
