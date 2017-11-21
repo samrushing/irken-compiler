@@ -610,12 +610,19 @@
 	(oformat "%r" (int target) " = call fastcc i8** @insn_close (void()* @" cname ")")
 	))
 
+    (define (emit-copy-tuple index target)
+      (let ((id0 (ID)))
+        (oformat id0 " = call fastcc i8** @insn_getlit (i64 " (int (+ 1 index)) ")")
+        (oformat "%r" (int target) " = call ccc i8** @irk_copy_tuple (i8** " id0 ")")))
+
     (define (emit-litcon index kind target)
       (when (>= target 0)
 	    (litcons::add index)
-            ;;(oformat "%r" (int target) " = call fastcc i8** @insn_fetch (i8** @lits.all.p, i64 " (int (+ 1 index)) ")")
-            (oformat "%r" (int target) " = call fastcc i8** @insn_getlit (i64 " (int (+ 1 index)) ")")
-            ))
+            (match kind with
+              'record -> (emit-copy-tuple index target)
+              'vector -> (emit-copy-tuple index target)
+              _ -> (oformat "%r" (int target) " = call fastcc i8** @insn_getlit (i64 " (int (+ 1 index)) ")")
+              )))
 
     (define split-last
       ()        acc -> (impossible)
