@@ -66,6 +66,19 @@
         default
         val)))
 
+(define (parse-dump-spec spec)
+  (map string->symbol (string-split spec #\,)))
+
+(defmacro if-dump
+  (if-dump phase body ...)
+  -> (when (member-eq? phase the-context.options.dump)
+       (printf "dump phase: " (sym phase) " {\n")
+       body ...
+       (newline)
+       (printf "}\n")
+       #u
+       ))
+
 (include "self/flags.scm")
 
 (define (invoke-cc base paths options extra)
@@ -104,6 +117,7 @@
           "-h"    -> (usage)
           "-help" -> (usage)
           "-types" -> (set! options.dumptypes #t)
+          "-dump" -> (begin (set! i (+ i 1)) (set! options.dump (parse-dump-spec argv[i])))
 	  x       -> (if (char=? #\- (string-ref x 0) )
                          (raise (:UnknownOption "Unknown option" x))
                          (set! filename-index i))
@@ -126,6 +140,7 @@ Usage: compile <irken-src-file> [options]
  -m     : debug macro expansion
  -dt    : debug typing
  -types : dump all type signatures (do not compile)
+ -dump  : comma-separated list from (sexp,expand,ast,typed,cps)
  -ni    : no inlining
  -p     : generate profile-printing code (C backend only)
  -n     : disable letreg optimization
@@ -165,12 +180,13 @@ default flags:
         (forms0 (read-file path))
         (forms1 (prepend-standard-macros forms0))
         (exp0 (sexp:list forms1))
-        (_ (verbose (pp exp0 80) (newline)))
+        (_ (if-dump 'sexp (pp exp0 80)))
         (_ (notquiet (printf "transform...\n")))
 	(exp1 (transform exp0))
-	(_ (verbose (pp exp1 80) (newline)))
+        (_ (if-dump 'expand (pp exp1 80)))
 	(node0 (sexp->node exp1))
 	(node1 (apply-substs node0))
+        (_ (if-dump 'ast (pp-node node1)))
 	;; clear some memory usage
 	(_ (set! exp0 (sexp:int 0)))
 	(_ (set! exp1 (sexp:int 0)))
@@ -186,7 +202,7 @@ default flags:
 	(_ (find-tail noden))
 	(_ (find-leaves noden))
 	(_ (find-free-refs noden))
-	(_ (verbose (print-string "after opt:\n") (pp-node noden)))
+        (_ (if-dump 'opt (pp-node noden)))
 	;; rebuild the graph yet again, so strongly will work.
         (_ (notquiet (printf "depgraph...\n")))
         (_ (build-dependency-graph noden))
@@ -200,7 +216,7 @@ default flags:
         (_ (type-program noden))
         ;;(type-map (collect-all-types noden))
         ;;(_ (print-type-tree noden))
-        (_ (verbose (print-string "\n-- after typing --\n") (pp-node noden) (newline)))
+        (_ (if-dump 'typed (pp-node noden)))
         (_ (remove-onearmed-nvcase noden)) ;; safe after typing
         (_ (notquiet (printf "cps...\n")))
         )
@@ -211,10 +227,8 @@ default flags:
 
 (define (main-compile base node)
   (let ((cps (compile node)))
+    (if-dump 'cps (print-insn cps 0) (newline))
     (verbose
-     (printf "\n-- RTL --\n")
-     (print-insn cps 0)
-     (newline)
      (printf "\n-- datatypes --\n")
      (alist/iterate
       (lambda (name dt)

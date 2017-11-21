@@ -18,6 +18,7 @@
    noletreg		= #f
    debugtyping          = #f
    dumptypes            = #f
+   dump                 = '()
    quiet                = #f
    no-range-check       = #f
    opt-rounds           = 3
