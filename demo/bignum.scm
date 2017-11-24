@@ -359,24 +359,24 @@
 	      (a1 (slice da 0 (- la n))))
 	  (if (digits-<? (reverse db) (reverse a1))
 	      ;; simple case
-	      (let-values (((q1 r1) (burnzieg a1 db))
-			   ((q0 r0) (burnzieg
-				     (reverse (digits-add (shift r1 n) (reverse a0)))
-				     db)))
+	      (let (((q1 r1) (burnzieg a1 db))
+                    ((q0 r0) (burnzieg
+                              (reverse (digits-add (shift r1 n) (reverse a0)))
+                              db)))
 		(:tuple (digits-add (shift q1 n) q0) r0))
 	      ;; remainder check case
 	      (let ((b0 (slice db (- lb n) lb))
-		    (b1 (slice db 0 (- lb n))))
-		(let-values (((q1 r1) (burnzieg a1 b1)))
-		  (let ((a0pr1 (digits-add (shift r1 n) (reverse a0)))
-			(b0xq1 (digits-mul (reverse b0) q1)))
-		    (if (not (digits-<? a0pr1 b0xq1))
-			(:tuple q1
-				(digits-sub a0pr1 b0xq1))
-			(:tuple (digits-sub q1 '(1))
-				(digits-sub (reverse db)
-					    (digits-sub b0xq1 a0pr1)))))
-		  )))))
+		    (b1 (slice db 0 (- lb n)))
+                    ((q1 r1) (burnzieg a1 b1))
+                    (a0pr1 (digits-add (shift r1 n) (reverse a0)))
+                    (b0xq1 (digits-mul (reverse b0) q1)))
+                (if (not (digits-<? a0pr1 b0xq1))
+                    (:tuple q1
+                            (digits-sub a0pr1 b0xq1))
+                    (:tuple (digits-sub q1 '(1))
+                            (digits-sub (reverse db)
+                                        (digits-sub b0xq1 a0pr1)))))
+              )))
     ))
 
 (define (digits->big x pos?)
@@ -620,9 +620,9 @@
 ;      (test1))
 
 ;; 65536 tests
-(exhaustive #x100)
+;(exhaustive #x100)
 ;(test0)
-;(test2)
+(test2)
 (test3)
 ;(test4)
 (printf "(big-fact 1000) => \n" (big->dec (big-fact 1000)) "\n")

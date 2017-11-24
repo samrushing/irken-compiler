@@ -17,6 +17,8 @@
   (or test1 test2 ...)	-> (if test1 #t (or test2 ...))
   )
 
+;; note: in Irken, all `let` are `let*`.
+
 (defmacro let
 
   (let () body ...)
@@ -34,31 +36,29 @@
   -> (letrec ((tag (function tag (name ...) #f body1 body2 ...)))
        (tag val ...))
 
-  ;; XXX this still does not allow free mixing of single and 
-  ;;  multiple bindings, because of the catch-all let->let-splat
-  ;;  below.  To do this correctly we need to cascade the two macros,
-  ;;  which might require some hackery to avoid chaining lets...
   ;; multiple-value-bind
+  ;; functions using this construct must return their multiple
+  ;;  values using the (:tuple ...) polyvariant.
+  (let (((name0 name1 ...) val)) body ...)
+  -> (match val with
+       (:tuple name0 name1 ...)
+       -> (begin body ...))
   (let (((name0 name1 ...) val) bind ...) body ...)
-  -> (let-values (((name0 name1 ...) val))
-       (let (bind ...)
-         body ...))
-  
+  -> (match val with
+       (:tuple name0 name1 ...)
+       -> (let (bind ...)
+            body ...))
+
   ;; normal <let> here, we just rename it to our core
   ;; binding construct, <let_splat>
-  (let ((name val) ...) body1 body2 ...)
-  -> (let-splat ((name val) ...) body1 body2 ...)
+  ;; note: these cascading let-splat forms will be combined
+  ;;  by the optimize phase when possible.
+  (let (bind0) body ...)
+  -> (let-splat (bind0) body ...)
+  (let (bind0 bind1 ...) body ...)
+  -> (let-splat (bind0)
+        (let (bind1 ...) body ...))
 
-  )
-
-;; functions using this construct must return their multiple
-;;  values using the (:tuple ...) polyvariant.
-
-(defmacro let-values
-  (let-values (((x y ...) val)) body ...)
-  -> (match val with (:tuple x y ...) -> (begin body ...))
-  (let-values (((x y ...) val) bind ...) body ...)
-  -> (match val with (:tuple x y ...) -> (let-values (bind ...) body ...))
   )
 
 ;; simplified <cond>

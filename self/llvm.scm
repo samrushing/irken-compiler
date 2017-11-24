@@ -637,13 +637,13 @@
       (match ealt with
 	(maybe:yes elsek) -> (:tuple tags subs elsek)
 	(maybe:no)
-	-> (let-values (((tags0 tagn) (split-last tags '()))
-			((subs0 subn) (split-last subs '())))
+	-> (let (((tags0 tagn) (split-last tags '()))
+                 ((subs0 subn) (split-last subs '())))
 	     (:tuple tags0 subs0 subn))
 	))
 
     (define (emit-nvcase test dtname tags jump-num subs ealt k)
-      (let-values (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
+      (let (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
 	(match (alist/lookup the-context.datatypes dtname) with
 	  (maybe:no) -> (error1 "emit-nvcase" dtname)
 	  (maybe:yes dt)
@@ -670,27 +670,27 @@
 
     ;; XXX very similar to nvcase, consider factoring
     (define (emit-pvcase test tags arities jump-num subs ealt k)
-      (let-values (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
-	(let ((id0 (ID))
-	      (ntags (length tags))
-	      (lelse (new-label))
-	      (labs (make-labels ntags)))
-	  (push-jump-continuation k jump-num)
-	  (oformat id0 " = call fastcc i64 @get_case (i8** %r" (int test) ")")
-	  (oformat "switch i64 " id0 ", label %" lelse " [")
-	  (for-range i ntags
-	     (let ((label (nth tags i))
-		   (tag0 (match (alist/lookup the-context.variant-labels label) with
-			   (maybe:yes v) -> v
-			   (maybe:no) -> (error1 "variant constructor never called" label)))
-		   (tag1 (if (= (nth arities i) 0) (UITAG tag0) (UOTAG tag0))))
-	       (oformat " i64 " (int tag1) ", label %" labs[i])))
-	  (oformat "]")
-	  (for-range i ntags
-	     (emit-label labs[i])
-	     (walk (nth subs i)))
-	  (emit-label lelse)
-	  (walk elsek))))
+      (let (((tags subs elsek) (nvcase-frob-else tags subs ealt))
+            (id0 (ID))
+            (ntags (length tags))
+            (lelse (new-label))
+            (labs (make-labels ntags)))
+        (push-jump-continuation k jump-num)
+        (oformat id0 " = call fastcc i64 @get_case (i8** %r" (int test) ")")
+        (oformat "switch i64 " id0 ", label %" lelse " [")
+        (for-range i ntags
+          (let ((label (nth tags i))
+                (tag0 (match (alist/lookup the-context.variant-labels label) with
+                        (maybe:yes v) -> v
+                        (maybe:no) -> (error1 "variant constructor never called" label)))
+                (tag1 (if (= (nth arities i) 0) (UITAG tag0) (UOTAG tag0))))
+            (oformat " i64 " (int tag1) ", label %" labs[i])))
+        (oformat "]")
+        (for-range i ntags
+          (emit-label labs[i])
+          (walk (nth subs i)))
+        (emit-label lelse)
+        (walk elsek)))
 
     (define (build-args args)
       (format (join (lambda (x) (format "i8** %r" (int x))) ", " args)))
@@ -1120,7 +1120,7 @@
          -> (set! table[i] {k0= tag k1=label v=v}))
        (set! i (+ i 1)))
      ambig)
-    (let-values (((G V) (create-minimal-perfect-hash table)))
+    (let (((G V) (create-minimal-perfect-hash table)))
       (oformat "@irk_ambig_size = global i32 " (int size))
       (o.copy (format "@G = global [" (int (+ 1 size)) " x i32] ["))
       (for-vector val G

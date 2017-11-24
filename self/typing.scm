@@ -691,19 +691,19 @@
     (sexp:attr (sexp:symbol sname) fname)
     -> (:tuple (lookup-field fname (lookup-struct-fields sname)) sname)
     (sexp:attr sub fname)
-    -> (let-values (((ref sname) (get-sref sub)))
+    -> (let (((ref sname) (get-sref sub)))
          (:tuple (cref-field fname ref) sname))
     x -> (error1 "get-sref: malformed struct/union reference" (repr x))
     )
 
   (define (get-sref-scheme refexp)
-    (let-values (((ref sname) (get-sref refexp)))
-      (let ((ftype (ctype->irken-type ref.ctype)))
-        (:scheme (LIST T0) (arrow (pred 'cref (LIST ftype))
-                                  (LIST (pred 'cref
-                                              (LIST (pred 'struct
-                                                          (LIST (pred sname '()))))))))
-        )))
+    (let (((ref sname) (get-sref refexp))
+          (ftype (ctype->irken-type ref.ctype)))
+      (:scheme (LIST T0) (arrow (pred 'cref (LIST ftype))
+                                (LIST (pred 'cref
+                                            (LIST (pred 'struct
+                                                        (LIST (pred sname '()))))))))
+      ))
 
   ;; XXX do we need to scan the resulting type for tvars to add to gens?
   (define lookup-ffi-scheme

@@ -100,7 +100,7 @@
          -> (set! table[i] {k0= tag k1=label v=v}))
        (set! i (+ i 1)))
      ambig)
-    (let-values (((G V) (create-minimal-perfect-hash table)))
+    (let (((G V) (create-minimal-perfect-hash table)))
       (oformat "uint32_t irk_ambig_size = " (int size) ";")
       (o.copy "int32_t G[] = {")
       (for-vector val G

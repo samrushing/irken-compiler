@@ -110,7 +110,7 @@
           V[(- 0 d 1)]
           V[(hash-item d key size)]))))
 
-(let-values (((G V) (create-minimal-perfect-hash input-table)))
+(let (((G V) (create-minimal-perfect-hash input-table)))
   (printn G)
   (printn V)
   (for-range i (vector-length input-table)

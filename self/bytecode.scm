@@ -630,14 +630,14 @@
       (match ealt with
 	(maybe:yes elsek) -> (:tuple tags subs elsek)
 	(maybe:no)
-	-> (let-values (((tags0 tagn) (split-last tags '()))
-			((subs0 subn) (split-last subs '())))
+	-> (let (((tags0 tagn) (split-last tags '()))
+                 ((subs0 subn) (split-last subs '())))
 	     (:tuple tags0 subs0 subn))
 	))
 
     ;; NVCASE ob elabel nalts tag0 label0 tag1 label1 ...
     (define (emit-nvcase test dtname tags jump-num subs ealt k)
-      (let-values (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
+      (let (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
 	(match (alist/lookup the-context.datatypes dtname) with
 	  (maybe:no) -> (error1 "emit-nvcase" dtname)
 	  (maybe:yes dt)
@@ -665,31 +665,31 @@
                ))))
 
     (define (emit-pvcase test tags arities jump-num subs ealt k)
-      (let-values (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
-	(let ((ntags (length tags))
-	      (lelse (new-label))
-	      (labs (make-labels ntags))
-              (result (cons (stream:label lelse) (emit elsek)))
-              (pairs '()))
-          (if (= ntags 0)
-              (printf "zero tags in pvcase\n")
-              #u)
-	  (for-range i ntags
-	     (let ((label (nth tags i))
-		   (tag0 (match (alist/lookup the-context.variant-labels label) with
-			   (maybe:yes v) -> v
-			   (maybe:no) -> (error1 "variant constructor never called" label)))
-		   (tag1 (if (= (nth arities i) 0) (UITAG tag0) (UOTAG tag0))))
-               (set! pairs (append pairs (LIST tag1 labs[i])))
-               (set! result (append
-                             result
-                             (LIST (stream:label labs[i]))
-                             (emit (nth subs i))))))
-          (append
-           (LIST (stream:insn 'nvcase (prepend test lelse ntags pairs)))
-           result
-           (emit-jump-continuation jump-num (k/insn k))
-           ))))
+      (let (((tags subs elsek) (nvcase-frob-else tags subs ealt))
+            (ntags (length tags))
+            (lelse (new-label))
+            (labs (make-labels ntags))
+            (result (cons (stream:label lelse) (emit elsek)))
+            (pairs '()))
+        (if (= ntags 0)
+            (printf "zero tags in pvcase\n")
+            #u)
+        (for-range i ntags
+          (let ((label (nth tags i))
+                (tag0 (match (alist/lookup the-context.variant-labels label) with
+                        (maybe:yes v) -> v
+                        (maybe:no) -> (error1 "variant constructor never called" label)))
+                (tag1 (if (= (nth arities i) 0) (UITAG tag0) (UOTAG tag0))))
+            (set! pairs (append pairs (LIST tag1 labs[i])))
+            (set! result (append
+                          result
+                          (LIST (stream:label labs[i]))
+                          (emit (nth subs i))))))
+        (append
+         (LIST (stream:insn 'nvcase (prepend test lelse ntags pairs)))
+         result
+         (emit-jump-continuation jump-num (k/insn k))
+         )))
 
     (define (emit-litcon index kind target)
       (LINSN
@@ -723,13 +723,17 @@
          ambig)
         ;; Note: this is built as a literal, which at runtime will
         ;;  have the type `(vector (vector int))`
-        (let-values (((G V) (create-minimal-perfect-hash table)))
+        (let (((G V) (create-minimal-perfect-hash table)))
           (literal:vector (LIST (literal:vector (map literal:int (vector->list G)))
                                 (literal:vector (map literal:int (vector->list V))))))))
 
     ;; XXX why did I do this with a quasi-readable encoding?  seems like it would
     ;;   have made more sense to just use the runtime encoding?  i.e., instead of
     ;;   'T'==#t, use #106?
+
+    ;; XXX once we have an 'official' streaming encoding for random datatypes, consider
+    ;;   switching to that encoding for literals/etc.
+
     (define (emit-one-literal ob)
       (match (lit-already::get ob) with
         (maybe:yes index)

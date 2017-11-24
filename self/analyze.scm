@@ -629,7 +629,7 @@
       (let ((new-subs '()))
 	(for-each
 	 (lambda (sub)
-	   (let-values (((new-sub fat-env2) (search sub fat-env)))
+	   (let (((new-sub fat-env2) (search sub fat-env)))
 	     (if fatbar?
 		 ;; if we are in a fatbar, preserve the value of fat-env for the second branch.
 		 (set! fat-env fat-env2))
