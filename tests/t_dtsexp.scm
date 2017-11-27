@@ -1,11 +1,12 @@
 ;; -*- Mode: Irken -*-
 
-(include "self/lisp_reader.scm")
+(include "lib/basis.scm")
+(include "lib/map.scm")
 
 (datatype thing
-  (:one)
-  (:two)
-  (:three)
+  (:one int int)
+  (:two bool)
+  (:three char thing)
   )
 
 (defmacro dt-numalts
@@ -35,10 +36,14 @@
   )
 
 (define thing-alist (dtreflect pgen thing))
-;; ultimately becomes: 
+;; ultimately becomes:
 ;;   (alist:entry 'three 2 (alist:entry 'two 1 (alist:entry 'one 0 (alist:nil))))
+(printn thing-alist)
 
 (match (alist/lookup thing-alist 'two) with
   (maybe:yes tag) -> (printf "thing:two has tag " (int tag) "\n")
   (maybe:no)      -> (impossible)
   )
+
+(pp (datatype->sexp tree) 40)
+(printn (dtreflect pgen tree))
