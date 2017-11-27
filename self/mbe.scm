@@ -148,6 +148,15 @@
       (hd . tl) -> (loop tl)
       )))
 
+(define (expand-fields field_list r)  ;; (list field) (list sexp) -> (list field)
+  (match field_list with
+    (list:nil) -> (list:nil)
+    (list:cons (field:t sym sxp) rest) -> 
+        (list:cons 
+            (field:t sym (expand-pattern sxp r)) 
+            (expand-fields rest r))))
+
+
 (define (expand-pattern p r) ;; sexp, (list sexp) -> sexp
   (match p with
     (sexp:list pl)    -> (sexp:list (expand-list pl r))
@@ -155,6 +164,8 @@
     (sexp:symbol sym) -> (match (mbe/assoc sym r) with
 			    (maybe:yes v) -> v
 			    (maybe:no)    -> p)
+    (sexp:record fl)  -> (sexp:record (expand-fields fl r))
+    (sexp:attr sxp sym) -> (sexp:attr (expand-pattern sxp r) sym)
     x                 -> x
     ))
 
