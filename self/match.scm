@@ -368,5 +368,5 @@
 		    (nthunk npats new-match-var)
 		    vars))
 	  (result (compile-match vars rules match-error)))
-      (:pair vars result)))
+      (:tuple vars result)))
   )

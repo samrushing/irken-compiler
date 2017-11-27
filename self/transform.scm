@@ -29,6 +29,9 @@
   (define (splice-list forms acc)
     (match forms with
       () -> (reverse acc)
+      ;; crucial: don't eval %splice in macro definitions
+      ((sexp:list ((sexp:symbol 'defmacro) . macro)) . tl)
+      -> (splice-list tl (list:cons (sexp1 'defmacro macro) acc))
       ((sexp:list ((sexp:symbol '%splice) . forms0)) . forms1)
       -> (splice-list forms1 (foldr cons acc (reverse (map splice forms0))))
       (hd . tl)
@@ -49,24 +52,41 @@
               body)
 	body))
 
-  (define (wrap-begin exps)
-    (sexp1 'begin exps))
+  (define wrap-begin
+    ()    -> (error "empty body")
+    (one) -> one
+    exps  -> (sexp1 'begin exps))
 
   (define (wrap-definitions defs exps)
     (let ((names '())
-	  (inits '()))
+          (inits '()))
       (for-each
-       (lambda (x)
-	 (match x with
-	   (:pair name init)
-	   -> (begin
-                (PUSH names (sexp:symbol name))
-                (PUSH inits (expand init)))))
+       (lambda (:pair name init)
+         (PUSH names (sexp:symbol name))
+         (PUSH inits (expand init)))
        defs)
-      (wrap-fix (reverse names) (reverse inits) (expand (wrap-begin exps)))))
+      (wrap-fix (reverse names) (reverse inits) (wrap-begin exps))))
 
   (define (expand-body exps)
-    (find-definitions (find-declarations (scan-for-meta exps)) wrap-definitions))
+    (let ((exps0 (scan-for-meta exps))
+          (exps1 (find-declarations exps0))
+          ((defs0 exps2) (collect-definitions '() '() exps1))
+          ;; after macro expansion, we may have new declarations &
+          ;; definitions, which may or may not be inserted with %slice.
+          (exps3 (splice-list (map expand exps2) '()))
+          (exps4 (find-declarations exps3))
+          ((defs1 exps5) (collect-definitions defs0 '() exps4))
+          (defs2 (map parse-define (reverse defs1))))
+      (wrap-definitions defs2 exps5)))
+
+  (define collect-definitions
+    defs exps () -> (:tuple defs exps)
+    defs exps (hd . tl)
+    -> (match hd with
+         (sexp:list ((sexp:symbol 'define) . body))
+         ->   (collect-definitions (list:cons body defs) exps tl)
+         _ -> (collect-definitions defs (list:cons hd exps) tl)
+         ))
 
   (define (find-declarations exps)
     (define recur
@@ -102,16 +122,6 @@
       -> (loop (list:cons hd acc) tl)
       )
     (loop '() forms))
-
-  (define (find-definitions exps0 k)
-    (define recur
-      defs exps ()	-> (k (reverse defs) (reverse exps))
-      defs exps (hd . tl) -> (match hd with
-			       (sexp:list ((sexp:symbol 'define) . body))
-			       -> (recur (list:cons (parse-define body) defs) exps tl)
-			       exp -> (recur defs (list:cons exp exps) tl)
-			       ))
-    (recur '() '() exps0))
 
   (define expand-field
     (field:t name exp) -> (field:t name (expand exp)))
@@ -333,9 +343,9 @@
 		      () -> '()
 		      (in-pat (sexp:symbol '->) out-pat . rest)
 		      -> (list:cons (:pair in-pat out-pat) (loop rest))
-		      _ -> (error1 "malformed macro definition:" exps))))))
+		      _ -> (error1 "malformed macro definition:" (format "(" (join repr " " exps))))))))
 	 (alist/push the-context.macros name macro))
-    x -> (error1 "malformed macro definition:" x)
+    x -> (error1 "malformed macro definition:" (format "(" (join repr " " x)))
     )
 
   (define (make-datatype tvars name)
@@ -452,7 +462,7 @@
 	  subs)
 	 (add-datatype name dt)
 	 )
-    x -> (error1 "malformed datatype" x)
+    x -> (error1 "malformed datatype" (format (join repr " " x)))
     )
 
   (define parse-typealias
@@ -491,14 +501,13 @@
     x -> (error1 "malformed <define>" x))
 
   (define (parse-pattern-matching-define name body type)
-    (match (compile-pattern expand '() body) with
-      (:pair vars body0)
-      -> (:pair name
-                (sexp (sym 'function)
-                      (sym name)
-                      (list (map sexp:symbol vars))
-                      type
-                      (expand body0)))))
+    (let (((vars body0) (compile-pattern expand '() body)))
+      (:pair name
+             (sexp (sym 'function)
+                   (sym name)
+                   (list (map sexp:symbol vars))
+                   type
+                   (expand body0)))))
 
   (define parse-no-formals-define
     ;; XXX should we run expand-body on body?
@@ -526,12 +535,11 @@
 	       (el exps))
       (match el with
 	((sexp:symbol 'with) . rules)
-	-> (match (compile-pattern expand (reverse vars) rules) with
-	     (:pair _ code)
-	     -> (expand
-		 (if (null? inits)
-		     code
-                     (sexp (sym 'let) (list inits) code))))
+        -> (let (((vars code) (compile-pattern expand (reverse vars) rules)))
+             (expand
+              (if (null? inits)
+                  code
+                  (sexp (sym 'let) (list inits) code))))
 	((sexp:symbol var) . el)
 	-> (loop (list:cons var vars) inits el)
 	(value . el)
@@ -543,7 +551,8 @@
     ((sexp:string path))
     -> (begin
 	 (PUSH the-context.cincludes path)
-	 (sexp (sym 'begin)))
+         (sexp:undef)
+         )
     x -> (error1 "malformed <cinclude>" x)
     )
 
@@ -551,7 +560,8 @@
     ((sexp:string path))
     -> (begin
 	 (PUSH the-context.lincludes path)
-	 (sexp (sym 'begin)))
+         (sexp:undef)
+         )
     x -> (error1 "malformed <linclude>" x)
     )
 
@@ -559,7 +569,8 @@
     ((sexp:string path))
     -> (begin
 	 (PUSH the-context.cverbatim path)
-	 (sexp (sym 'begin)))
+         (sexp:undef)
+         )
     x -> (error1 "malformed <cverbatim>" x)
     )
 
@@ -599,6 +610,18 @@
     ((sexp:symbol sym))
     -> (sexp:string (symbol->string sym))
     x -> (error1 "malformed %%stringify" x))
+
+  (define (expand-%%symbol forms)
+    ;; accumulate various sexp bits into a chain of strings to be joined.
+    (define makesym
+      () acc -> (reverse acc)
+      ((sexp:string s) . rest) acc -> (makesym rest (list:cons s acc))
+      ((sexp:symbol x) . rest) acc -> (makesym rest (list:cons (symbol->string x) acc))
+      ((sexp:int n) . rest)    acc -> (makesym rest (list:cons (int->string n) acc))
+      (x . _) _                    -> (error1 "bad arg to %%symbol" (repr x))
+      )
+    (sexp:symbol (string->symbol (string-concat (makesym forms '()))))
+    )
 
   ;; --------------------------------------------------------------------------------
   ;; constant folding. this *really* needs to go into analyze.scm, so that it can
@@ -660,7 +683,7 @@
   (define expand-datatype->sexp
     ((sexp:symbol dtname))
     -> (match (alist/lookup the-context.datatypes dtname) with
-         (maybe:yes dt) -> (sexp (sym '%%sexp) (dt.to-sexp))
+         (maybe:yes dt) -> (sexp (sym 'car) (sexp (sym '%%sexp) (dt.to-sexp)))
          (maybe:no)     -> (error1 "unknown datatype" dtname))
     x -> (error1 "malformed datatype->sexp" x))
 
@@ -693,6 +716,7 @@
       ('%%attr expand-%%attr)
       ('%%constructor expand-%%constructor)
       ('%%stringify expand-%%stringify)
+      ('%%symbol expand-%%symbol)
       ('<< expand-<<)
       ('binary- expand-binary-)
       ('binary+ expand-binary+)
