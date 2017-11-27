@@ -244,7 +244,7 @@
 		  (list:cons (ascii->char (+ 48 (remainder x 10))) r)
 		  )))))
 
-(define hex-table (literal #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\a #\b #\c #\d #\e #\f)))
+(define hex-table #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\a #\b #\c #\d #\e #\f))
 
 (define (int->hex-string n)
   (let loop ((x (abs n)) (r '()))
