@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+;; XXX: take another look at this compared to the base85 codec, which is
+;;   more elegant.
+
 (define *base64-digits* "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
 
 (define *base64-reverse*

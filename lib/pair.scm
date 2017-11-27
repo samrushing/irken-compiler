@@ -328,3 +328,10 @@
 ;; XXX obviously this needs replacing 8^)
 (define (sort-vector < v)
   (list->vector (sort < (vector->list v))))
+
+(define (list-generator L) : ((list 'a) -> (-> (maybe 'a)))
+  (make-generator
+   (lambda (consumer)
+     (for-list item L
+       (consumer (maybe:yes item)))
+     (forever (consumer (maybe:no))))))

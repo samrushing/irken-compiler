@@ -113,6 +113,9 @@
 ;; Note: this is incorrect! mod and remainder are not the same
 ;;  operation. See http://en.wikipedia.org/wiki/Modulo_operation
 ;;  [specifically, the sign of the result can differ]
+
+;; XXX: implement div/mod (and maybe div0/mod0) per r6rs
+;; http://blog.practical-scheme.net/gauche/20100618-integer-divisions
 (define (mod a b)
   (%backend c (%%cexp (int int -> int) "%0 %% %1" a b))
   (%backend llvm (%llarith srem a b))
@@ -154,6 +157,11 @@
   (%backend c (%%cexp (int int -> int) "%0|%1" a b))
   (%backend llvm (%llarith or a b))
   (%backend bytecode (%%cexp (int int -> int) "or" a b))
+  )
+
+(defmacro logior*
+  (logior* x)       -> x
+  (logior* a b ...) -> (logior a (logior* b ...))
   )
 
 (define (logxor a b)
