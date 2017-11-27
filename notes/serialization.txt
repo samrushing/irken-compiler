@@ -1,0 +1,137 @@
+   --- thoughts on serialization --
+
+wouldn't it be cool if we could stream large objects
+(e.g. multi-gigabyte data structures) over the network?
+what sort of protocol would we need to do this?  can
+BER handle it?
+[I'm thinking about this in the context of reverse-encoding
+ TLV stuff]
+
+an example might be an frb tree.  first blush says we encode
+ it by streaming the items inorder.  But that means the other
+ side has to reinsert into a fresh tree.  If instead we want
+ the data structure in its current state, we want to stream it
+ as a recursive object.
+
+this could be done efficiently with a stack-oriented protocol.
+for example:
+
+(datatype bintree
+  (:leaf 'a)
+  (:node (bintree 'a) (bintree 'a))
+  )
+
+  --- insn ---            --- stack ---
+  PUSH 1                  1
+  (bintree:leaf)          (leaf 1)
+  PUSH 2                  2 (leaf 1)
+  (bintree:leaf)          (leaf 2) (leaf 1)
+  (bintree:node)          (node (leaf 2) (leaf 1))
+
+an interesting thing about this approach: if we precede the
+  data with a schema derived from the type of the object being
+  sent, then we can use more compact encodings.
+for example, here we know the data has type (bintree int),
+  so we can know the type of each object before decoding it.
+also: the two sides can ensure that they are talking about the
+  same type by comparing schemas. [and of course, schemas are
+  encoded in the same system]
+
+a related issue: streaming codecs, for example:
+frb -> irken-object-encoding -> asn1-ber
+           ... network ...
+asn1-ber -> irken-object-encoding -> frb
+
+ --- code generation ---
+
+ok, so now let's talk about code generation.  to generate
+a codec, we need introspection. what will this look like for
+the user?
+
+(generate-serialization-code (bintree int))
+
+Should generate something like this:
+
+(define encode-bintree
+  emit (bintree:leaf x)
+  -> (begin
+       (encode-x-type emit x)
+       (emit (format "C" (int 0))))
+  emit (bintree:node l r)
+  -> (emit (format "C" (int 1)))
+  )
+
+Where <emit> streams the encoded data.
+Here, 'C0' means construct a value of the expected
+type with tag 0.  In this case, 0 == leaf, 1 == node.
+leaf expects a value of type x, and node expects two
+values of type (bintree x)
+
+Now how do we accumulate args for constructors? we
+can't just make a stack of them, since the types are
+different.
+
+So the decoder will be expecting values of each type.
+However, it needs to know the types of the args ahead
+of time.  So we probably need to do this instead:
+
+ "C0" <int-encoding>
+
+How does this affect our stack-oriented/streaming thing?
+At all?
+
+Need to write sample codec by hand first.
+
+If we want to support polymorphism, we absolutely have
+to exchange metadata before-hand.  We can't just say
+"here comes a bintree", it has to be "here comes a (bintree int)".
+
+That seems to mean that we'll have to instantiate a different
+codec for each type that uses it.
+
+Hmmm... I think we can elide the "C", since in a given
+state it has to be a constructor for the current type,
+so it only needs to identify the variant.
+
+ --- schema ---
+
+I don't think we need/want the names of anything. We just
+need the signature of the type.  In this case we would have
+
+0 int
+1 (bintree int) (bintree int)
+
+We need an encoding for types.
+And of course, we have to handle multiple types,
+  for example:
+
+(datatype thing
+  (:a 'a 'a)
+  (:b (list 'b))
+  (:c (thing 'a 'b) (thing 'a 'b))
+  )
+
+In this case we'll need a code for (list 'b), as
+well as (thing 'a 'b).
+I'm thinking we make a registry of types, each
+with a number, and then the scheme is built from those.
+
+First we have to instantiate the type, so (thing 'a 'b)
+becomes (thing int char).
+
+Now number each unique type:
+
+0: int
+1: char
+2: (thing int char)
+3: (list char)
+
+And the variants are represented as:
+
+0: 0 0
+1: 3
+2: 2 2
+
+Hmmmm this feels a bit forced.  Heh, I think we need
+  a real datatype to represent this info, and then we're
+  in a mess of chicken-and-egg. [grammar grammar, anyone?]
