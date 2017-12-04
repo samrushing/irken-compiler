@@ -235,6 +235,9 @@
 (define (magic<? a b)
   (eq? (cmp:<) (magic-cmp a b)))
 
+(define (magic=? a b)
+  (eq? (cmp:=) (magic-cmp a b)))
+
 (define (eq? a b)
   (%backend c (%%cexp ('a 'a -> bool) "%0==%1" a b))
   (%backend llvm (%lleq #f a b))
