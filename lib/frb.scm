@@ -270,7 +270,10 @@
      (forever (consumer (maybe:no))))))
 
 ;; do a range query [lo, hi) over the map/set.
-(define (tree/range root < lo hi p)
+(define (tree/range root cmp lo hi p)
+
+  (define (< a b)
+    (eq? (cmp:<) (cmp a b)))
 
   (define (visit l r k v)
     (if (< lo k) (walk l))
