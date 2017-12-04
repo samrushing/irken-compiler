@@ -700,6 +700,7 @@
       ('set! expand-set!)
       ('begin expand-begin)
       ('lambda expand-lambda)
+      ('λ expand-lambda)
       ('function expand-function)
       ('vcase expand-vcase)
       ('let-splat expand-let-splat)
