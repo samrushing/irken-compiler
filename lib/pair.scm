@@ -47,6 +47,7 @@
 
 ;; http://groups.google.com/group/comp.lang.scheme/msg/0055f311d1e1ce08
 
+;; (a b c) (d e f) => (c b a d e f)
 (define reverse-onto
   () b	      -> b
   (hd . tl) b -> (reverse-onto tl (list:cons hd b)))
@@ -110,6 +111,7 @@
 		     (remove-eq x tl)
 		     (list:cons hd (remove-eq x tl))))
 
+;; note: not tail-recursive
 (define remove
   eq? item ()        -> '()
   eq? item (hd . tl) -> (if (eq? hd item)
@@ -129,6 +131,21 @@
   (hd . _) 0 -> hd
   (_ . tl) n -> (nth tl (- n 1))
   )
+
+;; (a b c d e f) 3 x   -> (a b c x d e f)
+;; (d e f) 0 x (c b a) -> (a b c x d e f)
+
+(define insert*
+  (hd . tl) 0 item acc -> (reverse-onto acc (list:cons item (list:cons hd tl)))
+  (hd . tl) n item acc -> (insert* tl (- n 1) item (list:cons hd acc))
+  ()        n item acc -> (reverse-onto acc (list:cons item (list:nil)))
+  )
+
+(define insert list n item -> (insert* list n item '()))
+
+(defmacro insert!
+  (insert! list n item)
+  -> (set! list (insert list n item)))
 
 (define (index-eq v l)
   (let loop ((i 0)
@@ -205,11 +222,6 @@
   p (h0 . t0) (h1 . t1) -> (begin (p h0 h1) (for-each2 p t0 t1))
   p _ _			-> (error "for-each2: unequal-length lists")
   )
-
-;(defmacro for-list
-;  (for-list vname list body ...)
-;  -> (for-each (lambda (vname) body ...) list)
-;  )
 
 (defmacro for-list
   (for-list vname list body ...)
