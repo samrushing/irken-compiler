@@ -16,5 +16,6 @@ tests/*.byc
 /vm/irkc
 ffi/*_ffi.scm
 ffi/*_iface.c
+*~
 
 
