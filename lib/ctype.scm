@@ -253,9 +253,12 @@
      (printf "  " (sym k) " " (ctype-repr v) "\n")))
   )
 
+(define FFI-PATH "/usr/local/lib/irken/ffi/")
+
 (define (read-spec name)
-  (let ((path0 (format "ffi/" (sym name) "_ffi.scm")))
+  (let ((path0 (format FFI-PATH (sym name) "_ffi.scm")))
     ;;(printf "loading ffi spec for " (sym name) "\n")
+    ;;(printf "  from " path0 "\n")
     (%backend bytecode
       (read-string
        (string-concat
@@ -593,9 +596,9 @@
 (define (raise-system-error)
   (let ((errno (%c-get-int int posix/errno))
         (msg (posix/strerror errno)))
-    (printf "system error: " (int errno)
-            " " (string (%cref->string #f msg (posix/strlen msg)))
-            "\n")
+    ;; (printf "system error: " (int errno)
+    ;;         " " (string (%cref->string #f msg (posix/strlen msg)))
+    ;;         "\n")
     (raise (:OSError errno))))
 
 (define (syscall val)
