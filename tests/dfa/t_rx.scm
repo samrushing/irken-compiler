@@ -3,7 +3,6 @@
 (include "lib/basis.scm")
 (include "lib/map.scm")
 (include "lib/counter.scm")
-(include "lib/set3.scm")
 (include "lib/dfa/charset.scm")
 (include "lib/dfa/rx.scm")
 

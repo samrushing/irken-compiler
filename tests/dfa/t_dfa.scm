@@ -5,7 +5,6 @@
 
 (include "lib/cmap.scm")
 (include "lib/counter.scm")
-(include "lib/set3.scm")
 (include "lib/dfa/charset.scm")
 (include "lib/dfa/rx.scm")
 (include "lib/dfa/deriv.scm")
