@@ -44,7 +44,7 @@
   -> (try
       (let ((name0 (join-paths dir name)))
         (when the-context.options.verbose
-              (printf "trying " name0 "\n"))
+          (printf "trying " name0 "\n"))
         (file/open-read name0))
       except
       (:OSError _) -> (find-file dirs name)
