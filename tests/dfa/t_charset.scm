@@ -1,0 +1,61 @@
+;; -*- Mode: Irken -*-
+
+(include "lib/basis.scm")
+(include "lib/map.scm")
+(include "lib/dfa/charset.scm")
+
+(define tests-passed 0)
+
+(defmacro assert2
+  (assert2 exp)
+  -> (if (not exp)
+         (begin (printf "assertion failed: " (repr (car (%%sexp exp))) "\n")
+                (raise (:AssertionFailed)))
+         (set! tests-passed (+ tests-passed 1))))
+
+(assert2 (string=? (charset-repr (parse-charset "A-Z")) "[A-Z]"))
+(assert2 (string=? (charset-repr (parse-charset "A-Za-za-f")) "[A-Za-z]"))
+(assert2 (string=? (charset-repr (parse-charset "abcmno")) "[a-cm-o]"))
+(assert2 (string=? (charset-repr (parse-charset "acegi")) "[acegi]"))
+(assert2 (string=? (charset-repr-raw (parse-charset "acegi")) "{61-62,63-64,65-66,67-68,69-6a}"))
+(assert2 (string=? (charset-repr (charset/invert (charset/invert (parse-charset "A-Z")))) "[A-Z]"))
+(assert2 (string=? (charset-repr (charset/invert (parse-charset "A-Z"))) "[^A-Z]"))
+(assert2 (string=? (charset-repr (charset/invert (charset/range 0 256))) "[]"))
+(assert2 (string=? (charset-repr (charset/invert (charset/range 0 65))) "[^<00>-@]"))
+(assert2 (string=? (charset-repr (charset/invert (charset/range 65 256))) "[<00>-@]"))
+(assert2 (string=? (charset-repr (parse-charset "a-bm-o")) "[bam-o]"))
+
+(assert2 (eq? #f (charset/overlap? (parse-charset "cd") (parse-charset "ab"))))
+(assert2 (eq? #f (charset/overlap? (parse-charset "a") (parse-charset "b"))))
+(assert2 (eq? #t (charset/overlap? (parse-charset "ab") (parse-charset "b"))))
+(assert2 (eq? #t (charset/overlap? (parse-charset "b") (parse-charset "bc"))))
+(assert2 (eq? #f (charset/overlap? (parse-charset "c") (parse-charset "b"))))
+(assert2 (eq? #f (charset/overlap? (parse-charset "A-M") (parse-charset "N-Z"))))
+(assert2 (eq? #t (charset/overlap? (parse-charset "A-S") (parse-charset "G-Z"))))
+(assert2 (eq? #t (charset/overlap? (parse-charset "a-bm-o") (parse-charset "n"))))
+(assert2 (eq? #t (charset/overlap? (parse-charset "a-bm-o") (parse-charset "n"))))
+
+(assert2 (= 1 (charset/size (parse-charset "a"))))
+(assert2 (= 255 (charset/size (charset/invert (parse-charset "a")))))
+(assert2 (= 52 (charset/size (parse-charset "a-zA-Z"))))
+(assert2 (= (- 256 52) (charset/size (charset/invert (parse-charset "a-zA-Z")))))
+(assert2 (eq? #t (charset/in? (parse-charset "a-zA-Z") #\m)))
+(assert2 (eq? #t (charset/in? (parse-charset "a-zA-Z") #\Z)))
+(assert2 (eq? #f (charset/in? (parse-charset "a-zA-Z") #\space)))
+(assert2 (eq? #t (charset/in? (parse-charset "a-zA-Z") #\M)))
+(assert2 (eq? #f (charset/in? (parse-charset "a-zA-Z") #\9)))
+
+(let ((sym0 (charset/empty))
+      (sym1 (parse-charset "a"))
+      (sym2 (charset/invert sym1)))
+  (assert2 (string=? "a" (charset-repr (charset/merge sym0 sym1))))
+  (assert2 (string=? "•" (charset-repr (charset/merge sym1 sym2))))
+  (assert2 (string=? "•" (charset-repr (charset/merge (charset/merge sym0 sym1) sym2))))
+  (assert2 (string=? "•" (charset-repr (charset/merge charset/dot sym2))))
+  (assert2 (string=? "•" (charset-repr charset/dot)))
+  (assert2 (string=? "•" (charset-repr (charset/merge charset/dot sym2))))
+  ;; make sure it's canonical, i.e. {00-100}
+  (assert2 (= 1 (length (charset/merge sym2 sym1))))
+  )
+
+(printf (int tests-passed) " tests passed.\n")

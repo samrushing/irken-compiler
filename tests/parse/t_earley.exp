@@ -1,0 +1,13 @@
+(E (E (E (E (T (T (P {ident:a})) {*:*} (P {ident:b}))) {+:+} (T (T (P {ident:c})) {*:*} (P {ident:d}))) {+:+} (T (P {ident:e}))) {+:+} (T (P {ident:f})))
+(E
+  (E
+    (E
+      (E
+        (T (T (P (ident "a"))) (* "*") (P (ident "b"))))
+      (+ "+")
+      (T (T (P (ident "c"))) (* "*") (P (ident "d"))))
+    (+ "+")
+    (T (P (ident "e"))))
+  (+ "+")
+  (T (P (ident "f"))))
+#u
