@@ -1,0 +1,36 @@
+;; -*- Mode: Irken -*-
+
+;; parser for Irken. [work in progress]
+
+(parser
+ (lexicon
+  ;; XXX newlines should be allowed in strings.
+  (STRING     (reg "\"([^\n\"\\\\]|\\\\.)*\""))
+  (WHITESPACE (reg "[ \n\t]+"))
+  (COMMENT    (reg ";[^\n]*\n"))
+  (NUMBER     (reg "[0-9]+"))
+  (BIN        (reg "#b[01]+"))
+  (OCT        (reg "#o[0-7]+"))
+  (DEC        (reg "#d[0-9]+"))
+  (HEX        (reg "#x[0-9A-Fa-f]+"))
+  ;;(DOTDOTDOT  (lit "..."))
+  (DOT        (lit "."))
+  (LBRACKET   (lit "["))
+  (RBRACKET   (lit "]"))
+  (LPAREN     (lit "("))
+  (RPAREN     (lit ")"))
+  (BOOL       (reg "#[tf]"))
+  (CHAR       (reg "(#\\\\.)|(#\\\\newline)|(#\\\\space)|(#\\\\tab)|(#\\\\return)|(#\\\\eof)|(#\\\\nul)"))
+  ;;(SYMBOL     (reg "[^;()\\[\\] \t\n\"\\.]+"))
+  (SYMBOL     (reg "([^;()\\[\\] \t\n\"\\.]+)|(\\.\\.\\.)"))
+  )
+ (filter WHITESPACE COMMENT)
+ (grammar
+  (exps   exp (exps exp))
+  (exp    atom list attr aref)
+  (attr   (exp DOT SYMBOL))            ;; postfix
+  (aref   (exp LBRACKET exp RBRACKET)) ;; postfix
+  (atom   NUMBER BIN OCT DEC HEX STRING SYMBOL BOOL CHAR)
+  (list   (LPAREN RPAREN) (LPAREN exps RPAREN))
+  )
+ )

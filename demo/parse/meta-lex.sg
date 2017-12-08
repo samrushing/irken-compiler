@@ -1,0 +1,9 @@
+;; -*- Mode: Irken -*-
+(lexicon
+ (WHITESPACE (reg "[ \n\t]+"))
+ (COMMENT    (reg "[ \t]*//[^\n]*\n"))
+ (COLON      (lit ":"))
+ (VBAR       (lit "|"))
+ (SEMICOLON  (lit ";"))
+ (NAME       (reg "[A-Za-z_][A-Za-z_0-9]*"))
+ )
