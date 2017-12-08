@@ -17,3 +17,5 @@ tests/*.byc
 ffi/*_ffi.scm
 ffi/*_iface.c
 *~
+.tramp_history
+.DS_Store
