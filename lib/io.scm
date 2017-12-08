@@ -127,6 +127,7 @@
 	 (file/flush self)
 	 (file/write-char self ch))))
 
+;; generates blocks, not characters.
 (define (make-file-generator ifile)
   (make-generator
    (lambda (consumer)
@@ -135,3 +136,15 @@
            (consumer (maybe:no))
            (consumer (maybe:yes buf)))
        (loop (file/read-buffer ifile))))))
+
+(define (file-char-generator file)
+  (make-generator
+   (lambda (consumer)
+     (let ((done #f))
+       (while (not done)
+         (let ((ch (file/read-char file)))
+           (if (eq? ch #\eof)
+               (set! done #t)
+               (consumer (maybe:yes ch)))))
+       (forever (consumer (maybe:no)))
+       ))))
