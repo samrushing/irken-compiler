@@ -209,6 +209,15 @@
 (define field?         (char-class (cons #\- (append letters digits))))
 (define printable?     (char-class printable))
 
+;; ascii only
+(define (toupper ch)
+  (if (lower? ch)
+      (ascii->char (- (char->ascii ch) 32))
+      ch))
+
+(define (upcase s)
+  (list->string (map toupper (string->list s))))
+
 (define safe-char
   #\space   -> " "
   #\newline -> "\\n"
@@ -219,7 +228,6 @@
                    (char->string ch)
                    (format "\\x" (zpad 2 (hex (char->ascii ch)))))
   )
-
 
 (define (repr-string s)
   (format "\"" (join (map safe-char (string->list s))) "\""))
