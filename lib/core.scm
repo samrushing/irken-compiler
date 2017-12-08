@@ -387,6 +387,9 @@
   )
 
 ;; ocaml's Obj.magic (i.e., cast to any type)
+;; aside from evil, this can be used to help narrow
+;;  down the source of type errors.
+;; XXX no llvm or bytecode
 (define (magic x)
   (%%cexp ('a -> 'b) "%0" x))
 
@@ -402,6 +405,7 @@
 ;;   *or* link with -no_pie (cc arg '-Wl,-no_pie')
 ;; Linux: setarch `uname -m` -R <binary>
 
+;; XXX: make this work with llvm & bytecode.
 (define (dump filename thunk)
   (%%cexp (string (continuation int) -> int) "dump_image (%0, %1)" filename thunk))
 
@@ -537,10 +541,8 @@
       #f -> 8
       ))
 
-  (define (get-int-size)
-    ;; true for nearly all 32 and 64-bit platforms.
-    ;; [only one I've used: old-school 64-bit OSF/1 on DEC Alpha]
-    4)
-
+  ;; true for nearly all 32 and 64-bit platforms.
+  ;; [only one I've used: old-school 64-bit OSF/1 on DEC Alpha]
+  (define (get-int-size) 4)
 
   )
