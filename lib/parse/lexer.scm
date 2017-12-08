@@ -11,7 +11,7 @@
 (typealias token {kind=symbol val=string range=range})
 
 ;; run-length encoding is used by the lexer generator to build
-;; DFA tables.
+;; compact DFA tables.
 (datatype rle
   (:run int int) ;; count val
   (:one int)     ;; val
@@ -86,6 +86,15 @@
 	       (current (list:nil)))
       ;;(printf "state " (int state) " ch " (char ch) "\n")
       (cond ((char=? ch #\eof)
+             (when (> (length current) 0)
+               ;; tricky: when the file does not end with a newline,
+               ;;  we are left with a token 'in the pipe'. If so, emit it
+               ;;  before going home.  This is probably *wrong* for files
+               ;;  that just happen to end in partial tokens.  Will probably
+               ;;  revisit this.
+               (emit {kind=last
+                      val=(list->string (reverse current))
+                      range=(range:t tline tpos lline lpos)}))
 	     (emit {kind='eof val="" range=(range:t tline tpos line pos)}))
 	    (else
 	     (set! state (dfa.step ch state))
