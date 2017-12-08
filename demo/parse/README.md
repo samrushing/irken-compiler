@@ -59,6 +59,27 @@ and carefully going over the graph can help identify problems.
 
 Note: you can usually open SVG files with a web browser.
 
+lexfile
+-------
+
+While working on your lexer, you'll want to see how it performs with
+real-world data.
+
+    $ echo "(thing 1 2 3)" > /tmp/x.scm
+    $ ./lexfile sexp-lex.sg /tmp/x.scm
+    LPAREN "("
+    SYMBOL "testing"
+    WHITESPACE " "
+    NUMBER "1"
+    WHITESPACE " "
+    NUMBER "2"
+    WHITESPACE " "
+    NUMBER "3"
+    RPAREN ")"
+    eof ""
+
+This utility just prints the category and value for each token as it reads it.
+
 lexgen
 ------
 
