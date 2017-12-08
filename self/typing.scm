@@ -211,16 +211,20 @@
 				       (maybe:no) -> t)))))
 
   (define (build-type-scheme type tenv)
-    (let ((gens (set-maker '())))
+    (let ((gens (set/empty)))
       (define (find-generic-tvars t)
 	(match t with
-	  (type:tvar _ _)      -> (if (not (occurs-free-in-tenv t tenv)) (gens::add t))
-	  (type:pred _ args _) -> (for-each find-generic-tvars args)))
+	  (type:tvar _ _)
+          -> (if (not (occurs-free-in-tenv t tenv)) (set/add! gens magic-cmp t))
+	  (type:pred _ args _)
+          -> (for-each find-generic-tvars args)))
       (let ((type (apply-subst type)))
 	(find-generic-tvars type)
 	(when the-context.options.debugtyping
-	      (printf "build-type-scheme type=" (type-repr type) " gens = " (join type-repr "," (gens::get)) "\n"))
-	(:scheme (gens::get) type))))
+          (printf "build-type-scheme type=" (type-repr type)
+                  " gens = " (join type-repr "," (set->list gens))
+                  "\n"))
+	(:scheme (set->list gens) type))))
 
   (define (type-of* exp tenv)
     (match (noderec->t exp) with

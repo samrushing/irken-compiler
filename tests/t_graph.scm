@@ -4,6 +4,9 @@
 (include "lib/set2.scm")
 (include "lib/alist2.scm")
 
+;; set2 has been removed.  the code in self/graph.scm has been rewritten.
+;; consider rewriting this using the proper set datatypes in lib/set.scm.
+
 (define (transpose g)
   (let ((gt (alist-maker)))
     (g::iterate

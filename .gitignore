@@ -17,5 +17,3 @@ tests/*.byc
 ffi/*_ffi.scm
 ffi/*_iface.c
 *~
-
-

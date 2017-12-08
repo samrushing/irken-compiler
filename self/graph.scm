@@ -1,6 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/set2.scm")
 (include "lib/map.scm")
 
 (datatype symbol-set-ob
@@ -18,9 +17,7 @@
   (define (add self sym)
     (if (in self sym)
 	#u
-	;; bug in mbe for <literal-symbols>?
-	;;(tree/insert! self.t < (symbol->index sym) sym)
-	(set! self.t (tree/insert self.t int-cmp (symbol->index sym) sym))
+        (tree/insert! self.t int-cmp (symbol->index sym) sym)
 	))
 
   (define (get self)
