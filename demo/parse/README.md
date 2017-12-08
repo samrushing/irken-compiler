@@ -89,31 +89,31 @@ parsetool
 This utility brings all the pieces together into one tool for language
 experimentation. Once you have debugged your lexer, you can begin
 working on your grammar.  Irken provides an [Earley
-Parser)(https://en.wikipedia.org/wiki/Earley_parser), which can handle
+Parser](https://en.wikipedia.org/wiki/Earley_parser), which can handle
 any kind of grammar, including ambiguous ones.
 
 Here's an example of a complete parser:
 
-    ```scheme
-    (parser
-     (lexicon
-      (WHITESPACE (reg "[ \n\t]+"))
-      (COMMENT    (reg "[ \t]*//[^\n]*\n"))
-      (COLON      (lit ":"))
-      (VBAR       (lit "|"))
-      (SEMICOLON  (lit ";"))
-      (NAME       (reg "[A-Za-z_][A-Za-z_0-9]*"))
-      )
-     (filter WHITESPACE COMMENT)
-     (grammar
-      (syntax (syntax rule) rule)
-      (rule   (NAME COLON exp SEMICOLON))
-      (exp    (list VBAR exp) list)
-      (list   (list term) term)
-      (term   STRING NAME)
-      )
-     )
-    ```
+```scheme
+(parser
+ (lexicon
+  (WHITESPACE (reg "[ \n\t]+"))
+  (COMMENT    (reg "[ \t]*//[^\n]*\n"))
+  (COLON      (lit ":"))
+  (VBAR       (lit "|"))
+  (SEMICOLON  (lit ";"))
+  (NAME       (reg "[A-Za-z_][A-Za-z_0-9]*"))
+  )
+ (filter WHITESPACE COMMENT)
+ (grammar
+  (syntax (syntax rule) rule)
+  (rule   (NAME COLON exp SEMICOLON))
+  (exp    (list VBAR exp) list)
+  (list   (list term) term)
+  (term   STRING NAME)
+  )
+ )
+```
 
 Note that all terminals require uppercase names.  This is a grammar
 for grammars, or 'meta-grammar'.  The 'filter' sub-section indicates
@@ -126,8 +126,8 @@ or more alternatives made of terms concatenated together.  Terms are
 either `STRING` or `NAME`.
 
 This particular example parses an ANTLR-style grammar.  Other grammar
-specification formats exist, like (Bauckus-Naur
-Form)[https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form] or
+specification formats exist, like [Bauckus-Naur
+Form](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) or
 `BNF`.  You could try your hand at writing a grammar for it!
 
 Example usage:
