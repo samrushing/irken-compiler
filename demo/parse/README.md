@@ -80,6 +80,9 @@ real-world data.
 
 This utility just prints the category and value for each token as it reads it.
 
+Note: if you see `%%sink%%` in the output, that means you've encounted something
+that the lexer does not understand.  Likely you're missing something.
+
 lexgen
 ------
 
