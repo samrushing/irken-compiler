@@ -441,7 +441,9 @@ void prof_dump (void)
 ;;  in a call to `lookup_field()`.
 
 (define (build-ambig-table)
-  (let ((table (tree/empty)))
+  ;; we insert one bogus entry to handle a problem with the perfect hash algorithm
+  ;;  when there are exactly two ambiguous pairs.
+  (let ((table (tree/insert (tree/empty) magic-cmp (:tuple 1013 1013) 1013)))
     (for-map sig index the-context.records.map
       (let ((ambs '()))
         (for-range i (length sig)
