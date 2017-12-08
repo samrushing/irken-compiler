@@ -8,9 +8,14 @@ PJ = os.path.join
 
 # if you change this, you should consider changing the default
 #   value in self/context.scm to match it.
+# N.B.: you will also need to change the definition of FFI-PATH
+#   in lib/ctype.scm.
 PREFIX = "/usr/local/"
+
+IRKENTOP = PJ (PREFIX, "lib/irken")
 IRKENLIB = PJ (PREFIX, "lib/irken/lib")
 IRKENINC = PJ (PREFIX, "lib/irken/include")
+IRKENFFI = PJ (PREFIX, "lib/irken/ffi")
 IRKENBIN = PJ (PREFIX, "bin")
 
 def getenv_or (name, default):
@@ -30,19 +35,21 @@ def mkdir (path):
     if not os.path.isdir (path):
         system ('mkdir -p %s' % (path,))
 
-mkdir (IRKENLIB)
-mkdir (IRKENBIN)
-mkdir (IRKENINC)
+def copy_tree (src, dst, patterns):
+    for root, dirs, files in os.walk (src):
+        mkdir (PJ (dst, root))
+        for file in files:
+            for pattern in patterns:
+                if file.endswith (pattern):
+                    path = PJ (root, file)
+                    system ('cp -p %s %s/' % (path, PJ (dst, root)))
 
 # copy library
-for path in os.listdir ('lib'):
-    if path.endswith ('.scm'):
-        system ('cp -p %s %s' % (PJ ('lib', path), IRKENLIB))
-
+copy_tree ('lib', IRKENTOP, ['.scm'])
 # copy headers
-headers = ['header1.c', 'gc1.c', 'pxll.h', 'rdtsc.h', 'preamble.ll']
-for path in headers:
-    system ('cp -p include/%s %s' % (path, IRKENINC))
+copy_tree ('include', IRKENTOP, ['.h', '.c', '.ll'])
+# copy ffi
+copy_tree ('ffi', IRKENTOP, ['_ffi.scm'])
 
 # we need a new binary with the new CFLAGS
 print 'building new binary with updated CFLAGS for install...'
