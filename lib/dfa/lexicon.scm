@@ -19,7 +19,6 @@
 (define (make-one sym s)
   (:tuple sym s))
 
-;; I think we need an rx-canon function.
 (define build-or
   ()        -> (raise (:Lex/BogusOr))
   (a b)     -> (rx-or a b)
@@ -36,7 +35,7 @@
         -> (let (((rx pos) (p-rx regex 0)))
              (assert (= pos (string-length regex)))
              (alist/push labels i kind)
-             (PUSH subs (rx:group i nullmatch rx))
+             (PUSH subs (rx-group i nullmatch rx))
              (set! i (+ i 1)))
         ))
     (let ((rx (build-or (reverse subs)))
@@ -206,6 +205,16 @@
     -> reg
     (sexp:list ((sexp:symbol 'or) . items))
     -> (format (join "|" (map sexp->item items)))
+    (sexp:list ((sexp:symbol 'cat) . items))
+    -> (format "(" (join "" (map sexp->item items)) ")")
+    (sexp:list ((sexp:symbol '*) item))
+    -> (format "(" (sexp->item item) ")*")
+    (sexp:list ((sexp:symbol '+) item))
+    -> (format "(" (sexp->item item) ")+")
+    (sexp:list ((sexp:symbol 'not) item))
+    -> (format "(" (sexp->item item) ")~")
+    (sexp:list ((sexp:symbol '?) item))
+    -> (format "(" (sexp->item item) ")?")
     exp -> (raise (:Lexicon/Error "sexp->item" exp))
     )
 
