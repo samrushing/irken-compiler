@@ -241,7 +241,7 @@
   )
 
 (define rx-not
-  (rx:not (rx:sym s)) -> (rx:sym (charset/invert s))
+  (rx:sym s)          -> (rx:sym (charset/invert s))
   (rx:not a)          -> a
   a                   -> (rx:not a)
   )
@@ -267,6 +267,18 @@
   (rx-or (rx:eps) a))
 (define (rx-diff a b)
   (rx-and a (rx-not b)))
+
+;; canonicalize a random rx by running every sub-expression
+;;   through its smart constructor.
+(define rx-canon
+  (rx:cat a b)     -> (rx-cat (rx-canon a) (rx-canon b))
+  (rx:or a b)      -> (rx-or  (rx-canon a) (rx-canon b))
+  (rx:and a b)     -> (rx-and (rx-canon a) (rx-canon b))
+  (rx:star a)      -> (rx-star (rx-canon a))
+  (rx:not a)       -> (rx-not (rx-canon a))
+  (rx:group n m a) -> (rx-group n m (rx-canon a))
+  exp              -> exp
+  )
 
 (define nullmatch {s=0 e=0 ms=(mstate:before)})
 
