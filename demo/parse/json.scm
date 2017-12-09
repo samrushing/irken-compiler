@@ -14,18 +14,42 @@
 (include "lib/parse/earley.scm")
 (include "lib/parse/parser.scm")
 
-;; this is a bit of a hack to get a parser included as a source file
-;;  into a top-level variable containing the s-expression.
-
-(defmacro parser
-  (parser rest ...)
-  -> (define json-parser
-       ;; this puts the 'parser wrapper back around
-       ;; the rest of the expression.
-       (LIST (sexp1 'parser (%%sexp rest ...))))
-  )
-
-(include "json.sg")
+(define json-parser
+  (%%sexp
+   (parser
+    (lexicon
+     (WHITESPACE (reg "[ \n\t]+"))
+     ;; (STRING     (reg "\"([^\n\"\\\\]|\\\\.)*\""))
+     ;; same expression, more readable:
+     (STRING     (cat (lit "\"")
+                      (* (or
+                          ;; not newline, backslash, or quote
+                          (not (or (lit "\n") (lit "\\") (lit "\"")))
+                          ;; backslash + any character
+                          (cat (lit "\\") (reg "."))))
+                      (lit "\"")))
+     (NUMBER     (reg "\\-?[0-9]+")) ;; XXX floating-point.
+     (TRUE       (lit "true"))
+     (FALSE      (lit "false"))
+     (NULL       (lit "null"))
+     (COLON      (lit ":"))
+     (COMMA      (lit ","))
+     (LBRACKET   (lit "["))
+     (RBRACKET   (lit "]"))
+     (LBRACE     (lit "{"))
+     (RBRACE     (lit "}"))
+     )
+    (filter WHITESPACE COMMENT)
+    (grammar
+     (json   value)
+     (obj    (LBRACE pairs RBRACE))
+     (pairs  (pairs COMMA pair) pair)
+     (pair   (STRING COLON value))
+     (array  (LBRACKET values RBRACKET) (LBRACKET RBRACKET))
+     (values (values COMMA value) value)
+     (value  obj array STRING NUMBER TRUE FALSE NULL)
+     ))
+   ))
 
 ;; datatype for JSON objects.
 
@@ -54,13 +78,30 @@
   (json:obj pairs)  -> (format "{" (join pair-repr ", " pairs) "}")
   )
 
-;; prety-print a json object.
+;; pretty-print a json object.
+
+;; estimate the printed size of a json object
+(define json-pp-pair-size
+  (:tuple key val)
+  -> (+ 5 (string-length key) (json-pp-size val)))
+
+(define json-pp-size
+  (json:bool #t)  -> 5
+  (json:bool #f)  -> 6
+  (json:null)     -> 4
+  (json:number n) -> (string-length (int->string n))
+  (json:string s) -> (+ 2 (string-length s))
+  (json:obj pairs)
+  -> (fold binary+ (* 2 (length pairs)) (map json-pp-pair-size pairs))
+  (json:array vals)
+  -> (fold binary+ (* 2 (length vals)) (map json-pp-size vals))
+  )
+
 (define (pp-json exp width)
   (define (recur d exp)
-    (let ((repr (json-repr exp))
-          (size (string-length repr)))
+    (let ((size (json-pp-size exp)))
       (if (< size width)
-	  (printf repr)
+	  (printf (json-repr exp))
 	  (match exp with
             (json:array vals)
             -> (begin
@@ -79,7 +120,7 @@
                           (printf "\n" (repeat (+ d 1) "  ") (string key) " : ")
                           (recur (+ d 1) val))))
                  (printf "\n" (repeat d "  ") "}"))
-            _ -> (printf repr)
+            _ -> (printf (json-repr exp))
             ))))
   (recur 0 exp)
   (printf "\n")
@@ -154,7 +195,6 @@
   )
 
 (define (main)
-
   (let (((lexicon filter grammar start) (sexp->parser json-parser))
         ;; convert the lexicon to a dfa
         (dfa0 (lexicon->dfa lexicon))

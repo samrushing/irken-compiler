@@ -9,7 +9,15 @@
 (parser
  (lexicon
   (WHITESPACE (reg "[ \n\t]+"))
-  (STRING     (reg "\"([^\n\"\\\\]|\\\\.)*\""))
+  ;; (STRING     (reg "\"([^\n\"\\\\]|\\\\.)*\""))
+  ;; same expression, more readable:
+  (STRING     (cat (lit "\"")
+                   (* (or
+                       ;; not newline, backslash, or quote
+                       (not (or (lit "\n") (lit "\\") (lit "\"")))
+                       ;; backslash + any character
+                       (cat (lit "\\") (reg "."))))
+                   (lit "\"")))
   (NUMBER     (reg "\\-?[0-9]+")) ;; XXX floating-point.
   (TRUE       (lit "true"))
   (FALSE      (lit "false"))
@@ -29,5 +37,5 @@
   (pair   (STRING COLON value))
   (array  (LBRACKET values RBRACKET) (LBRACKET RBRACKET))
   (values (values COMMA value) value)
-  (value  STRING NUMBER obj array TRUE FALSE NULL)
+  (value  obj array STRING NUMBER TRUE FALSE NULL)
   ))
