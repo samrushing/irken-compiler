@@ -8,6 +8,7 @@
    (fopen (* char) (* char) -> (* FILE))
    (fwrite (* char) int int (* FILE) -> int)
    (fread (* char) int int (* FILE) -> int)
+   (fgetc (* FILE) -> int)
    (fclose (* FILE) -> int)
    (fflush (* FILE) -> int)
    (fdopen int (* char) -> (* FILE))
