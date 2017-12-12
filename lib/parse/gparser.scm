@@ -1,11 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/parse/lexer.scm")
-(include "parse/glextab.scm")
-(include "lib/parse/earley.scm")
-
 (define (lex-grammar path)
   (make-generator
    (lambda (consumer)

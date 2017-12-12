@@ -146,6 +146,7 @@
       (let ((states (S.ref k))
             (j 0)
             (scanned? #f))
+        ;;(printf "step " (int k) " " (sym tok.kind) "\n")
         (while (< j (states.len))
           (let ((state (states.ref j)))
             (set! j (+ j 1))
@@ -224,3 +225,46 @@
       (set! k (+ 1 k)))
     (build-parse-tree)
     ))
+
+(define (sexp->grammar exp)
+
+  ;; --------------------------------------------------
+  ;; (grammar
+  ;;   (e (e ADD t) t)
+  ;;   (t (t MUL p) p)
+  ;;   (p IDENT))
+
+  (define p-term
+    (sexp:symbol name)
+    -> (if (upper? (string-ref (symbol->string name) 0))
+           (prod:t name)
+           (prod:nt name))
+    exp -> (raise (:Parser/Error "p-term" exp))
+    )
+
+  (define p-alt
+    (sexp:list terms)  -> (map p-term terms)
+    (sexp:symbol term) -> (LIST (p-term (sexp:symbol term)))
+    exp                -> (raise (:Parser/Error "p-alt" exp))
+    )
+
+  (define p-rule
+    (sexp:list ((sexp:symbol nt) . alts))
+    -> (:tuple nt (map p-alt alts))
+    exp -> (raise (:Parser/Error "p-rule" exp))
+    )
+
+  (define p-grammar
+    (sexp:list ((sexp:symbol 'grammar) . rules))
+    -> (let ((rules0 (map p-rule rules)))
+         (foldr (lambda (rule acc)
+                  (match rule with
+                    (:tuple name rule)
+                    -> (alist:entry name rule acc)))
+                (alist:nil)
+                rules0))
+    exp -> (raise (:Parser/Error "p-grammar" exp))
+    )
+
+  (p-grammar exp)
+  )
