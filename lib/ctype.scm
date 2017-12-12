@@ -264,8 +264,9 @@
        (string-concat
         (%%cexp (string -> (list string)) "readf" path0))))
     (%backend (c llvm)
-      (let ((file (file/open-read path0)))
-        (reader path0 (lambda () (file/read-char file)))))
+      ;; using stdio avoids a circular dependency on posix.ffi.
+      (let ((file (stdio/open-read path0)))
+        (reader path0 (lambda () (stdio/read-char file)))))
     ))
 
 ;; how many interfaces are needed in this compilation unit?
@@ -488,7 +489,7 @@
 
   (defmacro build-ffi-fun
     (build-ffi-fun name ztname rtype rcode nargs (argtype0 ...) (formal0 ...))
-    -> (let (($pfun (%%cexp (string -> int) "dlsym" ztname)))
+    -> (let (($pfun (%%cexp (string -> int) "dlsym2" ztname)))
          (lambda (formal0 ...)
            ;;(printf "** ffi " name "\n")
            (%%cexp (int char int argtype0 ... -> rtype)
@@ -587,17 +588,17 @@
 
 (define (get-cstring s*)
   (let ((s0* (%c-aref char s* 0))
-        (slen (posix/strlen s0*)))
+        (slen (libc/strlen s0*)))
     (%cref->string #f s0* slen)))
 
 (define (cstring s)
   (%string->cref #f (zero-terminate s)))
 
 (define (raise-system-error)
-  (let ((errno (%c-get-int int posix/errno))
-        (msg (posix/strerror errno)))
+  (let ((errno (%c-get-int int libc/errno))
+        (msg (libc/strerror errno)))
     ;; (printf "system error: " (int errno)
-    ;;         " " (string (%cref->string #f msg (posix/strlen msg)))
+    ;;         " " (string (%cref->string #f msg (libc/strlen msg)))
     ;;         "\n")
     (raise (:OSError errno))))
 
