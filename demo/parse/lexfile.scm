@@ -29,7 +29,8 @@
           ;; lex the given file
           (spath sys.argv[2])
           (sfile (file/open-read spath))
-          (gen0 (make-lex-generator lexer sfile)))
-      (for tok gen0
+          (gen0 (file-char-generator sfile))
+          (gen1 (make-lex-generator lexer gen0)))
+      (for tok gen1
         (printf (sym tok.kind) " " (string tok.val) "\n"))
       ))

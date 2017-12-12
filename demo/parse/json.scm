@@ -204,11 +204,12 @@
         ;; create a stream of tokens
         (spath sys.argv[1])
         (sfile (file/open-read spath))
-        (gen0 (make-lex-generator lexer sfile))
+        (gen0 (file-char-generator sfile))
+        (gen1 (make-lex-generator lexer gen0))
         ;; pass the stream through the token filter
-        (gen1 (filter-gen filter gen0))
+        (gen2 (filter-gen filter gen1))
         ;; build it into a parse tree.
-        (parse (earley grammar (prod:nt start) gen1)))
+        (parse (earley grammar (prod:nt start) gen2)))
     ;;(pp (parse->sexp parse) 40)
     (let ((json (parse-json parse)))
       (pp-json json 50))

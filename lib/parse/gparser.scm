@@ -6,9 +6,10 @@
      (define (emit tok)
        (consumer (maybe:yes tok)))
      (let ((file (file/open-read path))
-           (gen (make-lex-generator dfa-g file))
+           (gen0 (file-char-generator file))
+           (gen1 (make-lex-generator dfa-g gen0))
            (toks '()))
-       (for tok gen
+       (for tok gen1
          (match tok.kind with
            'COMMENT    -> #u
            'WHITESPACE -> #u

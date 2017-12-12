@@ -118,10 +118,15 @@
 		    (loop (next-char) action (list:cons ch current)))))))
       ))
 
-(define (make-lex-generator dfa file)
+(define (make-lex-generator dfa chargen)
 
+  ;; this shim is only needed because 'lex' above isn't expecting
+  ;;   a maybe, but a char.  should probably change that.
   (define (producer)
-    (file/read-char file))
+    (match (chargen) with
+      (maybe:yes ch) -> ch
+      (maybe:no) -> #\eof
+      ))
 
   (make-generator
    (lambda (consumer)
