@@ -260,6 +260,13 @@
   p _ _ -> (error "every2?: unequal-length lists")
   )
 
+(define count
+  p acc () -> acc
+  p acc (hd . tl)
+  -> (if (p hd)
+         (count p (+ 1 acc) tl)
+         (count p acc tl)))
+
 ;; lexicographic ordering on lists
 (define list<?
   lt? ()      () -> #f
