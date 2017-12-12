@@ -3,8 +3,10 @@
 (lexicon
  (WHITESPACE (reg "[ \t\n]+"))
  (CPPLINE    (reg "#[^\n]*\n"))
+ (COMMENT    (reg "//[^\n]*\n"))
  ;; C keywords
- (ATTRIBUTE  (lit "__attribute__"))
+ (ATTRIBUTE  (lit "__attribute__")) ;; gcc
+ (ASM        (lit "__asm")) ;; gcc
  (AUTO       (lit "auto"))
  (BREAK      (lit "break"))
  (CASE       (lit "case"))
@@ -15,7 +17,6 @@
  (DOUBLE     (lit "double"))
  (ELSE       (lit "else"))
  (ENUM       (lit "enum"))
- (EXTERN     (lit "extern"))
  (FLOAT      (lit "float"))
  (FOR        (lit "for"))
  (GOTO       (lit "goto"))
@@ -27,7 +28,6 @@
  (SHORT      (lit "short"))
  (SIGNED     (lit "signed"))
  (SIZEOF     (lit "sizeof"))
- (STATIC     (lit "static"))
  (STRUCT     (lit "struct"))
  (SWITCH     (lit "switch"))
  (TYPEDEF    (lit "typedef"))
@@ -45,12 +45,22 @@
               (lit "restrict")
               (lit "volatile")
               (lit "register")
+              (lit "extern")
+              (lit "static")
               (lit "_Atomic")
               ;; gcc
               (lit "__extension__")))
  (IDENT      (reg "[A-Za-z_][A-Za-z0-9_]*"))
- (NUMBER     (reg "[0-9]+")) ;; needs float support
- (STRING     (reg "\"([^\n\"]|(\\.))*\""))
+ (NUMBER     (reg "[0-9]+"))
+ ;; simple floats only
+ (FLOAT      (cat (reg "[0-9]+") (lit ".") (reg "[0-9]+")))
+ (STRING     (cat (lit "\"")
+                  (* (or
+                      ;; not newline, backslash, or quote
+                      (not (or (lit "\n") (lit "\\") (lit "\"")))
+                      ;; backslash + any character
+                      (cat (lit "\\") (reg "."))))
+                  (lit "\"")))
  (CHAR       (reg "'([^']+)'"))
  (COMP_OP    (or (lit "<")
                  (lit "|")
@@ -59,13 +69,13 @@
                  (lit ">=")
                  (lit "<=")
                  (lit "!=")))
+ (ARROW      (lit "->"))
  (PERCENT    (lit "%"))
  (AMPERSAND  (lit "&"))
  (AMPERSAND2 (lit "&&"))
  (LPAREN     (lit "("))
  (RPAREN     (lit ")"))
  (SPLAT      (lit "*"))
- (SPLATSPLAT (lit "**"))
  (PLUS       (lit "+"))
  (COMMA      (lit ","))
  (MINUS      (lit "-"))
@@ -76,10 +86,10 @@
  (LSHIFT     (lit "<<"))
  (EQUALS     (lit "="))
  (RSHIFT     (lit ">>"))
- (ATSIGN     (lit "@"))
  (LBRACKET   (lit "["))
  (RBRACKET   (lit "]"))
  (CARET      (lit "^"))
+ (BANG       (lit "!"))
  (BACKQUOTE  (lit "`"))
  (LBRACE     (lit "{"))
  (VBAR       (lit "|"))
@@ -89,4 +99,3 @@
  (QUESTION   (lit "?"))
  (DOTDOTDOT  (lit "..."))
  )
-
