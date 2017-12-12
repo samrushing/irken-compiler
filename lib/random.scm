@@ -1,3 +1,6 @@
+;; -*- Mode: Irken -*-
+
+;; XXX needs to use libc ffi.
 
 (define (random)
   (%%cexp (-> int) "random()"))
