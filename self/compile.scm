@@ -6,6 +6,7 @@
 (include "lib/symbol.scm")
 (include "lib/io.scm")
 (include "lib/os.scm")
+(include "lib/stdio.scm")
 (include "lib/alist.scm")
 (include "lib/frb.scm")
 (include "lib/lisp_reader.scm")
