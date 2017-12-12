@@ -8,21 +8,27 @@ type
     | VOID
     | IDENT
     | struct_or_union_decl
-    | type pointer
+    | type SPLAT // pointer
+    | type LPAREN SPLAT RPAREN signature
     ;
-// XXX pointer attributes _Nullable, etc...
-pointer: SPLAT;
 typedef: TYPEDEF type_declarator SEMICOLON;
 // XXX apparently the parens around the IDENT are optional.
 type_declarator
     : type declaratorSpecifier
     | type LPAREN SPLAT IDENT RPAREN signature
     ;
+fun_declaration
+    : type IDENT signature SEMICOLON
+    | type IDENT signature attribute_specifiers SEMICOLON
+    | attribute_specifiers type IDENT signature SEMICOLON
+    ;
+struct_definition
+    : struct_or_union_decl SEMICOLON
+    ;
 declaratorSpecifier
     : declarator
-    | declarator attribute_specifier
+    | declarator attribute_specifiers
     ;
-
 declarator
     : IDENT
     | declarator LBRACKET RBRACKET
@@ -35,11 +41,11 @@ struct_or_union_decl
     | struct_or_union IDENT LBRACE struct_elems RBRACE
     | struct_or_union IDENT
     ;
-struct_elems: struct_elem | struct_elems struct_elem;
+struct_elems: struct_elems struct_elem | struct_elem;
 struct_elem: type_declarator SEMICOLON;
 signature: LPAREN RPAREN | LPAREN arglist RPAREN;
+arg: type_declarator | type | DOTDOTDOT;
 arglist: arglist COMMA arg | arg;
-arg: type | type IDENT;
 
 // stripped down from the C11 expression grammar.
 //
@@ -51,8 +57,15 @@ arg: type | type IDENT;
 primaryExpression
     : IDENT
     | NUMBER
+    | FLOAT
+    | stringConcat
     | LPAREN expression RPAREN
     | SIZEOF LPAREN type RPAREN
+    ;
+
+stringConcat
+    : STRING
+    | stringConcat STRING
     ;
 
 castExpression
@@ -120,9 +133,15 @@ expression: conditionalExpression;
 // see https://gcc.gnu.org/onlinedocs/gcc/Attribute-Syntax.html
 // gcc's version of an s-expression tag.
 
+attribute_specifiers
+    : attribute_specifier
+    | attribute_specifiers attribute_specifier
+    ;
+
 attribute_specifier
     : ATTRIBUTE LPAREN LPAREN RPAREN RPAREN
     | ATTRIBUTE LPAREN LPAREN attributeList RPAREN RPAREN
+    | ASM LPAREN stringConcat RPAREN
     ;
 
 attributeList
@@ -131,7 +150,7 @@ attributeList
     ;
 
 attribute
-    : IDENT
+    : expression
     | IDENT EQUALS expression
     | IDENT LPAREN attributeList RPAREN
     ;
