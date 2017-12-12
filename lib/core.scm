@@ -523,7 +523,7 @@
 
   (defmacro make-ffi
     (make-ffi name rtype nargs (formal0 ...) (ftype0 ...))
-    -> (let (($pfun (%%cexp (string -> int) "dlsym" name)))
+    -> (let (($pfun (%%cexp (string -> int) "dlsym2" name)))
          (lambda (formal0 ...)
            (printf "** ffi: " name "\n")
            (%%cexp (int char int ftype0 ...)
