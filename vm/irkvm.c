@@ -599,7 +599,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
       return -1;
     }
     if (FFI_OK == ffi_prep_cif (&cif, FFI_DEFAULT_ABI, nargs, rtype, args)) {
-      void * pfun = (void*)UNBOX_INTEGER (vm_regs[bytecode[pc+2]]);
+      void * pfun = (void*) get_foreign (vm_regs[bytecode[pc+2]]);
       ffi_arg rc;
       ffi_call (&cif, pfun, &rc, pvals);
       switch (rcode) {
@@ -1160,11 +1160,13 @@ vm_go (void)
   DISPATCH();
  l_vref:
   // VREF target vec index-reg
+  vector_range_check (REG2, UNBOX_INTEGER(REG3));
   REG1 = REG2[UNBOX_INTEGER(REG3)+1];
   pc += 4;
   DISPATCH();
  l_vset:
   // VSET vec index-reg val
+  vector_range_check (REG1, UNBOX_INTEGER(REG2));
   REG1[UNBOX_INTEGER(REG2)+1] = REG3;
   pc += 4;
   DISPATCH();
