@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require-ffi 'libc)
+
 (datatype cint
   (:char)
   (:short)
@@ -123,6 +125,12 @@
   -> (ctype:union name)
   (sexp:list ((sexp:symbol 'array) sub (sexp:list ((sexp:int size)))))
   -> (ctype:array size (parse-ctype sub))
+  ;; new array form (i.e. ctype2-repr)
+  (sexp:list ((sexp:symbol 'array) (sexp:int size) sub))
+  -> (ctype:array size (parse-ctype sub))
+  ;; temporary, all function types are void
+  (sexp:list ((sexp:symbol 'fun) . _))
+  -> (ctype:name 'void)
   (sexp:symbol name)
   -> (ctype:name name)
   x -> (error1 "malformed type" (repr x))
@@ -590,6 +598,9 @@
   (let ((s0* (%c-aref char s* 0))
         (slen (libc/strlen s0*)))
     (%cref->string #f s0* slen)))
+
+(define (cref-null? x)
+  (= 0 (%cref->int #f x)))
 
 (define (cstring s)
   (%string->cref #f (zero-terminate s)))
