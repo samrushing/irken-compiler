@@ -53,7 +53,7 @@
     r))
 
 (define (bool->string b)
-  ;; XXX wait, why am I copying this?
+  ;; we copy because strings are mutable.
   (copy-string (if b "#t" "#f") 2))
 
 (define (string-ref s n)
@@ -69,7 +69,8 @@
 (define (string-set! s n c)
   (%backend c
     (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
-    (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c))
+    (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c)
+    #u) ;; avoid C warning.
   (%backend llvm
     ;; XXX range check
     (%llvm-call ("@irk_string_set" (string int char -> undefined)) s n c))
@@ -241,8 +242,7 @@
 		(+ (* 10 n)
 		   (- (char->ascii (string-ref s i)) 48)))))))
 
-;; XXX pre-compute 0..100
-
+;; pre-compute 0..100?
 (define (int->string n)
   (if (= 0 n)
       (char->string #\0) ;; don't use a constant here, mutable string
