@@ -1,6 +1,9 @@
 ;; -*- Mode: Irken -*-
 
-;; basis, but with stdio replacing io
+;; we can't use basis here, because we are trying to avoid
+;; 'unsafe' FFI like posix that use constants/structs/etc
+;; that vary between platforms.  We stick to libc and stdio.
+
 (include "lib/core.scm")
 (include "lib/pair.scm")
 (include "lib/string.scm")
@@ -15,6 +18,7 @@
 (include "lib/getopt.scm")
 (include "lib/map.scm")
 (include "lib/cmap.scm")
+(include "lib/graph.scm") ;; for `strongly`.
 
 (require-ffi 'libc)
 
@@ -523,7 +527,6 @@
 ;; needed for structs/unions that are physically included
 ;; (rather than via a pointer), forward declarations won't work.
 
-(include "ffi/strong.scm")
 
 (define (toposort all types)
 
@@ -671,8 +674,14 @@
    ))
 
 (define (usage)
-  (printf "\nGenerate an interface file for Irken.\n\n")
-  (printf "Usage: " sys.argv[0] " -gen foo.ffi\n")
+  (printf
+   "\nGenerate an interface file for Irken.\n\n"
+   "  Create, scan, and execute two C programs\n"
+   "  in order to build foo_ffi.scm\n\n"
+   "Usage: " sys.argv[0] " -gen foo.ffi\n\n"
+   "       -scan foo_iface1.cpp (dump info from intermediate file)\n"
+   "       -v (enable verbose output)\n\n"
+   )
   (%exit #f -1)
   )
 
@@ -681,8 +690,9 @@
       (usage)
       (try
        (process-options program-options (rest (vector->list sys.argv)))
-       except (:Getopt/MissingArg _ _)
-       -> (usage)
+       except
+       (:Getopt/MissingArg _ _) -> (usage)
+       (:Getopt/UnknownArg _ _) -> (usage)
        )))
 
 (define (main)
