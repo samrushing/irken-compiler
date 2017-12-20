@@ -546,3 +546,24 @@
   (define (get-int-size) 4)
 
   )
+
+;; VM needs to shift all argv right by one.
+(define (shrink-argv v)
+  (let ((n (- (vector-length v) 1))
+        (r (make-vector n "")))
+    (for-range i n
+      (set! r[i] v[(+ i 1)]))
+    r))
+
+(define (get-argv)
+  (%backend c (%%cexp (-> (vector string)) "irk_make_argv()"))
+  (%backend llvm (%llvm-call ("@irk_make_argv" (-> (vector string)) ccc)))
+  (%backend bytecode (shrink-argv (%%cexp (-> (vector string)) "argv")))
+  )
+
+;; note: argc is redundant, but convenient.
+(define sys
+  (let ((argv (get-argv))
+        (argc (vector-length argv)))
+    { argc=argc argv=argv }
+    ))
