@@ -53,7 +53,7 @@
 	body))
 
   (define wrap-begin
-    ()    -> (error "empty body")
+    ()    -> (raise (:Transform/Error "empty body"))
     (one) -> one
     exps  -> (sexp1 'begin exps))
 
@@ -65,7 +65,12 @@
          (PUSH names (sexp:symbol name))
          (PUSH inits (expand init)))
        defs)
-      (wrap-fix (reverse names) (reverse inits) (wrap-begin exps))))
+      (try
+       (wrap-fix (reverse names) (reverse inits) (wrap-begin exps))
+       except (:Transform/Error msg)
+       -> (raise (:Transform/Error msg))
+       )
+      ))
 
   (define (expand-body exps)
     (let ((exps0 (scan-for-meta exps))
@@ -126,13 +131,7 @@
   (define expand-field
     (field:t name exp) -> (field:t name (expand exp)))
 
-;;   (define (expand exp)
-;;     (print-string (format "expanding: " (repr exp) "\n"))
-;;     (let ((r (expand* exp)))
-;;       (print-string (format "         = " (repr r) "\n"))
-;;       r))
-
-  (define (expand exp)
+  (define (expand* exp)
     (match exp with
       (sexp:symbol _)	   -> exp
       (sexp:string _)	   -> exp
@@ -146,6 +145,15 @@
       (sexp:record fields) -> (sexp:record (map expand-field fields))
       (sexp:attr exp sym)  -> (sexp:attr (expand exp) sym)
       ))
+
+  (define (expand exp)
+    (try
+     (expand* exp)
+     except (:Transform/Error msg)
+     -> (begin
+          (printf "error expanding expression: " (repr exp) "\n")
+          (raise (:Transform/Error msg)))
+     ))
 
   (define (maybe-expand l)
     (match l with
