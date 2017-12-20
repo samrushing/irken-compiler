@@ -164,30 +164,28 @@
 	s2)))
 
 (define (list->string l)
-  (let ((buffer (make-string (length l))))
-    (let loop ((l l) (i 0))
-      (match l with
-	() -> buffer
-	(hd . tl) -> (begin (string-set! buffer i hd) (loop tl (+ i 1))))
-      )))
+  (let ((len (length l))
+        (buffer (make-string len))
+        (i 0))
+    (for-list ch l
+      (string-set! buffer i ch)
+      (set! i (+ i 1)))
+    buffer))
 
 (define (string->list s)
   (let loop ((l (list:nil)) (n (string-length s)))
     (if (= n 0)
 	l
-	(loop (list:cons (string-ref s (- n 1)) l) (- n 1)))))
+	(loop (list:cons (string-ref s (- n 1)) l)
+              (- n 1)))))
 
 (define (char-class char-list)
   (let ((v (make-vector 256 #f)))
-
-    (define (in-class? ch)
-      v[(char->ascii ch)])
-
-    (let loop ((l char-list))
-      (match l with
-	()        -> in-class?
-	(hd . tl) -> (begin (set! v[(char->ascii hd)] #t) (loop tl))
-	))))
+    (define (in-class? ch) v[(char->ascii ch)])
+    (for-list ch char-list
+      (set! v[(char->ascii ch)] #t))
+    in-class?
+    ))
 
 (define whitespace    '(#\space #\tab #\newline #\return))
 (define delimiters     (string->list "()[]{}:;"))
