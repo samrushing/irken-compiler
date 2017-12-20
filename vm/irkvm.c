@@ -604,7 +604,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
       ffi_call (&cif, pfun, &rc, pvals);
       switch (rcode) {
       case 'i':
-        *result = BOX_INTEGER (rc);
+        *result = BOX_INTEGER ((pxll_int)(int)rc);
         break;
       case 's':
         if ((char*)rc == NULL) {
@@ -1497,8 +1497,8 @@ toplevel (void) {
     fprintf (stderr, "failed to read bytecode file: %s\n", irk_argv[1]);
   } else {
     object * result = vm_go();
-    print_object (result);
-    fprintf (stdout, "\n");
+    //print_object (result);
+    //fprintf (stdout, "\n");
     if (is_int (result)) {
       exit ((int)(intptr_t)UNBOX_INTEGER(result));
     } else {
