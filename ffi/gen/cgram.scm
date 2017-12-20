@@ -24,10 +24,13 @@
       (type declaratorSpecifier)
       ;; XXX apparently the parens around the IDENT are optional.
       (type LPAREN SPLAT IDENT RPAREN signature))
+     (fun_ident
+      IDENT
+      (LPAREN IDENT RPAREN))
      (fun_declaration
-      (type IDENT signature SEMICOLON)
-      (type IDENT signature attribute_specifiers SEMICOLON)
-      (attribute_specifiers type IDENT signature SEMICOLON))
+      (type fun_ident signature SEMICOLON)
+      (type fun_ident signature attribute_specifiers SEMICOLON)
+      (attribute_specifiers type fun_ident signature SEMICOLON))
      (struct_definition (struct_or_union_decl SEMICOLON))
      (declaratorSpecifier declarator (declarator attribute_specifiers))
      (declarator

@@ -225,19 +225,27 @@
   x -> (impossiblex x)
   )
 
+(define parse-funident
+  (parse:nt 'fun_ident ((parse:t ident)))
+  -> (string->symbol ident.val)
+  (parse:nt 'fun_ident (LP (parse:t ident) RP))
+  -> (string->symbol ident.val)
+  x -> (impossiblex x)
+  )
+
 (define parse-fundecl
-  (parse:nt 'fun_declaration (rtype (parse:t ident) signature SEMICOLON))
+  (parse:nt 'fun_declaration (rtype ident signature SEMICOLON))
   -> (declarator:t
       (ctype2:function
        (parse-type rtype)
        (parse-signature signature))
-      (maybe:yes (string->symbol ident.val)))
+      (maybe:yes (parse-funident ident)))
   (parse:nt 'fun_declaration
-            (type IDENT signature (parse:nt 'attribute_specifiers _) SEMICOLON)) ;; ignore attributes
-  -> (parse-fundecl (parse:nt 'fun_declaration (LIST type IDENT signature SEMICOLON)))
+            (type ident signature (parse:nt 'attribute_specifiers _) SEMICOLON)) ;; ignore attributes
+  -> (parse-fundecl (parse:nt 'fun_declaration (LIST type ident signature SEMICOLON)))
   (parse:nt 'fun_declaration
-            ((parse:nt 'attribute_specifiers _) type IDENT signature SEMICOLON)) ;; ignore attributes
-  -> (parse-fundecl (parse:nt 'fun_declaration (LIST type IDENT signature SEMICOLON)))
+            ((parse:nt 'attribute_specifiers _) type ident signature SEMICOLON)) ;; ignore attributes
+  -> (parse-fundecl (parse:nt 'fun_declaration (LIST type ident signature SEMICOLON)))
   x -> (impossiblex x)
   )
 
