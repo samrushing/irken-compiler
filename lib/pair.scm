@@ -63,6 +63,11 @@
   (append a b ...) -> (append2 a (append b ...))
   )
 
+(defmacro append!
+  (append! l0 l1 ...)
+  -> (set! l0 (append l0 l1 ...))
+  )
+
 (define length*
   ()        acc -> acc
   (hd . tl) acc -> (length* tl (+ 1 acc)))
