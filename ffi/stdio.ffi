@@ -12,7 +12,9 @@
    (fclose (* FILE) -> int)
    (fflush (* FILE) -> int)
    (fdopen int (* char) -> (* FILE))
-   ;; NOTE: stdout/stdin/stderr cannot be access portably from
+   (putchar int -> int)
+   (getchar -> int)
+   ;; NOTE: stdout/stdin/stderr cannot be accessed portably from
    ;;  the LLVM backend because they are macros.  It may be possible
    ;;  to sorta work around this using `fdopen`.
    (stdout (* FILE)) ;; llvm: works on linux
