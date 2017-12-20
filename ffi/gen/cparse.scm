@@ -249,16 +249,13 @@
   x -> (impossiblex x)
   )
 
-;; we don't need the exact size of any array declaration (yet), so for
-;; now we'll just ignore it.
-
 (define parse-declarator
   type (parse:nt 'declarator ((parse:t IDENT))) ;; IDENT
   -> (:tuple type (string->symbol IDENT.val))
-  type (parse:nt 'declarator (sub LB RB)) ;; declarator [ ]
+  type (parse:nt 'declarator (sub LB RB))       ;; declarator [ ]
   -> (let (((type ident) (parse-declarator type sub)))
        (:tuple (ctype2:array 0 type) ident))
-  type (parse:nt 'declarator (sub LB exp RB)) ;; declarator [ expression ]
+  type (parse:nt 'declarator (sub LB exp RB))   ;; declarator [ expression ]
   -> (let (((type ident) (parse-declarator type sub)))
        (:tuple (ctype2:array (get-simple-expression-value exp) type) ident))
   _ x -> (impossiblex x)
