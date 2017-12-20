@@ -81,6 +81,23 @@
   (when test body ...)
   -> (if test (begin body ...)))
 
+(defmacro when-maybe
+  (when-maybe var mob
+    body ...)
+  -> (match mob with
+       (maybe:yes var) -> (begin body ...)
+       (maybe:no) -> #u
+       ))
+
+(defmacro while-maybe
+  (while-maybe var mob
+    body ...)
+  -> (let $loop ()
+       (match mob with
+         (maybe:yes var) -> (begin body ... ($loop))
+         (maybe:no) -> #u
+         )))
+
 (defmacro for-range*
   (for-range* vname lo hi body ...)
   -> (let (($n hi))

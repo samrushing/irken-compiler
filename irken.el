@@ -85,6 +85,8 @@
 (put 'let/cc 'scheme-indent-function 1)
 (put 'while 'scheme-indent-function 1)
 (put 'when 'scheme-indent-function 1)
+(put 'when-maybe 'scheme-indent-function 2)
+(put 'while-maybe 'scheme-indent-function 2)
 (put '%backend 'scheme-indent-function 1)
 
 ;; I want it to indent to the same place (i.e., unnatural lisp).
