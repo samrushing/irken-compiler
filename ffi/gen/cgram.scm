@@ -1,8 +1,8 @@
 ;; -*- Mode: Irken -*-
 
-;; originally converted from c.g, an antlr-style grammar.
-;; this isn't a full C grammar, but only the parts needed
-;; to parser struct definitions and typedefs.
+;; originally converted from c.g, an antlr-style grammar.  this isn't
+;; a full C grammar, but only the parts needed to parse typedefs and
+;; struct, union, and function declarations.
 
 (define c-grammar
   (first

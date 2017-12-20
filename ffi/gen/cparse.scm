@@ -1,16 +1,13 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/cmap.scm")
-(include "lib/counter.scm")
+;; This file parses a limited subset of C.  It expects as input
+;; pre-processed C (i.e. "cc -E file.c") and scans for typedefs,
+;; structs, unions, and function declarations.
+
 (include "lib/parse/lexer.scm")
 (include "lib/parse/earley.scm")
-(include "ffi/clextab.scm")
-(include "ffi/cgram.scm")
-
-;; scan for typedefs, structs, and function declarations in
-;;   preprocessed C output.
+(include "ffi/gen/clextab.scm")
+(include "ffi/gen/cgram.scm")
 
 ;; partition a file into a series of top-level objects.  this is done
 ;;   by reading declarations that are terminated by semicolons.  In
@@ -65,46 +62,26 @@
   (printf (parse-repr x) "\n")
   (raise (:Impossible)))
 
-;; we can't use the one from lib/ctype.scm, it isn't
-;;  expressive enough (yet).
-(datatype ctype2
-  (:name symbol)   ;; void, thing_t, etc...
-  (:int cint bool) ;; kind/size, signed?
-  (:float bool bool) ;; long? double?
-  (:array int ctype2)
-  (:pointer ctype2)
-  (:struct symbol (maybe (list declarator)))
-  (:union  symbol (maybe (list declarator)))
-  (:function ctype2 (list declarator))
+;; expression parser.
+;; the only place in our grammar where we need to parse expressions
+;; is in the size of arrays.  Most arrays have simple integer sizes,
+;; but some are complex expressions involving arithmetic and 'sizeof'.
+;; for now, we will only support simple integer sizes.  later, we may
+;; try to implement sizeof and 'do the math'.
+(define walk-unary-chain
+  (parse:t {kind='NUMBER val=val ...}) -> (string->int val)
+  (parse:nt someExpression (sub))      -> (walk-unary-chain sub)
+  x -> (raise (:TDParser/Complex x))
   )
 
-(define ctype2-repr
-  (ctype2:name name)    -> (format "(type " (symbol->string name) ")")
-  (ctype2:int cint s?)  -> (cint-repr cint s?)
-  (ctype2:float l? d?)  -> (format (if l? "long" "") (if d? "double" "float"))
-  (ctype2:array size t) -> (format "(array " (int size) " " (ctype2-repr t) ")")
-  (ctype2:pointer t)    -> (format "(* " (ctype2-repr t) ")")
-  (ctype2:struct name (maybe:no))        -> (format "(struct " (sym name) ")")
-  (ctype2:struct name (maybe:yes slots)) -> (format "(struct " (sym name) " (" (join declarator-repr " " slots) "))")
-  (ctype2:union name (maybe:no))         -> (format "(union " (sym name) ")")
-  (ctype2:union name (maybe:yes slots))  -> (format "(union " (sym name) " (" (join declarator-repr " " slots) "))")
-  (ctype2:function type args)            -> (format "(fun " (join declarator-repr " " args) " -> " (ctype2-repr type) ")")
-  )
+(define (get-simple-expression-value exp)
+  (try
+   (walk-unary-chain exp)
+   except (:TDParser/Complex _)
+   -> 0
+   ))
 
-;; a 'declarator' is a combination of name and type.  sometimes the
-;; name is not present (e.g. parameters in function declarations)
-(datatype declarator
-  (:t ctype2 (maybe symbol))
-  )
-
-(define declarator-repr
-  (declarator:t type (maybe:no))
-  -> (format (ctype2-repr type))
-  (declarator:t type (maybe:yes name))
-  -> (format "(named " (sym name) " " (ctype2-repr type) ")")
-  )
-
-;; integer keywords can come in any order there are also nonsense
+;; integer keywords can come in any order - there are also nonsense
 ;; combinations like 'long long char', 'unsigned signed int', 'long
 ;; short int'.
 ;; (UNSIGNED LONG LONG INT) => (ctype:int (cint:longlong) #f)
@@ -180,11 +157,9 @@
   ((parse:t IDENT))
   -> (:tuple (string->symbol IDENT.val) (maybe:no))
   (LB elems RB)
-  -> (:tuple '%unnamed
-             (maybe:yes (parse-struct-elems elems)))
+  -> (:tuple '%anonymous (maybe:yes (reverse (parse-struct-elems elems))))
   ((parse:t IDENT) LB elems RB)
-  -> (:tuple (string->symbol IDENT.val)
-             (maybe:yes (parse-struct-elems elems)))
+  -> (:tuple (string->symbol IDENT.val) (maybe:yes (reverse (parse-struct-elems elems))))
   x -> (impossiblex (parse:nt 'struct_or_union_decl x))
   )
 
@@ -277,7 +252,7 @@
        (:tuple (ctype2:array 0 type) ident))
   type (parse:nt 'declarator (sub LB exp RB)) ;; declarator [ expression ]
   -> (let (((type ident) (parse-declarator type sub)))
-       (:tuple (ctype2:array 0 type) ident))
+       (:tuple (ctype2:array (get-simple-expression-value exp) type) ident))
   _ x -> (impossiblex x)
   )
 
@@ -320,7 +295,7 @@
   )
 
 ;; things at the top level that start with 'struct':
-;; struct thing1;
+;; struct thing1 x;
 ;; struct thing1 { int x; int y; };
 ;; struct thing2 { int x; int y; } my_thing;
 ;; struct thing2 my_other_thing2;
@@ -339,156 +314,3 @@
   x -> (impossiblex x)
   )
 
-;; given a name -> type map for all typedefs,
-;;  walk a ctype replacing all typedefs.
-(define (substitute-typedefs type map)
-
-  ;; expand-structs? is a hack to stop typedef structs from expanding
-  ;; in-place when they are arguments to functions. [maybe this is an argument
-  ;; for keeping structure definitions separate from types]
-
-  (define (walk-type t expand-structs?)
-    (match expand-structs? t with
-      es? (ctype2:name name)
-      -> (match (tree/member map symbol-index-cmp name) with
-           (maybe:yes next) -> (walk-type next es?)
-           (maybe:no) -> t)
-      es? (ctype2:array n next)                 -> (ctype2:array n (walk-type next es?))
-      es? (ctype2:pointer next)                 -> (ctype2:pointer (walk-type next es?))
-      #f (ctype2:struct name _)                 -> (ctype2:struct name (maybe:no))
-      #t (ctype2:struct name (maybe:no))        -> (ctype2:struct name (maybe:no))
-      #t (ctype2:struct name (maybe:yes slots)) -> (ctype2:struct name (maybe:yes (walk-decls #t slots)))
-      #f (ctype2:union name _)                  -> (ctype2:union name (maybe:no))
-      #t (ctype2:union name (maybe:no))         -> (ctype2:union name (maybe:no))
-      #t (ctype2:union name (maybe:yes slots))  -> (ctype2:union name (maybe:yes (walk-decls #t slots)))
-      #t (ctype2:function rtype args)           -> (ctype2:function (walk-type rtype #f) (walk-decls #f args))
-      _ _ -> t
-      ))
-
-  (define walk-decls
-    es? ((declarator:t type name) . rest)
-    -> (list:cons (declarator:t (walk-type type es?) name) (walk-decls es? rest))
-    es? ()
-    -> (list:nil)
-    )
-
-  (walk-type type #t)
-  )
-
-(define (process-cpp-file tdgram gen)
-
-  (let ((typedefs (tree/empty))
-        (structs (tree/empty))
-        (functions (tree/empty)))
-
-    (define (parse-toks toks root)
-      (earley tdgram (prod:nt root) (list-generator toks)))
-
-    (define (try-parse toks root parser)
-      (try
-       (maybe:yes (parser (parse-toks toks root)))
-       except (:NoParse tok)
-       -> (begin
-            (printf (bold "unable to parse " (sym root) " expression:\n"))
-            (printf " toks = " (toks->string toks) "\n")
-            (printf " at token = " (token-repr tok) "\n")
-            (maybe:no))))
-
-    (define add-typedef!
-      (declarator:t type (maybe:yes name))
-      -> (begin
-           ;; if it's a struct, add it to that table as well.
-           (match type with
-             (ctype2:struct name slots)
-             -> (tree/insert! structs symbol-index-cmp name slots)
-             _ -> #u)
-           (tree/insert! typedefs symbol-index-cmp name type))
-      _ -> (impossible)
-      )
-
-    (define add-struct!
-      (ctype2:struct name slots)
-      -> (tree/insert! structs symbol-index-cmp name slots)
-      _ -> (impossible)
-      )
-
-    (define add-function!
-      (declarator:t type (maybe:yes name))
-      -> (tree/insert! functions symbol-index-cmp name type)
-      _ -> (impossible)
-      )
-
-    (for toks gen
-      (printf (toks->string toks))
-      (match (%%attr (car toks) kind) with
-        'eof
-        -> #u
-        'TYPEDEF
-        -> (match (try-parse toks 'typedef parse-typedef) with
-             (maybe:no) -> #u
-             (maybe:yes ob)
-             -> (begin
-                  (add-typedef! ob)
-                  (printf "typedef: " (declarator-repr ob) "\n")))
-        'STRUCT
-        -> (match (try-parse toks 'struct_definition parse-struct-definition) with
-             (maybe:no) -> #u
-             (maybe:yes ob)
-             -> (begin
-                  (add-struct! ob)
-                  (printf "struct: " (ctype2-repr ob) "\n")))
-        _
-        -> (match (try-parse toks 'fun_declaration parse-fundecl) with
-             (maybe:no) -> #u
-             (maybe:yes ob)
-             -> (begin
-                  (add-function! ob)
-                  (printf "decl: " (declarator-repr ob) "\n"))
-             )
-        ))
-    (printf "\n--------- typedefs -----------\n")
-    (for-map k v typedefs
-      ;;(printf (lpad 30 (sym k)) " " (ctype2-repr v) "\n")
-      (printf (lpad 30 (sym k)) " "
-              (ctype2-repr (substitute-typedefs v typedefs))
-              "\n")
-      )
-    (printf "\n--------- structs -----------\n")
-    (for-map k v structs
-      (printf "struct " (bold (sym k)) " {\n")
-      (match v with
-        (maybe:yes slots)
-        -> (for-list slot slots
-             (match slot with
-               (declarator:t type (maybe:yes name))
-               ;;-> (printf (lpad 12 (sym name)) " : " (ctype2-repr type) "\n")
-               -> (printf (lpad 12 (sym name))
-                          " : "
-                          (ctype2-repr
-                           (substitute-typedefs type typedefs))
-                          "\n")
-               _ -> (impossible)
-               ))
-        _ -> #u
-        )
-      (printf "}\n")
-      )
-    (printf "\n--------- functions -----------\n")
-    (for-map k v functions
-      ;;(printf (lpad 30 (sym k)) " " (ctype2-repr v) "\n")
-      (printf (lpad 30 (sym k)) " " (ctype2-repr (substitute-typedefs v typedefs)) "\n")
-      )
-    ))
-
-(if (< sys.argc 2)
-    (begin
-      (printf "\nScan a .cpp (pre-processed C) file for typedefs.\n\n")
-      (printf "Usage: " sys.argv[0] " file.c\n")
-      (printf "example: $ clang -E /usr/include/zlib.h > /tmp/zlib.cpp\n")
-      (printf "         $ " sys.argv[0] " /tmp/zlib.cpp\n"))
-    (let ((tdgram (sexp->grammar c-grammar))
-          (file (file/open-read sys.argv[1]))
-          (gen0 (make-lex-generator dfa-c file))
-          (gen1 (partition-stream gen0)))
-      (process-cpp-file tdgram gen1)
-      ))
