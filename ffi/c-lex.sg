@@ -23,7 +23,6 @@
  (IF         (lit "if"))
  (INT        (lit "int"))
  (LONG       (lit "long"))
- (REGISTER   (lit "register"))
  (RETURN     (lit "return"))
  (SHORT      (lit "short"))
  (SIGNED     (lit "signed"))
@@ -42,7 +41,7 @@
               (lit "_Null_unspecified")
               (lit "const")
               ;; C
-              (lit "restrict")
+              (reg "_?_?restrict")
               (lit "volatile")
               (lit "register")
               (lit "extern")
