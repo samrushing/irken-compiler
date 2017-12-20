@@ -3,10 +3,16 @@
 (require-ffi 'stdio)
 
 (define (stdio/open-read path)
-  (stdio/fopen (cstring path) (cstring "rb")))
+  (let ((r (stdio/fopen (cstring path) (cstring "rb"))))
+    (if (not (cref-null? r))
+        r
+        (raise (:StdioOpenRead "failed to open file for read" path)))))
 
-(define (stdio/open-write path create? mode)
-  (stdio/fopen (cstring path) (cstring "wb")))
+(define (stdio/open-write path)
+  (let ((r (stdio/fopen (cstring path) (cstring "wb"))))
+    (if (not (cref-null? r))
+        r
+        (raise (:StdioOpenWrite "failed to open file for write" path)))))
 
 (define (stdio/close FILE*)
   (stdio/fclose FILE*))
@@ -20,7 +26,11 @@
   (let ((r (stdio/fgetc FILE*)))
     (if (< r 0)
         #\eof
-        (int->char r))))
+        (if (> r 255)
+            (begin
+              (printf "whoa, this didn't work right" (hex r) "\n")
+              (%exit #f -1))
+            (int->char r)))))
 
 (define (stdio/read-line FILE*)
   (let loop ((ch (stdio/read-char FILE*))
