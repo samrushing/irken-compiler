@@ -26,7 +26,7 @@
   )
  (filter WHITESPACE COMMENT)
  (grammar
-  (exps   exp (exps exp))
+  (exps   (exps exp) exp)
   (exp    atom list attr aref)
   (attr   (exp DOT SYMBOL))            ;; postfix
   (aref   (exp LBRACKET exp RBRACKET)) ;; postfix
