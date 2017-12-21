@@ -815,7 +815,7 @@ DENV0 (object * env)
   fprintf (stdout, "ENV@%p: [", env);
   while (t != (pxll_tuple*)PXLL_NIL) {
     pxll_int n = get_tuple_size ((object *) t);
-    fprintf (stdout, "%ld ", n);
+    fprintf (stdout, "%" PRIdPTR " ", n);
     t = t->next;
   }
   fprintf (stdout, "]\n");
@@ -846,7 +846,7 @@ void TRACE (const char * name)
 
 void T (pxll_int n)
 {
-  fprintf (stderr, "[%ld]", n);
+  fprintf (stderr, "[%" PRIdPTR "]", n);
 }
 
 static uint64_t program_start_time;

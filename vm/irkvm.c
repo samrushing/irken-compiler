@@ -229,7 +229,7 @@ read_literal (FILE * f, object * ob)
   }
     break;
   default:
-    fprintf (stderr, "bad literal code: %ld\n", code);
+    fprintf (stderr, "bad literal code: %" PRIdPTR "\n", code);
     return -1;
   }
   return 0;
@@ -371,7 +371,7 @@ print_stack (object * k)
   fprintf (stderr, "{");
   while (k != PXLL_NIL) {
     pxll_int n = GET_TUPLE_LENGTH(k[0]) - 3;
-    fprintf (stderr, "%ld.%ld(", UNBOX_INTEGER(k[3]), n);
+    fprintf (stderr, "%" PRIdPTR ".%" PRIdPTR "(", UNBOX_INTEGER(k[3]), n);
     for (int i=0; i < n; i++) {
       fprintf (stderr, "%d:", i);
       print_object (k[4+i]);
@@ -743,7 +743,7 @@ vm_cset (object * dst, pxll_int code, object * val)
     * ((object*)p) = get_foreign (val);
     break;
   default:
-    fprintf (stderr, "vm_cset: unknown result code: %ld\n", code);
+    fprintf (stderr, "vm_cset: unknown result code: %" PRIdPTR "\n", code);
     return -1;
   }
   return 0;
@@ -1290,7 +1290,7 @@ vm_go (void)
       REG1 = TO_CHAR ((uint8_t)(s->data[index]));
     } else {
       // XXX error handler
-      fprintf (stderr, "string ref out of range: %ld %d\n", index, s->len);
+      fprintf (stderr, "string ref out of range: %" PRIdPTR " %d\n", index, s->len);
       return BOX_INTEGER ((unsigned)-1);
     }
     pc += 4;
@@ -1302,13 +1302,13 @@ vm_go (void)
     pxll_int index = UNBOX_INTEGER (REG2);
     pxll_int ch = GET_CHAR (REG3);
     if (ch > 255) {
-      fprintf (stderr, "char out of range: %ld\n", ch);
+      fprintf (stderr, "char out of range: %" PRIdPTR "\n", ch);
       return BOX_INTEGER ((unsigned)-1);
     } else if ((index >= 0) && (index < s->len)) {
       s->data[index] = (char) ch;
     } else {
       // XXX error handler
-      fprintf (stderr, "string set out of range: %ld %d\n", index, s->len);
+      fprintf (stderr, "string set out of range: %" PRIdPTR " %d\n", index, s->len);
       return BOX_INTEGER ((unsigned)-1);
     }
     pc += 4;
