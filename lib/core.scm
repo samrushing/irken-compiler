@@ -186,8 +186,8 @@
   (cond ((< n 0) (raise (:NotImplemented "negative exp" n)))
         ((= n 0) 1)
         ((= n 1) x)
-        ((= 0 (logand n 1)) (pow (* x x) (/ n 2)))
-        (else (* x (pow (* x x) (/ (- n 1) 2))))))
+        ((= 0 (logand n 1)) (pow (* x x) (>> n 1)))
+        (else (* x (pow (* x x) (>> (- n 1) 1))))))
 
 (define (odd? n)
   (= 1 (logand 1 n)))
