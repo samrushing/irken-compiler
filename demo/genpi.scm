@@ -2,7 +2,7 @@
 
 (include "lib/basis.scm")
 (include "lib/map.scm")
-(include "demo/vignum.scm")
+(include "demo/bignum.scm")
 
 ;; This demo shows off the bignum library, but also irken's ability to do
 ;;  world dump/load.  Every 100 digits it saves the state of the computation

@@ -1022,6 +1022,38 @@ irk_string_cmp (pxll_string * a, pxll_string * b)
 
 // --------------------------------------------------------------------------------
 
+// used by bignum.scm
+
+// 60-bit limbs
+object *
+irk_mul2 (pxll_int a, pxll_int b, object * rvo)
+{
+  __int128_t r;
+  __int128_t mask = (__int128_t)((((int64_t)1)<<60)-1);
+  pxll_vector * rv = (pxll_vector *) rvo;
+  r = ((__int128_t) a) * ((__int128_t) b);
+  rv->val[0] = box ((int64_t) (r >> 60));
+  rv->val[1] = box ((int64_t) (r & mask));
+  return (object*) PXLL_UNDEFINED;
+}
+
+// divide two digits by one digit.
+// assumptions: b >= big/halfmask (i.e. base/2)
+object *
+irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b)
+{
+  __int128_t mask = (__int128_t)((((int64_t)1)<<60)-1);
+  __int128_t a = (((__int128_t)ah)<<60) | ((__int128_t)al);
+  __int128_t q = a / b;
+  __int128_t r = a % b;
+  object * tup = allocate (TC_USEROBJ + 0, 2);
+  tup[1] = box ((int64_t) (q & mask));
+  tup[2] = box ((int64_t) (r & mask));
+  return tup;
+}
+
+// --------------------------------------------------------------------------------
+
 extern uint32_t irk_ambig_size;
 extern int32_t G[];
 extern int32_t V[];
