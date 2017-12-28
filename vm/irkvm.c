@@ -14,19 +14,7 @@
 #include <ffi.h>
 #endif
 
-char * op_names[] = {
-  "lit", "litc", "ret", "add", "sub", "mul", "div", "srem", "shl",
-  "ashr", "or", "xor", "and", "eq", "lt", "gt", "le", "ge", "cmp",
-  "tst", "jmp", "fun", "tail", "tail0", "env", "stor", "ref", "mov",
-  "epush", "trcall", "trcall0", "ref0", "call", "call0", "pop",
-  "printo", "prints", "topis", "topref", "topset", "set", "set0",
-  "pop0", "epop", "tron", "troff", "gc", "imm", "make", "makei", "exit",
-  "nvcase", "tupref", "vlen", "vref", "vset", "vmake", "alloc", "rref",
-  "rset", "getcc", "putcc", "dlsym", "ffi", "smake", "sfromc", "slen",
-  "sref", "sset", "scopy", "unchar", "gist", "argv", "quiet", "heap",
-  "readf", "malloc", "halloc", "cget", "cset", "free", "sizeoff",
-  "sgetp", "caref", "csref", "dlsym2", "csize", "cref2int", "errno"
-};
+#include "irkvm.h"
 
 static object * allocate (pxll_int tc, pxll_int size);
 static object * alloc_no_clear (pxll_int tc, pxll_int size);
@@ -276,12 +264,57 @@ read_literals (FILE * f)
 typedef int32_t bytecode_t;
 #define BYTECODE_MAX INT32_MAX
 
+static pxll_int bytecode_len;
 static bytecode_t * bytecode;
 
 // NOTE: because we are using computed gotos in the main VM loop,
 //  any opcode that is out of range causes a segfault.  we *should*
 //  scan the bytecode here to ensure that all are in range before
 //  execution.
+
+static
+pxll_int
+scan_bytecode()
+{
+  pxll_int i = 0;
+  while (i < bytecode_len) {
+    int32_t op = bytecode[i];
+    if (!((op >= 0) && (op < IRK_NUM_OPCODES))) {
+      fprintf (stderr, "out of range opcode %d at position %d.\n", op, (int)i);
+      return -1;
+    } else {
+      // opcode is in range.  now skip its args.
+      opcode_info_t code = irk_opcodes[op];
+      // special-case varargs opcodes
+      int nargs = 0;
+      int nvar = 0;
+      switch (op) {
+      case IRK_OP_TRCALL:
+        nvar = bytecode[i+3];
+        nargs = 3 + nvar;
+        break;
+      case IRK_OP_MAKE:
+        nvar = bytecode[i+3];
+        nargs = 3 + nvar;
+        break;
+      case IRK_OP_NVCASE:
+        nvar = bytecode[i+3];
+        nargs = 3 + (2 * nvar);
+        break;
+      case IRK_OP_FFI:
+        nvar = bytecode[i+4];
+        nargs = 4 + nvar;
+        break;
+      default:
+        nargs = code.nargs;
+        break;
+      }
+      //fprintf (stdout, "%8d %s\n", (int)i, code.name);
+      i += nargs + 1;
+    }
+  }
+  return 0;
+}
 
 static
 pxll_int
@@ -303,6 +336,7 @@ read_bytecode (FILE * f)
         bytecode[i] = code;
       }
     }
+    bytecode_len = codelen;
     return 0;
   }
 }
@@ -334,6 +368,7 @@ read_bytecode_file (char * path)
     CHECK (read_magic (f));
     CHECK (read_literals (f));
     CHECK (read_bytecode (f));
+    CHECK (scan_bytecode());
     return 0;
   }
 }
@@ -808,7 +843,7 @@ vm_go (void)
     &&l_dlsym2, &&l_csize, &&l_cref2int, &&l_errno
   };
 
-  assert (sizeof dispatch_table == sizeof op_names);
+  assert ((sizeof (dispatch_table) / sizeof (void *)) == (sizeof (irk_opcodes) / sizeof (opcode_info_t)));
 
   // XXX what happens when the opcode is out of range? (segfault)
 #define NORMAL_DISPATCH() goto *dispatch_table[code[pc]]
