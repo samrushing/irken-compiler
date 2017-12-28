@@ -15,17 +15,17 @@
 #endif
 
 char * op_names[] = {
-  "lit", "ret", "add", "sub", "mul", "div", "srem", "shl", "ashr",
-  "or", "xor", "and", "eq", "lt", "gt", "le", "ge", "cmp", "tst",
-  "jmp", "fun", "tail", "tail0", "env", "stor", "ref", "mov", "epush",
-  "trcall", "trcall0", "ref0", "call", "call0", "pop", "printo",
-  "prints", "topis", "topref", "topset", "set", "set0", "pop0",
-  "epop", "tron", "troff", "gc", "imm", "make", "makei", "exit",
-  "nvcase", "tupref", "vlen", "vref", "vset", "vmake", "alloc",
-  "rref", "rset", "getcc", "putcc", /* "irk", "getc", */ "dlsym", "ffi",
-  "smake", "slen", "sref", "sset", "scopy", "unchar", "gist",
-  "argv", "quiet", "heap", "readf", "malloc","halloc", "cget","cset", "free",
-  "sizeoff", "sgetp", "caref", "csref", "dlsym2", "csize", "cref2int",
+  "lit", "litc", "ret", "add", "sub", "mul", "div", "srem", "shl",
+  "ashr", "or", "xor", "and", "eq", "lt", "gt", "le", "ge", "cmp",
+  "tst", "jmp", "fun", "tail", "tail0", "env", "stor", "ref", "mov",
+  "epush", "trcall", "trcall0", "ref0", "call", "call0", "pop",
+  "printo", "prints", "topis", "topref", "topset", "set", "set0",
+  "pop0", "epop", "tron", "troff", "gc", "imm", "make", "makei", "exit",
+  "nvcase", "tupref", "vlen", "vref", "vset", "vmake", "alloc", "rref",
+  "rset", "getcc", "putcc", "dlsym", "ffi", "smake", "sfromc", "slen",
+  "sref", "sset", "scopy", "unchar", "gist", "argv", "quiet", "heap",
+  "readf", "malloc", "halloc", "cget", "cset", "free", "sizeoff",
+  "sgetp", "caref", "csref", "dlsym2", "csize", "cref2int", "errno"
 };
 
 static object * allocate (pxll_int tc, pxll_int size);
@@ -277,6 +277,11 @@ typedef int32_t bytecode_t;
 #define BYTECODE_MAX INT32_MAX
 
 static bytecode_t * bytecode;
+
+// NOTE: because we are using computed gotos in the main VM loop,
+//  any opcode that is out of range causes a segfault.  we *should*
+//  scan the bytecode here to ensure that all are in range before
+//  execution.
 
 static
 pxll_int
@@ -787,22 +792,23 @@ vm_go (void)
   // http://eli.thegreenplace.net/2012/07/12/computed-goto-for-efficient-dispatch-tables
 
   static void* dispatch_table[] = {
-    &&l_lit, &&l_litc, &&l_ret, &&l_add, &&l_sub, &&l_mul, &&l_div, &&l_srem,
-    &&l_shl, &&l_ashr, &&l_or, &&l_xor, &&l_and, &&l_eq, &&l_lt,
-    &&l_gt, &&l_le, &&l_ge, &&l_cmp, &&l_tst, &&l_jmp, &&l_fun,
-    &&l_tail, &&l_tail0, &&l_env, &&l_stor, &&l_ref, &&l_mov,
-    &&l_epush, &&l_trcall, &&l_trcall0, &&l_ref0, &&l_call, &&l_call0,
-    &&l_pop, &&l_printo, &&l_prints, &&l_topis, &&l_topref,
-    &&l_topset, &&l_set, &&l_set0, &&l_pop0, &&l_epop, &&l_tron,
-    &&l_troff, &&l_gc, &&l_imm, &&l_make, &&l_makei, &&l_exit,
-    &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref, &&l_vset, &&l_vmake,
-    &&l_alloc, &&l_rref, &&l_rset, &&l_getcc, &&l_putcc, /* &&l_irk, */
-    /* &&l_getc, */ &&l_dlsym, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
-    &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist,
-    &&l_argv, &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
+    &&l_lit, &&l_litc, &&l_ret, &&l_add, &&l_sub, &&l_mul, &&l_div,
+    &&l_srem, &&l_shl, &&l_ashr, &&l_or, &&l_xor, &&l_and, &&l_eq, &&l_lt,
+    &&l_gt, &&l_le, &&l_ge, &&l_cmp, &&l_tst, &&l_jmp, &&l_fun, &&l_tail,
+    &&l_tail0, &&l_env, &&l_stor, &&l_ref, &&l_mov, &&l_epush, &&l_trcall,
+    &&l_trcall0, &&l_ref0, &&l_call, &&l_call0, &&l_pop, &&l_printo,
+    &&l_prints, &&l_topis, &&l_topref, &&l_topset, &&l_set, &&l_set0,
+    &&l_pop0, &&l_epop, &&l_tron, &&l_troff, &&l_gc, &&l_imm, &&l_make,
+    &&l_makei, &&l_exit, &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref,
+    &&l_vset, &&l_vmake, &&l_alloc, &&l_rref, &&l_rset, &&l_getcc,
+    &&l_putcc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
+    &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist, &&l_argv,
+    &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
-    &&l_dlsym2, &&l_csize, &&l_cref2int,
+    &&l_dlsym2, &&l_csize, &&l_cref2int, &&l_errno
   };
+
+  assert (sizeof dispatch_table == sizeof op_names);
 
   // XXX what happens when the opcode is out of range? (segfault)
 #define NORMAL_DISPATCH() goto *dispatch_table[code[pc]]
@@ -1486,6 +1492,11 @@ vm_go (void)
   // CREF2INT target src
   REG1 = BOX_INTEGER ((pxll_int) get_foreign (REG2));
   pc += 3;
+  DISPATCH();
+ l_errno:
+  // ERRNO target
+  REG1 = BOX_INTEGER ((pxll_int) errno);
+  pc += 2;
   DISPATCH();
 }
 

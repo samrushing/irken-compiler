@@ -99,6 +99,7 @@
     (OI 'dlsym2  2      #f     #t)   ;; target name
     (OI 'csize   2      #f     #t)   ;; target sindex
     (OI 'cref2int 2     #f     #t)   ;; target src
+    (OI 'errno   0      #f     #t)   ;; target
     ;;  name   nargs varargs target? args
     ))
 
