@@ -111,6 +111,18 @@
   (for-range vname num body ...)
   -> (for-range* vname 0 num body ...))
 
+(defmacro for-range-rev*
+  (for-range-rev* vname lo hi body ...)
+  -> (let $loop ((vname (- hi 1)))
+       (if (< vname lo)
+           #u
+           (begin body ...
+                  ($loop (- vname 1))))))
+
+(defmacro for-range-rev
+  (for-range-rev vname num body ...)
+  -> (for-range-rev* vname 0 num body ...))
+
 (defmacro for-vector
   (for-vector vname vec body ...)
   -> (let (($v vec)) ;; avoid duplicating <vec> expression.
@@ -118,10 +130,16 @@
 	 (let ((vname $v[$i]))
 	   body ...))))
 
+(defmacro for-vector-rev
+  (for-vector-rev vname vec body ...)
+  -> (let (($v vec)) ;; avoid duplicating <vec> expression.
+       (for-range-rev $i (vector-length $v)
+	 (let ((vname $v[$i]))
+	   body ...))))
+
 (defmacro forever
   (forever body ...)
   -> (let $loop () body ... ($loop)))
-
 
 ;; make an iterator from a 'visit' function.
 ;; XXX: needs more work - the ability to specify other args
