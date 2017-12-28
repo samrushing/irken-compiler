@@ -617,6 +617,8 @@
   (define expand-%%stringify
     ((sexp:symbol sym))
     -> (sexp:string (symbol->string sym))
+    ((sexp:int n))
+    -> (sexp:string (int->string n))
     x -> (error1 "malformed %%stringify" x))
 
   (define (expand-%%symbol forms)
