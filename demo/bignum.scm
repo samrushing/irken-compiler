@@ -6,15 +6,6 @@
   (:neg (vector int))
   )
 
-;; (define big/bits           56)
-;; (define big/base           #x100000000000000)
-;; (define big/halfbits       28)
-;; (define big/mask           #xffffffffffffff)
-;; (define big/halfmask       #xfffffff)
-;; (define big/repr-width     14)
-;; (define big/decimal-base   10000000000000000)
-;; (define big/decimal-pad    16)
-
 (define big/bits           60)
 (define big/base           #x1000000000000000)
 (define big/halfbits       30)
@@ -551,38 +542,29 @@
 ;; XXX the paper mentions a special case that probably needs
 ;;  dealing with here.
 (define (div3h2 a1 a2 a3 b1 b2)
-  ;; (printf "div3h2  a: " (H a1) " " (H a2) " " (H a3) " b: " (H b1) " " (H b2) "\n")
   (let ((a (unsplit-dig a1 a2))
         (q (/ a b1))
         (c (- a (* q b1)))
         (D (* q b2))
         (R (- (unsplit-dig c a3) D)))
-    ;; (printf " q: " (F q) "\n")
-    ;; (printf "R0: " (F R) "\n")
     (when (< R 0) ;; q is too large by at least one
       (set! q (- q 1))
       (set! R (+ R (unsplit-dig b1 b2)))
-      ;;(printf "R1: " (F R) "\n")
       (when (< R 0) ;; q is still too large
         (set! q (- q 1))
         (set! R (+ R (unsplit-dig b1 b2)))
-        ;;(printf "R2: " (F R) "\n")
         ) ;; now R is correct
       )
     (:tuple q R)
     ))
 
 (define (div2b1-not ah al b)
-  ;;(printf "div2b1  ah: " (F ah) " al: " (F al) " b: " (F b) "\n")
   (let (((a1 a2) (split-dig ah))
         ((a3 a4) (split-dig al))
         ((b1 b2) (split-dig b))
         ((q1 R) (div3h2 a1 a2 a3 b1 b2))
         ((r1 r2) (split-dig R))
         ((q2 S) (div3h2 r1 r2 a4 b1 b2)))
-    ;; (printf "q1 " (int q1) " q2 " (int q2) "\n")
-    ;; (printf "q  " (int (unsplit-dig q1 q2)) "\n")
-    ;; (printf "r  " (int S) "\n")
     (:tuple (unsplit-dig q1 q2) S)))
 
 ;; on most architectures, there's a two-word divide-with-remainder insn.
@@ -598,37 +580,20 @@
 ;; divide `a` and `b` when quotient can (mostly) fit into big/base.
 ;; assumes |a| >= 2, |b| >= 1
 (define (divschool0 a b)
-  ;; (printf "  divschool0:\n"
-  ;;         "  a : " (digits-repr a) "\n"
-  ;;         "  b : " (digits-repr b) "\n")
-  ;;(if (not (eq? (cmp:<) (digits-cmp a (shift b 1))))
   (if (not (digits< a (shift b 1)))
       (begin
-        ;; (printf "  **** recursing ...\n")
         (let ((a-bB (digits-sub a (shift b 1)))
               ((q r) (divschool0 a-bB b)))
           ;; q = q+base
-          ;; (printf " rq " (digits-repr (digits-add q #(1 0))) "\n")
-          ;; (printf " rr " (digits-repr r) "\n")
           (:tuple (digits-add q #(1 0)) r)))
       (let (((q r) (div2b1 a[0] a[1] b[0]))
             (t (digits-mul b #(q)))) ;; XXX was digits-mul1
-        ;; (printf "  an1 " (hex a[0]) " an0 " (hex a[1]) " bn0 " (hex b[0]) "\n")
-        ;; (printf "  q " (hex q) "\n")
-        ;; (printf "  r " (hex r) "\n")
-        ;; (printf " t0 " (digits-repr t) "\n")
-        ;; (printf "  b " (digits-repr b) "\n")
-        ;;(when (eq? (digits-cmp t a) (cmp:>))
         (when (digits< a t)
           (set! q (- q 1))
           (set! t (digits-sub t b)))
-        ;;(when (eq? (digits-cmp t a) (cmp:>))
         (when (digits< a t)
           (set! q (- q 1))
           (set! t (digits-sub t b)))
-        ;; (printf " t1 " (digits-repr t) "\n")
-        ;; (printf "  q " (hex q) "\n")
-        ;; (printf "  r " (digits-repr (digits-sub a t)) "\n")
         (:tuple #(q) (digits-sub a t)))
       ))
 
@@ -636,15 +601,8 @@
 (define (divschool1 a b)
   (let ((m (vector-length a))
         (n (vector-length b)))
-    ;; (printf "-----------------------------\n"
-    ;;         "divschool1 m: " (int m) " n: " (int n) "\n"
-    ;;         "a: " (digits-repr a) "\n"
-    ;;         "b: " (digits-repr b) "\n")
     (cond ((< m n) (:tuple #() a))
           ((= m n)
-           ;; (match (digits-cmp a b) with
-           ;;   (cmp:<) -> (:tuple #() a)
-           ;;   _       -> (:tuple #(1) (digits-sub a b))))
            (if (digits< a b)
                (:tuple #() a)
                (:tuple #(1) (digits-sub a b))))
@@ -657,8 +615,6 @@
                  ((q r) (divschool1
                          (digits-add (canon (shift r1 count)) s)
                          b)))
-             ;; (printf "q: " (digits-repr (digits-add (shift q1 count) q)) "\n"
-             ;;         "r: " (digits-repr r) "\n")
              (:tuple (digits-add (shift q1 count) q) r)))
           )))
 
@@ -737,7 +693,6 @@
   (let loop ((dn0 dn)
              (acc '()))
     (let (((q r) (divschool2 dn0 #(big/decimal-base))))
-      ;;(printf "r: " (join "." (digits-repr r)) " q: " (join "." (digits-repr q)) "\n")
       (if (eq? q #())
           (list:cons (digit->dec r #f) acc)
           (loop q
@@ -767,8 +722,8 @@
   (big (<pow> x n))      -> (big-pow (big x) n)
   (big (<dec> s))        -> (dec->big s)
   (big (<expmod> b e m)) -> (big-exp-mod (big b) (big e) (big m))
-  (big (<>>> x n))       -> (big-rshift x n)
-  (big (<<<> x n))       -> (big-lshift x n)
+  (big (<>>> x n))       -> (big-rshift (big x) n)
+  (big (<<<> x n))       -> (big-lshift (big x) n)
   (big (<!big> exp))     -> exp
   (big (op arg ...))     -> (bigl op () (arg ...))
   (big x)                -> x
@@ -827,14 +782,11 @@
         r)))
 
 (define (big-exp-mod b e m)
-  ;;(printf "expmod b " (big-repr b) " e " (big-repr e) " m " (big-repr m) "\n")
   (match e with
     (big:zero) -> (int->big 1)
     _ -> (let ((e2 (big-rshift e 1))
                (x (big-exp-mod b e2 m))
                (t (big-mod (big-mul x x) m)))
-           ;; (printf "  x " (big-repr x) "\n"
-           ;;         "  t " (big-repr t) "\n")
            (if (big-odd? e)
                (big-mod (big-mul t b) m)
                t))
