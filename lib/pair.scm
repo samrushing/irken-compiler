@@ -70,7 +70,7 @@
 
 (define length*
   ()        acc -> acc
-  (hd . tl) acc -> (length* tl (+ 1 acc)))
+  (_ . tl) acc -> (length* tl (+ 1 acc)))
 
 (define (length l)
   (length* l 0))
@@ -135,6 +135,18 @@
   ()       _ -> (error "list index out of range")
   (hd . _) 0 -> hd
   (_ . tl) n -> (nth tl (- n 1))
+  )
+
+(define take
+  ()       _ -> (error "list index out of range")
+  xs       0 -> (list:nil)
+  (x . xs) n -> (list:cons x (take xs (- n 1)))
+  )
+
+(define drop
+  ()       _ -> (error "list index out of range")
+  xs       0 -> xs
+  (_ . xs) n -> (drop xs (- n 1))
   )
 
 ;; (a b c d e f) 3 x   -> (a b c x d e f)
