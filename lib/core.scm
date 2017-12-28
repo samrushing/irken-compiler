@@ -182,6 +182,16 @@
   (%backend bytecode (- -1 a))
   )
 
+(define (pow x n)
+  (cond ((< n 0) (raise (:NotImplemented "negative exp" n)))
+        ((= n 0) 1)
+        ((= n 1) x)
+        ((= 0 (logand n 1)) (pow (* x x) (/ n 2)))
+        (else (* x (pow (* x x) (/ (- n 1) 2))))))
+
+(define (odd? n)
+  (= 1 (logand 1 n)))
+
 ;; note: use llvm.minnum
 (define (min x y)
   (if (< x y) x y))
@@ -450,6 +460,16 @@
       (putcc caller v))
     entry-point
     ))
+
+;; candidate, untested
+;; (defmacro makegen
+;;   (makegen emit body ...)
+;;   -> (make-generator
+;;       (lambda ($consumer)
+;;         (let ((emit (lambda ($x) ($consumer (maybe:yes $x)))))
+;;           body ...
+;;           (forever ($consumer (maybe:no)))
+;;           ))))
 
 ;; We use polymorphic variants for exceptions.
 ;; Since we're a whole-program compiler there's no need to declare
