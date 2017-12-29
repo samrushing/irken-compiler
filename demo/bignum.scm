@@ -20,7 +20,7 @@
 (define (digits-repr digs)
   (let ((r '()))
     ;; iterate in reverse to accumulate
-    (for-range-rev i (vector-length digs)
+    (for-range-rev i (vlen digs)
       (PUSH r (format (zpad big/repr-width (hex digs[i])))))
     (format (join "." r))))
 
@@ -36,6 +36,22 @@
   (big:pos ds) -> ds
   )
 
+(define big/0 (big (I 0)))
+(define big/1 (big (I 1)))
+(define big/2 (big (I 2)))
+(define big/3 (big (I 3)))
+(define big/4 (big (I 4)))
+(define big/5 (big (I 5)))
+(define big/6 (big (I 6)))
+(define big/7 (big (I 7)))
+(define big/8 (big (I 8)))
+(define big/9 (big (I 9)))
+(define big/10 (big (I 10)))
+
+(define digits/base #(1 0))
+(define digits/0 #())
+(define digits/1 #(1))
+
 ;; ---------- utility -----------
 
 (defmacro swap
@@ -44,23 +60,16 @@
        (set! a b)
        (set! b tmp)))
 
-(defmacro inc!
-  (inc! n)   -> (set! n (+ n 1))
-  (inc! n m) -> (set! n (+ n m))
-  )
-
-(defmacro dec!
-  (dec! n)   -> (set! n (- n 1))
-  (dec! n m) -> (set! n (- n m))
-  )
-
 (define (vcons v n)
-  (let ((len (vector-length v))
+  (let ((len (vlen v))
         (r (make-vector (+ 1 len) 0)))
     (set! r[0] n)
     (for-range i len
       (set! r[(+ i 1)] v[i]))
     r))
+
+(define (vlen v)
+  (vector-length v))
 
 (define (vtake v n)
   (let ((r (make-vector n v[0])))
@@ -69,7 +78,7 @@
     r))
 
 (define (vdrop v n)
-  (let ((len (vector-length v))
+  (let ((len (vlen v))
         (len1 (- len n))
         (r (make-vector len1 v[0])))
     (for-range i len1
@@ -78,7 +87,7 @@
 
 ;; drop any leading zeros
 (define (canon digs)
-  (let ((len (vector-length digs))
+  (let ((len (vlen digs))
         (i 0)
         (drop 0))
     (while (and (< i len) (= digs[i] 0))
@@ -128,11 +137,27 @@
 ;; append `n` zeros to `digs`
 ;; note: equivalent to "<< (n * big/bits)"
 (define (shift digs n)
-  (let ((len (vector-length digs))
+  (let ((len (vlen digs))
         (r (make-vector (+ n len) 0)))
     (for-range i len
       (set! r[i] digs[i]))
     r))
+
+;; this makes a non-canonical result, used by karatsuba.
+(define (add-zeros digs n)
+  (let ((len (vlen digs))
+        (r (make-vector (+ n len) 0)))
+    (for-range i len
+      (set! r[(+ i n)] digs[i]))
+    r))
+
+(define (vslice v start end)
+  (if (< (- end start) 0)
+      #()
+      (let ((r (make-vector (- end start) 0)))
+        (for-range i (- end start)
+          (set! r[i] v[(+ i start)]))
+        r)))
 
 (define power-of-two?
   2 acc -> (maybe:yes acc)
@@ -151,8 +176,8 @@
         (else (int-cmp a[i] b[i]))))
 
 (define (digits-cmp a b)
-  (let ((alen (vector-length a))
-        (blen (vector-length b)))
+  (let ((alen (vlen a))
+        (blen (vlen b)))
     (if (= alen blen)
         (digits-cmp* a b 0 alen)
         (int-cmp alen blen))))
@@ -163,8 +188,8 @@
         (else (< a[i] b[i]))))
 
 (define (digits< a b)
-  (let ((alen (vector-length a))
-        (blen (vector-length b)))
+  (let ((alen (vlen a))
+        (blen (vlen b)))
     (match (int-cmp alen blen) with
       (cmp:<) -> #t
       (cmp:>) -> #f
@@ -175,8 +200,8 @@
 
 ;; XXX use digits-add! below
 (define (digits-add* a b)
-  (let ((alen (vector-length a))
-        (blen (vector-length b))
+  (let ((alen (vlen a))
+        (blen (vlen b))
         (r (make-vector alen 0))
         (carry 0)
         (dig 0)
@@ -197,7 +222,7 @@
 
 (define (digits-add a b)
   ;; guarantee that a is longer or equal
-  (match (int-cmp (vector-length a) (vector-length b)) with
+  (match (int-cmp (vlen a) (vlen b)) with
     (cmp:<) -> (swap a b)
     _       -> #u)
   (digits-add* a b))
@@ -215,8 +240,8 @@
 
 ;; assumes b < a
 (define (digits-sub a b)
-  (let ((alen (vector-length a))
-        (blen (vector-length b))
+  (let ((alen (vlen a))
+        (blen (vlen b))
         (r (make-vector alen 0))
         (borrow 0)
         (dig 0)
@@ -268,7 +293,7 @@
 
 ;; assumes: n < big/bits.
 (define (digits-lshift* digs n)
-  (let ((len (vector-length digs))
+  (let ((len (vlen digs))
         ;; do we need an extra digit?
         (extra (if (> n (- big/bits (bit-size digs[0] 0))) 1 0))
         (rlen (+ len extra))
@@ -308,7 +333,7 @@
 
 ;; assumes: n < big/bits.
 (define (digits-rshift* digs n)
-  (let ((len (vector-length digs))
+  (let ((len (vlen digs))
         (drop (if (< n (bit-size digs[0] 0)) 0 1))
         (rlen (- len drop))
         (r (make-vector rlen 0))
@@ -330,7 +355,7 @@
         (when (> r 0)
           (set! digs (digits-rshift* digs r)))
         (when (> q 0)
-          (set! digs (vtake digs (- (vector-length digs) q))))
+          (set! digs (vtake digs (- (vlen digs) q))))
         digs)))
 
 (define big-lshift
@@ -419,8 +444,8 @@
 
 ;; XXX make digits-add use this.
 (define (digits-add! r a off)
-  (let ((rlen (vector-length r))
-        (alen (vector-length a))
+  (let ((rlen (vlen r))
+        (alen (vlen a))
         (carry 0)
         (i (- rlen 1 off))
         (j (- alen 1)))
@@ -444,9 +469,9 @@
 ;; n = |A|
 (define (digits-mul1 A b R)
   (let ((carry 0)
-        (mulv #(0 0))
+        (mulv (make-vector 2 0))
         (p2 0))
-    (for-range-rev i (vector-length A)
+    (for-range-rev i (vlen A)
       (mul2 A[i] b mulv)
       (set! p2 (+ mulv[1] carry))
       (cond ((>= p2 big/base)
@@ -456,15 +481,6 @@
              (set! R[(+ i 1)] p2)
              (set! carry mulv[0]))))
     (set! R[0] carry)))
-
-(define (vcheck v)
-  (let ((bad #f))
-    (for-vector x v
-      (when (> x big/base)
-        (printf "bad digit " (zpad 14 (hex x)) "\n")
-        (set! bad #t)
-        ))
-    bad))
 
 ;; grade-school algorithm
 ;;      AAAAA                       99999  note: carry to an extra
@@ -479,37 +495,79 @@
 
 ;; assumes |a| >= |b|
 (define (digits-mul-school a b)
-  (let ((alen (vector-length a))
-        (blen (vector-length b))
+  (let ((alen (vlen a))
+        (blen (vlen b))
         (part (make-vector (+ alen 1) 0)) ;; for each partial product |a|+1
         (r (make-vector (+ alen blen) 0)) ;; for the result |a|+|b|
         (carry 0))                        ;; carry for running sum.
     (for-range i blen
       (inc! r[(- blen i)] carry)
-      ;; get partial product into <part>
-      (digits-mul1 a b[(- blen i 1)] part)
-      ;; add it into the final sum
-      (set! carry (digits-add! r part i))
+      (digits-mul1 a b[(- blen i 1)] part) ;; get partial product into <part>
+      (set! carry (digits-add! r part i)) ;; add it into the final sum
       )
     r))
 
-;; XXX vector patterns are not implemented yet.
-;; (define digits-mul
-;;   #() _     -> #(0)  ;; these handle internal
-;;   _  #()    -> #(0)  ;;   results of other algorithms
-;;   #(1) x    -> x
-;;   x #(1)    -> x
-;;   ;; XXX karatsuba goes here.
-;;   x y      -> (digits-mul-school x y)
-;;   )
-
 (define (digits-mul a b)
-  (cond ((or (eq? #() a) (eq? #() b)) #(0))          ;; these handle internal results
-        ((and (= 1 (vector-length a)) (= a[0] 1)) b) ;; of other algorithms.
-        ((and (= 1 (vector-length b)) (= b[0] 1)) a)
-        ;; XXX karatsuba goes here.
+  (cond ((or (eq? #() a) (eq? #() b)) #())          ;; these handle internal results
+        ((and (= 1 (vlen a)) (= a[0] 1)) b) ;; of other algorithms.
+        ((and (= 1 (vlen b)) (= b[0] 1)) a)
         (else
-         (canon (digits-mul-school a b)))))
+         (let ((alen (vlen a))
+               (blen (vlen b)))
+           (if (< (max alen blen) KARATSUBA-CUTOFF)
+               (canon (digits-mul-school a b))
+               (karatsuba a b))))
+        ))
+
+;; XXX measures a value for this!
+(define KARATSUBA-CUTOFF 20)
+
+(define (karatsuba da db)
+
+  ;; http://www.keithschwarz.com/interesting/code/karatsuba/Karatsuba.python.html
+
+  (define (add a b)
+    (digits-add a b))
+
+  (define (sub a b)
+    (digits-sub a b))
+
+  (define (pad-to digs n)
+    (let ((len (vlen digs)))
+      (if (< len n)
+	  (add-zeros digs (- n len))
+	  digs)))
+
+  (define K
+    #() _ -> digits/0
+    _ #() -> digits/0
+    a b
+    -> (let ((alen (vlen a))
+             (blen (vlen b)))
+         (if (and (> alen KARATSUBA-CUTOFF) (> blen KARATSUBA-CUTOFF))
+             (let ((n (max alen blen))
+                   (x (pad-to a n))
+                   (y (pad-to b n))
+                   (n0 (>> (+ 1 n) 1))
+                   (n1 (>> n 1))
+                   (x0 (vslice x n1 n))
+                   (x1 (vslice x 0 n1))
+                   (y0 (vslice y n1 n))
+                   (y1 (vslice y 0 n1))
+                   (p0 (K x0 y0))
+                   (p1 (K (add x0 x1) (add y0 y1)))
+                   (p2 (K x1 y1))
+                   (z0 p0)
+                   (z1 (sub p1 (add p0 p2)))
+                   (z2 p2)
+                   (z0prod (shift z0 (<< n1 1)))
+                   (z1prod (shift z1 n1))
+                   (z2prod z2))
+               (add (add z0prod z1prod) z2prod))
+             (digits-mul-school a b))))
+
+  ;;(printf "K " (digits-repr da) " " (digits-repr db) "\n")
+  (canon (K da db)))
 
 ;; XXX handle powers of two with shifting
 (define big-mul
@@ -573,6 +631,14 @@
           "irk_div2b1 (%0, %1, %2)"
           ah al b))
 
+(define (VEC1 v)
+  (make-vector 1 v))
+
+(define (VEC2 a b)
+  (let ((v (make-vector 2 a)))
+    (set! v[1] b)
+    v))
+
 ;; http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.111.9736&rep=rep1&type=pdf
 
 ;; XXX consider using case to indicate digits vs int, i.e. `A` and `q`.
@@ -585,27 +651,27 @@
         (let ((a-bB (digits-sub a (shift b 1)))
               ((q r) (divschool0 a-bB b)))
           ;; q = q+base
-          (:tuple (digits-add q #(1 0)) r)))
+          (:tuple (digits-add q digits/base) r)))
       (let (((q r) (div2b1 a[0] a[1] b[0]))
-            (t (digits-mul b #(q)))) ;; XXX was digits-mul1
+            (t (digits-mul b (VEC1 q)))) ;; XXX was digits-mul1
         (when (digits< a t)
           (set! q (- q 1))
           (set! t (digits-sub t b)))
         (when (digits< a t)
           (set! q (- q 1))
           (set! t (digits-sub t b)))
-        (:tuple #(q) (digits-sub a t)))
+        (:tuple (VEC1 q) (digits-sub a t)))
       ))
 
 ;; divide a and b that have been appropriately shifted
 (define (divschool1 a b)
-  (let ((m (vector-length a))
-        (n (vector-length b)))
+  (let ((m (vlen a))
+        (n (vlen b)))
     (cond ((< m n) (:tuple #() a))
           ((= m n)
            (if (digits< a b)
                (:tuple #() a)
-               (:tuple #(1) (digits-sub a b))))
+               (:tuple digits/1 (digits-sub a b))))
           ((= m (+ 1 n)) (divschool0 a b))
           (else
            (let ((count (- m n 1))
@@ -666,7 +732,7 @@
         (S 10) ;; chunk size - 10^10
         (base (int->big 10000000000)) ;; 10^10
         ((quo rem) (divmod len 10))
-        (r (int->big 0)))
+        (r big/0))
     (for-range i quo
       (let ((sub (substring s (* i S) (* (+ i 1) S)))
             (part (int->big (string->int sub))))
@@ -692,7 +758,7 @@
 (define (digits->dec dn)
   (let loop ((dn0 dn)
              (acc '()))
-    (let (((q r) (divschool2 dn0 #(big/decimal-base))))
+    (let (((q r) (divschool2 dn0 (VEC1 big/decimal-base))))
       (if (eq? q #())
           (list:cons (digit->dec r #f) acc)
           (loop q
@@ -747,7 +813,7 @@
   )
 
 (define (vlast v)
-  v[(- (vector-length v) 1)]
+  v[(- (vlen v) 1)]
   )
 
 (define big-odd?
@@ -758,11 +824,11 @@
 
 (define (big-pow x n) : (big int -> big)
   (cond ((< n 0) (raise (:NotImplementedError)))
-        ((= n 0) (int->big 1))
+        ((= n 0) big/1)
         (else
          (let (((q r) (divmod n 2))
                (half (big-pow x q))
-               (left (if (= r 0) (int->big 1) x)))
+               (left (if (= r 0) big/1 x)))
            (big-mul left (big-mul half half))))
         ))
 
@@ -783,7 +849,7 @@
 
 (define (big-exp-mod b e m)
   (match e with
-    (big:zero) -> (int->big 1)
+    (big:zero) -> big/1
     _ -> (let ((e2 (big-rshift e 1))
                (x (big-exp-mod b e2 m))
                (t (big-mod (big-mul x x) m)))
@@ -819,7 +885,7 @@
 ;; XXX sign extension
 (define (big->bin n little-endian?)
   (let ((neg? (big-neg? n))
-        (digs (big->digits (if neg? (big-add (int->big 2) n) n)))
+        (digs (big->digits (if neg? (big-add big/2 n) n)))
         (rdigs0 (remove-zeros (digits->b256 digs)))
         (rdigs1 (if neg? (map lognot rdigs0) rdigs0)))
     (list->string
@@ -827,4 +893,3 @@
           (if little-endian?
               (reverse rdigs1)
               rdigs1)))))
-
