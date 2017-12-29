@@ -596,10 +596,7 @@
        target index))
 
     (define (emit-alloc tag size target)
-      ;; XXX get rid of `tag:bare`
-      (let ((v (match tag with
-                 (tag:bare v) -> v
-                 (tag:uobj v) -> (if (= size 0) (UITAG v) (UOTAG v)))))
+      (let ((v (if (= size 0) (UITAG tag) (UOTAG tag))))
         (LINSN 'alloc target v size)
         ))
 

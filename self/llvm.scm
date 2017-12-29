@@ -800,10 +800,7 @@
       -> (emit-call name fun args target free k)
 
       (insn:alloc tag size (cont:k target _ k))
-      -> (let ((tag0
-		(match tag with
-		  (tag:bare v) -> v
-		  (tag:uobj v) -> (if (= size 0) (UITAG v) (UOTAG v)))))
+      -> (let ((tag0 (if (= size 0) (UITAG tag) (UOTAG tag))))
 	   (if (= size 0)
 	       (oformat "%r" (int target) " = inttoptr i64 " (int tag0) " to i8**")
 	       (oformat "%r" (int target) " = call fastcc i8** @allocate (i64 " (int tag0) ", i64 " (int size) ")"))

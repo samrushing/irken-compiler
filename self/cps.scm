@@ -2,12 +2,6 @@
 
 (include "self/nodes.scm")
 
-;; XXX tag:bare appears to be unused, get rid of this datatype.
-(datatype tag
-  (:bare int)
-  (:uobj int)
-  )
-
 ;; RTL instructions
 (datatype insn
   (:return int)                                                 ;; return register
@@ -22,7 +16,7 @@
   (:varref int int cont)                                        ;; <depth> <index> <k>
   (:varset int int int cont)                                    ;; <depth> <index> <reg> <k>
   (:new-env int bool (list type) cont)	                        ;; <size> <top?> <k>
-  (:alloc tag int cont)                                         ;; <tag> <size> <k>
+  (:alloc int int cont)                                         ;; <tag> <size> <k>
   (:store int int int int cont)                                 ;; <offset> <arg> <tuple> <i> <k>
   (:invoke (maybe symbol) int int cont)                         ;; <name> <closure> <args> <k>
   (:tail (maybe symbol) int int)                                ;; <name> <closure> <args>
@@ -663,14 +657,14 @@
 	     ;;   compile-primargs rather than using compile-store-rands.  The generated
 	     ;;   code isn't much different, and may put less pressure on the registers.
 	     (if (> nargs 0)
-		 (insn:alloc (tag:uobj tag)
+		 (insn:alloc tag
 			     nargs
 			     (cont:k target free
 				     (compile-store-args
 				      0 0 args target
                                       (add-to-set target free)
 				      lenv k)))
-		 (insn:alloc (tag:uobj tag) 0 k)))
+		 (insn:alloc tag 0 k)))
 	_ -> (error1 "bad %vcon params" params)))
 
     (define (c-record-literal exp lenv k)
@@ -695,7 +689,7 @@
 		   (free (k/free k))
 		   (target (k/target k))
 		   )
-	       (insn:alloc (tag:uobj tag)
+	       (insn:alloc tag
 			   (length args)
 			   ;; this is a hack.  the issue is that <k> already holds the target for
 			   ;;   the allocation... compile-store-args is broken in that it assigns

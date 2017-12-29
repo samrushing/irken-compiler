@@ -360,10 +360,7 @@
 	    (o.write (format "top = r" (int target) ";")))))
 
     (define (emit-alloc tag size target)
-      (let ((tag-string
-	     (match tag with
-	       (tag:bare v) -> (format (int v))
-	       (tag:uobj v) -> (format (if (= size 0) "UITAG(" "UOTAG(") (int v) ")"))))
+      (let ((tag-string (format (if (= size 0) "UITAG(" "UOTAG(") (int tag) ")")))
 	(if (= size 0)
 	    ;; unit type - use an immediate
 	    (o.write (format "O r" (int target) " = (object*)" tag-string ";"))
