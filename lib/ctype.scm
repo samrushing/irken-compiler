@@ -158,13 +158,22 @@
     (hd . tl)             -> (arrow-type? tl)
     )
 
+  ;; convert all integer arguments to 'int' type.
+  ;; [this will probably need revisiting]
+  (define frob-int-arg
+    (ctype:int _ _) -> (ctype:int (cint:int) #t)
+    t -> t
+    )
+
   (define parse-sig*
     name (sexp:list sig)
     -> (if (arrow-type? sig)
            (let ((siglen (length sig))
                  (rtype (nth sig (- siglen 1)))
                  (args (slice sig 0 (- siglen 2))))
-             (csig:fun name (parse-ctype rtype) (map parse-ctype args)))
+             (csig:fun name
+                       (parse-ctype rtype)
+                       (map frob-int-arg (map parse-ctype args))))
            (csig:obj name (parse-ctype (sexp:list sig))))
     name sig
     -> (csig:obj name (parse-ctype sig))
@@ -605,8 +614,15 @@
 (define (cstring s)
   (%string->cref #f (zero-terminate s)))
 
+;; errno is often a macro, and thus unreachable via FFI.
+(define (get-errno)
+  (%backend c (%%cexp (-> int) "errno"))
+  (%backend llvm (%llvm-call ("@irk_get_errno" (-> int))))
+  (%backend bytecode (%%cexp (-> int) "errno"))
+  )
+
 (define (raise-system-error)
-  (let ((errno (%c-get-int int libc/errno))
+  (let ((errno (get-errno))
         (msg (libc/strerror errno)))
     ;; (printf "system error: " (int errno)
     ;;         " " (string (%cref->string #f msg (libc/strlen msg)))
