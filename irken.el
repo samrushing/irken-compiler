@@ -73,6 +73,7 @@
 (put 'match 'scheme-indent-function 'scheme-indent-match)
 (put 'datatype 'scheme-indent-function 1)
 (put 'map-range 'scheme-indent-function 1)
+(put 'makegen 'scheme-indent-function 1)
 (put 'for-range 'scheme-indent-function 2)
 (put 'for-range-rev 'scheme-indent-function 2)
 (put 'for-list 'scheme-indent-function 2)
