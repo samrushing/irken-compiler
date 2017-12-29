@@ -25,6 +25,8 @@
       (set! n (+ n 1))
       (printf (big->dec dig))
       (flush)
+      (when (= n 10000)
+        (%exit #f 0))
       )
     emit
     ))
@@ -35,24 +37,24 @@
 (define (pi)
   (define emit (pi-digit-emitter))
   (define (g q r t i)
-    (let ((i3 (big (* i (I 3))))
-	  (u (big (* (I 3) (+ i3 (I 1))
-                     (+ (I 2) i3))))
+    (let ((i3 (big (* i big/3)))
+	  (u (big (* big/3 (+ i3 big/1)
+                     (+ big/2 i3))))
 	  (y (big (/
                    (+ (* q (- (* (I 27) i) (I 12)))
-                      (* (I 5) r))
-                   (* (I 5) t)))))
+                      (* big/5 r))
+                   (* big/5 t)))))
       (emit y)
       (big
-       (g (* (I 10) q i (- (* (I 2) i) (I 1)))
-          (* (I 10) u
-             (- (+ (* q (- (* (I 5) i) (I 2))) r)
+       (g (* big/10 q i (- (* big/2 i) big/1))
+          (* big/10 u
+             (- (+ (* q (- (* big/5 i) big/2)) r)
                 (* y t)))
           (* t u)
-          (+ i (I 1))
+          (+ i big/1)
           ))))
   (set-verbose-gc #f)
-  (big (g (I 1) (I 180) (I 60) (I 2)))
+  (big (g big/1 (I 180) (I 60) big/2))
   )
 
 (printf "Note: if this crashes upon restart you probably need to disable ASLR.\n")
