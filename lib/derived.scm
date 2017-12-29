@@ -70,6 +70,16 @@
 			  (begin e1 e2 ...)
 			  (cond c1 c2 ...)))
 
+(defmacro inc!
+  (inc! n)   -> (set! n (+ n 1))
+  (inc! n m) -> (set! n (+ n m))
+  )
+
+(defmacro dec!
+  (dec! n)   -> (set! n (- n 1))
+  (dec! n m) -> (set! n (- n m))
+  )
+
 (defmacro while
   (while test body ...)
   -> (let $loop ()
