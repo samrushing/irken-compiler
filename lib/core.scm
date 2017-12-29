@@ -461,15 +461,15 @@
     entry-point
     ))
 
-;; candidate, untested
-;; (defmacro makegen
-;;   (makegen emit body ...)
-;;   -> (make-generator
-;;       (lambda ($consumer)
-;;         (let ((emit (lambda ($x) ($consumer (maybe:yes $x)))))
-;;           body ...
-;;           (forever ($consumer (maybe:no)))
-;;           ))))
+;; implements the 'generator protocol' for you.
+(defmacro makegen
+  (makegen emit body ...)
+  -> (make-generator
+      (lambda ($consumer)
+        (let ((emit (lambda ($x) ($consumer (maybe:yes $x)))))
+          body ...
+          (forever ($consumer (maybe:no)))
+          ))))
 
 ;; We use polymorphic variants for exceptions.
 ;; Since we're a whole-program compiler there's no need to declare

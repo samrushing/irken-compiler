@@ -46,9 +46,7 @@
     ))
 
 (define (mt19937-generator seed num)
-  (make-generator
-   (lambda (consumer)
-     (let ((rng (mt19937 seed)))
-       (for-range i num
-         (consumer (maybe:yes (rng))))
-       (forever (consumer (maybe:no)))))))
+  (makegen emit
+    (let ((rng (mt19937 seed)))
+      (for-range i num
+        (emit (rng))))))
