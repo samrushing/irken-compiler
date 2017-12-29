@@ -274,13 +274,15 @@
       (when the-context.options.profile
 	(match (tree/member the-context.profile-funs symbol-index-cmp name) with
 	  (maybe:yes {index=index names=_})
-	  -> (begin
-	       (o.write "prof_mark1 = rdtsc();")
-	       ;; charge to the calling function
-	       (o.write "prof_funs[prof_current_fun].ticks += (prof_mark1 - prof_mark0);")
-	       ;; set the current function (note: 'top' is at position zero)
-	       (o.write (format "prof_current_fun = " (int (+ index 1)) ";"))
-	       (o.write "prof_funs[prof_current_fun].calls++;"))
+	  -> (o.write
+              (format "if (prof_current_fun != " (int (+ index 1)) ") {\n"
+                      "    prof_mark1 = rdtsc();\n"
+                      ;; charge to the calling function
+                      "    prof_funs[prof_current_fun].ticks += (prof_mark1 - prof_mark0);\n"
+                      ;; set the current function (note: 'top' is at position zero)
+                      "    prof_current_fun = " (int (+ index 1)) ";\n"
+                      "    prof_funs[prof_current_fun].calls++;\n"
+                      "  }"))
 	  (maybe:no) -> (impossible)
 	  ))
       (if (vars-get-flag name VFLAG-ALLOCATES)
