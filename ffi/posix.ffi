@@ -1,7 +1,7 @@
 ;; -*- Mode: lisp -*-
 
 (posix
-  (includes sys/utsname.h unistd.h sys/time.h sys/fcntl.h time.h)
+  (includes "sys/utsname.h" "unistd.h" "sys/time.h" "sys/fcntl.h" "time.h" "stdlib.h")
   (structs utsname timeval timezone tm)
   (constants
    STDIN_FILENO STDOUT_FILENO STDERR_FILENO
@@ -9,30 +9,12 @@
    L_tmpnam
    )
   (sigs
-    (uname (* (struct utsname)) -> int)
-    (getpid -> int)
-    (rand -> int)
-    (srand int -> void)
-    (errno int)
-    (strerror int -> (* char))
-    (strlen (* char) -> int)
-    (memcpy (* void) (* void) int -> (* void))
-    (free (* void) -> void)
-    (puts (* char) -> int)
-    (gettimeofday (* (struct timeval)) (* (struct timezone)) -> int)
-    ;;(localtime (* time_t) -> (* (struct tm)))
-    (localtime (* long) -> (* (struct tm)))
-    (asctime (* (struct tm)) -> (* char))
-    ;;(ctime (* time_t) -> (* char))
-    (ctime (* long) -> (* char))
-    (open (* char) int int -> int)
-    (read int (* char) int -> int)
-    (write int (* char) int -> int)
-    (close int -> int)
-    ;; these are really libc
-    (system (* char) -> int)
-    (abort void -> void)
-    (tmpnam (* char) -> (* char))
-    (getenv (* char) -> (* char))
-    (unlink (* char) -> int)
-    ))
+   uname getpid
+   gettimeofday localtime asctime ctime
+   read write close unlink
+   random srandom initstate setstate
+   )
+  (verbatim
+   ;; we special-case this because it's quasi-variadic.
+   (sig open ((* char) int int -> int)))
+  )
