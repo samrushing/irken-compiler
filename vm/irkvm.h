@@ -3,8 +3,8 @@
 typedef struct {
   char * name;
   int nargs;
-  bool varargs;
-  bool target;
+  int varargs;
+  int target;
 } opcode_info_t;
 
 opcode_info_t irk_opcodes[89] = {
