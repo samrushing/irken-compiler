@@ -268,7 +268,7 @@ static pxll_int bytecode_len;
 static bytecode_t * bytecode;
 
 // NOTE: because we are using computed gotos in the main VM loop,
-//  any opcode that is out of range causes a segfault.  we *should*
+//  any opcode that is out of range causes a segfault.  here we
 //  scan the bytecode here to ensure that all are in range before
 //  execution.
 
