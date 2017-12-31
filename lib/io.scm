@@ -8,7 +8,7 @@
 
 (define (read fd size)
   (let ((buffer (make-string size))
-        (r (syscall (posix/read fd (%string->cref #f buffer) size))))
+        (r (syscall (posix/read fd (%c-cast void (%string->cref #f buffer)) size))))
     (if (= r size)
 	buffer
 	(copy-string buffer r))))
@@ -16,12 +16,12 @@
 (define (read-into-buffer fd buffer)
   (let ((blen (string-length buffer)))
     (syscall
-     (posix/read fd (%string->cref #f buffer) blen)
+     (posix/read fd (%c-cast void (%string->cref #f buffer)) blen)
      )))
 
 (define (write fd s)
   (let ((slen (string-length s)))
-    (syscall (posix/write fd (%string->cref #f s) slen))
+    (syscall (posix/write fd (%c-cast void (%string->cref #f s)) slen))
     ))
 
 ;; XXX perhaps %string->cref should return (array char)?
@@ -30,7 +30,7 @@
         (a* (%c-cast (array char) s*))
         (a0* (%c-aref char a* start)))
     ;; XXX range check
-    (syscall (posix/write fd (%c-cast char a0*) len))
+    (syscall (posix/write fd (%c-cast void (%c-cast char a0*)) len))
     ))
 
 (define (read-stdin)

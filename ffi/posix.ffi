@@ -9,12 +9,14 @@
    L_tmpnam
    )
   (sigs
-   uname getpid
+   getpid
    gettimeofday localtime asctime ctime
    read write close unlink
    random srandom initstate setstate
    )
   (verbatim
    ;; we special-case this because it's quasi-variadic.
-   (sig open ((* char) int int -> int)))
+   (sig open ((* char) int int -> int))
+   ;; ugh. on freebsd this is a f#*@ing inline. WHY???
+   (sig uname ((* (struct utsname)) -> int)))
   )

@@ -277,9 +277,16 @@
     ;;(printf "loading ffi spec for " (sym name) "\n")
     ;;(printf "  from " path0 "\n")
     (%backend bytecode
-      (read-string
-       (string-concat
-        (%%cexp (string -> (list string)) "readf" path0))))
+      (let ((fparts0 (%%cexp (string -> (list string)) "readf" path0)))
+        (if (null? fparts0)
+            ;; VM failed to read the file.  Try local copy (bootstrapping).
+            (let ((path0 (format "ffi/" (sym name) "_ffi.scm"))
+                  (fparts1 (%%cexp (string -> (list string)) "readf" path0)))
+              (if (null? fparts1)
+                  ;; give up
+                  (raise (:NoFFI "unable to read FFI" name))
+                  (set! fparts0 fparts1))))
+        (read-string (string-concat fparts0))))
     (%backend (c llvm)
       ;; using stdio avoids a circular dependency on posix.ffi.
       (let ((file (stdio/open-read path0)))
