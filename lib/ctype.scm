@@ -280,8 +280,8 @@
       (let ((fparts0 (%%cexp (string -> (list string)) "readf" path0)))
         (if (null? fparts0)
             ;; VM failed to read the file.  Try local copy (bootstrapping).
-            (let ((path0 (format "ffi/" (sym name) "_ffi.scm"))
-                  (fparts1 (%%cexp (string -> (list string)) "readf" path0)))
+            (let ((path1 (format "ffi/" (sym name) "_ffi.scm"))
+                  (fparts1 (%%cexp (string -> (list string)) "readf" path1)))
               (if (null? fparts1)
                   ;; give up
                   (raise (:NoFFI "unable to read FFI" name))
@@ -289,8 +289,14 @@
         (read-string (string-concat fparts0))))
     (%backend (c llvm)
       ;; using stdio avoids a circular dependency on posix.ffi.
-      (let ((file (stdio/open-read path0)))
-        (reader path0 (lambda () (stdio/read-char file)))))
+      (try
+       (let ((file0 (stdio/open-read path0)))
+         (reader path0 (lambda () (stdio/read-char file0))))
+       except (:OSError _)
+       -> (let ((path1 (format "ffi/" (sym name) "_ffi.scm"))
+                (file1 (stdio/open-read path1)))
+            (reader path1 (lambda () (stdio/read-char file1))))
+       ))
     ))
 
 ;; how many interfaces are needed in this compilation unit?
