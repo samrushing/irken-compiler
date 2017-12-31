@@ -75,6 +75,7 @@
 (put 'map-range 'scheme-indent-function 1)
 (put 'makegen 'scheme-indent-function 1)
 (put 'for-range 'scheme-indent-function 2)
+(put 'for-range* 'scheme-indent-function 3)
 (put 'for-range-rev 'scheme-indent-function 2)
 (put 'for-list 'scheme-indent-function 2)
 (put 'for-list2 'scheme-indent-function 4)
