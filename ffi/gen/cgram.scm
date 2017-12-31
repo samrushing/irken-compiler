@@ -17,6 +17,7 @@
       VOID
       IDENT
       struct_or_union_decl
+      enum_specifier
       (type SPLAT)
       (type LPAREN SPLAT RPAREN signature))
      (typedef (TYPEDEF type_declarator SEMICOLON))
@@ -30,8 +31,14 @@
      (fun_declaration
       (type fun_ident signature SEMICOLON)
       (type fun_ident signature attribute_specifiers SEMICOLON)
-      (attribute_specifiers type fun_ident signature SEMICOLON))
-     (struct_definition (struct_or_union_decl SEMICOLON))
+      (attribute_specifiers type fun_ident signature SEMICOLON)
+      (attribute_specifiers type fun_ident signature attribute_specifiers SEMICOLON)
+      )
+     (declaration
+      fun_declaration
+      (struct_or_union_decl SEMICOLON)
+      (type fun_ident SEMICOLON)
+      )
      (declaratorSpecifier declarator (declarator attribute_specifiers))
      (declarator
       IDENT
@@ -45,6 +52,16 @@
       (struct_or_union IDENT))
      (struct_elems (struct_elems struct_elem) struct_elem)
      (struct_elem (type_declarator SEMICOLON))
+     (enumerator
+      IDENT
+      (IDENT EQUALS expression))
+     (enum_list
+      (enum_list COMMA enumerator)
+      enumerator)
+     (enum_specifier
+      (ENUM LBRACE enum_list RBRACE)
+      (ENUM IDENT LBRACE enum_list RBRACE)
+      (ENUM IDENT))
      (signature (LPAREN RPAREN) (LPAREN arglist RPAREN))
      (arg type_declarator type DOTDOTDOT)
      (arglist (arglist COMMA arg) arg)
