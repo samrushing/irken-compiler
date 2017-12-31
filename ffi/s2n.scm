@@ -29,9 +29,6 @@
     (:S2NError etype err errstr)
     -> (format "type=" (int etype) " code = " (hex err) ": " (string errstr))))
 
-(define (cref-null? x)
-  (= 0 (%cref->int #f x)))
-
 (define (string->c s)
   (%string->cref #f (zero-terminate s)))
 
@@ -102,7 +99,7 @@
   (define (recv self buf)
     (let ((status* (halloc int))
           (buf* (%c-aref char buf.buf buf.pos))
-          (r0 (s2n/s2n_recv self.conn buf* buf.size status*))
+          (r0 (s2n/s2n_recv self.conn (%c-cast void buf*) buf.size status*))
           (r1 (%c-get-int int status*)))
       ;;(printf "recv: status = " (int r1) " nbytes = " (int r0) "\n")
       (set! buf.end (+ buf.pos r0))
@@ -112,7 +109,7 @@
   (define (send self buf)
     (let ((status* (halloc int))
           (buf* (%c-aref char buf.buf buf.pos))
-          (r0 (s2n/s2n_send self.conn buf* (- buf.end buf.pos) status*))
+          (r0 (s2n/s2n_send self.conn (%c-cast void buf*) (- buf.end buf.pos) status*))
           (r1 (%c-get-int int status*)))
       ;;(printf "send: status = " (int r1) " nbytes = " (int r0) "\n")
       ;; XXX check r1
