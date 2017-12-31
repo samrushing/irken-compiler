@@ -6,6 +6,10 @@
   (:neg (vector int))
   )
 
+;; we need some sort of compile-time selector, like %backend,
+;;   but for word-size - because we do not want to mutate these
+;;   values (we want them all inlined).
+
 (define big/bits           60)
 (define big/base           #x1000000000000000)
 (define big/halfbits       30)
@@ -53,12 +57,6 @@
 (define digits/1 #(1))
 
 ;; ---------- utility -----------
-
-(defmacro swap
-  (swap a b)
-  -> (let ((tmp a))
-       (set! a b)
-       (set! b tmp)))
 
 (define (vcons v n)
   (let ((len (vlen v))
@@ -196,6 +194,21 @@
       (cmp:=) -> (digits<* a b 0 alen)
       )))
 
+(define big-cmp
+  (big:zero)  (big:zero)  -> (cmp:=)
+  (big:zero)  (big:pos _) -> (cmp:<)
+  (big:zero)  (big:neg _) -> (cmp:>)
+  (big:pos _) (big:zero)  -> (cmp:>)
+  (big:pos _) (big:neg _) -> (cmp:>)
+  (big:pos a) (big:pos b) -> (digits-cmp a b)
+  (big:neg _) (big:zero)  -> (cmp:<)
+  (big:neg _) (big:pos _) -> (cmp:<)
+  (big:neg a) (big:neg b) -> (digits-cmp b a)
+  )
+
+(define (big< a b)
+  (eq? (cmp:<) (big-cmp a b)))
+
 ;; ---------- addition -----------
 
 ;; XXX use digits-add! below
@@ -222,10 +235,9 @@
 
 (define (digits-add a b)
   ;; guarantee that a is longer or equal
-  (match (int-cmp (vlen a) (vlen b)) with
-    (cmp:<) -> (swap a b)
-    _       -> #u)
-  (digits-add* a b))
+  (if (< (vlen a) (vlen b))
+      (digits-add* b a)
+      (digits-add* a b)))
 
 (define big-add
   (big:zero) x              -> x
@@ -311,13 +323,21 @@
     r))
 
 (define (digits-lshift digs n)
-  (let (((q r) (divmod n big/bits)))
-    (when (> r 0)
-      (set! digs (digits-lshift* digs r)))
-    (when (> q 0)
-      (set! digs (shift digs q)))
-    digs
-    ))
+  (if (eq? digs #())
+      #()
+      (let (((q r) (divmod n big/bits)))
+        (when (> r 0)
+          (set! digs (digits-lshift* digs r)))
+        (when (> q 0)
+          (set! digs (shift digs q)))
+        digs
+        )))
+
+;; (define (digits-lshift digs n)
+;;   (printf "lshift n=" (int n) " " (digits-repr digs) "\n")
+;;   (let ((r (digits-lshiftx digs n)))
+;;     (printf "       n=" (int n) " " (digits-repr r) "\n")
+;;     r))
 
 ;; msb: 00000xxxxxxxxxxxx
 ;;      0000000000xxxxxxx n < bit-size
@@ -375,11 +395,6 @@
 ;; note: these two functions are needed only when a
 ;;  mul2 primitive is unavailable.
 
-;; XXX consider having these write into a result vector
-;;     rather than allocating tuple results, not only
-;;     would this be more efficient, but it would also
-;;     allow mul2n1 to be inlined without allocating either.
-
 ;; two half-digits multiplied by one half-digit
 ;; result: three half-digits.
 
@@ -391,12 +406,16 @@
 ;;         --------
 ;;         r2 r1 r0
 
-(define (mul2n1 a1 a0 b0)
+(define (mul2n1 a1 a0 b0 r)
   (let (((x1 x0) (split-dig (* b0 a0)))
         ((y1 y0) (split-dig (* b0 a1)))
         (r1 (+ x1 y0))
         ((c1 r1) (split-dig r1)))
-    (:tuple (+ y1 c1) r1 x0))) ;; r2 r1 r0
+    ;; note: not in MSB! (so the diagrams match the code)
+    (set! r[2] (+ y1 c1)) ;; r2
+    (set! r[1] r1)        ;; r1
+    (set! r[0] x0)        ;; r0
+    ))
 
 ;; multiply two 1-digit values into one 2-digit result.
 
@@ -408,31 +427,34 @@
 ;;      -----------
 ;;      r3 r2 r1 r0
 
-(define (mul2-not a b)
+(define (mul2-half a b r)
   (let (((a1 a0) (split-dig a))
         ((b1 b0) (split-dig b))
-        ((x2 x1 x0) (mul2n1 a1 a0 b0))
-        ((y2 y1 y0) (mul2n1 a1 a0 b1))
-        (r1 (+ x1 y0))
+        (rx (make-vector 3 0))
+        (ry (make-vector 3 0))
+        (_ (mul2n1 a1 a0 b0 rx))
+        (_ (mul2n1 a1 a0 b1 ry))
+        (r1 (+ rx[1] ry[0]))
         ((c1 r1) (split-dig r1))
-        (r2 (+ x2 y1 c1))
+        (r2 (+ rx[2] ry[1] c1))
         ((c2 r2) (split-dig r2)))
-    ;; (printf "x: " (F x2) " " (F x1) " " (F x0) "\n")
-    ;; (printf "y: " (F y2) " " (F y1) " " (F y0) "\n")
-    ;; (printf "r1: " (F r1) " r2: " (F r2) "\n")
-    ;; (printf "c1: " (F c1) " c2: " (F c2) "\n")
     ;; now we have: (y2+c2) (x2+y1+c1) (x1+y0) x0
     ;; recombine them into full digits.
-    (:tuple (unsplit-dig (+ y2 c2) r2)
-            (unsplit-dig r1 x0))
+    (set! r[0] (unsplit-dig (+ ry[2] c2) r2))
+    (set! r[1] (unsplit-dig r1 rx[0]))
     ))
 
 ;; note: this replaces mul2 and mul2n1 above.
 ;; use prim from include/header1.c
 (define (mul2 a b r)
-  (%%cexp (int int (vector int) -> undefined)
-          "irk_mul2 (%0, %1, %2)"
-          a b r))
+  ;; (%backend c
+  ;;   (%%cexp (int int (vector int) -> undefined)
+  ;;           "irk_mul2 (%0, %1, %2)"
+  ;;           a b r))
+  (%backend llvm
+    (%llvm-call ("@irk_ll_mul2" (int int (vector int) -> undefined)) a b r))
+  (%backend (bytecode c)
+    (mul2-half a b r)))
 
 ;; for adding a partial product into the final sum.
 ;;
@@ -468,6 +490,7 @@
 
 ;; n = |A|
 (define (digits-mul1 A b R)
+  ;;(printf "digits-mul1 A: " (digits-repr A) " b: " (hex b) " R: " (digits-repr R) "\n")
   (let ((carry 0)
         (mulv (make-vector 2 0))
         (p2 0))
@@ -508,19 +531,22 @@
     r))
 
 (define (digits-mul a b)
-  (cond ((or (eq? #() a) (eq? #() b)) #())          ;; these handle internal results
+  (cond ((or (eq? #() a) (eq? #() b)) #()) ;; these handle internal results
         ((and (= 1 (vlen a)) (= a[0] 1)) b) ;; of other algorithms.
         ((and (= 1 (vlen b)) (= b[0] 1)) a)
         (else
          (let ((alen (vlen a))
                (blen (vlen b)))
            (if (< (max alen blen) KARATSUBA-CUTOFF)
-               (canon (digits-mul-school a b))
+               (canon
+                (if (< alen blen)
+                   (digits-mul-school b a)
+                   (digits-mul-school a b)))
                (karatsuba a b))))
         ))
 
-;; XXX measures a value for this!
-(define KARATSUBA-CUTOFF 20)
+;; measured with tests/t_find_karatsuba.scm
+(define KARATSUBA-CUTOFF 25)
 
 (define (karatsuba da db)
 
@@ -548,25 +574,24 @@
              (let ((n (max alen blen))
                    (x (pad-to a n))
                    (y (pad-to b n))
-                   (n0 (>> (+ 1 n) 1))
-                   (n1 (>> n 1))
-                   (x0 (vslice x n1 n))
-                   (x1 (vslice x 0 n1))
-                   (y0 (vslice y n1 n))
-                   (y1 (vslice y 0 n1))
+                   (m0 (/ (+ 1 n) 2))
+                   (m1 (/ n 2))
+                   (x0 (vslice x m0 n))
+                   (x1 (vslice x 0 m0))
+                   (y0 (vslice y m0 n))
+                   (y1 (vslice y 0 m0))
                    (p0 (K x0 y0))
                    (p1 (K (add x0 x1) (add y0 y1)))
                    (p2 (K x1 y1))
                    (z0 p0)
                    (z1 (sub p1 (add p0 p2)))
                    (z2 p2)
-                   (z0prod (shift z0 (<< n1 1)))
-                   (z1prod (shift z1 n1))
-                   (z2prod z2))
+                   (z0prod z0)
+                   (z1prod (shift z1 m1))
+                   (z2prod (shift z2 (* 2 m1))))
                (add (add z0prod z1prod) z2prod))
              (digits-mul-school a b))))
 
-  ;;(printf "K " (digits-repr da) " " (digits-repr db) "\n")
   (canon (K da db)))
 
 ;; XXX handle powers of two with shifting
@@ -589,14 +614,7 @@
 
 ;; XXX as commented above, consider having these write into a result vector.
 
-(define (F n)
-  (format (zpad big/repr-width (hex n))))
-
-(define (H n)
-  (format (zpad (>> big/repr-width 1) (hex n))))
-
 ;; divide 3 half-digits by two half-digits.
-
 ;; XXX the paper mentions a special case that probably needs
 ;;  dealing with here.
 (define (div3h2 a1 a2 a3 b1 b2)
@@ -616,7 +634,7 @@
     (:tuple q R)
     ))
 
-(define (div2b1-not ah al b)
+(define (div2b1-half ah al b)
   (let (((a1 a2) (split-dig ah))
         ((a3 a4) (split-dig al))
         ((b1 b2) (split-dig b))
@@ -626,10 +644,18 @@
     (:tuple (unsplit-dig q1 q2) S)))
 
 ;; on most architectures, there's a two-word divide-with-remainder insn.
-(define (div2b1 ah al b)
-  (%%cexp (int int int -> (rsum (rlabel tuple (pre (product int int)) (rdefault abs))))
-          "irk_div2b1 (%0, %1, %2)"
-          ah al b))
+(define (div2b1 ah al b r)
+  (%backend c
+    (%%cexp (int int int (vector int) -> undefind)
+            "irk_div2b1 (%0, %1, %2, %3)"
+            ah al b r))
+  (%backend llvm
+    (%llvm-call ("@irk_ll_div2b1" (int int int (vector int) -> undefined)) ah al b r))
+  (%backend bytecode
+    (let (((q0 r0) (div2b1-half ah al b)))
+      (set! r[0] q0)
+      (set! r[1] r0)))
+  )
 
 (define (VEC1 v)
   (make-vector 1 v))
@@ -647,12 +673,14 @@
 ;; assumes |a| >= 2, |b| >= 1
 (define (divschool0 a b)
   (if (not (digits< a (shift b 1)))
-      (begin
-        (let ((a-bB (digits-sub a (shift b 1)))
-              ((q r) (divschool0 a-bB b)))
-          ;; q = q+base
-          (:tuple (digits-add q digits/base) r)))
-      (let (((q r) (div2b1 a[0] a[1] b[0]))
+      (let ((a-bB (digits-sub a (shift b 1)))
+            ((q r) (divschool0 a-bB b)))
+        ;; q = q+base
+        (:tuple (digits-add q digits/base) r))
+      (let ((qr (make-vector 2 0))
+            (_ (div2b1 a[0] a[1] b[0] qr))
+            (q qr[0])
+            (r qr[1])
             (t (digits-mul b (VEC1 q)))) ;; XXX was digits-mul1
         (when (digits< a t)
           (set! q (- q 1))
