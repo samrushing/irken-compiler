@@ -22,8 +22,8 @@
         "typedef struct {\n"
         "  char * name;\n"
         "  int nargs;\n"
-        "  bool varargs;\n"
-        "  bool target;\n"
+        "  int varargs;\n"
+        "  int target;\n"
         "} opcode_info_t;\n\n"
         "opcode_info_t irk_opcodes[" (int nops) "] = {\n"
         ))
