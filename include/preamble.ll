@@ -45,6 +45,8 @@ declare i8** @irk_string_cmp (i8** %a, i8** %b)
 declare i8** @irk_make_string (i8** %len)
 declare void @relocate_llvm_literals (i8**, i32*)
 declare i8** @irk_copy_tuple (i8**)
+declare i8** @irk_mul2 (i64, i64, i8**)
+declare i8** @irk_div2b1 (i64, i64, i64, i8**)
 
 ;; FFI
 declare i8** @make_malloc (i64 %size, i64 %count)
@@ -479,5 +481,27 @@ define internal fastcc i8** @irk_buffer_copy(i8**, i8**, i8**, i8**, i8**) {
 ;; this is just to make the linker happy.
 ;; currently there is no support for profiling the LLVM backend.
 define void @prof_dump() { ret void }
+
+;; ---- bignum helpers ----
+
+;; note: there doesn't seem to be any speed advantage to copying the
+;;  compiled llvm for mul2/div2b1 here.
+
+;; wrapper for header1.c/irk_mul2
+define internal fastcc i8** @irk_ll_mul2 (i8** %a, i8** %b, i8** %r) {
+  %a0 = call fastcc i64 @insn_unbox (i8** %a)
+  %b0 = call fastcc i64 @insn_unbox (i8** %b)
+  %r0 = call i8** @irk_mul2 (i64 %a0, i64 %b0, i8** %r)
+  ret i8** %r0
+}
+
+;; wrapper for header1.c/irk_div2b1
+define internal fastcc i8** @irk_ll_div2b1 (i8** %ah, i8** %al, i8** %b, i8** %r) {
+  %ah0 = call fastcc i64 @insn_unbox (i8** %ah)
+  %al0 = call fastcc i64 @insn_unbox (i8** %al)
+  %b0 = call fastcc i64 @insn_unbox (i8** %b)
+  %u = call i8** @irk_div2b1 (i64 %ah0, i64 %al0, i64 %b0, i8** %r)
+  ret i8** %u
+}
 
 ;; --- generated code follows ---
