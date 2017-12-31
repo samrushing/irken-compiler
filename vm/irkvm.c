@@ -1412,15 +1412,11 @@ vm_go (void)
   DISPATCH();
  l_readf: {
     // READF target path
-    object * slist;
+    object * slist = (object *) PXLL_NIL;
     pxll_int r = vm_read_file ((pxll_string *) REG2, &slist);
-    if (r == 0) {
-      REG1 = slist;
-      pc += 3;
-      DISPATCH();
-    } else {
-      return BOX_INTEGER ((unsigned)-1);
-    }
+    REG1 = slist;
+    pc += 3;
+    DISPATCH();
   }
  l_malloc: {
     // MALLOC target sindex nelem
