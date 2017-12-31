@@ -1032,6 +1032,11 @@ irk_string_cmp (pxll_string * a, pxll_string * b)
 
 // used by bignum.scm
 
+// note: these functions take a result vector in order to avoid
+//   allocating a result tuple in these functions.  If they are
+//   used in a tight loop that otherwise does not allocate, they
+//   can avoid a heap check and overflow the heap.
+
 // 60-bit limbs
 object *
 irk_mul2 (pxll_int a, pxll_int b, object * rvo)
@@ -1048,16 +1053,16 @@ irk_mul2 (pxll_int a, pxll_int b, object * rvo)
 // divide two digits by one digit.
 // assumptions: b >= big/halfmask (i.e. base/2)
 object *
-irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b)
+irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
 {
+  pxll_vector * rv = (pxll_vector *) rvo;
   __int128_t mask = (__int128_t)((((int64_t)1)<<60)-1);
   __int128_t a = (((__int128_t)ah)<<60) | ((__int128_t)al);
   __int128_t q = a / b;
   __int128_t r = a % b;
-  object * tup = allocate (TC_USEROBJ + 0, 2);
-  tup[1] = box ((int64_t) (q & mask));
-  tup[2] = box ((int64_t) (r & mask));
-  return tup;
+  rv->val[0] = box ((int64_t) (q & mask));
+  rv->val[1] = box ((int64_t) (r & mask));
+  return (object*) PXLL_UNDEFINED;
 }
 
 // --------------------------------------------------------------------------------
