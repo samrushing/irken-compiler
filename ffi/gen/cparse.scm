@@ -166,11 +166,24 @@
 (define parse-struct-or-union-decl
   (parse:nt 'struct_or_union_decl (su . rest))
   -> (let (((name slots) (parse-struct-or-union-decl* rest)))
-       (if (is-struct? su)
-           (ctype2:struct name slots)
-           (ctype2:union name slots)))
+       (declarator:t
+        (if (is-struct? su)
+            (ctype2:struct name slots)
+            (ctype2:union name slots))
+        (maybe:yes name)))
   x -> (impossiblex x)
   )
+
+;; not needed [yet]
+;; (define parse-enum-specifier
+;;   (parse:nt 'enum_specifier (ENUM LB enum-list RB))
+;;   -> (ctype2:int (cint:int))
+;;   (parse:nt 'enum_specifier (ENUM IDENT LB enum-list RB))
+;;   -> (ctype2:int (cint:int))
+;;   (parse:nt 'enum_specifier (ENUM IDENT))
+;;   -> (ctype2:int (cint:int))
+;;   x -> (impossiblex x)
+;;   )
 
 (define parse-type
   (parse:nt 'type ((parse:t token)))
@@ -184,7 +197,12 @@
        (parse:nt 'float_type _)
        -> (parse-float-type other)
        (parse:nt 'struct_or_union_decl _)
-       -> (parse-struct-or-union-decl other)
+       -> (match (parse-struct-or-union-decl other) with
+            ;; assume the name is '%anonymous?
+            (declarator:t type name) -> type)
+       ;; we treat all enum as int.
+       (parse:nt 'enum_specifier _)
+       -> (ctype2:int (cint:int) #t)
        x -> (impossiblex x)
        )
   (parse:nt 'type (rtype LP SPLAT RP sig))
@@ -240,12 +258,33 @@
        (parse-type rtype)
        (parse-signature signature))
       (maybe:yes (parse-funident ident)))
+  ;; the following rules just strip any attribute specifiers off.
   (parse:nt 'fun_declaration
-            (type ident signature (parse:nt 'attribute_specifiers _) SEMICOLON)) ;; ignore attributes
+            (type ident signature
+                  (parse:nt 'attribute_specifiers _)
+                  SEMICOLON))
   -> (parse-fundecl (parse:nt 'fun_declaration (LIST type ident signature SEMICOLON)))
   (parse:nt 'fun_declaration
-            ((parse:nt 'attribute_specifiers _) type ident signature SEMICOLON)) ;; ignore attributes
+            ((parse:nt 'attribute_specifiers _)
+             type ident signature
+             SEMICOLON))
   -> (parse-fundecl (parse:nt 'fun_declaration (LIST type ident signature SEMICOLON)))
+  (parse:nt 'fun_declaration
+            ((parse:nt 'attribute_specifiers _)
+             type ident signature
+             (parse:nt 'attribute_specifiers _)
+             SEMICOLON))
+  -> (parse-fundecl (parse:nt 'fun_declaration (LIST type ident signature SEMICOLON)))
+  x -> (impossiblex x)
+  )
+
+(define parse-declaration
+  (parse:nt 'declaration (fun))
+  -> (parse-fundecl fun)
+  (parse:nt 'declaration (struct/union SEMICOLON))
+  -> (parse-struct-or-union-decl struct/union)
+  (parse:nt 'declaration (type ident SEMICOLON))
+  -> (declarator:t (parse-type type) (maybe:yes (parse-funident ident)))
   x -> (impossiblex x)
   )
 
