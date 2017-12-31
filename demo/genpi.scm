@@ -25,14 +25,16 @@
       (set! n (+ n 1))
       (printf (big->dec dig))
       (flush)
-      (when (= n 10000)
-        (%exit #f 0))
       )
     emit
     ))
 
 ;; http://damien-guichard.developpez.com/tutoriels/ocaml/?page=page_6
 ;; http://www.pi314.net/eng/schrogosper.php
+
+;; avoid pointless consing.
+(define big/27 (big (I 27)))
+(define big/12 (big (I 12)))
 
 (define (pi)
   (define emit (pi-digit-emitter))
@@ -41,7 +43,7 @@
 	  (u (big (* big/3 (+ i3 big/1)
                      (+ big/2 i3))))
 	  (y (big (/
-                   (+ (* q (- (* (I 27) i) (I 12)))
+                   (+ (* q (- (* big/27 i) big/12))
                       (* big/5 r))
                    (* big/5 t)))))
       (emit y)
