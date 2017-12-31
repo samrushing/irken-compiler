@@ -3,6 +3,7 @@
 (include "lib/basis.scm")
 (include "lib/map.scm")
 
+(require-ffi 'libc)
 (require-ffi 'posix)
 
 ;; note: timezone.tz_dsttime is not really useful, since the DST rules
@@ -22,7 +23,7 @@
       result)))
 
 (define (get-c-string ref)
-  (%cref->string #f ref (posix/strlen ref)))
+  (%cref->string #f ref (libc/strlen ref)))
 
 (define (ctime)
   (let ((t0 (gettimeofday))
