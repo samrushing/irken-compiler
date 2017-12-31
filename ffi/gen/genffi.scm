@@ -176,19 +176,18 @@
       _ -> (impossible)
       )
 
-    (define (add-struct! t)
-      (match t with
-        (ctype2:struct name slots)
-        -> (tree/insert! structs magic-cmp (:tuple name #t) t)
-        (ctype2:union name slots)
-        -> (tree/insert! structs magic-cmp (:tuple name #f) t)
-        _ -> (impossible)
-        ))
-
-    (define add-function!
+    (define add-declaration!
       (declarator:t type (maybe:yes name))
-      -> (tree/insert! functions symbol-index-cmp name type)
-      _ -> (impossible)
+      -> (match type with
+           (ctype2:struct name slots)
+           -> (tree/insert! structs magic-cmp (:tuple name #t) type)
+           (ctype2:union name slots)
+           -> (tree/insert! structs magic-cmp (:tuple name #f) type)
+           type
+           -> (tree/insert! functions symbol-index-cmp name type)
+           )
+      (declarator:t type (maybe:no))
+      -> (impossible)
       )
 
     (printf "processing '" cppfile "' ...\n")
@@ -197,9 +196,7 @@
       (match (%%attr (car toks) kind) with
         'eof     -> #u
         'TYPEDEF -> (when-maybe ob (try-parse toks 'typedef parse-typedef) (add-typedef! ob))
-        'STRUCT  -> (when-maybe ob (try-parse toks 'struct_definition parse-struct-definition) (add-struct! ob))
-        'UNION   -> (when-maybe ob (try-parse toks 'struct_definition parse-struct-definition) (add-struct! ob))
-        _        -> (when-maybe ob (try-parse toks 'fun_declaration parse-fundecl) (add-function! ob))
+        _        -> (when-maybe ob (try-parse toks 'declaration parse-declaration) (add-declaration! ob))
         ))
     (printf "...done.\n")
     ;; our result, a kind of database gleaned from the cpp file.
@@ -274,7 +271,8 @@
     -> (let ((includes '())
              (structs '())
              (constants '())
-             (sigs '()))
+             (sigs '())
+             (verbatim '()))
          (for-list list lists ;; list := sexp
            (when-maybe obs (sexp-starting-with 'structs list)
              (append! structs (map sexp->symbol obs)))
@@ -284,12 +282,16 @@
              (append! sigs (map sexp->symbol obs)))
            (when-maybe obs (sexp-starting-with 'includes list)
              (append! includes (map sexp->string obs)))
+           (when-maybe exps (sexp-starting-with 'verbatim list)
+             (append! verbatim exps))
            )
          {iface=iface
           includes=includes
           structs=structs
           sigs=sigs
-          constants=constants}
+          constants=constants
+          verbatim=verbatim
+          }
          )
     _ -> (raise (:GenFFI/BadFFI exp))
     ))
@@ -412,28 +414,23 @@
       (reverse result)))
   )
 
-;; these are just printed as a single string (made with magic
-;; C string joining).
-
-(define (gen-sigs iface types W)
-  (W (format "  fprintf (stdout, "))
+;; write sigs to the interface file.
+(define (write-sigs iface types W)
   (for-list sig iface.sigs
     (match (tree/member types.functions symbol-index-cmp sig) with
       (maybe:yes type)
       ;; (sig accept (int (* (struct sockaddr)) (* uint) -> int))
       -> (match (sanitize-sig type) with
            (ctype2:function rtype args)
-           -> (W (format "\"(sig " (sym sig) " ("
+           -> (W (format "(sig " (sym sig) " ("
                          (join declarator-repr " " args)
-                         " -> " (ctype2-repr rtype) "))\\n\"\n"))
+                         " -> " (ctype2-repr rtype) "))\n"))
            _
-           -> (W (format "\"(sig " (ctype2-repr type) ")\\n\"\n"))
+           -> (W (format "(sig " (sym sig) " " (ctype2-repr type) ")\n"))
            )
       (maybe:no)
       -> (raise (:GenFFI/NoSuchFun "gen-sigs: no such function/object" sig))
-      ))
-  (W (format ");\n"))
-  )
+      )))
 
 ;; The second C file generated is used to compute the sizes and offsets
 ;;   of all required structs/unions.
@@ -493,8 +490,6 @@
                 (W "  fprintf (stdout, \" )\\n\");\n")
                 )
               )))
-        ;; emit the signatures...
-        (gen-sigs iface types W)
         (W "}\n")
         (stdio/close ofile)
         ;; ok, now (finally!) generate the interface file.
@@ -507,6 +502,11 @@
           (for-list include iface.includes
             (stdio/write iface-file (format (string include) " ")))
           (stdio/write iface-file ")\n")
+          ;; emit verbatim exps
+          (for-list exp iface.verbatim
+            (stdio/write iface-file (format (repr exp) "\n")))
+          ;; emit the signatures...
+          (write-sigs iface types (lambda (s) (stdio/write iface-file s)))
           (stdio/close iface-file)
           ;; compile iface2
           (compile (LIST opath "-o" iface2))
