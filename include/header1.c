@@ -649,11 +649,15 @@ alloc_no_clear (pxll_int tc, pxll_int size)
 object *
 make_vector (pxll_int size, object * val)
 {
-  object * v = allocate (TC_VECTOR, size);
-  for (int i=0; i < size; i++) {
-    v[i+1] = (object *) val;
+  if (size == 0) {
+    return (object *) TC_EMPTY_VECTOR;
+  } else {
+    object * v = allocate (TC_VECTOR, size);
+    for (int i=0; i < size; i++) {
+      v[i+1] = (object *) val;
+    }
+    return v;
   }
-  return v;
 }
 
 object *
@@ -790,7 +794,11 @@ record_store (object * rec, pxll_int label, object * val)
 void
 vector_range_check (object * v, pxll_int index)
 {
-  range_check (GET_TUPLE_LENGTH (*v), index);
+  if (v == (object*) TC_EMPTY_VECTOR) {
+    range_check (0, index);
+  } else {
+    range_check (GET_TUPLE_LENGTH (*v), index);
+  }
 }
 
 void
