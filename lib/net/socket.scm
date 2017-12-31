@@ -1,5 +1,6 @@
 ;; -*- Mode: Irken -*-
 
+(require-ffi 'libc)
 (require-ffi 'posix)
 (require-ffi 'socket)
 
@@ -78,6 +79,7 @@
     AF_INET
     (%string->cref #f (zero-terminate ip))
     (%c-cast (* void) addr*))
+    ;;addr*)
    ))
 
 (define (inet_pton6 ip addr*) : (string (cref (struct in6_addr)) -> int)
@@ -92,7 +94,7 @@
   (let ((addr* (halloc (struct sockaddr_in))))
     (%c-set-int u8 AF_INET (%c-sref sockaddr_in.sin_family addr*))
     (%c-set-int u16 (socket/htons port) (%c-sref sockaddr_in.sin_port addr*))
-    (inet_pton4 ip (%c-cast (* void) (%c-sref sockaddr_in.sin_addr addr*)))
+    (inet_pton4 ip (%c-sref sockaddr_in.sin_addr addr*))
     {addr=(%c-cast (* (struct sockaddr)) addr*) size=(%c-sizeof (struct sockaddr_in))}
     ))
 
@@ -115,7 +117,7 @@
         (a* (%c-sref sockaddr_in.sin_addr sa*))
         (port (socket/htons (%c-get-int u16 (%c-sref sockaddr_in.sin_port sa*)))))
     (socket/inet_ntop AF_INET (%c-cast (* void) a*) r1 16)
-    (:tuple (%cref->string #f r1 (posix/strlen r1)) port)))
+    (:tuple (%cref->string #f r1 (libc/strlen r1)) port)))
 
 (define (unparse-ipv6-address addr*)
   (let ((r0 (halloc char 80))
@@ -124,7 +126,7 @@
         (a* (%c-sref sockaddr_in6.sin6_addr sa*))
         (port (socket/htons (%c-get-int u16 (%c-sref sockaddr_in6.sin6_port sa*)))))
     (socket/inet_ntop AF_INET6 (%c-cast (* void) a*) r1 80)
-    (:tuple (%cref->string #f r1 (posix/strlen r1)) port)))
+    (:tuple (%cref->string #f r1 (libc/strlen r1)) port)))
 
 (define (unparse-address addr*)
   (let ((family (%c-get-int u8 (%c-sref sockaddr.sa_family addr*))))
@@ -162,7 +164,7 @@
 
 (define (sock/recv sock buf)
   (let ((buf* (%c-aref char buf.buf buf.pos))
-        (nbytes (syscall (socket/recv sock.fd buf* (- buf.size buf.pos) 0))))
+        (nbytes (syscall (socket/recv sock.fd (%c-cast (* void) buf*) (- buf.size buf.pos) 0))))
     (set! buf.end (+ buf.end nbytes)) ;; trust recv(2) to not overrun?
     nbytes))
 
