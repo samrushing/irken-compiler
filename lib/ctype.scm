@@ -292,7 +292,7 @@
       (try
        (let ((file0 (stdio/open-read path0)))
          (reader path0 (lambda () (stdio/read-char file0))))
-       except (:OSError _)
+       except (:StdioOpenRead _ _)
        -> (let ((path1 (format "ffi/" (sym name) "_ffi.scm"))
                 (file1 (stdio/open-read path1)))
             (reader path1 (lambda () (stdio/read-char file1))))
