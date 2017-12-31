@@ -50,3 +50,34 @@
     (let ((rng (mt19937 seed)))
       (for-range i num
         (emit (rng))))))
+
+;; assumes nbits is .LE. word size
+;; convert a 32-bit generator into an `nbits`-generator.
+(define (generate-random-bits nbits seed)
+  ;; bit buffer record := {val=int have=int width=int}
+  (define (buf/new width)
+    (assert (< width (* 8 (get-word-size))))
+    {val=0 have=0 width=width})
+  (define (buf/push buf val bits)
+    (set! buf.val (logior (<< buf.val bits) (logand val (- (<< 1 bits) 1))))
+    (inc! buf.have bits)
+    (assert (<= buf.have buf.width)))
+  (define (buf/pull buf bits)
+    (assert (<= bits buf.have))
+    (let ((r (>> buf.val (- buf.have bits)))
+          (left (- buf.have bits)))
+      (set! buf.val (logand buf.val (- (<< 1 left) 1)))
+      (set! buf.have left)
+      r))
+  (let ((rng (mt19937 seed))
+        (ibuf (buf/new 32))
+        (obuf (buf/new nbits)))
+    (makegen emit
+      (forever
+       (while (< obuf.have nbits)
+         (let ((need (- nbits obuf.have)))
+           (if (= ibuf.have 0) (buf/push ibuf (rng) 32)) ;; refill
+           (let ((chunk (min need ibuf.have)))
+             (buf/push obuf (buf/pull ibuf chunk) chunk))))
+       (emit (buf/pull obuf nbits))
+       ))))
