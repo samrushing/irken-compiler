@@ -80,7 +80,7 @@ print 'building VM'
 execfile ('util/build_vm.py')
 
 print 'generating posix FFI...'
-sys_in_dir ('ffi', 'python gen.py posix.ffi')
+system ('vm/irkvm ffi/gen/genffi.byc -gen ffi/posix.ffi')
 
 print 'compiling stage0 binary (with vm)...'
 system ('vm/irkvm self/compile.byc self/compile.scm -q')
