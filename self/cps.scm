@@ -71,7 +71,9 @@
                  (if (> i max-reg)
                      (begin (set! max-reg i)
                             (if (> i *max-bytecode-registers*)
-                                (raise (:TooManyRegisters "bytecode: ran out of registers!"))
+                                (begin
+                                  (printf "max reg of " (int i) " out of " (int *max-bytecode-registers*) "\n")
+                                  (raise (:TooManyRegisters "bytecode: ran out of registers!")))
                                 i))
                      i))))
          (define (get-max) max-reg)
@@ -539,10 +541,9 @@
       (loop formals subs lenv '()))
 
     (define (c-let-splat tail? formals subs lenv k)
-      (let ((rsubs (reverse subs)) ;; subs = (init0 init1 ... body)
-	    (body (car rsubs))
-	    (inits (reverse (cdr rsubs)))
-	    (types (map (lambda (x) (noderec->type x)) inits))
+      (let ((body (last subs)) ;; subs = (init0 init1 ... body)
+	    (inits (butlast subs))
+	    (types (map noderec->type inits))
 	    (nargs (length formals))
 	    (free (k/free k))
 	    (k-body (dead free
@@ -720,8 +721,15 @@
     (define (gen-tail name closure-reg args-reg k)
       (insn:tail name closure-reg args-reg))
 
-    (compile #t exp (cpsenv:nil) (cont:nil))
-
+    (try
+     (compile #t exp (cpsenv:nil) (cont:nil))
+     except
+     (:TooManyRegisters _)
+     -> (begin
+          (printf "too many registers in expression: \n")
+          (pp-node exp)
+          (error "too many registers."))
+     )
     ))
 
 ;; this never completes because of an issue with type<? - a certain complex type
