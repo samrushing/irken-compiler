@@ -844,12 +844,17 @@ RIB0 (object * env)
   fprintf (stdout, "\n");
 }
 
+const char * irk_trace_current_fun = NULL;
+
 void TRACE (const char * name)
 {
   // this is wrong, needs to use k, not lenv.
-  stack_depth_indent();
-  fprintf (stderr, "%s ", name);
-  DENV();
+  if (name != irk_trace_current_fun) {
+    stack_depth_indent();
+    fprintf (stderr, "%s ", name);
+    DENV();
+    irk_trace_current_fun = name;
+  }
 }
 
 void T (pxll_int n)
@@ -868,8 +873,11 @@ void exit_continuation (object * result)
 #if USE_CYCLECOUNTER
   program_end_time = rdtsc();
 #endif
-  dump_object ((object *) result, 0);
-  fprintf (stdout, "\n");
+  if ((result != (object*) PXLL_UNDEFINED) && !IS_INTEGER(result)) {
+    // only print the result object if it's "interesting".
+    dump_object ((object *) result, 0);
+    fprintf (stdout, "\n");
+  }
 #if USE_CYCLECOUNTER
   if (verbose_gc) {
     fprintf (
@@ -1032,6 +1040,8 @@ irk_string_cmp (pxll_string * a, pxll_string * b)
 
 // used by bignum.scm
 
+#ifdef __LP64__
+
 // note: these functions take a result vector in order to avoid
 //   allocating a result tuple in these functions.  If they are
 //   used in a tight loop that otherwise does not allocate, they
@@ -1064,6 +1074,38 @@ irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
   rv->val[1] = box ((int64_t) (r & mask));
   return (object*) PXLL_UNDEFINED;
 }
+
+#else
+
+// 28-bit limbs
+object *
+irk_mul2 (pxll_int a, pxll_int b, object * rvo)
+{
+  int64_t r;
+  int64_t mask = (int64_t)((((int32_t)1)<<28)-1);
+  pxll_vector * rv = (pxll_vector *) rvo;
+  r = ((int64_t) a) * ((int64_t) b);
+  rv->val[0] = box ((int32_t) (r >> 28));
+  rv->val[1] = box ((int32_t) (r & mask));
+  return (object*) PXLL_UNDEFINED;
+}
+
+// divide two digits by one digit.
+// assumptions: b >= big/halfmask (i.e. base/2)
+object *
+irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
+{
+  pxll_vector * rv = (pxll_vector *) rvo;
+  int64_t mask = (int64_t)((((int32_t)1)<<28)-1);
+  int64_t a = (((int64_t)ah)<<28) | ((int64_t)al);
+  int64_t q = a / b;
+  int64_t r = a % b;
+  rv->val[0] = box ((int32_t) (q & mask));
+  rv->val[1] = box ((int32_t) (r & mask));
+  return (object*) PXLL_UNDEFINED;
+}
+
+#endif
 
 // --------------------------------------------------------------------------------
 
