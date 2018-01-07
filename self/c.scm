@@ -39,6 +39,7 @@
     'u64  -> "uint64_t"
     'i256 -> "int256_t"
     'u256 -> "uint256_t"
+    'uchar -> "unsigned char"
     x -> (format (sym x)))
 
   (match t with
