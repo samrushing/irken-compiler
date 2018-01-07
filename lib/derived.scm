@@ -108,6 +108,8 @@
          (maybe:no) -> #u
          )))
 
+;; actually this could probably be done with for-range
+;; with this pattern: (for-range i (10 20) ...)
 (defmacro for-range*
   (for-range* vname lo hi body ...)
   -> (let (($n hi))
