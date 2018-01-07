@@ -105,6 +105,7 @@
 	  "-I"    -> (begin (set! i (+ i 1)) (PUSH options.include-dirs argv[i]))
           "-l"    -> (begin (set! i (+ i 1)) (PUSH options.libraries argv[i]))
           "-O"    -> (begin (set! i (+ i 1)) (set! options.opt-rounds (string->int argv[i])))
+          "-i"    -> (begin (set! i (+ i 1)) (set! options.inline-threshold (string->int argv[i])))
 	  "-m"    -> (set! options.debugmacroexpansion #t)
 	  "-dt"   -> (set! options.debugtyping #t)
 	  "-ni"   -> (set! options.noinline #t)
@@ -146,6 +147,7 @@ Usage: compile <irken-src-file> [options]
  -p     : generate profile-printing code (C backend only)
  -n     : disable letreg optimization
  -O     : rounds of optimization (default: 3)
+ -i <n> : set inline threshold (10-20)
  -q     : quiet the compiler
  -nr    : no range check (e.g. vector access)
  -h     : display this usage
