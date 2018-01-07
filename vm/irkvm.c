@@ -555,7 +555,6 @@ vm_read_file (pxll_string * path, object ** result)
     fclose (f);
     return 0;
   } else {
-    fprintf (stderr, "failed to read file '%s'\n", path0);
     return -1;
   }
 }
@@ -848,10 +847,10 @@ vm_go (void)
   // XXX what happens when the opcode is out of range? (segfault)
 #define NORMAL_DISPATCH() goto *dispatch_table[code[pc]]
 
-#define DEBUG_DISPATCH()                                        \
-  do {                                                          \
-    fprintf (stderr, "--- %ld %s\n", pc, op_names[code[pc]]);   \
-    goto *dispatch_table[code[pc]];                             \
+#define DEBUG_DISPATCH()                                                \
+  do {                                                                  \
+    fprintf (stderr, "--- %ld %s\n", pc, irk_opcodes[code[pc]].name);   \
+    goto *dispatch_table[code[pc]];                                     \
   } while (0)
 
 
