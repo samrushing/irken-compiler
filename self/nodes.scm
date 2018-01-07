@@ -77,6 +77,9 @@
 (define set-node-subs!
   (noderec:t nr) s -> (set! nr.subs s))
 
+(define set-node-size!
+  (noderec:t nr) s -> (set! nr.size s))
+
 (define set-node-type!
   (noderec:t nr) t -> (set! nr.type t))
 
