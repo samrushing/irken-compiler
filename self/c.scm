@@ -528,7 +528,7 @@
 
         (define prim-array-ref
           (vec index)
-          -> (begin
+          -> (when (not (= -1 target))
                (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
                (o.write (format "O r" (int target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
           _ -> (primop-error))
@@ -538,7 +538,7 @@
           -> (begin
                (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
                (o.write (format "((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";"))
-               (when (> target 0)
+               (when (>= target 0)
                  (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error))
 
