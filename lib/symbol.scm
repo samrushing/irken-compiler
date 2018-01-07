@@ -56,6 +56,7 @@
     (set! the-symbol-table (tree/empty)) ;; necessary because of problems with topological sort
     (for-range i (vector-length v)
       (intern-symbol v[i]))
+    #u
     ))
 
 ;; Note: it is important that this be done relatively early at runtime,
