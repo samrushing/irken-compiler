@@ -4,7 +4,7 @@
 (include "lib/map.scm")
 (include "lib/net/socket.scm")
 
-(require-ffi 'posix)
+(require-ffi 'libc)
 (require-ffi 'socket)
 (require-ffi 's2n)
 
@@ -16,7 +16,7 @@
 
 (define (s2n-strerror n)
   (let ((s* (s2n/s2n_strerror n (%string->cref #f "EN\x00")))
-        (slen (posix/strlen s*)))
+        (slen (libc/strlen s*)))
     (%cref->string #f s* slen)))
 
 (define (get-s2n-error)
