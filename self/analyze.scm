@@ -178,16 +178,17 @@
 		  (maybe:yes _) -> #u)))
 	  (maybe:no) -> #u)))
 
-    ;; XXX no protection against infinite aliases
-
     (define (follow-aliases fenv name)
-      (match (tree/member fenv symbol-index-cmp name) with
-	(maybe:no) -> (maybe:no)
-	(maybe:yes fun)
-	-> (match (noderec->t fun) with
-	     (node:varref name0)
-	     -> (follow-aliases fenv name0)
-	     _ -> (maybe:yes (:pair name fun)))))
+      (let  ((var (vars-get-var name)))
+        (if (> var.sets 0)
+            (maybe:no)
+            (match (tree/member fenv symbol-index-cmp name) with
+              (maybe:no) -> (maybe:no)
+              (maybe:yes fun)
+              -> (match (noderec->t fun) with
+                   (node:varref name0)
+                   -> (follow-aliases fenv name0)
+                   _ -> (maybe:yes (:pair name fun)))))))
 
     (define (get-fun-calls name calls)
       (match (tree/member multiplier symbol-index-cmp name) with
