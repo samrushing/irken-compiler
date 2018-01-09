@@ -153,7 +153,8 @@
     (define (try-parse toks root parser)
       (try
        (maybe:yes (parser (parse-toks toks root)))
-       except (:NoParse tok)
+       except
+       (:NoParse tok)
        -> (begin
             (verbose
              (printf (bold "unable to parse " (sym root) " expression:\n"))
