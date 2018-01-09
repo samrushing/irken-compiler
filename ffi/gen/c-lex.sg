@@ -46,6 +46,7 @@
               (lit "register")
               (lit "extern")
               (lit "static")
+              (lit "inline")
               (lit "_Atomic")
               (lit "__thread")
               ;; gcc
