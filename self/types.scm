@@ -10,6 +10,9 @@
 (define (pred name subs)
   (type:pred name subs {parent=(maybe:no) pending=#f}))
 
+(define (pred1 name)
+  (pred name '()))
+
 (define (arrow result-type arg-types)
   (pred 'arrow (list:cons result-type arg-types)))
 
@@ -46,20 +49,26 @@
 
 (define cint-types
   (alist/make
-   ('int (pred 'int '()))
-   ('long (pred 'long '()))
-   ('uint (pred 'uint '()))
-   ('ulong (pred 'ulong '()))
-   ('u8 (pred 'u8 '()))
-   ('i8 (pred 'i8 '()))
-   ('u16 (pred 'u16 '()))
-   ('i16 (pred 'i16 '()))
-   ('u32 (pred 'u32 '()))
-   ('i32 (pred 'i32 '()))
-   ('u64 (pred 'u64 '()))
-   ('i64 (pred 'i64 '()))
-   ('u256 (pred 'u256 '()))
-   ('i256 (pred 'i256 '()))
+   ('char   (pred1 'char))
+   ('uchar  (pred1 'uchar))
+   ('short  (pred1 'short))
+   ('ushort (pred1 'ushort))
+   ('int    (pred1 'int))
+   ('uint   (pred1 'uint))
+   ('long   (pred1 'long))
+   ('ulong  (pred1 'ulong))
+   ('i8     (pred1 'i8))
+   ('u8     (pred1 'u8))
+   ('i16    (pred1 'i16))
+   ('u16    (pred1 'u16))
+   ('i32    (pred1 'i32))
+   ('u32    (pred1 'u32))
+   ('i64    (pred1 'i64))
+   ('u64    (pred1 'u64))
+   ('i128   (pred1 'i128))
+   ('u128   (pred1 'u128))
+   ('i256   (pred1 'i256))
+   ('u256   (pred1 'u256))
    ))
 
 ;; row types
@@ -360,12 +369,14 @@
 (define (int-ctype->itype cint signed?)
   (pred
    (match cint signed? with
-     (cint:char) #t   -> 'char
-     (cint:char) #f   -> 'uchar
-     (cint:int)  #t   -> 'int
-     (cint:int)  #f   -> 'uint
-     (cint:long) #t   -> 'long
-     (cint:long) #f   -> 'ulong
+     (cint:char)  #t  -> 'char
+     (cint:char)  #f  -> 'uchar
+     (cint:int)   #t  -> 'int
+     (cint:int)   #f  -> 'uint
+     (cint:short) #t  -> 'short
+     (cint:short) #f  -> 'ushort
+     (cint:long)  #t  -> 'long
+     (cint:long)  #f  -> 'ulong
      (cint:width w) _ -> (string->symbol (format (if signed? "i" "u") (int (* w 8))))
      _ _              -> (error1 "unsupported cint type"
                                  (format "cint=" (cint-repr cint signed?)
