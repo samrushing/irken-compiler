@@ -2,8 +2,7 @@
 
 (sodium
   (includes "sodium.h")
-  ;; XXX include THING_HASH_BYTES constants here
-  ;;(constants ...)
+  (constants crypto_hash_sha256_BYTES)
   (structs crypto_hash_sha256_state)
   (sigs
    ;; note: these are the symbols as exported by C.
