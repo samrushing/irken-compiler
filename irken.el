@@ -92,6 +92,7 @@
 (put 'when-maybe 'scheme-indent-function 2)
 (put 'while-maybe 'scheme-indent-function 2)
 (put '%backend 'scheme-indent-function 1)
+(put 'make-enum 'scheme-indent-function 1)
 
 ;; I want it to indent to the same place (i.e., unnatural lisp).
 ;;  this doesn't do it.
