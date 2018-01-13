@@ -460,6 +460,12 @@
           _ -> (primop-error)
           )
 
+        (define prim-int->cref
+          (src)
+          -> (LINSN 'int2cref target src)
+          _ -> (primop-error)
+          )
+
        (match name with
          '%dtcon       -> (prim-dtcon parm)
          '%nvget       -> (prim-nvget parm args)
@@ -486,6 +492,7 @@
          '%c-sref       -> (prim-c-sref parm args)
          '%c-sizeof     -> (prim-c-sizeof parm)
          '%cref->int    -> (prim-cref->int args)
+         '%int->cref    -> (prim-int->cref args)
          ;; -------------------- FFI --------------------
 
          _ -> (primop-error))))

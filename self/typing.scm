@@ -647,6 +647,7 @@
                                         (LIST (pred 'cref (LIST T0)))))
       '%c-sizeof     -> (:scheme '() (arrow int-type '()))
       '%cref->int    -> (:scheme (LIST T0) (arrow int-type (LIST (pred 'cref (LIST T0)))))
+      '%int->cref    -> (:scheme (LIST T0) (arrow (pred 'cref (LIST T0)) (LIST int-type)))
       ;; for calling internal functions of the form `(object, object, ...) -> object`
       '%llvm-call    -> (make-llvm-scheme params)
       ;; for fetching irken objects in external symbols

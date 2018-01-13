@@ -49,6 +49,3 @@
     ))
 
 (generate-irkvm-h)
-
-
-

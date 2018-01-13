@@ -839,7 +839,7 @@ vm_go (void)
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist, &&l_argv,
     &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
-    &&l_dlsym2, &&l_csize, &&l_cref2int, &&l_errno
+    &&l_dlsym2, &&l_csize, &&l_cref2int, &&l_int2cref, &&l_errno
   };
 
   assert ((sizeof (dispatch_table) / sizeof (void *)) == (sizeof (irk_opcodes) / sizeof (opcode_info_t)));
@@ -1521,6 +1521,11 @@ vm_go (void)
  l_cref2int:
   // CREF2INT target src
   REG1 = BOX_INTEGER ((pxll_int) get_foreign (REG2));
+  pc += 3;
+  DISPATCH();
+ l_int2cref:
+  // INT2CREF target src
+  REG1 = make_foreign ((void*) unbox (REG2));
   pc += 3;
   DISPATCH();
  l_errno:
