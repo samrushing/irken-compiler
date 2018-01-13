@@ -806,7 +806,10 @@
 		    (type:pred 'arrow (result-type . arg-types) _)
 		    -> (begin
 			 (when (not (= (length arg-types) (length subs)))
-			       (error2 "wrong number of args to primapp" (map type-repr arg-types) subs))
+                           (printf "\n\nwrong number of args to primapp '" (sym name) "'\n"
+                                   "types: (" (join " " (map type-repr arg-types)) ")\n"
+                                   "args: " (join " " (map repr (map noderec->sexp subs))) "\n")
+                           (error "wrong number of args"))
 			 (for-range
 			     i (length arg-types)
 			     (let ((arg (nth subs i))
@@ -856,26 +859,3 @@
         _ -> #u
         )
       )))
-
-
-;; (define (test-typing)
-;;   (let ((context (make-context))
-;; 	(transform (transformer context))
-;; 	;;(exp0 (sexp:list (read-string "(%%cexp (int int -> int) \"%0+%1\" 3 #\\a)")))
-;; 	;;(exp0 (sexp:list (read-string "(begin #\\A (if #t 3 4))")))
-;; 	(exp0 (sexp:list (read-string "((lambda (a b) (%%cexp (int int -> int) \"%0+%1\" a b)) 3 4)")))
-;; 	(exp1 (transform exp0))
-;; 	(node0 (walk exp1))
-;; 	(graph0 (build-dependency-graph node0))
-;; 	(ignore (print-graph graph0))
-;; 	(strong (strongly graph0))
-;; 	(_ (set! context.scc-graph strong))
-;; 	(type0 (type-program node0 context))
-;; 	)
-;;     (pp-node node0)
-;;     (newline)
-;;     ))
-
-;; uncomment to test
-;(include "self/nodes.scm")
-;(test-typing)
