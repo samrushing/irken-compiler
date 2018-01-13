@@ -1,9 +1,10 @@
 ;; -*- Mode: Irken -*-
 
-(include "doom/doom.scm")
+(include "lib/basis.scm")
 (include "lib/map.scm")
 (include "lib/pack.scm")
 (include "lib/codecs/base64.scm")
+(include "doom2/doom.scm")
 
 ;; for now, we are only including types, opcodes, and rcodes
 ;;  that are actually used.
@@ -363,30 +364,32 @@
    (char->ascii (string-ref s 1))))
 
 (define (go ip name)
-  (let ((fd (socket AF_INET SOCK_DGRAM 0))
-        (addr (make-in-addr ip 53))
+  (let ((sock (doom/make (udp4-sock) 1024 1024))
+        (addr (address/make4 ip 53))
         (packet (build-question 3141 name (dnstype:any) dnsclass-in 1)))
     (try
      (begin
-       (connect fd addr)
-       (send fd packet)
-       (let ((reply (recv fd 1024))
+       (doom/connect sock addr)
+       (doom/send sock packet)
+       (let ((reply (doom/recv sock))
              (unpacked (unpack-reply reply)))
          (print-reply unpacked)
-         (close fd)))
+         (doom/close sock)))
      except
      (:DNSTruncated)
      -> (begin
-          (close fd)
           (printf "trying tcp...\n")
-          (set! fd (socket AF_INET SOCK_STREAM 0))
-          (connect fd addr)
-          (send fd (string-append (tcp-enc-size-prefix (string-length packet)) packet))
-          (let ((size (tcp-dec-size-prefix (recv-exact fd 2)))
-                (reply (recv-exact fd size))
+          (doom/close sock)
+          (set! sock (doom/make (tcp4-sock) 8192 1024))
+          (doom/connect sock addr)
+          (doom/send sock (string-append (tcp-enc-size-prefix (string-length packet)) packet))
+          (let ((size (tcp-dec-size-prefix (doom/recv-exact sock 2)))
+                (_ (printf "tcp reply size = " (int size) "\n"))
+                (reply (doom/recv-exact sock size))
                 (unpacked (unpack-reply reply)))
             (print-reply unpacked)
-            (close fd)))
+            (doom/close sock))
+          )
      )))
 
 (poller/fork (lambda () (go "10.0.0.1" sys.argv[1])))

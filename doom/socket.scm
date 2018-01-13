@@ -1,148 +1,105 @@
 ;; -*- Mode: Irken -*-
 
-(cinclude "sys/types.h")
-(cinclude "sys/socket.h")
-(cinclude "netinet/in.h")
-(cinclude "arpa/inet.h")
+;; we have two different styles of wait/retry:
+;; 1) normal: try the syscall, if EWOULDBLOCK then retry it.
+;; 2) connect: try the syscall, if EWOULDBLOCK then wait-for-write.
 
-;; better than trying to muck about with the variadic (and evil) fcntl.
-(cverbatim "
-void
-set_nonblocking (int fd)
-{
-  int flag;
-  flag = fcntl (fd, F_GETFL, 0);
-  flag |= (O_NDELAY);
-  fcntl (fd, F_SETFL, flag);
-}
-")
+;; we may need a loop anyway because of EINTR - though signals
+;; *should* be redirected when using kqueue.
 
-(define SOCK_STREAM	(%%cexp int "SOCK_STREAM"))
-(define SOCK_DGRAM      (%%cexp int "SOCK_DGRAM"))
-(define AF_INET         (%%cexp int "AF_INET"))
+(defmacro loop-nb-retry
+  (loop-nb-retry s waitfun expression)
+  -> (let $nbloop ()
+       (try
+        expression
+        except
+        (:OSError e)
+        -> (cond ((= e EWOULDBLOCK)
+                  (waitfun s.sock.fd)
+                  ($nbloop))
+                 (else
+                  (raise (:OSError e))))
+        )))
 
-;; it'd be nice if we could have these act more like #define
-;;   so we could use them in pattern matches
-(define EAGAIN		(%%cexp int "EAGAIN"))
-(define EINPROGRESS	(%%cexp int "EINPROGRESS"))
-(define EWOULDBLOCK	(%%cexp int "EWOULDBLOCK"))
+(defmacro loop-nb-read
+  (loop-nb-read s exp)
+  -> (loop-nb-retry s poller/wait-for-read exp))
 
-(define (socket family type protocol)
-  (let ((fd (syscall
-	     (%%cexp (int int int -> int)
-		     "socket (%0, %1, %2)"
-		     family type protocol))))
-    (set-nonblocking fd)
-    fd))
+(defmacro loop-nb-write
+  (loop-nb-write s exp)
+  -> (loop-nb-retry s poller/wait-for-write exp))
 
-(define (set-nonblocking fd)
-  (%%cexp (int -> undefined) "set_nonblocking (%0)" fd))
+;; socket with buffers attached.
+(define (doom/make* sock isize osize)
+  (sock/set-nonblocking sock)
+  {sock=sock ibuf=(buffer/make isize) obuf=(buffer/make osize)}
+  )
 
-(define (inet_pton af ascii buf)
-  (syscall
-   (%%cexp (int string (buffer (struct sockaddr_in)) -> int)
-	   "inet_pton (%0, %1, &(%2->sin_addr))"
-	   af ascii buf)))
+;; create a doom socket with attached buffers.
+(defmacro doom/make
+  (doom/make sock isize osize)
+  -> (doom/make* sock isize osize)
+  (doom/make sock)
+  -> (doom/make* sock 8192 8192))
 
-(define (inet_ntop af buf)
-  (let ((ascii (make-string 100)))
-    (%%cexp (int (buffer (struct sockaddr_in)) string int -> int)
-		   "inet_ntop (%0, &(%1->sin_addr), %2, %3)"
-		   af buf ascii (string-length ascii))
-    ;; should strip this to NUL
-    ascii))
+(define (doom/listen s n)
+  (sock/listen s.sock n))
 
-(define (make-in-addr ip port)
-  (let ((ss (%callocate (struct sockaddr_in) 1)))
-    (%%cexp ((buffer (struct sockaddr_in)) -> undefined) "%0->sin_family = PF_INET" ss)
-    (%%cexp ((buffer (struct sockaddr_in)) int -> undefined) "%0->sin_port = htons(%1)" ss port)
-    (inet_pton AF_INET ip ss)
-    ss))
+(define (doom/bind s addr)
+  (sock/bind s.sock addr))
 
-(define (bind fd addr)
-  (syscall
-   (%%cexp (int (buffer (struct sockaddr_in)) -> int)
-	   "bind (%0, (struct sockaddr *) %1, sizeof(struct sockaddr_in))"
-	   fd addr)))
+(define (doom/accept s)
+  (let (((sock addr) (loop-nb-read s (sock/accept s.sock))))
+    (:tuple (doom/make sock) addr)))
 
-(define (listen fd backlog)
-  (syscall
-   (%%cexp (int int -> int) "listen (%0, %1)" fd backlog)))
-
-(define (accept fd)
-  (let ((sockaddr (%callocate (struct sockaddr_in) 1))
-	(address-len (%callocate socklen_t 1)))
-    (%%cexp ((buffer socklen_t) -> undefined) "*%0 = sizeof(struct sockaddr_in)" address-len)
-    (let loop ()
-      (try
-       (syscall
-	(%%cexp (int (buffer (struct sockaddr_in)) (buffer socklen_t) -> int)
-		"accept (%0, (struct sockaddr *) %1, %2)"
-		fd sockaddr address-len))
-       except
-       (:OSError e) -> (if (eq? e EWOULDBLOCK)
-			   (begin (poller/wait-for-read fd) (loop))
-			   (raise (:OSError e)))
-       ))))
-
-(define (connect fd addr)
+;; non-blocking connect() is managed differently: if connect()
+;; returns EINPROGRESS, then we just wait for write, there's no
+;; need to call connect() again.
+(define (doom/connect s addr)
   (try
-   (syscall
-    (%%cexp (int (buffer (struct sockaddr_in)) -> int)
-	    "connect (%0, (struct sockaddr *) %1, sizeof (struct sockaddr_in))"
-	    fd addr))
+   (sock/connect s.sock addr)
    except
-   (:OSError e) -> (if (or (eq? e EINPROGRESS)
-			   (eq? e EWOULDBLOCK))
-		       (begin (poller/wait-for-write fd) 0)
-		       (raise (:OSError e)))
+   (:OSError e)
+   -> (cond ((= e EINPROGRESS)
+             (poller/wait-for-write s.sock.fd)
+             0)
+            (else
+             (raise (:OSError e))))
    ))
 
-(define (recv-buffer fd buf)
-  (let loop ()
-    (try
-     (syscall
-      (%%cexp (int string int -> int)
-	      "recv (%0, %1, %2, 0)"
-	      fd buf (string-length buf)))
-     except
-     (:OSError e) -> (if (eq? e EWOULDBLOCK)
-			 (begin (poller/wait-for-read fd) (loop))
-			 (raise (:OSError e)))
-     )))
+(define (doom/recv s)
+  (loop-nb-read s (sock/recv s.sock s.ibuf))
+  (let ((r (buffer/contents s.ibuf)))
+    (buffer/reset! s.ibuf)
+    r))
 
-(define (recv fd size)
-  (let ((buffer (make-string size))
-	(r (recv-buffer fd buffer)))
-    (if (= r size)
-	buffer
-	(copy-string buffer r))))
+(define (doom/recv-exact s n)
+  (if (< n (- s.ibuf.end s.ibuf.pos))
+      (buffer/get! s.ibuf n)
+      (let ((have (- s.ibuf.end s.ibuf.pos))
+            (left (- n have))
+            (parts (LIST (buffer/get! s.ibuf have))))
+        (while (> left 0)
+          (let ((recvd (loop-nb-read s (sock/recv s.sock s.ibuf))))
+            (when (= recvd 0)
+              (raise (:Doom/EOF s)))
+            (PUSH parts (buffer/get! s.ibuf (min left recvd)))
+            (dec! left (min left recvd))
+            ))
+        (string-concat (reverse parts)))))
 
-(define (recv-exact* fd acc left)
-  (let ((size0 (min left 8192))
-        (part (recv fd size0))
-        (n (string-length part))
-        (left0 (- left n)))
-    (if (or (= n 0) (= 0 left0))
-        (string-concat (reverse (list:cons part acc)))
-        (recv-exact* fd (list:cons part acc) left0))))
+(define (doom/send s data)
+  (let ((left (string-length data)))
+    (buffer/reset! s.obuf)
+    ;; this is cheating, we should loop here instead
+    ;;  of just making the buffer larger.
+    (buffer/add! s.obuf data)
+    (while (> left 0)
+      (let ((sent (loop-nb-write s (sock/send s.sock s.obuf))))
+        (inc! s.obuf.pos sent)
+        (dec! left sent)
+        ))
+    ))
 
-(define (recv-exact fd size)
-  (let ((r (recv-exact* fd '() size)))
-    (if (= (string-length r) size)
-        r
-        (raise (:RecvExactShort size (string-length r))))))
-
-(define (send fd s)
-  (let loop ()
-    (try
-     (syscall
-      (%%cexp (int string int -> int)
-	      "send (%0, %1, %2, 0)"
-	      fd s (string-length s)))
-     except
-     (:OSError e) -> (if (eq? e EWOULDBLOCK)
-			 (begin (poller/wait-for-write fd) (loop))
-			 (raise (:OSError e)))
-     )))
-
+(define (doom/close s)
+  (sock/close s.sock))
