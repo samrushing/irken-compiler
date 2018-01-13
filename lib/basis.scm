@@ -15,3 +15,5 @@
 (include "lib/os.scm")
 (include "lib/io.scm")
 (include "lib/frb.scm")
+(include "lib/enum.scm")
+
