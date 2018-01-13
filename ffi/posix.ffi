@@ -10,13 +10,16 @@
    )
   (sigs
    getpid
-   gettimeofday localtime asctime ctime
+   ;; manual: gettimeofday
+   localtime asctime ctime
    read write close unlink
    random srandom initstate setstate
    )
   (verbatim
    ;; we special-case this because it's quasi-variadic.
    (sig open ((* char) int int -> int))
+   ;; second pointer is sometimes declared as `void*` (Darwin).
+   (sig gettimeofday ((* (struct timeval)) (* (struct timezone)) -> int))
    ;; ugh. on freebsd this is a f#*@ing inline. WHY???
    (sig uname ((* (struct utsname)) -> int)))
   )
