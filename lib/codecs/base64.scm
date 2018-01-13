@@ -77,9 +77,6 @@
        (forever (consumer (maybe:no)))
        ))))
 
-(define (how-many x n)
-  (/ (- (+ x n) 1) n))
-
 (define (b64-decode s)
   (let ((dst (make-string (* 3 (how-many (string-length s) 4))))
         (i 0))
