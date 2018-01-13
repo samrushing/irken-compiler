@@ -10,15 +10,48 @@
 ;;
 ;; fetch-ffi-constant: FFI constants like O_TRUNC
 ;; build-ffi-fun: FFI functions like open()
-;; build-ffi-ob: FFI objects like STDIN_FILENO
+;; build-ffi-ob: FFI objects like `errno`
+
+;; aka 'unparse-ctype'
+(define (cint->sexp cint signed?)
+  (sexp:symbol
+   (match cint signed? with
+     (cint:int)      #t -> 'int
+     (cint:int)      #f -> 'uint
+     (cint:short)    #t -> 'short
+     (cint:short)    #f -> 'ushort
+     (cint:long)     #t -> 'long
+     (cint:long)     #f -> 'ulong
+     (cint:longlong) #t -> 'longlong
+     (cint:longlong) #f -> 'ulonglong
+     (cint:width 1)  #t -> 'i8
+     (cint:width 1)  #f -> 'u8
+     (cint:width 2)  #t -> 'i16
+     (cint:width 2)  #f -> 'u16
+     (cint:width 4)  #t -> 'i32
+     (cint:width 4)  #f -> 'u32
+     (cint:width 8)  #t -> 'i64
+     (cint:width 8)  #f -> 'u64
+     (cint:width 16) #t -> 'i128
+     (cint:width 16) #f -> 'u128
+     (cint:width 32) #t -> 'i256
+     (cint:width 32) #f -> 'u256
+     _ _ -> (raise (:AutoFFI/UnsupportedCint cint))
+     )))
 
 (define ctype->sexp
   (ctype:name name)    -> (sexp:symbol name)
-  (ctype:int _ s?)     -> (sexp:symbol 'int)
+  (ctype:int x s?)     -> (cint->sexp x s?)
   (ctype:array size t) -> (sexp (sexp:symbol 'cref) (ctype->sexp t))
   (ctype:pointer t)    -> (sexp (sexp:symbol 'cref) (ctype->sexp t))
   (ctype:struct name)  -> (sexp (sexp:symbol 'struct) (sexp:symbol name))
   (ctype:union name)   -> (sexp (sexp:symbol 'union) (sexp:symbol name))
+  )
+
+;; special-case: all integer arguments/return-values become 'int
+(define argtype->sexp
+  (ctype:int _ s?) -> (sexp:symbol 'int)
+  arg              -> (ctype->sexp arg)
   )
 
 (define (argnames n)
@@ -108,10 +141,10 @@
                             (sexp (sexp:symbol 'build-ffi-fun)
                                   (sexp:symbol name)
                                   (sexp:string ztname)
-                                  (ctype->sexp rtype)
+                                  (argtype->sexp rtype)
                                   (sexp:char (ctype->rtype-code rtype))
                                   (sexp:int (length argtypes))
-                                  (sexp:list (map ctype->sexp argtypes))
+                                  (sexp:list (map argtype->sexp argtypes))
                                   (sexp:list (argnames (length argtypes))))
                             )))
            (csig:obj name obtype)
