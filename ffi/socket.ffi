@@ -1,12 +1,23 @@
 ;; -*- Mode: Lisp -*-
 (socket
  (includes "sys/types.h" "sys/socket.h" "netinet/in.h"
-           "arpa/inet.h" "unistd.h" "sys/uio.h" "sys/errno.h")
+           "arpa/inet.h" "unistd.h" "sys/uio.h" "sys/errno.h"
+           "fcntl.h" ;; for non-blocking mode.
+           )
  (structs sockaddr sockaddr_in sockaddr_in6 in_addr in6_addr)
  (constants
    AF_INET AF_INET6 AF_UNIX
    SOCK_STREAM SOCK_DGRAM SOCK_RAW
-   EAGAIN EINPROGRESS EWOULDBLOCK)
+   EAGAIN EINPROGRESS EWOULDBLOCK
+   EISCONN ENOTCONN
+   ;; minimum needed for fcntl() to set non-blocking mode.
+   O_NDELAY F_GETFL F_SETFL
+   )
  (sigs inet_ntop inet_pton socket bind listen accept connect recv send)
+ (verbatim
+  (sig fcntl (int int int -> int))
+  ;; this is often a macro *and* a function.
+  (sig htons (int -> int))
+  )
  )
 
