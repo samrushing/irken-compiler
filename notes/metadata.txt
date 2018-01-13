@@ -1,0 +1,19 @@
+# -*- Mode: Markdown -*-
+
+metadata
+--------
+
+We need a way of attaching metadata of various kinds to the program.
+It needs to be accessible *by* the program.  Examples include:
+
+    datatypes with tags (for runtime reflection)
+    polyvar names and tags (for exception printing)
+    function names/address/pc/etc (for debugging)
+    ctypes: can we subsume the current ctypes hack into this?
+
+The simplest way to do this is to use a map of s-expressions.  we
+could have various functions at the top level grab this data and have
+it at the ready.  For example, a vector of symbols would suffice to
+name every polyvar.  Then getting the name for an exception would
+consist of looking up its tag and indexing into that table.
+
