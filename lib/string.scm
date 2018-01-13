@@ -301,6 +301,7 @@
   (fitem (<join> p sep l))	-> (string-join (map p l) sep) ;; map <p> over list <l>, separate each with <sep>
   (fitem (<string> s))          -> (repr-string s)
   (fitem (<base64> s))          -> (b64-encode s)                     ;; include lib/base64.scm
+  (fitem (<sexp> exp))          -> (repr exp)
   (fitem (<lpad> n item ...))	-> (lpad n (format item ...) #\space) ;; left-pad
   (fitem (<rpad> n item ...))	-> (rpad n (format item ...) #\space) ;; right-pad
   (fitem (<cpad> n item ...))	-> (cpad n (format item ...) #\space) ;; center-pad
