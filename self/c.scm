@@ -29,17 +29,24 @@
 (define (irken-type->c-type t)
 
   (define decode-name
-    'i8   -> "int8_t"
-    'u8   -> "uint8_t"
-    'i16  -> "int16_t"
-    'u16  -> "uint16_t"
-    'i32  -> "int32_t"
-    'u32  -> "uint32_t"
-    'i64  -> "int64_t"
-    'u64  -> "uint64_t"
-    'i256 -> "int256_t"
-    'u256 -> "uint256_t"
+    'i8    -> "int8_t"
+    'u8    -> "uint8_t"
+    'i16   -> "int16_t"
+    'u16   -> "uint16_t"
+    'i32   -> "int32_t"
+    'u32   -> "uint32_t"
+    'i64   -> "int64_t"
+    'u64   -> "uint64_t"
+    'i128  -> "int128_t"
+    'u128  -> "uint128_t"
+    'i256  -> "int256_t"
+    'u256  -> "uint256_t"
+    'char  -> "char"
     'uchar -> "unsigned char"
+    'int   -> "int"
+    'uint  -> "unsigned int"
+    'long  -> "long"
+    'ulong -> "unsigned long"
     x -> (format (sym x)))
 
   (match t with
@@ -730,7 +737,12 @@
 
         (define prim-cref->int
           (src)
-          -> (o.write (format "O r" (int target) " = BOX_INTEGER (((pxll_int *) r" (int src) ")[1]);"))
+          -> (o.write (format "O r" (int target) " = BOX_INTEGER (((pxll_int) get_foreign (r" (int src) ")));"))
+          _ -> (primop-error))
+
+        (define prim-int->cref
+          (addr)
+          -> (o.write (format "O r" (int target) " = make_foreign ((void*)UNBOX_INTEGER (r" (int addr) "));"))
           _ -> (primop-error))
 
         (match name with
@@ -761,6 +773,7 @@
           '%string->cref -> (prim-string->cref args)
           '%c-sizeof     -> (prim-c-sizeof parm)
           '%cref->int    -> (prim-cref->int args)
+          '%int->cref    -> (prim-int->cref args)
           ;; -----------------------------------
           _ -> (primop-error))))
 
