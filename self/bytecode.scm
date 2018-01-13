@@ -141,9 +141,12 @@
     (define (emit-literal lit target)
       (if (= target -1)
           '() ;; pointless dead literal.
-          (LINSN 'lit
-                 target
-                 (cmap->index the-context.literals lit))))
+          (let ((enc (encode-immediate lit)))
+            (if (and (> enc 0) (< enc (<< 1 30))) ;; will it fit in a bytecode_t?
+                (LINSN 'imm target enc)
+                (LINSN 'lit
+                       target
+                       (cmap->index the-context.literals lit))))))
 
     (define (emit-return reg)
       (LINSN 'ret reg))
@@ -296,10 +299,7 @@
       (sexp:symbol 'long)                 -> 53
       (sexp:symbol 'longlong)             -> 54
       sexp
-      -> (begin
-           (printf "get-sizeoff other = " (repr sexp) "\n")
-           (+ 55 (cmap/add sizeoff-map sexp))
-           )
+      -> (+ 55 (cmap/add sizeoff-map sexp))
       )
 
     (define (emit-primop name parm type args k)
@@ -402,12 +402,12 @@
 
        (define (prim-malloc parm args)
          (let ((sindex (get-sizeoff parm)))
-           (printf "adding %malloc call, sindex=" (int sindex) " parm = " (repr parm) "\n")
+           ;;(printf "adding %malloc call, sindex=" (int sindex) " parm = " (repr parm) "\n")
            (LINSN 'malloc target sindex (car args))))
 
        (define (prim-halloc parm args)
          (let ((sindex (get-sizeoff parm)))
-           (printf "adding %halloc call, sindex=" (int sindex) " parm = " (repr parm) "\n")
+           ;;(printf "adding %halloc call, sindex=" (int sindex) " parm = " (repr parm) "\n")
            (LINSN 'halloc target sindex (car args))))
 
        (define (prim-free args)
@@ -419,7 +419,7 @@
        (define prim-c-aref
          parm (src index)
          -> (let ((sindex (get-sizeoff parm)))
-              (printf "c-aref parm = " (repr parm) "\n")
+              ;;(printf "c-aref parm = " (repr parm) "\n")
               (LINSN 'caref target src sindex index))
          _ _ -> (primop-error))
 
@@ -446,7 +446,7 @@
           srefexp (src)
           ;; SREF target src sindex
           -> (let ((sindex (get-sizeoff parm)))
-               (printf "c-sref, sindex=" (int sindex) " parm = " (repr parm) "\n")
+               ;;(printf "c-sref, sindex=" (int sindex) " parm = " (repr parm) "\n")
                (LINSN 'csref target src sindex))
           _ _ -> (primop-error)
           )
@@ -574,9 +574,6 @@
             (labs (make-labels ntags))
             (result (cons (stream:label lelse) (emit elsek)))
             (pairs '()))
-        (if (= ntags 0)
-            (printf "zero tags in pvcase\n")
-            #u)
         (for-range i ntags
           (let ((label (nth tags i))
                 (tag0 (match (alist/lookup the-context.variant-labels label) with
@@ -795,7 +792,7 @@
           )))
 
     (define peephole
-      ;; only one optimizaiton so far
+      ;; only one optimization so far
       acc (a b . tl)
       -> (match a b with
            (stream:insn 'jmp (n0)) (stream:label n1)
@@ -820,12 +817,11 @@
             )
           )))
 
-    ;; 'immediate' literals are no longer immediate in the bytecode,
-    ;;   since this would require encoding them into a size that would
-    ;;   not be able to hold all their data (i.e., pxll_int != uint16_t)
-    ;;
-    ;; XXX consider supporting 'small' immediate literals.
-    ;;
+    ;; some immediate literals we cannot encode in the bytecode
+    ;;  stream, so we refer to them by index.
+
+    ;; XXX now that we have *most* immediates as immediates again,
+    ;;   we should probably trim this collection.
     (define (find-immediate-literals cps)
       (walk-insns
        (lambda (insn depth)
@@ -873,10 +869,8 @@
        (lambda (x)
          (match x with
            (literal:symbol s)
-           -> (begin
-                (printf "find-symbols: " (sym s) " ")
-                (printf (int (cmap/add the-context.literals x)) "\n"))
-           _ -> #u))))
+           -> (cmap/add the-context.literals x)
+           _ -> 0))))
 
     (define sizeoff-sentinel
       (literal:vector (LIST (literal:cons 'sexp 'symbol (LIST (literal:symbol '&&sizeoff-sentinel&&))))))
