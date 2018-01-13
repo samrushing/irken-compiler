@@ -4,55 +4,69 @@
 (require-ffi 'posix)
 (require-ffi 'socket)
 
-;; Note: we need record datatypes for:
-;; buffers
-;; sockets
-;; addresses
+(make-enum AF
+  (INET  AF_INET)
+  (INET6 AF_INET6)
+  (UNIX  AF_UNIX))
 
-;; I wonder if we could use a macro to generate datatype/enum code like this?
-
-(datatype AF
-  (:INET)
-  (:INET6)
-  (:UNIX)
-  )
-
-(define AF->int
-  (AF:INET)  -> AF_INET
-  (AF:INET6) -> AF_INET6
-  (AF:UNIX)  -> AF_UNIX
-  )
-
-(datatype SOCK
-  (:STREAM)
-  (:DGRAM)
-  (:RAW)
-  )
-
-(define SOCK->int
-  (SOCK:STREAM) -> SOCK_STREAM
-  (SOCK:DGRAM)  -> SOCK_DGRAM
-  (SOCK:RAW)    -> SOCK_RAW
+(make-enum SOCK
+  (STREAM SOCK_STREAM)
+  (DGRAM  SOCK_DGRAM)
+  (RAW    SOCK_RAW)
   )
 
 ;; --------------------------------------------------------------------------
 ;;                            buffer object
 ;; --------------------------------------------------------------------------
 
-;; questions:
-;;  whether to make recv/send buffers the same.
-;;  do we need to copy irken strings into buffer objects??
-;;    likely yes: because a GC at any time can move the buffer,
-;;      and even if we use an origin+offset we might still need
-;;      to worry about non-blocking C functions trying to write
-;;      to the older address.  I think sticking with C buffers is
-;;      the right thing to do until the last possible moment.
+;; buffer has two position markers:
+;;   pos: beginning of data
+;;   end: end of data
+;;
+;; these work for both send and recv buffers.
+;; to send data, bracket it with (pos,end)
+;; to recv data, set pos, then recv, then data is in (pos,end)
 
 (define (buffer/make size)
   {buf=(malloc char size) size=size pos=0 end=0})
 
 (define (buffer/contents buf)
   (%cref->string #f (%c-aref char buf.buf buf.pos) (- buf.end buf.pos)))
+
+;; add data to a buffer, adjusting `end`.
+(define (buffer/add! buf s)
+  (let ((slen (string-length s))
+        (newend (+ buf.end slen)))
+    (when (< buf.size newend)
+      (buffer/grow! buf newend))
+    (let ((dst* (%c-aref char buf.buf buf.pos)))
+      (libc/memcpy (%c-cast void dst*)
+                   (%c-cast void (%string->cref #f s))
+                   slen)
+      (inc! buf.end slen))))
+
+;; reads data from a buffer, adjusting `pos`.
+(define (buffer/get! buf n)
+  (if (< (- buf.end buf.pos) n)
+      (raise (:Socket/BufferUnderflow))
+      (let ((r (%cref->string #f (%c-aref char buf.buf buf.pos) n)))
+        (inc! buf.pos n)
+        r)))
+
+(define (buffer/grow! buf newsize)
+  (let ((newbuf (%c-cast (array char) (libc/realloc (%c-cast void buf.buf) newsize))))
+    (cond ((cref-null? newbuf) (raise (:Socket/MallocFailed)))
+          (else
+           (set! buf.buf newbuf)
+           (set! buf.size newsize)))))
+
+(define (buffer/grow-50%! buf)
+  (buffer/grow! buf (* 2 (+ buf.size 1))))
+
+(define (buffer/maybe-grow! buf newsize)
+  (if (< buf.size newsize)
+      (buffer/grow! buf newsize)
+      #u))
 
 (define (buffer/reset! buf)
   (set! buf.pos 0)
@@ -65,10 +79,6 @@
 ;;                            address object
 ;; --------------------------------------------------------------------------
 
-;; XXX we also need an enum for AF_XXX, because the c-centric temptation
-;;  to use AF_INET in a pattern match is VERY confusing. [actually, we just
-;;  need a real datatype that is converted to a sockaddr when needed]
-
 ;; consider calling this `sockaddr` instead of `address`
 
 (typealias address {addr=(cref (struct sockaddr)) size=int})
@@ -79,7 +89,6 @@
     AF_INET
     (%string->cref #f (zero-terminate ip))
     (%c-cast (* void) addr*))
-    ;;addr*)
    ))
 
 (define (inet_pton6 ip addr*) : (string (cref (struct in6_addr)) -> int)
@@ -87,22 +96,22 @@
    (socket/inet_pton
     AF_INET6
     (%string->cref #f (zero-terminate ip))
-    (%c-cast (* void) addr*))
-   ))
+    (%c-cast (* void) addr*)
+    )))
 
 (define (address/make4 ip port)
   (let ((addr* (halloc (struct sockaddr_in))))
-    (%c-set-int u8 AF_INET (%c-sref sockaddr_in.sin_family addr*))
-    (%c-set-int u16 (socket/htons port) (%c-sref sockaddr_in.sin_port addr*))
+    (%c-set-int u8 AF_INET (%c-cast u8 (%c-sref sockaddr_in.sin_family addr*)))
+    (%c-set-int ushort (socket/htons port) (%c-cast ushort (%c-sref sockaddr_in.sin_port addr*)))
     (inet_pton4 ip (%c-sref sockaddr_in.sin_addr addr*))
     {addr=(%c-cast (* (struct sockaddr)) addr*) size=(%c-sizeof (struct sockaddr_in))}
     ))
 
 (define (address/make6 ip port)
   (let ((addr* (halloc (struct sockaddr_in6))))
-    (%c-set-int u8 AF_INET6 (%c-sref sockaddr_in6.sin6_family addr*))
-    (%c-set-int u16 (socket/htons port) (%c-sref sockaddr_in6.sin6_port addr*))
-    (inet_pton6 ip (%c-cast (* void) (%c-sref sockaddr_in6.sin6_addr addr*)))
+    (%c-set-int u8 AF_INET6 (%c-cast u8 (%c-sref sockaddr_in6.sin6_family addr*)))
+    (%c-set-int u16 (socket/htons port) (%c-cast u16 (%c-sref sockaddr_in6.sin6_port addr*)))
+    (inet_pton6 ip (%c-sref sockaddr_in6.sin6_addr addr*))
     {addr=(%c-cast (* (struct sockaddr)) addr*) size=(%c-sizeof (struct sockaddr_in6))}
     ))
 
@@ -115,7 +124,7 @@
         (r1 (%c-aref char r0 0))
         (sa* (%c-cast (struct sockaddr_in) addr*))
         (a* (%c-sref sockaddr_in.sin_addr sa*))
-        (port (socket/htons (%c-get-int u16 (%c-sref sockaddr_in.sin_port sa*)))))
+        (port (socket/htons (%c-get-int u16 (%c-cast u16 (%c-sref sockaddr_in.sin_port sa*))))))
     (socket/inet_ntop AF_INET (%c-cast (* void) a*) r1 16)
     (:tuple (%cref->string #f r1 (libc/strlen r1)) port)))
 
@@ -124,12 +133,12 @@
         (r1 (%c-aref char r0 0))
         (sa* (%c-cast (struct sockaddr_in6) addr*))
         (a* (%c-sref sockaddr_in6.sin6_addr sa*))
-        (port (socket/htons (%c-get-int u16 (%c-sref sockaddr_in6.sin6_port sa*)))))
+        (port (socket/htons (%c-get-int u16 (%c-cast u16 (%c-sref sockaddr_in6.sin6_port sa*))))))
     (socket/inet_ntop AF_INET6 (%c-cast (* void) a*) r1 80)
     (:tuple (%cref->string #f r1 (libc/strlen r1)) port)))
 
 (define (unparse-address addr*)
-  (let ((family (%c-get-int u8 (%c-sref sockaddr.sa_family addr*))))
+  (let ((family (%c-get-int u8 (%c-cast u8 (%c-sref sockaddr.sa_family addr*)))))
     (match (cond ((eq? family AF_INET) (unparse-ipv4-address addr*))
                  ((eq? family AF_INET6) (unparse-ipv6-address addr*))
                  (else (raise (:UnknownAddressFamily family))))
@@ -161,15 +170,23 @@
 (define (udp4-sock) (sock/make (AF:INET) (SOCK:DGRAM)))
 (define (tcp6-sock) (sock/make (AF:INET6) (SOCK:STREAM)))
 (define (udp6-sock) (sock/make (AF:INET6) (SOCK:DGRAM)))
+(define (unix-sock) (sock/make (AF:UNIX) (SOCK:STREAM)))
+;; if you need a unix datagram type it out yourself.
+
+(define (sock/set-nonblocking sock)
+  (let ((flags (socket/fcntl sock.fd F_GETFL 0)))
+    (syscall
+     (socket/fcntl sock.fd F_SETFL (logior flags O_NDELAY)))
+    ))
 
 (define (sock/recv sock buf)
-  (let ((buf* (%c-aref char buf.buf buf.pos))
-        (nbytes (syscall (socket/recv sock.fd (%c-cast (* void) buf*) (- buf.size buf.pos) 0))))
+  (let ((buf* (%c-cast void (%c-aref char buf.buf buf.pos)))
+        (nbytes (syscall (socket/recv sock.fd buf* (- buf.size buf.pos) 0))))
     (set! buf.end (+ buf.end nbytes)) ;; trust recv(2) to not overrun?
     nbytes))
 
 (define (sock/send sock buf)
-  (let ((buf* (%c-aref char buf.buf buf.pos))
+  (let ((buf* (%c-cast void (%c-aref char buf.buf buf.pos)))
         (nbytes (syscall (socket/send sock.fd buf* (- buf.end buf.pos) 0))))
     nbytes))
 
@@ -186,7 +203,11 @@
     (:tuple (sock/fromfd (syscall (socket/accept sock.fd addr.addr addrlen)) sock.fam sock.type)
             addr)))
 
+(define (sock/connect sock addr)
+  (syscall (socket/connect sock.fd addr.addr addr.size)))
+
 (define (sock/close sock)
   (posix/close sock.fd)
   (set! sock.fd -1)
   )
+
