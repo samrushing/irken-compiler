@@ -4,5 +4,6 @@
   (includes "string.h" "stdio.h" "stdlib.h")
   (constants)
   ;; note: can't put errno here because it is often a macro.
-  (sigs strlen strerror system getenv abort tmpnam)
+  (sigs strlen strerror system getenv abort tmpnam
+        memcpy realloc)
   )

@@ -7,3 +7,5 @@
 (sig getenv ((* char) -> (* char)))
 (sig abort ( -> void))
 (sig tmpnam ((* char) -> (* char)))
+(sig memcpy ((* void) (* void) ulong -> (* void)))
+(sig realloc ((* void) ulong -> (* void)))
