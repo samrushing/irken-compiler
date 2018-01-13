@@ -21,7 +21,7 @@
    dump                 = '()
    quiet                = #f
    no-range-check       = #f
-   opt-rounds           = 3
+   opt-rounds           = 5
    inline-threshold     = 13
    backend              = (backend:c)
    include-dirs		= (LIST "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
