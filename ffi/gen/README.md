@@ -75,7 +75,7 @@ Various things can go wrong with `genffi`.  It may not be able to parse
 some of the declarations, or it may not find a function it is looking for.
 To solve the issue you will need to understand how `genffi` works.  Sorry.
 
-First, it generates a C file (containing mostly include statemetns) that is
+First, it generates a C file (containing mostly include statements) that is
 then fed to the C preprocessor.  The output from that is scanned by a parser
 that knows enough about C to pull out typedefs and declarations.
 
