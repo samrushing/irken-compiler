@@ -471,6 +471,8 @@
    (match type-sexp with
      'int    -> #\i
      'uint   -> #\I
+     'short  -> #\h
+     'ushort -> #\H
      'long   -> #\l
      'ulong  -> #\L
      'u8     -> #\B
@@ -620,6 +622,8 @@
   (let ((s0* (%c-aref char s* 0))
         (slen (libc/strlen s0*)))
     (%cref->string #f s0* slen)))
+
+(define NULL (%int->cref #f 0))
 
 (define (cref-null? x)
   (= 0 (%cref->int #f x)))
