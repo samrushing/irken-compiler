@@ -105,6 +105,11 @@
   (* a b ...) -> (binary* a (* b ...)))
 
 (define (/ a b)
+  (if (= b 0)
+      (raise (:DivideByZero a b))
+      (unsafe-div a b)))
+
+(define (unsafe-div a b)
   (%backend c (%%cexp (int int -> int) "%0/%1" a b))
   (%backend llvm (%llarith sdiv a b))
   (%backend bytecode (%%cexp (int int -> int) "div" a b))
@@ -484,6 +489,7 @@
 ;; consider catching OSError here and printing strerror(errno):
 ;; (copy-cstring (%%cexp (-> cstring) "strerror (errno)"))))
 
+;; XXX comment here on replacing/updgrading this function.
 (define (base-exception-handler exn) : ((rsum 'a) -> 'b)
   (error1 "uncaught exception" exn))
 
