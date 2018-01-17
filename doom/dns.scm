@@ -4,7 +4,7 @@
 (include "lib/map.scm")
 (include "lib/pack.scm")
 (include "lib/codecs/base64.scm")
-(include "doom2/doom.scm")
+(include "doom/doom.scm")
 
 ;; for now, we are only including types, opcodes, and rcodes
 ;;  that are actually used.

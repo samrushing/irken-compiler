@@ -2,7 +2,7 @@
 
 (include "lib/basis.scm")
 (include "lib/map.scm")
-(include "doom2/doom.scm")
+(include "doom/doom.scm")
 
 (require-ffi 'kqueue)
 
