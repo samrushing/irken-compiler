@@ -117,6 +117,7 @@ object * vm_field_lookup_table; // note: this is a GC root.
 pxll_int vm_sizeoff_table[100] = {sizeof (void *), sizeof(short), sizeof(int), sizeof(long), sizeof(long long), 0};
 pxll_int vm_internal_symbol_counter = 0;
 object * vm_internal_symbol_list = PXLL_NIL;
+pxll_int vm_metadata_index = 0;
 
 pxll_int
 get_sizeoff_entry (pxll_int sindex)
@@ -251,6 +252,10 @@ read_literals (FILE * f)
     if (sizeoff_index > 0) {
       bytecode_literals[sizeoff_index] = sizeoff_literal;
     }
+    // read the metadata index
+    object * metadata_index_ob;
+    CHECK (read_literal (f, (object *) &metadata_index_ob));
+    vm_metadata_index = UNBOX_INTEGER (metadata_index_ob);
     return 0;
   } else {
     fprintf (stderr, "bytecode file does not start with vector.\n");
@@ -839,7 +844,8 @@ vm_go (void)
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist, &&l_argv,
     &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
-    &&l_dlsym2, &&l_csize, &&l_cref2int, &&l_int2cref, &&l_errno
+    &&l_dlsym2, &&l_csize, &&l_cref2int, &&l_int2cref, &&l_ob2int,
+    &&l_obptr2int, &&l_errno, &&l_meta
   };
 
   assert ((sizeof (dispatch_table) / sizeof (void *)) == (sizeof (irk_opcodes) / sizeof (opcode_info_t)));
@@ -1528,9 +1534,24 @@ vm_go (void)
   REG1 = make_foreign ((void*) unbox (REG2));
   pc += 3;
   DISPATCH();
+ l_ob2int:
+  // OB2INT target src
+  REG1 = BOX_INTEGER ((pxll_int)REG2);
+  pc += 3;
+  DISPATCH();
+ l_obptr2int:
+  // OB2INT target src
+  REG1 = BOX_INTEGER ((pxll_int)(*REG2));
+  pc += 3;
+  DISPATCH();
  l_errno:
   // ERRNO target
   REG1 = BOX_INTEGER ((pxll_int) errno);
+  pc += 2;
+  DISPATCH();
+ l_meta:
+  // META target
+  REG1 = bytecode_literals[vm_metadata_index];
   pc += 2;
   DISPATCH();
 }

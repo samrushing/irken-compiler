@@ -52,6 +52,8 @@
         (fatbar-map (map-maker int-cmp))
         (sizeoff-map (cmap/make magic-cmp))
         (lit-already (map-maker magic-cmp))
+        ;; remember where the metadata is
+        (metadata-index the-context.literals.count)
         )
 
     (define (new-label)
@@ -896,8 +898,8 @@
     ;; find prims that generate sizeoff info.
     (find-sizeoff-prims cps)
 
-    ;; record the index of the sizeoff sentinel (so it can be replaced)
     (let ((s (peephole '() (emit cps)))
+          ;; record the index of the sizeoff sentinel (so it can be replaced)
           (index (get-sizeoff-sentinel-index))
           (sizeoff-literal (build-sizeoff-literal)))
       ;;(printf "sizeoff sentinel index = " (int index) "\n")
@@ -909,7 +911,7 @@
       (emit-one-literal (build-field-lookup-table))
       (emit-one-literal (literal:int index))
       (emit-one-literal (literal:vector sizeoff-literal))
-      ;;(emit-one-literal (literal:int the-context.ffi-count))
+      (emit-one-literal (literal:int metadata-index))
       (set! cps (insn:return 0))
       (verbose
        (printf "labels:\n")

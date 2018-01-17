@@ -576,16 +576,19 @@
 (define (get-metadata)
   (%backend c (%%cexp (-> sexp) "irk_get_metadata()"))
   (%backend llvm (%llvm-call ("@irk_get_metadata" (-> sexp))))
+  (%backend bytecode (%%cexp (-> sexp) "meta"))
   )
 
 (define (~~object->int ob)
   (%backend c (%%cexp ('a -> int) "unbox(irk_object2int(%0))" ob))
   (%backend llvm (%llvm-call ("@irk_object2int" ('a -> int) ccc) ob))
+  (%backend bytecode (%%cexp ('a -> int) "ob2int" ob))
   )
 
 (define (~~object*->int ob)
   (%backend c (%%cexp ('a -> int) "unbox(irk_objectptr2int(%0))" ob))
   (%backend llvm (%llvm-call ("@irk_objectptr2int" ('a -> int) ccc) ob))
+  (%backend bytecode (%%cexp ('a -> int) "obptr2int" ob))
   )
 
 ;; VM needs to shift all argv right by one.

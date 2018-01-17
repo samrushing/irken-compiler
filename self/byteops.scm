@@ -105,7 +105,10 @@
     (OI 'csize   2      #f     #t)   ;; target sindex
     (OI 'cref2int 2     #f     #t)   ;; target src
     (OI 'int2cref 2     #f     #t)   ;; target src
+    (OI 'ob2int  2      #f     #t)   ;; target src
+    (OI 'obptr2int 2    #f     #t)   ;; target src
     (OI 'errno   0      #f     #t)   ;; target
+    (OI 'meta    0      #f     #t)   ;; target
     ;;  name   nargs varargs target? args
     ))
 

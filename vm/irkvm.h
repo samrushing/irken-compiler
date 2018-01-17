@@ -7,7 +7,7 @@ typedef struct {
   int target;
 } opcode_info_t;
 
-opcode_info_t irk_opcodes[90] = {
+opcode_info_t irk_opcodes[93] = {
   {"lit",         2, 0, 1},
   {"litc",        2, 0, 1},
   {"ret",         1, 0, 0},
@@ -97,7 +97,10 @@ opcode_info_t irk_opcodes[90] = {
   {"csize",       2, 0, 1},
   {"cref2int",    2, 0, 1},
   {"int2cref",    2, 0, 1},
-  {"errno",       0, 0, 1}
+  {"ob2int",      2, 0, 1},
+  {"obptr2int",   2, 0, 1},
+  {"errno",       0, 0, 1},
+  {"meta",        0, 0, 1}
 };
 #define IRK_OP_LIT        0
 #define IRK_OP_LITC       1
@@ -188,5 +191,8 @@ opcode_info_t irk_opcodes[90] = {
 #define IRK_OP_CSIZE      86
 #define IRK_OP_CREF2INT   87
 #define IRK_OP_INT2CREF   88
-#define IRK_OP_ERRNO      89
-#define IRK_NUM_OPCODES 90
+#define IRK_OP_OB2INT     89
+#define IRK_OP_OBPTR2INT  90
+#define IRK_OP_ERRNO      91
+#define IRK_OP_META       92
+#define IRK_NUM_OPCODES 93
