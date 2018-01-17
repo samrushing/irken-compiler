@@ -47,6 +47,8 @@ declare void @relocate_llvm_literals (i8**, i32*)
 declare i8** @irk_copy_tuple (i8**)
 declare i8** @irk_mul2 (i64, i64, i8**)
 declare i8** @irk_div2b1 (i64, i64, i64, i8**)
+declare i8** @irk_object2int (i8**)
+declare i8** @irk_objectptr2int (i8**)
 
 ;; FFI
 declare i8** @make_malloc (i64 %size, i64 %count)

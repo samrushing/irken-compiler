@@ -68,19 +68,25 @@ get_case_tup (object * ob)
 }
 
 static
-inline
-pxll_int
-get_imm_payload (object * ob)
-{
-  return ((pxll_int) ob) >> 8;
-}
-
-static
 pxll_int
 get_tuple_size (object * ob)
 {
   header * h = (header *) ob;
   return (*h)>>8;
+}
+
+// for runtime reflection.
+object *
+irk_objectptr2int (object * ob)
+{
+  return box((pxll_int)(*ob));
+}
+
+// for runtime reflection.
+object *
+irk_object2int (object * ob)
+{
+  return box((pxll_int)ob);
 }
 
 static
@@ -610,10 +616,6 @@ varset (pxll_int depth, pxll_int index, object * val) {
   }
   lenv0[index+2] = val;
 }
-
-// REGISTER_DECLARATIONS //
-
-// CONSTRUCTED LITERALS //
 
 #include "gc1.c"
 
