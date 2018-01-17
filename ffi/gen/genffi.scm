@@ -21,6 +21,7 @@
 (include "lib/set.scm")
 (include "lib/alist.scm")
 (include "lib/ctype.scm") ;; needed by os & io.
+(include "lib/sexp.scm")
 (include "lib/lisp_reader.scm") ;; needed by ctype
 (include "lib/stdio.scm")
 (include "lib/frb.scm")
