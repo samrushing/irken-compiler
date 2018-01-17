@@ -217,10 +217,12 @@
     (match (string-length line) with
       0 -> #u
       _ -> (begin
-         ;;(printf "line = '" line "'\n")
-         (for-list exp (read-string line)
-           (printf (univ-repr (eval exp namespace)) "\n"))
-         (loop (ask "> " ifile ofile)))
+             (for-list exp (read-string line)
+               (let ((val (eval exp namespace)))
+                 ;; store last value in `_`.
+                 (varset '_ val namespace)
+                 (printf (univ-repr val) "\n")))
+             (loop (ask "> " ifile ofile)))
       )))
 
 (read-eval-print-loop (file/open-stdin) (file/open-stdout))
