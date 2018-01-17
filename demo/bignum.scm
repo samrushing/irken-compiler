@@ -333,12 +333,6 @@
         digs
         )))
 
-;; (define (digits-lshift digs n)
-;;   (printf "lshift n=" (int n) " " (digits-repr digs) "\n")
-;;   (let ((r (digits-lshiftx digs n)))
-;;     (printf "       n=" (int n) " " (digits-repr r) "\n")
-;;     r))
-
 ;; msb: 00000xxxxxxxxxxxx
 ;;      0000000000xxxxxxx n < bit-size
 ;;      00000000000000000 n = bit-size
@@ -447,13 +441,11 @@
 ;; note: this replaces mul2 and mul2n1 above.
 ;; use prim from include/header1.c
 (define (mul2 a b r)
-  ;; (%backend c
-  ;;   (%%cexp (int int (vector int) -> undefined)
-  ;;           "irk_mul2 (%0, %1, %2)"
-  ;;           a b r))
+  (%backend c
+    (%%cexp (int int (vector int) -> undefined) "irk_mul2 (%0, %1, %2)" a b r))
   (%backend llvm
     (%llvm-call ("@irk_ll_mul2" (int int (vector int) -> undefined)) a b r))
-  (%backend (bytecode c)
+  (%backend (bytecode)
     (mul2-half a b r)))
 
 ;; for adding a partial product into the final sum.
@@ -488,9 +480,7 @@
 ;;    -----
 ;;   CCCCCC
 
-;; n = |A|
 (define (digits-mul1 A b R)
-  ;;(printf "digits-mul1 A: " (digits-repr A) " b: " (hex b) " R: " (digits-repr R) "\n")
   (let ((carry 0)
         (mulv (make-vector 2 0))
         (p2 0))
