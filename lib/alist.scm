@@ -70,6 +70,19 @@
      )
     r))
 
+(define alist/map*
+  p acc (alist:nil) -> acc
+  p acc (alist:entry k v tl) -> (alist/map* p (list:cons (p k v) acc) tl)
+  )
+
+(define (alist/map p al)
+  (alist/map* p '() al))
+
+(defmacro for-alist
+  (for-alist k v alist body ...)
+  -> (alist/iterate (lambda (k v) body ...) alist)
+  )
+
 ;; imperative alist 'object'.
 
 (datatype alist-ob

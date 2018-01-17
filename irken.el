@@ -82,6 +82,7 @@
 (put 'for-set 'scheme-indent-function 2)
 (put 'for-set2 'scheme-indent-function 4)
 (put 'for-map 'scheme-indent-function 3)
+(put 'for-alist 'scheme-indent-function 3)
 (put 'for-vector 'scheme-indent-function 2)
 (put 'for-vector-rev 'scheme-indent-function 2)
 (put 'for-string 'scheme-indent-function 2)
