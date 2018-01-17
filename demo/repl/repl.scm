@@ -2,7 +2,6 @@
 
 (include "lib/basis.scm")
 (include "lib/map.scm")
-(include "lib/os.scm")
 
 ;; --- s-expression input ---
 
@@ -36,7 +35,7 @@
   (univ:bool b)   -> (format (bool b))
   (univ:symbol s) -> (format (sym s))
   (univ:undef)    -> "#u"
-  (univ:list subs) 
+  (univ:list subs)
   -> (format "(" (join univ-repr " " subs) ")")
   (univ:function rands body)
   -> (format "<function (" (join symbol->string " " rands) ") " (repr body) ">")
@@ -67,7 +66,7 @@
 
 (define (get-cell name env)
   (match env with
-    (env:empty) 
+    (env:empty)
     -> (maybe:no)
     (env:rib rib next)
     -> (match (alist/lookup rib name) with
@@ -87,7 +86,7 @@
     (maybe:no) ;; not defined, create a top-level entry
     -> (let ((cell {val=val}))
          (match namespace with
-           (env:empty) 
+           (env:empty)
            -> (set! namespace (env:rib (alist:entry name cell (alist:nil)) (env:empty)))
            (env:rib rib next)
            -> (set! namespace (env:rib (alist:entry name cell rib) next))
@@ -98,23 +97,21 @@
   (univ:undef)
   )
 
+(define (int-bin-op env op arg0 arg1)
+  (let ((a (eval arg0 env))
+        (b (eval arg1 env)))
+    (match a b with
+      (univ:int a) (univ:int b) -> (univ:int (op a b))
+      _ _ -> (repl-error (format "bad args: " (univ-repr a) " " (univ-repr b)))
+      )))
+
 ;; evaluate a primitive operator (one starting with '%')
 
 (define eval-prim
-  '%+ (arg0 arg1) env
-  -> (let ((a (eval arg0 env))
-           (b (eval arg1 env)))
-       (match a b with
-         (univ:int a) (univ:int b) -> (univ:int (+ a b))
-         _ _ -> (repl-error (format "bad args: " (univ-repr a) " " (univ-repr b)))
-         ))
-  '%- (arg0 arg1) env
-  -> (let ((a (eval arg0 env))
-           (b (eval arg1 env)))
-       (match a b with
-         (univ:int a) (univ:int b) -> (univ:int (- a b))
-         _ _ -> (repl-error (format "bad args: " (univ-repr a) " " (univ-repr b)))
-         ))
+  '%+ (arg0 arg1) env -> (int-bin-op env binary+ arg0 arg1)
+  '%- (arg0 arg1) env -> (int-bin-op env binary- arg0 arg1)
+  '%* (arg0 arg1) env -> (int-bin-op env binary* arg0 arg1)
+  '%/ (arg0 arg1) env -> (int-bin-op env / arg0 arg1)
   '%cons (arg0 arg1) env
   -> (let ((a (eval arg0 env))
            (b (eval arg1 env)))
@@ -154,7 +151,7 @@
              (rands rands)
              (rib (alist:nil)))
     (match formals rands with
-      (name . formals) (arg . rands) 
+      (name . formals) (arg . rands)
       -> (loop formals rands (alist:entry name {val=(eval arg env)} rib))
       () ()
       -> (maybe:yes rib)
@@ -199,7 +196,7 @@
                 (eval-prim name rands env)
                 (eval-apply rator rands env))
          _ -> (eval-apply rator rands env))
-    ;; anything else...  
+    ;; anything else...
     exp -> (repl-error (format "bad/unknown expression: " (repr exp)))
     ))
 
@@ -209,6 +206,9 @@
 (define (setup-initial-environment)
   (varset 'x (univ:int 34) namespace)
   (varset '+ (eval-string "(lambda (a b) (%+ a b))" namespace) namespace)
+  (varset '- (eval-string "(lambda (a b) (%- a b))" namespace) namespace)
+  (varset '* (eval-string "(lambda (a b) (%* a b))" namespace) namespace)
+  (varset '/ (eval-string "(lambda (a b) (%/ a b))" namespace) namespace)
   )
 
 (define (read-eval-print-loop ifile ofile)
