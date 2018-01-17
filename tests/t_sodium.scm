@@ -20,7 +20,7 @@
      (map char->int (string->list s))))))
 
 (define (hash-string m)
-  (let ((h (make-string 32))
+  (let ((h (make-string crypto_hash_sha256_BYTES))
         (h* (%c-cast uchar (%string->cref #f h)))
         (m* (%c-cast uchar (%string->cref #f m)))
         (len (string-length m)))
