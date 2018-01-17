@@ -6,6 +6,7 @@
 (include "lib/pair.scm")
 (include "lib/string.scm")
 (include "lib/symbol.scm")
+(include "lib/sexp.scm")
 (include "lib/queue.scm")
 (include "lib/set.scm")
 (include "lib/alist.scm")
@@ -16,4 +17,6 @@
 (include "lib/io.scm")
 (include "lib/frb.scm")
 (include "lib/enum.scm")
-
+(include "lib/metadata.scm") ;; access metadata
+(include "lib/reflection.scm")
+(include "lib/exception.scm") ;; upgrade the base exception handler.
