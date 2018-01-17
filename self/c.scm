@@ -120,6 +120,13 @@
       (oformat "0};")
       )))
 
+(define (emit-get-metadata o)
+  (o.write
+   (format
+    "object * irk_get_metadata (void) {\n"
+    "  return (object *) constructed_" (int (- the-context.literals.count 1)) "[0];\n"
+    "}\n")))
+
 (define (emit-c o decls insns)
 
   (let ((fun-stack '())
@@ -934,6 +941,7 @@
 	() -> #u
 	_  -> (begin ((pop fun-stack)) (loop))
 	))
+    (emit-get-metadata o)
     (emit-c-lookup-field-hashtables o)
     ))
 

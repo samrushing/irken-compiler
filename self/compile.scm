@@ -4,6 +4,7 @@
 (include "lib/pair.scm")
 (include "lib/string.scm")
 (include "lib/symbol.scm")
+(include "lib/sexp.scm")
 (include "lib/io.scm")
 (include "lib/os.scm")
 (include "lib/stdio.scm")
@@ -271,6 +272,7 @@ default flags:
      (dump-ffi-info)
      )
     (notquiet (printf "backend...\n"))
+    (generate-metadata)
     (compile-with-backend base cps)
     ))
 

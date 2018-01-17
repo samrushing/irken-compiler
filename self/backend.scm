@@ -361,6 +361,9 @@ void prof_dump (void)
 
 ;; unrolled - our keys are always of length 2
 ;; NOTE: this obviously must match the hash function in include/header1.c:p_hash().
+;; XXX: this code is not compatible with 32-bit irkvm.  we should probably tweak
+;;   this slightly to avoid the 32-bit mask.  the given magic number is a prime, I'm
+;;   sure the exact size of the mask is of little concern.
 (define (hash2 d k0 k1)
   (logand #xffffffff
     (logxor k0
@@ -489,3 +492,23 @@ void prof_dump (void)
       (set! i (+ i 1)))
     ))
 
+;; generate metadata for this program.  It is made available as a literal,
+;; accessible via the 'irk_get_metadata'.
+(define (generate-metadata)
+  (let ((r '()))
+    (PUSH r (sexp1 'variants
+                   (alist/map
+                    (lambda (name index) (sexp (sym name) (int index)))
+                    the-context.variant-labels)))
+    (PUSH r (sexp1 'exceptions
+                   (alist/map
+                    (lambda (name type) (sexp (sym name) (type->sexp (apply-subst type))))
+                    the-context.exceptions)))
+    (PUSH r (sexp1 'datatypes
+                   (alist/map
+                    (lambda (name dt) (dt.to-sexp))
+                    the-context.datatypes)))
+    (let ((lit (unsexp (sexp1 'metadata r))))
+      (scan-literals (LIST lit))
+      (cmap/add the-context.literals lit))
+    ))

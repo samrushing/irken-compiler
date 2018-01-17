@@ -1129,10 +1129,16 @@
       (oformat "i32 0];")
       )))
 
+(define (emit-llvm-get-metadata o)
+  (oformat "define internal fastcc i8** @irk_get_metadata() {\n"
+           "  %1 = call fastcc i8** @insn_getlit (i64 " (int (- the-context.literals.count 1)) ")\n"
+           "  ret i8** %1\n}"))
+
 (define (emit-llvm o cname cps)
   (cps->llvm cps o 'toplevel cname '() #t)
   (llvm-emit-constructed o)
   (emit-llvm-lookup-field-hashtables o)
+  (emit-llvm-get-metadata o)
   (emit-ffi-declarations o)
   )
 

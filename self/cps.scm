@@ -77,7 +77,8 @@
                                 i))
                      i))))
          (define (get-max) max-reg)
-         {alloc=allocate get-max=get-max}
+         (define (reset) (set! max-reg -1))
+         {alloc=allocate get-max=get-max reset=reset}
          )
     _
     -> (let ((max-reg -1))
@@ -85,7 +86,8 @@
            (set! max-reg (+ max-reg 1))
            max-reg)
          (define (get-max) max-reg)
-         {alloc=allocate get-max=get-max}
+         (define (reset) (set! max-reg -1))
+         {alloc=allocate get-max=get-max reset=reset}
          )
     ))
 
@@ -165,10 +167,6 @@
 	)
       )
 
-    (define (add-literal lit)
-      (cmap/add the-context.literals lit)
-      )
-
     ;; inlining often causes literals to be copied all over the place.
     ;;   we can detect this because their node id's are the same.  So keep
     ;;   a map from id->litindex so we can reference via litcon.
@@ -181,34 +179,6 @@
 	     (tree/insert! the-context.literal-ids int-cmp id index)
 	     index)))
 
-    (define (get-symbol-index sym)
-      (match (tree/member the-context.symbols symbol-index-cmp sym) with
-        (maybe:yes index) -> index
-        (maybe:no)
-        -> (let ((string-index (add-literal (literal:string (symbol->string sym))))
-        	 (symbol-index (add-literal (literal:symbol sym))))
-             (tree/insert! the-context.symbols symbol-index-cmp sym symbol-index)
-             symbol-index)))
-
-    ;; scan through a literal for symbols and strings, make sure they're recorded as well.
-    (define scan-literals
-      () -> 0
-      (hd . tl) -> (begin
-		     (match hd with
-		       (literal:symbol sym)    -> (get-symbol-index sym)
-		       (literal:string s)      -> (add-literal hd)
-		       (literal:cons _ _ args) -> (scan-literals args)
-		       (literal:vector args)   -> (scan-literals args)
-                       (literal:record _ args) -> (scan-fields args)
-		       _ -> 0)
-		     (scan-literals tl)))
-
-    (define (scan-fields fields)
-      (scan-literals
-       (map (lambda (f)
-              (match f with
-                (litfield:t _ val) -> val))
-            fields)))
 
     (define (c-literal lit id k)
       (match lit with
@@ -223,11 +193,7 @@
         (literal:record tag vals) -> (begin
                                        (scan-fields vals)
                                        (insn:litcon (get-literal-index lit id) 'record k))
-	;; problem: any literal without args should be encoded as an
-	;;   immediate, and not show up in 'constructed'.  I think it
-	;;   can be done like this:
-	;; (literal:cons x y ()) -> (insn:literal lit k)
-	;;(literal:cons 'bool s _) -> (insn:literal lit k)
+        ;; note: literals without args are immediates.
         (literal:bool _)        -> (insn:literal lit k)
         (literal:cons _ _ ())   -> (insn:literal lit k)
 	(literal:cons _ _ args) -> (begin
@@ -329,20 +295,17 @@
 
     (define (c-varref name lenv k)
       (match (lexical-address name 0 lenv) with
-	(:reg r) -> (insn:move r -1 k)
+	(:reg r)            -> (insn:move r -1 k)
 	(:pair depth index) -> (insn:varref depth index k)
-	(:top _ index) -> (insn:varref -1 index k)
+	(:top _ index)      -> (insn:varref -1 index k)
 	))
 
     (define (c-varset name exp lenv k)
       (let ((kfun
 	     (match (lexical-address name 0 lenv) with
-	       (:pair depth index)
-	       -> (lambda (reg) (insn:varset depth index reg k))
-	       (:top _ index)
-	       -> (lambda (reg) (insn:varset -1 index reg k))
-	       (:reg index)
-	       -> (lambda (reg) (insn:move index reg k))
+	       (:pair depth index) -> (lambda (reg) (insn:varset depth index reg k))
+	       (:top _ index)      -> (lambda (reg) (insn:varset -1 index reg k))
+	       (:reg index)        -> (lambda (reg) (insn:move index reg k))
 	       )))
 	(compile #f exp lenv (cont (k/free k) kfun))))
 
@@ -416,16 +379,19 @@
 
     (define (collect-primargs* args regs perm lenv k ck)
       (match args with
-	()        -> (let ((regs (reverse regs))
-			   ;; undo the permutation of the arg regs
-			   (perm-regs
-			    (map-range
-				i (length perm)
-				(nth regs (index-eq i perm)))))
-		       (ck perm-regs))
-	(hd . tl) -> (compile #f hd lenv
-			      (cont (merge-sets (k/free k) regs)
-				    (lambda (reg) (collect-primargs* tl (cons reg regs) perm lenv k ck))))
+	()
+        -> (let ((regs (reverse regs))
+                 ;; undo the permutation of the arg regs
+                 (perm-regs
+                  (map-range
+                      i (length perm)
+                      (nth regs (index-eq i perm)))))
+             (ck perm-regs))
+	(hd . tl)
+        -> (compile #f hd lenv
+                    (cont (merge-sets (k/free k) regs)
+                          (lambda (reg)
+                            (collect-primargs* tl (cons reg regs) perm lenv k ck))))
 	))
 
     (define (c-primargs args op parm type lenv k)
@@ -709,6 +675,8 @@
     (define (record-label-tag label)
       (cmap/add the-context.labels label))
 
+    ;; Note: record *literals* are discovered and recorded in nodes.scm,
+    ;;  but expressions that *build* records are not caught until this phase.
     (define (get-record-tag sig)
       (for-each record-label-tag sig)
       (cmap/add the-context.records sig))
@@ -731,6 +699,42 @@
           (error "too many registers."))
      )
     ))
+
+;; --------- literal processing ----------
+
+(define (add-literal lit)
+  (cmap/add the-context.literals lit))
+
+(define (get-symbol-index sym)
+  (match (tree/member the-context.symbols symbol-index-cmp sym) with
+    (maybe:yes index) -> index
+    (maybe:no)
+    -> (let ((string-index (add-literal (literal:string (symbol->string sym))))
+             (symbol-index (add-literal (literal:symbol sym))))
+         (tree/insert! the-context.symbols symbol-index-cmp sym symbol-index)
+         symbol-index)))
+
+;; scan through a literal for symbols and strings, make sure they're recorded as well.
+(define scan-literals
+  () -> 0
+  (hd . tl) -> (begin
+                 (match hd with
+                   (literal:symbol sym)    -> (get-symbol-index sym)
+                   (literal:string s)      -> (add-literal hd)
+                   (literal:cons _ _ args) -> (scan-literals args)
+                   (literal:vector args)   -> (scan-literals args)
+                   (literal:record _ args) -> (scan-fields args)
+                   _ -> 0)
+                 (scan-literals tl)))
+
+(define (scan-fields fields)
+  (scan-literals
+   (map (lambda (f)
+          (match f with
+            (litfield:t _ val) -> val))
+        fields)))
+
+;; --------- type information ----------
 
 ;; this never completes because of an issue with type<? - a certain complex type
 ;;   (an object type) ends up spinning forever.  may be related to non-canonical
@@ -776,6 +780,8 @@
   (for (n d x) (make-node-generator root)
        (indent d)
        (printf (type-repr (noderec->type n)) "\n")))
+
+;; --------- printing ----------
 
 ;;; XXX redo this with the new format macro - this function is horrible.
 (define (print-insn insn d)

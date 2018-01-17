@@ -2,6 +2,7 @@
 #include "pxll.h"
 
 static int lookup_field (int tag, int label);
+object * irk_get_metadata();
 
 static
 inline
