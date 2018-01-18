@@ -2,9 +2,6 @@
 
 ;; RFC 7541
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-
 (defmacro HF
   (HF name val)
   -> {name=name val=val}
@@ -85,7 +82,6 @@
       (m::add *static-table*[i] i))
     m))
 
-
 ;; https://github.com/samrushing/hpack/blob/master/huffman.py
 (define huffman-table-ascii
   (string-concat
@@ -128,8 +124,9 @@
   )
 
 (define (2hex->int s pos)
-  (logior (<< (hexdig->int (string-ref s pos)) 4)
-          (hexdig->int (string-ref s (+ pos 1)))))
+  (logior
+   (<< (hexdig->int (string-ref s pos)) 4)
+   (hexdig->int (string-ref s (+ pos 1)))))
 
 (define (ascii->tree s pos)
   (let recur ()
@@ -153,10 +150,10 @@
       (match t with
         (hufftree:leaf val)
         -> (set! m[val] (:pair n bits))
-        (hufftree:node left right)
+        (hufftree:node L R)
         -> (begin
-             (loop left  (logior 0 (<< n 1)) (+ bits 1))
-             (loop right (logior 1 (<< n 1)) (+ bits 1)))
+             (loop L (logior 0 (<< n 1)) (+ bits 1))
+             (loop R (logior 1 (<< n 1)) (+ bits 1)))
         ))
     m))
 
@@ -168,41 +165,65 @@
     v))
 
 (define (huffman-encode s)
-
   (let ((data '())
         (left 8)
         (byte 0))
-
     (define (emit-byte)
-      (PUSH data (ascii->char byte))
+      (PUSH data (int->char byte))
       (set! left 8)
       (set! byte 0))
-
     (define (emit n bits)
       (while (> bits 0)
         (let ((slice (min left bits))
               (shift (- bits slice)))
           (set! byte (<< byte slice))
           (set! byte (logior byte (logand (>> n shift) masks[slice])))
-          (set! bits (- bits slice))
-          (set! left (- left slice))
-          (if (= left 0)
-              (emit-byte))
+          (dec! bits slice)
+          (dec! left slice)
+          (when (= left 0) (emit-byte))
           )))
-
     (define (encode s)
       (for-string ch s
-        (match huffman-map[(char->ascii ch)] with
+        (match huffman-map[(char->int ch)] with
           (:pair n bits)
           -> (emit n bits))))
-
     (define (done)
       (if (< left 8)
           (emit #xffffffff left))
       (list->string (reverse data)))
-
     (encode s)
     (done)
     ))
 
-(printf (string (huffman-encode "testing-value")))
+(define (huffman-decode s pos nbytes)
+  (let ((r '())
+        (stop (+ nbytes pos))
+        (bpos -1)
+        (byte 0))
+    (define (get-bit)
+      (when (< bpos 0) (next-byte))
+      (let ((set? (not (= 0 (logand byte (<< 1 bpos))))))
+        (dec! bpos)
+        set?
+        ))
+    (define (next-byte)
+      (set! byte (char->int (string-ref s pos)))
+      (inc! pos)
+      (set! bpos 7)
+      )
+    (while (< pos stop)
+      (let loop ((t huffman-table))
+        (match t with
+          (hufftree:leaf val) -> (PUSH r (int->char val))
+          (hufftree:node L R) -> (loop (if (get-bit) R L))
+          )))
+    (list->string (reverse r))
+    ))
+
+(include "lib/basis.scm")
+(include "lib/map.scm")
+
+(let ((enc (huffman-encode "www.example.com")))
+  (printf "encoded: " (string enc) "\n")
+  (printf "decoded: " (string (huffman-decode enc 0 (string-length enc))) "\n")
+  )
