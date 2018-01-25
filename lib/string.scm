@@ -122,19 +122,42 @@
     (magic-cmp a b))
   )
 
-(define (string-find a b)
-  ;; find <a> in <b>
+(define (string-find-from a b pos)
+  ;; find <a> in <b>, starting at b[pos]
   (let ((alen (string-length a))
 	(blen (string-length b)))
     (if (< blen alen)
 	-1
-	(let loop ((i 0) (j 0))
+	(let loop ((i pos) (j 0))
 	  (cond ((= j alen) (- i j))
 		((= i blen) -1)
 		((eq? (string-ref a j) (string-ref b i))
 		 (loop (+ i 1) (+ j 1)))
 		(else
 		 (loop (+ i 1) 0)))))))
+
+(define (string-find a b)
+  (string-find-from a b 0))
+
+(define (string-split-string src split)
+  (let ((len0 (string-length src))
+        (len1 (string-length split))
+        (r '()))
+    (when (> len1 len0)
+      (raise (:String/SplitTooLong split)))
+    (let loop ((pos 0))
+      (let ((where (string-find-from split src pos)))
+        (if (= where -1)
+            (begin
+              (PUSH r (substring src pos len0))
+              (reverse r))
+            (begin
+              (PUSH r (substring src pos where))
+              (loop (+ where len1))))))))
+
+(define (string-replace-all src from to)
+  (let ((parts (string-split-string src from)))
+    (format (join to parts))))
 
 (define (starts-with a b)
   ;; does <a> start with <b>?
@@ -260,19 +283,27 @@
   (let loop ((x (abs n)) (r '()))
     (if (= 0 x)
 	(list->string
-	 (if (< n 0)
-	     (list:cons #\- r) r))
+	 (if (< n 0) (list:cons #\- r) r))
 	(loop (>> x 4)
-	      (list:cons hex-table[(logand x 15)] r)))))
+	      (list:cons hex-table[(logand x 15)] r))
+        )))
 
 (define (int->oct-string n)
   (let loop ((x (abs n)) (r '()))
     (if (= 0 x)
 	(list->string
-	 (if (< n 0)
-	     (list:cons #\- r) r))
+	 (if (< n 0) (list:cons #\- r) r))
 	(loop (>> x 3)
-	      (list:cons hex-table[(logand x 7)] r)))))
+	      (list:cons hex-table[(logand x 7)] r))
+        )))
+
+(define (int->bin-string n)
+  (let loop ((x (abs n)) (r '()))
+    (if (= 0 x)
+        (list->string (if (< n 0) (list:cons #\- r) r))
+        (loop (>> x 1)
+              (list:cons (if (= 0 (logand x 1)) #\0 #\1) r))
+        )))
 
 (define (pad width s left? ch)
   (let ((n (string-length s)))
@@ -295,6 +326,7 @@
   (fitem (<bool> b))		-> (bool->string b)
   (fitem (<hex> n))		-> (int->hex-string n)
   (fitem (<oct> n))		-> (int->oct-string n)
+  (fitem (<bin> n))             -> (int->bin-string n)
   (fitem (<sym> s))		-> (symbol->string s)
   (fitem (<join> l))		-> (string-concat l)
   (fitem (<join> sep l))	-> (string-join l sep)         ;; separate each string in <l> with <sep>
