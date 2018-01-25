@@ -189,11 +189,11 @@
 (define (tree/get root cmp key)
   (match (tree/member root cmp key) with
     (maybe:yes val) -> val
-    (maybe:no) -> (raise (:KeyError))
+    (maybe:no) -> (raise (:KeyError key))
     ))
 
 (define tree/min
-  (tree:empty) -> (raise (:KeyError))
+  (tree:empty) -> (raise (:Tree/Empty))
   (tree:black (tree:empty) _ k v) -> (:tuple k v)
   (tree:red   (tree:empty) _ k v) -> (:tuple k v)
   (tree:black L _ _ _) -> (tree/min L)
@@ -201,7 +201,7 @@
   )
 
 (define tree/max
-  (tree:empty) -> (raise (:KeyError))
+  (tree:empty) -> (raise (:Tree/Empty))
   (tree:black _ (tree:empty) k v) -> (:tuple k v)
   (tree:red   _ (tree:empty) k v) -> (:tuple k v)
   (tree:black _ R _ _) -> (tree/max R)
