@@ -384,13 +384,21 @@
      )
    '()))
 
-(define ctype->irken-type
+(define ctype->irken-type*
   (ctype:name name)  -> (pred name '())
   (ctype:int cint s) -> (int-ctype->itype cint s)
-  (ctype:array _ t)  -> (pred 'array (LIST (ctype->irken-type t)))
-  (ctype:pointer t)  -> (pred 'cref (LIST (ctype->irken-type t)))
+  (ctype:array _ t)  -> (pred 'array (LIST (ctype->irken-type* t)))
+  (ctype:pointer t)  -> (pred '* (LIST (ctype->irken-type* t)))
   (ctype:struct n)   -> (pred 'struct (LIST (pred n '())))
   (ctype:union n)    -> (pred 'union (LIST (pred n '())))
+  )
+
+;; we want only the outermost layer of 'pointer' converted to cref,
+;;  leave the internal types alone.
+(define ctype->irken-type
+  (ctype:pointer t)  -> (pred 'cref (LIST (ctype->irken-type* t)))
+  (ctype:array _ t)  -> (pred 'cref (LIST (ctype->irken-type* t)))
+  t                  -> (ctype->irken-type* t)
   )
 
 ;; (define (test-types)
