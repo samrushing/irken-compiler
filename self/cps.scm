@@ -309,6 +309,12 @@
 	       )))
 	(compile #f exp lenv (cont (k/free k) kfun))))
 
+    (define (get-cref-type arg)
+      (match (noderec->type arg) with
+        (type:pred 'cref (t1) _) -> t1
+        _                        -> (impossible)
+        ))
+
     (define (c-primapp tail? name params exp lenv k)
       (let ((args (noderec->subs exp)))
 	(match name with
@@ -331,15 +337,11 @@
 				     (sexp params sig) ;; (field sig)
 				     (noderec->type exp)
 				     lenv k))
-	  '%cset    -> (let ((val (nth args 2))
-			     (tval (noderec->type val))
-			     (buffer (nth args 0)))
-			 (match (noderec->type buffer) with
-			   (type:pred 'buffer (tbase) _)
-			   -> (let ((cast-type (arrow tbase (LIST tval))))
-				;; we need both types in order to cast correctly
-				(c-primargs args name params cast-type lenv k))
-			   _ -> (impossible)))
+          ;; hack: the back end needs to know the type of the lval.
+	  '%c-get-int -> (c-primargs args name params (get-cref-type (nth args 0)) lenv k)
+	  '%c-set-int -> (c-primargs args name params (get-cref-type (nth args 0)) lenv k)
+	  '%c-get-ptr -> (c-primargs args name params (get-cref-type (nth args 0)) lenv k)
+	  '%c-set-ptr -> (c-primargs args name params (get-cref-type (nth args 0)) lenv k)
 	  ;; do-nothing prim used to verify exception types.
 	  '%exn-raise  -> (compile tail? (first args) lenv k)
           ;; do-nothing prim to cast C types.
