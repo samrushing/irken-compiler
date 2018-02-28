@@ -23,16 +23,16 @@
       ))
 
   ;; similar to UNQUOTE-SPLICING.
-  ;; (x y ... (%splice a b c) z)
+  ;; (x y ... (%%splice a b c) z)
   ;; -> (x y ... a b c z)
 
   (define (splice-list forms acc)
     (match forms with
       () -> (reverse acc)
-      ;; crucial: don't eval %splice in macro definitions
+      ;; crucial: don't eval %%splice in macro definitions
       ((sexp:list ((sexp:symbol 'defmacro) . macro)) . tl)
       -> (splice-list tl (list:cons (sexp1 'defmacro macro) acc))
-      ((sexp:list ((sexp:symbol '%splice) . forms0)) . forms1)
+      ((sexp:list ((sexp:symbol '%%splice) . forms0)) . forms1)
       -> (splice-list forms1 (foldr cons acc (reverse (map splice forms0))))
       (hd . tl)
       -> (splice-list tl (list:cons (splice hd) acc))
@@ -155,6 +155,12 @@
           (raise (:Transform/Error msg)))
      ))
 
+  (define (primop? sym)
+    (and
+     (starts-with (symbol->string sym) "%")
+     (not (starts-with (symbol->string sym) "%%"))
+     ))
+
   (define (maybe-expand l)
     (match l with
       () -> (sexp:list '())
@@ -167,7 +173,11 @@
 		(maybe:no)
                 -> (match (alist/lookup the-context.macros sym) with
                      (maybe:yes macro) -> (expand (macro.apply (sexp:list l) the-context.options.debugmacroexpansion))
-                     (maybe:no)	       -> (sexp:list (list:cons rator (map expand rands)))))
+                     (maybe:no)
+                     -> (if (primop? sym)
+                            ;; do *not* expand the primop param.
+                            (sexp:list (list:cons rator (list:cons (first rands) (map expand (rest rands)))))
+                            (sexp:list (list:cons rator (map expand rands))))))
 	   ;; automagically insert the <self> argument
 	   ;; (ob.o.method args0 ...) => (ob.o.method ob args0 ...)
 	   ;; XXX use something like __methods__ rather than 'o', duh.

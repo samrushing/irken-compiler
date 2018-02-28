@@ -38,7 +38,7 @@
 ;; 3) functions for those maps, e.g. color->int, int->color, color->name.
 (defmacro make-enum
   (make-enum name pairs ...)
-  -> (%splice
+  -> (%%splice
       (enumgen name () (pairs ...))
       (define (%%symbol name "-fwd-alist") (fwdgen name () (pairs ...)))
       (define (%%symbol name "-rev-alist") (revgen name () (pairs ...)))

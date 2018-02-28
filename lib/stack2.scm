@@ -40,7 +40,7 @@
 
 (defmacro obcall
   (obcall ob method arg0 ...)
-  -> ((%splice
+  -> ((%%splice
        (%%attr (%%attr ob o) method)
        ((%%attr (%%attr ob o) un) (%%attr ob self)))
       arg0 ...)
