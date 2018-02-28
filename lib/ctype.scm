@@ -618,10 +618,30 @@
 (define (make-char-buffer size)
   (%c-aref char (malloc char size) 0))
 
+;; ---------- utility -----------
+
 (define (get-cstring s*)
   (let ((s0* (%c-aref char s* 0))
         (slen (libc/strlen s0*)))
     (%cref->string #f s0* slen)))
+
+(define (cref->string s* slen)
+  (%cref->string #f s* slen))
+
+(define (c-get-int i*)
+  (%c-get-int #f i*))
+
+(define (c-set-int i* i)
+  (%c-set-int #f i* i))
+
+(define (c-get-ptr v*)
+  (%c-get-ptr #f v*))
+
+(define (c-set-ptr v** v*)
+  (%c-set-ptr #f v** v*))
+
+(define (c-aref a* idx)
+  (%c-aref #f a* idx))
 
 (define NULL (%int->cref #f 0))
 

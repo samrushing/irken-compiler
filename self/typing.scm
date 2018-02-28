@@ -522,6 +522,8 @@
   ;;   for example accessing a record field requires a row type containing a label
   ;;   for the field.
 
+  ;; XXX need a little DSL for type schemes here, building them by hand is ugly/clumsy.
+
   (define (lookup-primapp name params)
     (match name with
       '%fatbar	    -> (:scheme (LIST T0) (arrow T0 (LIST T0 T0)))
@@ -636,9 +638,16 @@
       '%c-aref -> (:scheme (LIST T0) (arrow (pred 'cref (LIST T0))
                                             (LIST (pred 'cref (LIST (pred 'array (LIST T0)))) int-type)))
       ;; forall(t0).cref(*(t0)) -> cref(t0)
-      '%c-pref -> (:scheme (LIST T0) (arrow (pred 'cref (LIST T0)) (LIST (pred 'cref (LIST (pred 'cref (LIST T0)))))))
-      '%c-get-int -> (get-c-get-int-scheme params)
-      '%c-set-int -> (get-c-set-int-scheme params)
+      '%c-get-ptr -> (:scheme (LIST T0)
+                              (arrow (pred 'cref (LIST T0))
+                                     (LIST (pred 'cref (LIST (pred '* (LIST T0)))))))
+      ;; forall(t0).cref(*(t0)),cref(t0) -> undefined
+      '%c-set-ptr -> (:scheme (LIST T0)
+                              (arrow undefined-type
+                                     (LIST (pred 'cref (LIST (pred '* (LIST T0))))
+                                           (pred 'cref (LIST T0)))))
+      '%c-get-int -> (:scheme (LIST T0) (arrow int-type (LIST (pred 'cref (LIST T0)))))
+      '%c-set-int -> (:scheme (LIST T0) (arrow undefined-type (LIST (pred 'cref (LIST T0)) int-type)))
       '%c-sref    -> (get-sref-scheme params)
       '%cref->string -> (:scheme '() (arrow string-type (LIST (pred 'cref (LIST (pred 'char '()))) int-type)))
       '%string->cref -> (:scheme '() (arrow (pred 'cref (LIST (pred 'char '()))) (LIST string-type)))
@@ -663,33 +672,6 @@
                                   type)
       _ -> type
       ))
-
-  (define get-c-get-int-scheme
-    (sexp:symbol cint-type)
-    -> (match (alist/lookup cint-types cint-type) with
-         (maybe:yes t) -> (:scheme '() (arrow int-type (LIST (pred 'cref (LIST t)))))
-         (maybe:no)    -> (match (lookup-tdef cint-type) with
-                            (maybe:yes (ctype:int _ _))
-                            -> (:scheme '() (arrow int-type
-                                                   (LIST (pred 'cref
-                                                               (LIST (pred cint-type '()))))))
-                            _ -> (prim-error '%c-get-int))
-         )
-    x -> (error1 "bad arg to c-get-int" (repr x)))
-
-  (define get-c-set-int-scheme
-    (sexp:symbol cint-type)
-    -> (match (alist/lookup cint-types cint-type) with
-         (maybe:yes t) -> (:scheme '() (arrow undefined-type (LIST int-type (pred 'cref (LIST t)))))
-         (maybe:no)    -> (match (lookup-tdef cint-type) with
-                            (maybe:yes (ctype:int _ _))
-                            -> (:scheme '() (arrow undefined-type
-                                                   (LIST int-type
-                                                         (pred 'cref (LIST (pred cint-type '()))))))
-                            _ -> (prim-error '%c-set-int)
-                            )
-         )
-    x -> (error1 "bad arg to c-set-int" (repr x)))
 
   (define get-sref
     ;; structname.field0.field1.field2 ...
