@@ -70,8 +70,8 @@
     (H "www-authenticate" "")
     ))
 
-;;(define nstatic (vector-length *static-table*))
 (define nstatic 62)
+(assert (= nstatic (vector-length *static-table*)))
 
 ;; a map from header-pair to index in the static table.
 (define *static-map*
@@ -237,26 +237,11 @@
 ;; OK, how about this: we use two maps, just like cmap.
 ;; fwd, rev. Then we have a 'clock'.  when you put something
 ;; in, you store its clock.  To reference it, you pull it out
-;; by index - clock.
+;; by clock - index.
 ;; to insert an entry,
 ;; we store it in fwd as (key,val) -> clock
 ;;                rev as clock -> (key, val)
 ;;
-
-;; (0 1 2 3 4) ;; clock = 0..4   3 == 'ringo'
-;; (1 2 3 4 5) ;; evict 0 clock=5
-;; (2 3 4 5 6) ;; evict 1 clock=6
-;;
-;; if we now ask for '0', we need to compute '2',
-;; given '6'. we need to know how many have been
-;; popped.
-;;
-;; if we ask 'where is ringo?' we get '3', which is
-;; now at 3-npop, or '1'.
-
-;; WRONG.  actually we are now storing them in reverse order.
-;; but that's fine.  no need for 'npop'.  but eviction might
-;; need rethinking.
 
 (define (make-dynamic-table max-size)
   (let ((fwd (tree/empty))
@@ -332,8 +317,6 @@
          map magic-cmp
          (:tuple name "") (:tuple name "\xff")
          (lambda (k v) (PUSH range (:tuple k v))))
-        ;;(printf " -------- range \n")
-        ;;(printn range)
         (reverse range)))
 
     (define (lookup-name-only map name)
@@ -381,8 +364,6 @@
              ;;(printn (LIST probe0 probe1))
              (cond (both1
                     ;; both present in dynamic
-                    ;;(printf "+both1 clock " (int clock) "\n")
-                    ;;(printn probe1)
                     (:tuple (adjust probe1) #t))
                    ((maybe? probe0)
                     ;; name only, prefer static
@@ -394,21 +375,6 @@
                     ;; nothing in either table
                     (:tuple (maybe:no) #f)))
              )))
-
-    ;; (define (get-index name val)
-    ;;   (printf "\n\nget-index " (string name) " " (string val) "\n")
-    ;;   (dump)
-    ;;   (let ((result (get-index* name val))
-    ;;         ((probe both) result))
-    ;;     (match probe with
-    ;;       (maybe:yes index)
-    ;;       -> (let (((name0 val0) (get index)))
-    ;;            (when (not (string=? name0 name))
-    ;;              (printf "wtf ? " (string name) " " (string name0) "\n")
-    ;;              (raise (:WTF))))
-    ;;       (maybe:no) -> #u)
-    ;;     (printn result)
-    ;;     result))
 
     {get=get set=set set-size=set-size get-index=get-index nvals=nvals}
     ))
