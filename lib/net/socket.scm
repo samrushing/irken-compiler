@@ -31,7 +31,7 @@
   {buf=(malloc char size) size=size pos=0 end=0})
 
 (define (buffer/contents buf)
-  (%cref->string #f (%c-aref char buf.buf buf.pos) (- buf.end buf.pos)))
+  (cref->string (c-aref buf.buf buf.pos) (- buf.end buf.pos)))
 
 ;; add data to a buffer, adjusting `end`.
 (define (buffer/add! buf s)
@@ -39,7 +39,7 @@
         (newend (+ buf.end slen)))
     (when (< buf.size newend)
       (buffer/grow! buf newend))
-    (let ((dst* (%c-aref char buf.buf buf.pos)))
+    (let ((dst* (c-aref buf.buf buf.pos)))
       (libc/memcpy (%c-cast void dst*)
                    (%c-cast void (%string->cref #f s))
                    slen)
@@ -49,7 +49,7 @@
 (define (buffer/get! buf n)
   (if (< (- buf.end buf.pos) n)
       (raise (:Socket/BufferUnderflow))
-      (let ((r (%cref->string #f (%c-aref char buf.buf buf.pos) n)))
+      (let ((r (cref->string (c-aref buf.buf buf.pos) n)))
         (inc! buf.pos n)
         r)))
 
@@ -85,34 +85,28 @@
 
 (define (inet_pton4 ip addr*) : (string (cref (struct in_addr)) -> int)
   (syscall
-   (socket/inet_pton
-    AF_INET
-    (%string->cref #f (zero-terminate ip))
-    (%c-cast (* void) addr*))
+   (socket/inet_pton AF_INET (cstring ip) (%c-cast void addr*))
    ))
 
 (define (inet_pton6 ip addr*) : (string (cref (struct in6_addr)) -> int)
   (syscall
-   (socket/inet_pton
-    AF_INET6
-    (%string->cref #f (zero-terminate ip))
-    (%c-cast (* void) addr*)
+   (socket/inet_pton AF_INET6 (cstring ip) (%c-cast void addr*)
     )))
 
 (define (address/make4 ip port)
   (let ((addr* (halloc (struct sockaddr_in))))
-    (%c-set-int u8 AF_INET (%c-cast u8 (%c-sref sockaddr_in.sin_family addr*)))
-    (%c-set-int ushort (socket/htons port) (%c-cast ushort (%c-sref sockaddr_in.sin_port addr*)))
+    (c-set-int (%c-sref sockaddr_in.sin_family addr*) AF_INET)
+    (c-set-int (%c-sref sockaddr_in.sin_port addr*) (socket/htons port))
     (inet_pton4 ip (%c-sref sockaddr_in.sin_addr addr*))
-    {addr=(%c-cast (* (struct sockaddr)) addr*) size=(%c-sizeof (struct sockaddr_in))}
+    {addr=(%c-cast (struct sockaddr) addr*) size=(%c-sizeof (struct sockaddr_in))}
     ))
 
 (define (address/make6 ip port)
   (let ((addr* (halloc (struct sockaddr_in6))))
-    (%c-set-int u8 AF_INET6 (%c-cast u8 (%c-sref sockaddr_in6.sin6_family addr*)))
-    (%c-set-int u16 (socket/htons port) (%c-cast u16 (%c-sref sockaddr_in6.sin6_port addr*)))
+    (c-set-int (%c-sref sockaddr_in6.sin6_family addr*) AF_INET6)
+    (c-set-int (%c-sref sockaddr_in6.sin6_port addr*) (socket/htons port))
     (inet_pton6 ip (%c-sref sockaddr_in6.sin6_addr addr*))
-    {addr=(%c-cast (* (struct sockaddr)) addr*) size=(%c-sizeof (struct sockaddr_in6))}
+    {addr=(%c-cast (struct sockaddr) addr*) size=(%c-sizeof (struct sockaddr_in6))}
     ))
 
 (define (address/make)
@@ -124,21 +118,21 @@
         (r1 (%c-aref char r0 0))
         (sa* (%c-cast (struct sockaddr_in) addr*))
         (a* (%c-sref sockaddr_in.sin_addr sa*))
-        (port (socket/htons (%c-get-int u16 (%c-cast u16 (%c-sref sockaddr_in.sin_port sa*))))))
-    (socket/inet_ntop AF_INET (%c-cast (* void) a*) r1 16)
-    (:tuple (%cref->string #f r1 (libc/strlen r1)) port)))
+        (port (socket/htons (c-get-int (%c-sref sockaddr_in.sin_port sa*)))))
+    (socket/inet_ntop AF_INET (%c-cast void a*) r1 16)
+    (:tuple (cref->string r1 (libc/strlen r1)) port)))
 
 (define (unparse-ipv6-address addr*)
   (let ((r0 (halloc char 80))
         (r1 (%c-aref char r0 0))
         (sa* (%c-cast (struct sockaddr_in6) addr*))
         (a* (%c-sref sockaddr_in6.sin6_addr sa*))
-        (port (socket/htons (%c-get-int u16 (%c-cast u16 (%c-sref sockaddr_in6.sin6_port sa*))))))
-    (socket/inet_ntop AF_INET6 (%c-cast (* void) a*) r1 80)
-    (:tuple (%cref->string #f r1 (libc/strlen r1)) port)))
+        (port (socket/htons (c-get-int (%c-sref sockaddr_in6.sin6_port sa*)))))
+    (socket/inet_ntop AF_INET6 (%c-cast void a*) r1 80)
+    (:tuple (cref->string r1 (libc/strlen r1)) port)))
 
 (define (unparse-address addr*)
-  (let ((family (%c-get-int u8 (%c-cast u8 (%c-sref sockaddr.sa_family addr*)))))
+  (let ((family (c-get-int (%c-sref sockaddr.sa_family addr*))))
     (match (cond ((eq? family AF_INET) (unparse-ipv4-address addr*))
                  ((eq? family AF_INET6) (unparse-ipv6-address addr*))
                  (else (raise (:UnknownAddressFamily family))))
@@ -180,13 +174,13 @@
     ))
 
 (define (sock/recv sock buf)
-  (let ((buf* (%c-cast void (%c-aref char buf.buf buf.pos)))
+  (let ((buf* (%c-cast void (c-aref buf.buf buf.pos)))
         (nbytes (syscall (socket/recv sock.fd buf* (- buf.size buf.pos) 0))))
     (set! buf.end (+ buf.end nbytes)) ;; trust recv(2) to not overrun?
     nbytes))
 
 (define (sock/send sock buf)
-  (let ((buf* (%c-cast void (%c-aref char buf.buf buf.pos)))
+  (let ((buf* (%c-cast void (c-aref buf.buf buf.pos)))
         (nbytes (syscall (socket/send sock.fd buf* (- buf.end buf.pos) 0))))
     nbytes))
 
@@ -198,9 +192,10 @@
 
 (define (sock/accept sock)
   (let ((addr (address/make))
-        (addrlen (halloc uint)))
-    (%c-set-int uint addr.size addrlen)
-    (:tuple (sock/fromfd (syscall (socket/accept sock.fd addr.addr addrlen)) sock.fam sock.type)
+        (addrlen* (halloc uint)))
+    (c-set-int addrlen* addr.size)
+    (:tuple (sock/fromfd (syscall (socket/accept sock.fd addr.addr addrlen*))
+                         sock.fam sock.type)
             addr)))
 
 (define (sock/connect sock addr)
