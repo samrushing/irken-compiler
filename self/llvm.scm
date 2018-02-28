@@ -274,7 +274,7 @@
              (oformat id0 " = call fastcc i64 @insn_unbox (i8** %r" (int index) ")")
              (oformat id1 " = mul i64 " id0 ", " (int size))
              (oformat (maybe-target target) " = call i8** @offset_foreign (i8** %r" (int ref) ", i64 " id1 ")"))
-        '%c-pref params (src)
+        '%c-get-ptr params (src)
         -> (let ((id0 (ID))
                  (id1 (ID))
                  (id2 (ID)))
