@@ -9,6 +9,8 @@
 ;; for now, we are only including types, opcodes, and rcodes
 ;;  that are actually used.
 
+;; I think these can be done with `make-enum`.
+
 (datatype dnstype
   (:a)      ;; a host address                           [RFC1035]
   (:ns)     ;; an authoritative name server             [RFC1035]
@@ -369,26 +371,26 @@
         (packet (build-question 3141 name (dnstype:any) dnsclass-in 1)))
     (try
      (begin
-       (doom/connect sock addr)
-       (doom/send sock packet)
-       (let ((reply (doom/recv sock))
+       (sock.connect addr)
+       (sock.send packet)
+       (let ((reply (sock.recv))
              (unpacked (unpack-reply reply)))
          (print-reply unpacked)
-         (doom/close sock)))
+         (sock.close)))
      except
      (:DNSTruncated)
      -> (begin
           (printf "trying tcp...\n")
-          (doom/close sock)
+          (sock.close)
           (set! sock (doom/make (tcp4-sock) 8192 1024))
-          (doom/connect sock addr)
-          (doom/send sock (string-append (tcp-enc-size-prefix (string-length packet)) packet))
-          (let ((size (tcp-dec-size-prefix (doom/recv-exact sock 2)))
+          (sock.connect addr)
+          (sock.send (string-append (tcp-enc-size-prefix (string-length packet)) packet))
+          (let ((size (tcp-dec-size-prefix (sock.recv-exact 2)))
                 (_ (printf "tcp reply size = " (int size) "\n"))
-                (reply (doom/recv-exact sock size))
+                (reply (sock.recv-exact size))
                 (unpacked (unpack-reply reply)))
             (print-reply unpacked)
-            (doom/close sock))
+            (sock.close))
           )
      )))
 
