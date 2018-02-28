@@ -509,7 +509,7 @@
     (foldr make-list* (sexp (sexp:cons 'list 'nil)) vals))
 
   ;; sexp->node actual
-  (define walk
+  (define walk*
     (sexp:symbol s)     -> (node/varref s)
     (sexp:string s)     -> (node/literal (literal:string s))
     (sexp:int n)        -> (node/literal (literal:int n))
@@ -530,7 +530,7 @@
          ((sexp:symbol '%%sexp) . exps)               -> (node/literal (unsexp-list exps))
          ((sexp:symbol '%typed) type exp)
          -> (let ((exp0 (walk exp)))
-              (printf "user type in expression: " (repr type) "\n")
+              ;;(printf "user type in expression: " (repr type) "\n")
               (set-node-type! exp0 (parse-type type))
               exp0)
          ((sexp:symbol '%%cexp) sig template . args)
@@ -589,10 +589,23 @@
          ;; all other call types
          (rator . rands)
          -> (node/call (walk rator) (map walk rands))
-         _ -> (error1 "syntax error 1: " l)
+         ;;_ -> (error1 "syntax error 1: " l)
+         _ -> (raise (:Node/BadExpression l 3))
          )
     x -> (error1 "syntax error 2: " x)
     )
+
+  (define (walk exp)
+    (try
+     (walk* exp)
+     except
+     (:Node/BadExpression x n)
+     -> (if (= n 0)
+            (error1 "bad expression compiling " x)
+            (begin
+              (printf "bad exp " (repr exp) "\n")
+              (raise (:Node/BadExpression x (- n 1)))))
+     ))
   (walk sexp)
   )
 
