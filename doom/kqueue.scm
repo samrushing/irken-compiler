@@ -13,17 +13,17 @@
 (define (add-kevent changes ident filter flags) ;; fflags data udata
   (when (>= changes.index changes.size)
     (raise (:Kqueue/ChangesOverflow)))
-  (let ((kev* (%c-aref (struct kevent) changes.karray changes.index)))
-    (%c-set-int ulong ident (%c-sref kevent.ident kev*))
-    (%c-set-int short filter (%c-sref kevent.filter kev*))
-    (%c-set-int ushort flags (%c-sref kevent.flags kev*))
+  (let ((kev* (c-aref changes.karray changes.index)))
+    (c-set-int (%c-sref kevent.ident kev*) ident)
+    (c-set-int (%c-sref kevent.filter kev*) filter)
+    (c-set-int (%c-sref kevent.flags kev*) flags)
     (inc! changes.index)))
 
 (define (get-kevent changes i)
-  (let ((kev* (%c-aref (struct kevent) changes.karray i)))
+  (let ((kev* (c-aref changes.karray i)))
     (:kev
-     (%c-get-int ulong (%c-sref kevent.ident kev*))
-     (%c-get-int short (%c-sref kevent.filter kev*))
+     (c-get-int (%c-sref kevent.ident kev*))
+     (c-get-int (%c-sref kevent.filter kev*))
      )))
 
 (define (kevent kqfd changes-in changes-out)
