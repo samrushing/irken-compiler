@@ -320,6 +320,8 @@
 	(lp (+ sl (/ (- w sl) 2))))
     (rpad w (lpad lp s ch) ch)))
 
+;; XXX could formatting be made more efficient using 'ropes' rather than lists?
+
 (defmacro fitem
   (fitem (<int> n))		-> (int->string n)
   (fitem (<char> ch))		-> (char->string ch)
