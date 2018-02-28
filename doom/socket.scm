@@ -1,105 +1,129 @@
 ;; -*- Mode: Irken -*-
 
 ;; we have two different styles of wait/retry:
-;; 1) normal: try the syscall, if EWOULDBLOCK then retry it.
+;; 1) normal: try the syscall, if EWOULDBLOCK then wait & retry it.
 ;; 2) connect: try the syscall, if EWOULDBLOCK then wait-for-write.
 
 ;; we may need a loop anyway because of EINTR - though signals
 ;; *should* be redirected when using kqueue.
 
 (defmacro loop-nb-retry
-  (loop-nb-retry s waitfun expression)
+  (loop-nb-retry fd waitfun expression)
   -> (let $nbloop ()
        (try
         expression
         except
         (:OSError e)
         -> (cond ((= e EWOULDBLOCK)
-                  (waitfun s.sock.fd)
+                  (waitfun fd)
                   ($nbloop))
                  (else
                   (raise (:OSError e))))
         )))
 
 (defmacro loop-nb-read
-  (loop-nb-read s exp)
-  -> (loop-nb-retry s poller/wait-for-read exp))
+  (loop-nb-read fd exp)
+  -> (loop-nb-retry fd poller/wait-for-read exp))
 
 (defmacro loop-nb-write
-  (loop-nb-write s exp)
-  -> (loop-nb-retry s poller/wait-for-write exp))
-
-;; socket with buffers attached.
-(define (doom/make* sock isize osize)
-  (sock/set-nonblocking sock)
-  {sock=sock ibuf=(buffer/make isize) obuf=(buffer/make osize)}
-  )
+  (loop-nb-write fd exp)
+  -> (loop-nb-retry fd poller/wait-for-write exp))
 
 ;; create a doom socket with attached buffers.
+;; NOTE: when specifying buffer sizes for a listening socket, those
+;; are the sizes that will be given to each new connection.
+
 (defmacro doom/make
   (doom/make sock isize osize)
   -> (doom/make* sock isize osize)
   (doom/make sock)
   -> (doom/make* sock 8192 8192))
 
-(define (doom/listen s n)
-  (sock/listen s.sock n))
+;; socket with buffers attached.
+(define (doom/make* sock isize osize)
+  (let ((sock sock)
+        (ibuf (buffer/make isize))
+        (obuf (buffer/make osize)))
 
-(define (doom/bind s addr)
-  (sock/bind s.sock addr))
+    (define (listen n)
+      ;; XXX zilch the two buffers
+      (sock/listen sock n))
 
-(define (doom/accept s)
-  (let (((sock addr) (loop-nb-read s (sock/accept s.sock))))
-    (:tuple (doom/make sock) addr)))
+    (define (bind addr)
+      (sock/bind sock addr))
 
-;; non-blocking connect() is managed differently: if connect()
-;; returns EINPROGRESS, then we just wait for write, there's no
-;; need to call connect() again.
-(define (doom/connect s addr)
-  (try
-   (sock/connect s.sock addr)
-   except
-   (:OSError e)
-   -> (cond ((= e EINPROGRESS)
-             (poller/wait-for-write s.sock.fd)
-             0)
-            (else
-             (raise (:OSError e))))
-   ))
+    (define (accept)
+      (let (((sock0 addr) (loop-nb-read sock.fd (sock/accept sock))))
+        (:tuple (lambda (isize osize)
+                  (doom/make sock0 isize osize))
+                addr)))
 
-(define (doom/recv s)
-  (loop-nb-read s (sock/recv s.sock s.ibuf))
-  (let ((r (buffer/contents s.ibuf)))
-    (buffer/reset! s.ibuf)
-    r))
+    ;; non-blocking connect() is managed differently: if connect()
+    ;; returns EINPROGRESS, then we just wait for write, there's no
+    ;; need to call connect() again.
+    (define (connect addr)
+      (try
+       (sock/connect sock addr)
+       except
+       (:OSError e)
+       -> (cond ((= e EINPROGRESS)
+                 (poller/wait-for-write sock.fd)
+                 0)
+                (else
+                 (raise (:OSError e))))
+       ))
 
-(define (doom/recv-exact s n)
-  (if (< n (- s.ibuf.end s.ibuf.pos))
-      (buffer/get! s.ibuf n)
-      (let ((have (- s.ibuf.end s.ibuf.pos))
-            (left (- n have))
-            (parts (LIST (buffer/get! s.ibuf have))))
+    (define (recv)
+      (loop-nb-read sock.fd (sock/recv sock ibuf))
+      (let ((r (buffer/contents ibuf)))
+        (buffer/reset! ibuf)
+        r))
+
+    (define (recv-exact n)
+      (if (< n (- ibuf.end ibuf.pos))
+          (buffer/get! ibuf n)
+          (let ((have (- ibuf.end ibuf.pos))
+                (left (- n have))
+                (parts (LIST (buffer/get! ibuf have))))
+            (while (> left 0)
+              (let ((recvd (loop-nb-read sock.fd (sock/recv sock ibuf))))
+                (when (= recvd 0)
+                  (raise (:Doom/EOF sock)))
+                (PUSH parts (buffer/get! ibuf (min left recvd)))
+                (dec! left (min left recvd))
+                ))
+            (string-concat (reverse parts)))))
+
+    (define (send data)
+      (let ((left (string-length data)))
+        (buffer/reset! obuf)
+        ;; this is cheating, we should loop here instead
+        ;;  of just making the buffer larger.
+        (buffer/add! obuf data)
         (while (> left 0)
-          (let ((recvd (loop-nb-read s (sock/recv s.sock s.ibuf))))
-            (when (= recvd 0)
-              (raise (:Doom/EOF s)))
-            (PUSH parts (buffer/get! s.ibuf (min left recvd)))
-            (dec! left (min left recvd))
+          (let ((sent (loop-nb-write sock.fd (sock/send sock obuf))))
+            (inc! obuf.pos sent)
+            (dec! left sent)
             ))
-        (string-concat (reverse parts)))))
-
-(define (doom/send s data)
-  (let ((left (string-length data)))
-    (buffer/reset! s.obuf)
-    ;; this is cheating, we should loop here instead
-    ;;  of just making the buffer larger.
-    (buffer/add! s.obuf data)
-    (while (> left 0)
-      (let ((sent (loop-nb-write s (sock/send s.sock s.obuf))))
-        (inc! s.obuf.pos sent)
-        (dec! left sent)
         ))
-    ))
 
-(define (doom/close s)
-  (sock/close s.sock))
+    (define (close)
+      (sock/close sock))
+
+    (define (get-fd)
+      sock.fd)
+
+    ;; body of doom/make*
+    (sock/set-nonblocking sock)
+
+    {listen=listen
+     bind=bind
+     accept=accept
+     connect=connect
+     recv=recv
+     recv-exact=recv-exact
+     send=send
+     close=close
+     get-fd=get-fd
+     }
+    ))
