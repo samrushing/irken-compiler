@@ -136,14 +136,10 @@
 
 (define (parse-string s)
   (define esc
-    acc (#\\ ch . rest)
-    -> (esc (list:cons ch acc) rest)
-    acc (#\")
-    -> (list->string (reverse acc))
-    acc (ch . rest)
-    -> (esc (list:cons ch acc) rest)
-    acc _
-    -> (impossible)
+    acc (#\\ ch . rest) -> (esc (list:cons ch acc) rest)
+    acc (#\")           -> (list->string (reverse acc))
+    acc (ch . rest)     -> (esc (list:cons ch acc) rest)
+    acc _               -> (impossible)
     )
   (esc '() (rest (string->list s)))
   )
