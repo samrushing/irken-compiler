@@ -29,24 +29,28 @@
 (define (irken-type->c-type t)
 
   (define decode-name
-    'i8    -> "int8_t"
-    'u8    -> "uint8_t"
-    'i16   -> "int16_t"
-    'u16   -> "uint16_t"
-    'i32   -> "int32_t"
-    'u32   -> "uint32_t"
-    'i64   -> "int64_t"
-    'u64   -> "uint64_t"
-    'i128  -> "int128_t"
-    'u128  -> "uint128_t"
-    'i256  -> "int256_t"
-    'u256  -> "uint256_t"
-    'char  -> "char"
-    'uchar -> "unsigned char"
-    'int   -> "int"
-    'uint  -> "unsigned int"
-    'long  -> "long"
-    'ulong -> "unsigned long"
+    'i8        -> "int8_t"
+    'u8        -> "uint8_t"
+    'i16       -> "int16_t"
+    'u16       -> "uint16_t"
+    'i32       -> "int32_t"
+    'u32       -> "uint32_t"
+    'i64       -> "int64_t"
+    'u64       -> "uint64_t"
+    'i128      -> "int128_t"
+    'u128      -> "uint128_t"
+    'i256      -> "int256_t"
+    'u256      -> "uint256_t"
+    'char      -> "char"
+    'uchar     -> "unsigned char"
+    'int       -> "int"
+    'uint      -> "unsigned int"
+    'short     -> "short"
+    'ushort    -> "unsigned short"
+    'long      -> "long"
+    'ulong     -> "unsigned long"
+    'longlong  -> "long long"
+    'ulonglong -> "unsigned long long"
     x -> (format (sym x)))
 
   (match t with
@@ -675,11 +679,21 @@
                                   ") * UNBOX_INTEGER(r" (int index)"));")))
             _ _ -> (primop-error)))
 
-        (define prim-c-pref
+        (define prim-c-get-ptr
           (src)
           -> (begin
-               (o.write (format "// %c-pref"))
+               (o.write (format "// %c-get-ptr"))
                (o.write (format "O r" (int target) " = make_foreign (*(void**)get_foreign (r" (int src) "));")))
+          _ -> (primop-error)
+          )
+
+        (define prim-c-set-ptr
+          (dst src)
+          -> (begin
+               (o.write (format "// %c-set-ptr"))
+               (o.write (format "*((void**)get_foreign (r" (int dst) ")) = get_foreign (r" (int src) ");"))
+               (when (> target 0)
+                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error)
           )
 
@@ -688,23 +702,63 @@
                 (t1 (irken-type->c-type t0)))
             (o.write (format "O r" (int target) " = BOX_INTEGER (sizeof (" t1 "));"))))
 
-        (define prim-c-get-int
-          (sexp:symbol cint-type) (src)
-          -> (let ((ctype (irken-type->c-type (pred cint-type '()))))
-               ;; XXX check against word size
-               (o.write (format "O r" (int target) " = BOX_INTEGER((pxll_int)*((" ctype "*)get_foreign(r" (int src) ")));"))
-               )
-          _ _ -> (primop-error))
+        ;; generic version, hopefully we can make this work.
+        ;; things we can do:
+        ;;   int (char,short,...)
+        ;;   float (double, etc... TBD)
+        ;;   pointer
+        ;; things we can't do:
+        ;;   struct
+        ;;   union
 
+        (define prim-c-get
+          (src)
+          -> (match type with
+               (type:pred 'struct _ _)
+               -> (primop-error)
+               (type:pred '* _ _)
+               -> (o.write (format "O r" (int target) " = make_foreign (*(void**)get_foreign (r" (int src) "));"))
+               int-type
+               -> (o.write (format "O r" (int target) " = BOX_INTEGER((pxll_int)*(("
+                                   (irken-type->c-type int-type) "*)get_foreign(r" (int src) ")));"))
+               )
+          _ -> (primop-error))
+
+        (define prim-c-set
+          (dst src)
+          -> (match type with
+               (type:pred 'struct _ _)
+               -> (primop-error)
+               (type:pred '* _ _)
+               -> (o.write (format "*((void**)get_foreign (r" (int dst) ")) = get_foreign (r" (int src) ");"))
+               int-type
+               ;; XXX here's the trick - getting the C type.
+               -> (let ((ctype (irken-type->c-type type)))
+                    (printf "prim-c-set ctype = " ctype " type = " (type-repr type) "\n")
+                    (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNBOX_INTEGER(r" (int src) ");"))
+                    (when (> target 0)
+                      (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;")))
+                    )
+               )
+          _ -> (primop-error))
+
+        (define prim-c-get-int
+          (src)
+          -> (o.write
+              (format "O r" (int target) " = BOX_INTEGER((pxll_int)*(("
+                      (irken-type->c-type type) "*)get_foreign(r" (int src) ")));"))
+          _ -> (primop-error))
+
+        ;; note: this relies on a hack in cps.scm that sets the type of this insn to the type of the rval.
         (define prim-c-set-int
-          (sexp:symbol cint-type) (src dst)
-          -> (let ((ctype (irken-type->c-type (pred cint-type '()))))
+          (dst src)
+          -> (let ((ctype (irken-type->c-type type)))
                ;; XXX check against word size
+               (printf "c-set-int " ctype "\n")
                (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNBOX_INTEGER(r" (int src) ");"))
                (when (> target 0)
-                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;")))
-               )
-          _ _ -> (primop-error))
+                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+          _ -> (primop-error))
 
         (define sref->c
           ;; structname.field0.field1.field2...
@@ -771,9 +825,14 @@
           '%free         -> (prim-free args)
           '%ffi2         -> (prim-ffi2 parm args)
           '%c-aref       -> (prim-c-aref args)
-          '%c-pref       -> (prim-c-pref args)
-          '%c-get-int    -> (prim-c-get-int parm args)
-          '%c-set-int    -> (prim-c-set-int parm args)
+          '%c-get-int    -> (prim-c-get-int args)
+          '%c-set-int    -> (prim-c-set-int args)
+          '%c-get-ptr    -> (prim-c-get-ptr args)
+          '%c-set-ptr    -> (prim-c-set-ptr args)
+          ;; experimental
+          '%c-get        -> (prim-c-get args)
+          '%c-set        -> (prim-c-set args)
+
           '%c-sref       -> (prim-c-sref parm args)
           ;;'%c-uref     -> (prim-c-uref parm args)
           '%cref->string -> (prim-c-sfromc args)
