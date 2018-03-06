@@ -94,6 +94,11 @@
     (let ((n (uu32 s pos)))
       (if (> n #x7fffffff) (- n #x100000000) n)))
 
+  (define (ustreamid s pos)
+    (let ((n (uu32 s pos)))
+      (:tuple (> (logand #x100000000 n) 0)
+              (logand #x7fffffff n))))
+
   (define (pbyte s pos b)
     (string-set! s pos (int->char (logand #xff b))))
 
@@ -143,7 +148,7 @@
     (define (unpack-frame-header h)
       (let ((lentype (uu32 h 0))
             (flags (ubyte h 4))
-            (stream-id (ui32 h 5)))
+            ((_ stream-id) (ustreamid h 5)))
         (:tuple (>> lentype 8)
                 (int->H2-FRAME (logand lentype #xff))
                 flags
@@ -173,7 +178,7 @@
         ))
 
     (define (print-frame f)
-      (printf "frame: " (sym (H2-FRAME->name f.type))
+      (printf (ansi (bold blue) "<-- " (sym (H2-FRAME->name f.type)))
               " flags=" (hex f.flags)
               " stream-id=" (int f.stream-id)
               " plen=" (int (string-length f.payload))
@@ -181,7 +186,8 @@
 
     ;; XXX implement a FIFO for outgoing frames.
     (define (send-frame type flags stream-id payload)
-      (printf "--> " (sym (H2-FRAME->name type)) " stream " (int stream-id)
+      (printf (ansi (bold red) "--> " (sym (H2-FRAME->name type)))
+              " stream " (int stream-id)
               " [" (int (string-length payload)) " bytes] flags=" (int flags) "\n")
       (conn.send (pack-frame-header type flags stream-id (string-length payload)))
       (conn.send payload)
@@ -245,6 +251,7 @@
 
       {send-headers = send-headers
        send-data    = send-data
+       ;;recv-data    = recv-data
        stream-id    = stream-id
        headers      = iheaders
        })
@@ -253,47 +260,80 @@
       (let ((pos 0)
             (pad-len 0)
             (stream-dep 0)
+            (exclusive? #f)
             (weight 0))
         (when (< f.stream-id 1) (raise (:H2/BadFrame f)))
         (when (flag-set? H2-FLAGS-PADDED f.flags)
           (set! pad-len (ubyte f.payload pos))
           (inc! pos))
         (when (flag-set? H2-FLAGS-PRIORITY f.flags)
-          (set! stream-dep (ui32 f.payload pos))
+          ;; note: this is identical to the PRIORITY layout, should 
+          ;;   probably pull this into its own function.
+          (match (ustreamid f.payload pos) with
+            (:tuple e? sid) -> (begin (set! exclusive? e?)
+                                      (set! stream-dep sid)))
           (set! weight (ubyte f.payload (+ pos 4)))
           (inc! pos 5))
         ;; END_STREAM, END_HEADERS
         ;; XXX teach unpack to take a pos param.
         (let ((headers (decoder (substring f.payload pos (- (string-length f.payload) pad-len)))))
-          (print-headers headers)
-          ;; --- create & spawn a request object here ---
+          ;;(print-headers headers)
+          ;; create & spawn a request object
           (poller/fork (lambda () (handler (make-request f.stream-id headers))))
-          ;;(handler (make-request f.stream-id headers))
           )))
 
     (define (handle-rst-stream f)
       (let ((code (uu32 f.payload 0)))
-        (printf "<-- RST_STREAM " (int code) " " (sym (H2-ERROR->name (int->H2-ERROR code))) "\n")
+        (printf "    RST_STREAM " (int code) " " (sym (H2-ERROR->name (int->H2-ERROR code))) "\n")
         (when (= f.stream-id 0) (set! done #t))
         ))
 
     (define (handle-goaway f)
       ;; XXX assert f.stream-id is 0
-      (let ((last-stream-id (ui32 f.payload 0)) ;; XXX need a fun for checking stream-id
+      (let (((_ last-stream-id) (ustreamid f.payload 0))
             (error-code (uu32 f.payload 4))
             (debug (substring f.payload 8 (string-length f.payload))))
-        (printf "<-- GOAWAY last-stream-id " (int last-stream-id) " code " (int error-code) " debug '" debug "'\n")
+        (printf "    GOAWAY last-stream-id " (int last-stream-id) " code " (int error-code) " debug '" debug "'\n")
         (set! done #t)))
+
+    (define (handle-priority f)
+      (let (((exclusive? stream-dep) (ustreamid f.payload 0))
+            (weight (ubyte f.payload 4)))
+        (printf "    PRIORITY " (int weight)
+                " stream-dep " (int stream-dep)
+                " exclusive? " (bool exclusive?) "\n")))
+
+    (define (handle-data f)
+      (let ((padlen (ubyte f.payload 0)))
+        ;; XXX data + padding
+        ;; XXX need a way to feed this into a request.
+        (printf "    DATA unhandled " (int (- (string-length f.payload) padlen 1)) " bytes.\n")
+        ))
+
+    (define (handle-push-promise f)
+      (let ((padlen (ubyte f.payload 0))
+            (stream-id (ui32 f.payload 1))
+            (fragment (substring f.payload 5 (- (string-length f.payload) padlen))))
+        (printf "    ignoring PUSH_PROMISE on stream " (int stream-id)
+                " of " (int (- (string-length f.payload) padlen 5)) "\n")
+        ))
+
+    (define (handle-continuation f)
+      (printf "    ignoring CONTINUATION of " (int (string-length f.payload)) " bytes.\n")
+      )
 
     (define (dispatch frame)
       (match frame.type with
-        (H2-FRAME:PING)          -> (handle-ping frame)
-        (H2-FRAME:SETTINGS)      -> (handle-settings frame)
-        (H2-FRAME:WINDOW_UPDATE) -> (handle-window-update frame)
+        (H2-FRAME:DATA)          -> (handle-data frame)
         (H2-FRAME:HEADERS)       -> (handle-headers frame)
+        (H2-FRAME:PRIORITY)      -> (handle-priority frame)
         (H2-FRAME:RST_STREAM)    -> (handle-rst-stream frame)
+        (H2-FRAME:SETTINGS)      -> (handle-settings frame)
+        (H2-FRAME:PUSH_PROMISE)  -> (handle-push-promise frame)
+        (H2-FRAME:PING)          -> (handle-ping frame)
         (H2-FRAME:GOAWAY)        -> (handle-goaway frame)
-        _                        -> (printf "NYI frame " (sym (H2-FRAME->name frame.type)) "\n")
+        (H2-FRAME:WINDOW_UPDATE) -> (handle-window-update frame)
+        (H2-FRAME:CONTINUATION)  -> (handle-continuation frame)
         ))
 
     read-frames
@@ -343,6 +383,7 @@
   (lambda (sockfun addr)
     (let ((sock (sockfun 8192 8192))
           (h2-conn (make-h2-conn sock handler)))
+      (printn (address/unparse addr))
       (try
        (h2-conn)
        except
