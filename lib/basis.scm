@@ -5,6 +5,7 @@
 (include "lib/core.scm")
 (include "lib/pair.scm")
 (include "lib/string.scm")
+(include "lib/format.scm")
 (include "lib/symbol.scm")
 (include "lib/sexp.scm")
 (include "lib/queue.scm")
