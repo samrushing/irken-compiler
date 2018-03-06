@@ -120,23 +120,26 @@
     ;;  immediately spawns read/write threads they will both try
     ;;  to negotiate.
     (define (negotiate)
-      (let ((status* (halloc int))
-            (r0 (s2n/s2n_negotiate conn* status*))
-            (r1 (%c-get-int int status*)))
-        (printf "s2n_negotiate r0 " (int r0) " r1 " (int r1) "\n")
-        (cond ((= r1 S2N_NOT_BLOCKED)
-               r0)
-              (else
-               (printf "negotiate: wait\n")
-               (wait-on-block r1)
-               (negotiate)))))
+      (let loop ((count 0))
+        (when (> count 10)
+          (raise (:S2NError 0 0 "negotiation stuck")))
+        (let ((status* (halloc int))
+              (r0 (s2n/s2n_negotiate conn* status*))
+              (r1 (%c-get-int int status*)))
+          (printf "[" (int sock.fd) "] s2n_negotiate r0 " (int r0) " r1 " (int r1) "\n")
+          (cond ((= r1 S2N_NOT_BLOCKED)
+                 r0)
+                (else
+                 (printf "negotiate: wait\n")
+                 (wait-on-block r1)
+                 (loop (+ count 1)))))))
 
     (define (recv0)
       (let ((status* (halloc int))
             (buf* (%c-aref char ibuf.buf ibuf.pos))
             (r0 (s2n/s2n_recv conn* (%c-cast void buf*) ibuf.size status*))
             (r1 (%c-get-int int status*)))
-        (printf "s2n_recv r0 " (int r0) " r1 " (int r1) "\n")
+        (printf "[" (int sock.fd) "] s2n_recv r0 " (int r0) " r1 " (int r1) "\n")
         (cond ((= r1 S2N_NOT_BLOCKED)
                (inc! ibuf.end r0)
                (when (= r0 0)
@@ -158,7 +161,7 @@
             (buf* (c-aref obuf.buf obuf.pos))
             (r0 (s2n/s2n_send conn* (%c-cast void buf*) (- obuf.end obuf.pos) status*))
             (r1 (c-get-int status*)))
-        ;;(printf "s2n_send r0 " (int r0) " r1 " (int r1) "\n")
+        (printf "[" (int sock.fd) "] s2n_send r0 " (int r0) " r1 " (int r1) "\n")
         ;;(printf "  -- " (int (- obuf.end obuf.pos)) " bytes.\n")
         (cond ((= r1 S2N_NOT_BLOCKED)
                r0)
@@ -187,7 +190,7 @@
                 (_ (c-set-int status* 3141))
                 (r0 (s2n/s2n_shutdown conn* status*))
                 (r1 (c-get-int status*)))
-            (printf "s2n_shutdown r0 " (int r0) " r1 " (int r1) "\n")
+            (printf "[" (int sock.fd) "] s2n_shutdown r0 " (int r0) " r1 " (int r1) "\n")
             (cond ((= r1 S2N_NOT_BLOCKED)
                    r0)
                   (else
@@ -215,6 +218,7 @@
         (:tuple (lambda (isize osize)
                   ;; n.b.: via this lambda, `negotiate` is done inside
                   ;; the client thread, not listening thread.
+                  (printf "accept fd = " (int sock0.fd) "\n")
                   (let ((sock1 (s2n/make-sock config S2N_SERVER sock0 isize osize))
                         (nr (sock1.negotiate)))
                     (printf "negotiate -> " (int nr) "\n")
@@ -224,12 +228,15 @@
     ;; pass-through to low socket layer
     (define (listen n)
       ;; XXX zilch the two buffers
+      (printf "[" (int sock.fd) "] listen\n")
       (sock/listen sock n))
 
     (define (bind addr)
+      (printf "[" (int sock.fd) "] bind\n")
       (sock/bind sock addr))
 
     (define (close)
+      (printf "[" (int sock.fd) "] close\n")
       (shutdown)
       (sock/close sock)
       )
