@@ -2,6 +2,9 @@
 
 ;; RFC 7541
 
+;; XXX need to support SETTINGS_MAX_HEADER_LIST_SIZE
+;;     in order to defend against an 'hpack bomb'.
+
 (define (H a b)
   (:tuple a b))
 

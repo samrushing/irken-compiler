@@ -165,7 +165,7 @@
     (define (read-frames)
       (let ((preface (conn.recv-exact (string-length h2-preface))))
         (when (not (string=? preface h2-preface))
-          (raise (:H2/BadPreface)))
+          (raise (:H2/BadPreface preface)))
         (send-settings)
         (while (not done)
           (printf "waiting for frame...\n")
@@ -361,7 +361,7 @@
   (printf "got request\n")
   (let ((path (lookup-header ":path" request.headers)))
     (if (match path with (maybe:yes path) -> (string=? path "/") (maybe:no) -> #f)
-        (let ((qheaders (html (pre (dl (&cat (map format-header request.headers)))))))
+        (begin
           (request.send-headers
            (LIST (hack ":status" "200")
                  (hack "content-type" "text/html")) #t)
@@ -371,7 +371,7 @@
              (html
               (body (h1 (&f "request " (int thing-counter)))
                     (h2 (&f "stream-id: " (int request.stream-id)))
-                    (&= qheaders)
+                    (pre (dl (&cat (map format-header request.headers))))
                     ))))
            #t)
           (inc! thing-counter)
@@ -389,6 +389,10 @@
        except
        (:Doom/EOF _)
        -> #u
+       (:H2/BadFrame f)
+       -> (printf "conn exit - bad frame\n")
+       (:H2/BadPreface p)
+       -> (printf "conn exit - bad preface: " (string p) "\n")
        )
       (sock.close))
     ))
