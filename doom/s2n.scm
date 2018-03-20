@@ -236,10 +236,11 @@
       (sock/bind sock addr))
 
     (define (close)
-      (printf "[" (int sock.fd) "] close\n")
-      (shutdown)
-      (sock/close sock)
-      )
+      (when (not (= sock.fd -1))
+        (printf "[" (int sock.fd) "] close\n")
+        (shutdown)
+        (sock/close sock)
+        ))
 
     ;; body of s2/make-conn
     (sock/set-nonblocking sock)
@@ -268,9 +269,9 @@
               (list:cons buf l)))))
 
 (define (get-pem-file path)
-  (zero-terminate
-   (read-file-contents
-    (file/open-read path))))
+  (with-file file (file/open-read path)
+   (zero-terminate
+    (read-file-contents file))))
 
 ;; to generate a cert/key combo:
 ;;
