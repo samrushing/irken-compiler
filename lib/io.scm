@@ -148,3 +148,10 @@
                (consumer (maybe:yes ch)))))
        (forever (consumer (maybe:no)))
        ))))
+
+(defmacro with-file
+  (with-file var file-exp exp ...)
+  -> (let ((var file-exp)
+           (result (begin exp ...)))
+       (file/close var)
+       result))
