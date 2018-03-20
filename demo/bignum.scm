@@ -1,5 +1,10 @@
 ;; -*- Mode: Irken -*-
 
+;; we use a vector of limbs.
+;; this facilitates mutating bignums in place,
+;;   and is considerably faster than using a list
+;;   of limbs.
+
 (datatype big
   (:zero)
   (:pos (vector int))
@@ -28,6 +33,9 @@
       (PUSH r (format (zpad big/repr-width (hex digs[i])))))
     (format (join "." r))))
 
+;; eventually we'll add support to the reader for big literals
+;;  [though probably in decimal form]
+
 (define big-repr
   (big:zero)     -> "B0"
   (big:pos digs) -> (format "B+" (digits-repr digs))
@@ -40,6 +48,7 @@
   (big:pos ds) -> ds
   )
 
+;; define some commonly-used constants.
 (define big/0 (big (I 0)))
 (define big/1 (big (I 1)))
 (define big/2 (big (I 2)))
@@ -363,14 +372,15 @@
     r))
 
 (define (digits-rshift digs n)
-  (if (eq? digs #())
-      #()
-      (let (((q r) (divmod n big/bits)))
-        (when (> r 0)
-          (set! digs (digits-rshift* digs r)))
-        (when (> q 0)
-          (set! digs (vtake digs (- (vlen digs) q))))
-        digs)))
+  (cond ((= n 0) digs)
+        ((eq? digs #()) #())
+        (else
+         (let (((q r) (divmod n big/bits)))
+           (when (> r 0)
+             (set! digs (digits-rshift* digs r)))
+           (when (> q 0)
+             (set! digs (vtake digs (- (vlen digs) q))))
+           digs))))
 
 (define big-lshift
   (big:zero)  _ -> (big:zero)
@@ -766,9 +776,7 @@
       (dec->big* s)))
 
 (define (digit->dec p pad?)
-  (let ((n (if (eq? p #())
-               0
-               p[0])))
+  (let ((n (if (eq? p #()) 0 p[0])))
     (if pad?
 	(format (zpad big/decimal-pad (int n)))
 	(format (int n)))))
@@ -804,6 +812,7 @@
   (big (<+> a b))        -> (big-add (big a) (big (+ b ...)))
   (big (<-> a b))        -> (big-sub (big a) (big b))
   (big (<pow> x n))      -> (big-pow (big x) n)
+  (big (<=> a b))        -> (big= (big a) (big b))
   (big (<dec> s))        -> (dec->big s)
   (big (<expmod> b e m)) -> (big-exp-mod (big b) (big e) (big m))
   (big (<>>> x n))       -> (big-rshift (big x) n)
@@ -876,38 +885,132 @@
                t))
     ))
 
-;; ---------- encoding -----------
-
-;; takes advantage of the base 2**n encoding
-(define (digits->b256 ds)
-  (let ((r '())
-        (val 0)
-        (bits 0))
-    (for-list dig ds
-      (set! val (logior (<< dig bits) val))
-      (set! bits (+ bits big/bits))
-      (while (>= bits 8)
-        (PUSH r (logand #xff val))
-        (set! bits (- bits 8))
-        (set! val (>> val 8))))
-    (if (> bits 0)
-        (PUSH r val))
-    r))
+;; ---------- string encoding -----------
+;;
+;; This is a two's-complement base256 encoding, meant to be
+;;   compatible with asn.1 BER INTEGER encoding.
 
 (define remove-zeros
   (0 . tl) -> (remove-zeros tl)
   x	   -> x
   )
 
-;; two's-complement, base 256.
-;; XXX sign extension
-(define (big->bin n little-endian?)
-  (let ((neg? (big-neg? n))
-        (digs (big->digits (if neg? (big-add big/2 n) n)))
-        (rdigs0 (remove-zeros (digits->b256 digs)))
-        (rdigs1 (if neg? (map lognot rdigs0) rdigs0)))
-    (list->string
-     (map int->char
-          (if little-endian?
-              (reverse rdigs1)
-              rdigs1)))))
+(define (negative-byte? b)
+  (> (logand b #x80) 0))
+
+;; to negate a base256 value, we take the 1's complement, convert
+;;   to bignum, then add one.
+
+(define (complement-b256 bytes)
+  (define (8comp n)
+    (logxor #xff n))
+  (map 8comp bytes))
+
+(define (maybe-complement bytes)
+  (if (negative-byte? (nth bytes 0)) ;; note: assumes non-empty <bytes>
+      (:tuple #t (complement-b256 bytes))
+      (:tuple #f bytes)))
+
+;; XXX I think we could do both ends of this codec with a generic
+;; n->m converter.  A complication is endianness.
+
+;; We fill in the result starting from the big end.  If the size of
+;; the input does not line up with the limb size exactly, we start
+;; filling the first (most significant) limb in the middle, so we
+;; arrive at the end completely lined up.
+
+(define (b256->digits s)
+  (let ((digits '())
+        (nbytes (string-length s))
+        (r (mod (* nbytes 8) big/bits))
+        ((neg? bytes) (maybe-complement (map char->int (string->list s))))
+        (digit 0)
+        (byte 0)
+        (bbits 0)                       ;; bits left in this byte
+        (dbits (if (= r 0) big/bits r)) ;; bits left in this limb
+        (nbits (* nbytes 8))            ;; bits left in s
+        )
+    (while (> nbits 0)
+      ;; make sure we have some bits
+      (when (= bbits 0)
+        (set! byte (pop bytes))
+        (set! bbits 8))
+      ;; start a new digit if we need to
+      (when (= dbits 0)
+        (PUSH digits digit)
+        (set! digit 0)
+        (set! dbits big/bits))
+      ;; roll some bits in
+      (let ((bits (min bbits dbits)))
+        (set! digit (logior (<< digit bits) (>> byte (- bbits bits))))
+        (dec! bbits bits)
+        (dec! dbits bits)
+        (dec! nbits bits)
+        (set! byte (logand byte (- (<< 1 bits) 1)))
+        ))
+    (PUSH digits digit)
+    (:tuple neg? (reverse digits))
+    ))
+
+(define (b256->big s)
+  (match (b256->digits s) with
+    (:tuple _    ()) -> (big:zero)
+    (:tuple #t digs) -> (big-sub (big:neg (list->vector digs)) big/1)
+    (:tuple #f digs) -> (big:pos (list->vector digs))
+    ))
+
+;; we convert LSB->MSB.
+(define (digits->b256 dv)
+  (let ((digits (reverse (vector->list dv)))
+        (digit 0)
+        (bytes '())
+        (byte 0)
+        (dbits 0)                             ;; bits left in digit
+        (bbits 8)                             ;; bits left in byte (to fill)
+        (nbits (* (length digits) big/bits))) ;; bits left in digits
+    (while (> nbits 0)
+      ;; make sure we have some bits
+      (when (= dbits 0)
+        (set! digit (pop digits))
+        (set! dbits big/bits))
+      ;; start a new byte if we need to
+      (when (= bbits 0)
+        (PUSH bytes byte)
+        (set! byte 0)
+        (set! bbits 8))
+      ;; roll some bits in
+      (let ((bits (min dbits bbits))
+            (mask (- (<< 1 bits) 1))
+            (part (logand digit mask)))
+        ;; we want the bits from digit at the top, and the bits from byte on the bottom
+        (set! byte (logior (<< part (- 8 bbits)) byte))
+        (set! digit (>> digit bits))
+        (dec! dbits bits)
+        (dec! bbits bits)
+        (dec! nbits bits)
+      ))
+    (PUSH bytes byte)
+    (remove-zeros bytes)
+    ))
+
+(define (ensure-sign bytes neg?)
+  (let ((b0 (nth bytes 0)))
+    (match neg? (= #x80 (logand #x80 b0)) with
+      #t #f -> (list:cons #xff bytes)
+      #f #t -> (list:cons #x00 bytes)
+      _  _  -> bytes
+      )))
+
+(define big->b256
+  (big:pos dv) -> (list->string
+                   (map int->char
+                        (ensure-sign (digits->b256 dv) #f)))
+  (big:neg dv) -> (list->string
+                   (map int->char
+                        (ensure-sign
+                         (complement-b256
+                          (digits->b256 (digits-sub dv #(1))))
+                         #t)))
+  (big:zero)   -> "\x00" ;; or ""?
+  )
+
