@@ -171,6 +171,18 @@
 		 (loop (+ i 1)))
 		(else #f))))))
 
+(define (ends-with a b)
+  ;; does <a> end with <b>?
+  (let ((alen (string-length a))
+	(blen (string-length b)))
+    (if (< alen blen)
+	#f
+	(let loop ((i 0))
+	  (cond ((= i blen) #t)
+		((eq? (string-ref a (- alen 1 i)) (string-ref b (- blen 1 i)))
+		 (loop (+ i 1)))
+		(else #f))))))
+
 (define (string=? s1 s2)
   (eq? (string-compare s1 s2) (cmp:=)))
 (define (string<? s1 s2)
