@@ -16,7 +16,7 @@
 (make-enum asn1string
  (OCTET            4)  ;; byte string
  (BIT              3)  ;; bit string
- (UTF8             8)  ;; utf-8 string
+ (UTF8             12) ;; utf-8 string
  (NUMERIC          18) ;; Numeric string
  (PRINTABLE        19) ;; Printable string (ASCII subset)
  (T61              20) ;; T61/Teletex string
@@ -230,7 +230,6 @@
         (if (= l0 #x80)
             (raise (:BER/IndefiniteLength "indefinite length not supported"))
             (let ((l1 (logand l0 #x7f)))
-              (printf "l1 " (hex l1) "\n")
               (if (> l1 4)
                   (raise (:BER/LengthTooLong "length-of-length longer than 32 bits not supported"))
                   (:tuple (ber/get-base256 in l1 0) (+ 1 l1))))))))
