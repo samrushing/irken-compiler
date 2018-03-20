@@ -16,6 +16,7 @@
 (include "lib/core.scm")
 (include "lib/pair.scm")
 (include "lib/string.scm")
+(include "lib/format.scm")
 (include "lib/symbol.scm")
 (include "lib/queue.scm")
 (include "lib/set.scm")
@@ -119,7 +120,8 @@
     -> (name-it uname sname #t slots)
     (uname sname . _) (ctype2:union '%anonymous slots)
     -> (name-it uname sname #f slots)
-    path t -> t
+    path t
+    -> t
     )
 
   (for-list struct structs
@@ -166,13 +168,17 @@
     (define add-typedef!
       (declarator:t type (maybe:yes name))
       -> (begin
+           (match type with
+             ;; name top-level anon typedef structs
+             (ctype2:struct '%anonymous sub) -> (set! type (ctype2:struct name sub))
+             (ctype2:union '%anonymous sub)  -> (set! type (ctype2:union name sub))
+             _ -> #u
+             )
            ;; if it's a named struct/union, add it to that table as well.
            (match type with
-             (ctype2:struct '%anonymous _) -> #u
-             (ctype2:union '%anonymous _)  -> #u
-             (ctype2:struct name1 slots)   -> (tree/insert! structs magic-cmp (:tuple name1 #t) type)
-             (ctype2:union name1 slots)    -> (tree/insert! structs magic-cmp (:tuple name1 #f) type)
-             _                             -> #u
+             (ctype2:struct name1 slots)     -> (tree/insert! structs magic-cmp (:tuple name1 #t) type)
+             (ctype2:union name1 slots)      -> (tree/insert! structs magic-cmp (:tuple name1 #f) type)
+             _                               -> #u
              )
            (tree/insert! typedefs symbol-index-cmp name type))
       _ -> (impossible)
@@ -400,7 +406,13 @@
   (define (key->type key)
     (match (tree/member types.structs magic-cmp key) with
       (maybe:yes type) -> type
-      (maybe:no)       -> (impossible)
+      (maybe:no)
+      -> (match key with
+           (:tuple name struct?)
+           -> (begin
+                (printf "key->type failed on " (sym name) " struct? " (bool struct?) "\n")
+                (raise (:KeyError key)))
+           )
       ))
 
   ;; build a graph for `strongly` with a key type of (:tuple symbol bool)
@@ -434,6 +446,15 @@
       -> (raise (:GenFFI/NoSuchFun "gen-sigs: no such function/object" sig))
       )))
 
+(define (add-prefix type)
+  (define AP
+    (ctype2:struct name mslots) -> (ctype2:struct (string->symbol (format "irk_" (sym name))) mslots)
+    (ctype2:union  name mslots) -> (ctype2:union  (string->symbol (format "irk_" (sym name))) mslots)
+    type                        -> type
+    )
+  (map-type AP type)
+  )
+
 ;; The second C file generated is used to compute the sizes and offsets
 ;;   of all required structs/unions.
 
@@ -454,13 +475,11 @@
     (name-anonymous types iface.structs)
     (verbose (dump-types types))
     (let ((deps (find-dependencies types iface.structs)))
-      (W (format "#define OO(s,f) do { fprintf (stdout, \"  (%s %\" PRIdPTR \")\\n\", "
-                 "#f, offsetof (struct s, f)); } while (0)\n"))
       ;; emit the struct/union defs in topological order...
       (let ((sorted (toposort deps types)))
         (for-list key sorted
           (when-maybe type (tree/member types.structs magic-cmp key)
-            (W (format (ctype2->c type) ";\n"))
+            (W (format (ctype2->c (add-prefix type)) ";\n"))
             ))
         ;; now emit the program to print out sizes/offsets
         (W "\nint main (int argc, char * argv[]) {\n")
@@ -473,11 +492,12 @@
                      (ctype2:struct name (maybe:no))        -> (:tuple 'struct name '())
                      (ctype2:union name (maybe:no))         -> (:tuple 'union name '())
                      _ -> (impossible)))
-                  (sname (format (sym kind) " " (sym name1)))
+                  (sname0 (format (sym kind) " " (sym name1))) ;; without prefix
+                  (sname1 (format (sym kind) " irk_" (sym name1))) ;; with prefix
                   (empty? (= (length slots) 0)))
               (when (not empty?)
-                (W (format "  // offsets for " sname "\n"
-                           "  fprintf (stdout, \"(" sname " %\" PRIdPTR  \"\\n\", sizeof (" sname "));\n"))
+                (W (format "  // offsets for " sname0 "\n"
+                           "  fprintf (stdout, \"(" sname0 " %\" PRIdPTR  \"\\n\", sizeof (" sname1 "));\n"))
                 (for-list slot slots
                   (match slot with
                     (declarator:t type (maybe:yes name))
@@ -485,7 +505,7 @@
                     -> (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym name) " "
                                   (ctype2-repr (map-type remove-argnames type))
                                   ")\\n\", "
-                                  (if (eq? kind 'struct) (format "offsetof(" sname ", " (sym name) ")") "(intptr_t)0")
+                                  (if (eq? kind 'struct) (format "offsetof(" sname1 ", " (sym name) ")") "(intptr_t)0")
                                   ");\n"))
                     _ -> (impossible)
                     ))

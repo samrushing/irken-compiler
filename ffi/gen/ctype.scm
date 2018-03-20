@@ -22,6 +22,12 @@
   (:function ctype2 (list declarator))
   )
 
+;; a 'declarator' is a combination of name and type.  sometimes the
+;; name is not present (e.g. parameters in function declarations)
+(datatype declarator
+  (:t ctype2 (maybe symbol))
+  )
+
 ;; a ctype in s-expression form.
 (define ctype2-repr
   (ctype2:name 'void)   -> "void"
@@ -35,12 +41,6 @@
   (ctype2:union name (maybe:no))         -> (format "(union " (sym name) ")")
   (ctype2:union name (maybe:yes slots))  -> (format "(union " (sym name) " (" (join declarator-repr " " slots) "))")
   (ctype2:function type args)            -> (format "(fun " (join declarator-repr " " args) " -> " (ctype2-repr type) ")")
-  )
-
-;; a 'declarator' is a combination of name and type.  sometimes the
-;; name is not present (e.g. parameters in function declarations)
-(datatype declarator
-  (:t ctype2 (maybe symbol))
   )
 
 (define declarator-repr

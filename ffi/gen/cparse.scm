@@ -322,6 +322,11 @@
   -> (let ((type0 (parse-type type))
            ((type1 name) (parse-declarator-specifier type0 declarator-specifier)))
        (declarator:t type1 (maybe:yes name)))
+  ;; attribute_specifier type declarator
+  (parse:nt 'type_declarator (attribute_specifier type declarator-specifier))
+  -> (let ((type0 (parse-type type))
+           ((type1 name) (parse-declarator-specifier type0 declarator-specifier)))
+       (declarator:t type1 (maybe:yes name)))
   ;; function pointer
   (parse:nt 'type_declarator (type LP SPLAT (parse:t IDENT) RP signature))
   -> (let ((args (parse-signature signature))

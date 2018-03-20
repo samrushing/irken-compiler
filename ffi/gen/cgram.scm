@@ -23,6 +23,7 @@
      (typedef (TYPEDEF type_declarator SEMICOLON))
      (type_declarator
       (type declaratorSpecifier)
+      (attribute_specifiers type declaratorSpecifier)
       ;; XXX apparently the parens around the IDENT are optional.
       (type LPAREN SPLAT IDENT RPAREN signature))
      (fun_ident
@@ -39,7 +40,9 @@
       (struct_or_union_decl SEMICOLON)
       (type fun_ident SEMICOLON)
       )
-     (declaratorSpecifier declarator (declarator attribute_specifiers))
+     (declaratorSpecifier
+      declarator
+      (declarator attribute_specifiers))
      (declarator
       IDENT
       (declarator LBRACKET RBRACKET)
