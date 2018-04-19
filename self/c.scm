@@ -76,6 +76,7 @@
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
     (type:pred 'cref _ _)    -> (format "(make_foreign((void*)" exp "))")
     (type:pred '* _ _)       -> (format "(make_foreign((void*)" exp "))")
+    (type:pred 'void _ _)    -> (format "((" exp "), PXLL_UNDEFINED)")
     (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
 				    (format "box((pxll_int)" exp ")")
 				    exp)
