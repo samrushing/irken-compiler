@@ -99,6 +99,13 @@
        (maybe:no) -> #u
        ))
 
+(defmacro if-maybe
+  (if-maybe var mob then else)
+  -> (match mob with
+       (maybe:yes var) -> then
+       (maybe:no) -> else
+       ))
+
 (defmacro while-maybe
   (while-maybe var mob
     body ...)
@@ -110,6 +117,7 @@
 
 ;; actually this could probably be done with for-range
 ;; with this pattern: (for-range i (10 20) ...)
+;; XXX doesn't work when <hi> is calculated.
 (defmacro for-range*
   (for-range* vname lo hi body ...)
   -> (let (($n hi))
@@ -121,7 +129,8 @@
 
 (defmacro for-range
   (for-range vname num body ...)
-  -> (for-range* vname 0 num body ...))
+  -> (for-range* vname 0 num body ...)
+  )
 
 (defmacro for-range-rev*
   (for-range-rev* vname lo hi body ...)
