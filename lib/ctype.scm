@@ -670,3 +670,8 @@
   (if (< val 0)
       (raise-system-error)
       val))
+
+(define (syscall-null val)
+  (if (cref-null? val)
+      (raise-system-error)
+      val))
