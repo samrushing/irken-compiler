@@ -885,6 +885,22 @@
                t))
     ))
 
+;; XXX this should be named big/bits.  in fact, we need to
+;;     do an audit of the names in this file to get a clear
+;;     distinction between `->` and `/` functions.
+
+;; how many bits in `n`
+(define (big->bits n)
+  (define int-bits
+    0 acc -> acc
+    n acc -> (int-bits (>> n 1) (+ 1 acc)))
+  (let ((digs (big->digits n))
+        (dlen (vlen digs)))
+    (if (= dlen 0)
+        0
+        (+ (int-bits digs[0] 0)
+           (* big/bits (- dlen 1))))))
+
 ;; ---------- string encoding -----------
 ;;
 ;; This is a two's-complement base256 encoding, meant to be
@@ -911,19 +927,17 @@
       (:tuple #t (complement-b256 bytes))
       (:tuple #f bytes)))
 
-;; XXX I think we could do both ends of this codec with a generic
-;; n->m converter.  A complication is endianness.
 
 ;; We fill in the result starting from the big end.  If the size of
 ;; the input does not line up with the limb size exactly, we start
 ;; filling the first (most significant) limb in the middle, so we
 ;; arrive at the end completely lined up.
 
-(define (b256->digits s)
+;; unsigned base256 ((list int) -> (list digits))
+(define (u256->digits bytes)
   (let ((digits '())
-        (nbytes (string-length s))
+        (nbytes (length bytes))
         (r (mod (* nbytes 8) big/bits))
-        ((neg? bytes) (maybe-complement (map char->int (string->list s))))
         (digit 0)
         (byte 0)
         (bbits 0)                       ;; bits left in this byte
@@ -949,8 +963,14 @@
         (set! byte (logand byte (- (<< 1 bits) 1)))
         ))
     (PUSH digits digit)
-    (:tuple neg? (reverse digits))
+    (reverse digits)
     ))
+
+(define (b256->digits s)
+  (let ((bytes0 (map char->int (string->list s)))
+        ((neg? bytes1) (maybe-complement bytes0))
+        (digits (u256->digits bytes1)))
+    (:tuple neg? digits)))
 
 (define (b256->big s)
   (match (b256->digits s) with
@@ -958,6 +978,9 @@
     (:tuple #t digs) -> (big-sub (big:neg (list->vector digs)) big/1)
     (:tuple #f digs) -> (big:pos (list->vector digs))
     ))
+
+(define (u256->big s)
+  (big:pos (list->vector (u256->digits (map char->int (string->list s))))))
 
 ;; we convert LSB->MSB.
 (define (digits->b256 dv)
@@ -1002,15 +1025,22 @@
       )))
 
 (define big->b256
-  (big:pos dv) -> (list->string
-                   (map int->char
-                        (ensure-sign (digits->b256 dv) #f)))
-  (big:neg dv) -> (list->string
-                   (map int->char
-                        (ensure-sign
-                         (complement-b256
-                          (digits->b256 (digits-sub dv #(1))))
-                         #t)))
-  (big:zero)   -> "\x00" ;; or ""?
+  (big:pos dv)
+  -> (list->string
+      (map int->char
+           (ensure-sign (digits->b256 dv) #f)))
+  (big:neg dv)
+  -> (list->string
+      (map int->char
+           (ensure-sign
+            (complement-b256
+             (digits->b256 (digits-sub dv #(1))))
+            #t)))
+  (big:zero)
+  -> "\x00" ;; or ""?
   )
 
+(define big->u256
+  (big:pos dv) -> (list->string (map int->char (digits->b256 dv)))
+  n -> (raise (:NotPositive n))
+  )
