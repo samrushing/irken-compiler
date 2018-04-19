@@ -49,26 +49,28 @@
 
 (define cint-types
   (alist/make
-   ('char   (pred1 'char))
-   ('uchar  (pred1 'uchar))
-   ('short  (pred1 'short))
-   ('ushort (pred1 'ushort))
-   ('int    (pred1 'int))
-   ('uint   (pred1 'uint))
-   ('long   (pred1 'long))
-   ('ulong  (pred1 'ulong))
-   ('i8     (pred1 'i8))
-   ('u8     (pred1 'u8))
-   ('i16    (pred1 'i16))
-   ('u16    (pred1 'u16))
-   ('i32    (pred1 'i32))
-   ('u32    (pred1 'u32))
-   ('i64    (pred1 'i64))
-   ('u64    (pred1 'u64))
-   ('i128   (pred1 'i128))
-   ('u128   (pred1 'u128))
-   ('i256   (pred1 'i256))
-   ('u256   (pred1 'u256))
+   ('char      (pred1 'char))
+   ('uchar     (pred1 'uchar))
+   ('short     (pred1 'short))
+   ('ushort    (pred1 'ushort))
+   ('int       (pred1 'int))
+   ('uint      (pred1 'uint))
+   ('long      (pred1 'long))
+   ('ulong     (pred1 'ulong))
+   ('longlong  (pred1 'longlong))
+   ('ulonglong (pred1 'ulonglong))
+   ('i8        (pred1 'i8))
+   ('u8        (pred1 'u8))
+   ('i16       (pred1 'i16))
+   ('u16       (pred1 'u16))
+   ('i32       (pred1 'i32))
+   ('u32       (pred1 'u32))
+   ('i64       (pred1 'i64))
+   ('u64       (pred1 'u64))
+   ('i128      (pred1 'i128))
+   ('u128      (pred1 'u128))
+   ('i256      (pred1 'i256))
+   ('u256      (pred1 'u256))
    ))
 
 ;; row types
@@ -369,14 +371,16 @@
 (define (int-ctype->itype cint signed?)
   (pred
    (match cint signed? with
-     (cint:char)  #t  -> 'char
-     (cint:char)  #f  -> 'uchar
-     (cint:int)   #t  -> 'int
-     (cint:int)   #f  -> 'uint
-     (cint:short) #t  -> 'short
-     (cint:short) #f  -> 'ushort
-     (cint:long)  #t  -> 'long
-     (cint:long)  #f  -> 'ulong
+     (cint:char)  #t     -> 'char
+     (cint:char)  #f     -> 'uchar
+     (cint:int)   #t     -> 'int
+     (cint:int)   #f     -> 'uint
+     (cint:short) #t     -> 'short
+     (cint:short) #f     -> 'ushort
+     (cint:long)  #t     -> 'long
+     (cint:long)  #f     -> 'ulong
+     (cint:longlong) #t  -> 'longlong
+     (cint:longlong) #f  -> 'ulonglong
      (cint:width w) _ -> (string->symbol (format (if signed? "i" "u") (int (* w 8))))
      _ _              -> (error1 "unsupported cint type"
                                  (format "cint=" (cint-repr cint signed?)
