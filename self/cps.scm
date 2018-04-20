@@ -2,31 +2,33 @@
 
 (include "self/nodes.scm")
 
+;; If I were to do this again I would put `cont` in the front of each of these.
+
 ;; RTL instructions
 (datatype insn
-  (:return int)                                                 ;; return register
-  (:literal literal cont)                                       ;; <value> <k>
-  (:litcon int symbol cont)                                     ;; <index> <value> <k>
-  (:cexp type type string (list int) cont)                      ;; <sig> <solved-type> <template> <args> <k>
-  (:ffi type type symbol (list int) cont)                       ;; <sig> <solved-type> <name> <args> <k>
-  (:test int int insn insn cont)                                ;; <reg> <jump-number> <then> <else> <k>
-  (:testcexp (list int) type string int insn insn cont)         ;; <regs> <sig> <template> <jump-number> <then> <else> <k>
-  (:jump int int int (list int))                                ;; <reg> <target> <jump-number> <free>
-  (:close symbol int insn cont)                                 ;; <name> <nfree> <body> <k>
-  (:varref int int cont)                                        ;; <depth> <index> <k>
-  (:varset int int int cont)                                    ;; <depth> <index> <reg> <k>
-  (:new-env int bool (list type) cont)	                        ;; <size> <top?> <k>
-  (:alloc int int cont)                                         ;; <tag> <size> <k>
-  (:store int int int int cont)                                 ;; <offset> <arg> <tuple> <i> <k>
-  (:invoke (maybe symbol) int int cont)                         ;; <name> <closure> <args> <k>
-  (:tail (maybe symbol) int int)                                ;; <name> <closure> <args>
-  (:trcall int symbol (list int))                               ;; <depth> <name> <args>
-  (:push int cont)                                              ;; <env>
-  (:pop int cont)                                               ;; <result>
-  (:primop symbol sexp type (list int) cont)                    ;; <name> <params> <args> <k>
-  (:move int int cont)                                          ;; <var> <src> <k>
-  (:fatbar int int insn insn cont)                              ;; <label> <jump-num> <alt0> <alt1> <k>
-  (:fail int int (list int))                                    ;; <label> <npop> <free>
+  (:return int)                                         ;; return register
+  (:literal literal cont)                               ;; <value> <k>
+  (:litcon int symbol cont)                             ;; <index> <value> <k>
+  (:cexp type type string (list int) cont)              ;; <sig> <solved-type> <template> <args> <k>
+  (:ffi type type symbol (list int) cont)               ;; <sig> <solved-type> <name> <args> <k>
+  (:test int int insn insn cont)                        ;; <reg> <jump-number> <then> <else> <k>
+  (:testcexp (list int) type string int insn insn cont) ;; <regs> <sig> <template> <jump-number> <then> <else> <k>
+  (:jump int int int (list int))                        ;; <reg> <target> <jump-number> <free>
+  (:close symbol int insn cont)                         ;; <name> <nfree> <body> <k>
+  (:varref int int cont)                                ;; <depth> <index> <k>
+  (:varset int int int cont)                            ;; <depth> <index> <reg> <k>
+  (:new-env int bool (list type) cont)	                ;; <size> <top?> <k>
+  (:alloc int int cont)                                 ;; <tag> <size> <k>
+  (:store int int int int cont)                         ;; <offset> <arg> <tuple> <i> <k>
+  (:invoke (maybe symbol) int int cont)                 ;; <name> <closure> <args> <k>
+  (:tail (maybe symbol) int int)                        ;; <name> <closure> <args>
+  (:trcall int symbol (list int))                       ;; <depth> <name> <args>
+  (:push int cont)                                      ;; <env>
+  (:pop int cont)                                       ;; <result>
+  (:primop symbol sexp type (list int) cont)            ;; <name> <params> <args> <k>
+  (:move int int cont)                                  ;; <var> <src> <k>
+  (:fatbar int int insn insn cont)                      ;; <label> <jump-num> <alt0> <alt1> <k>
+  (:fail int int (list int))                            ;; <label> <npop> <free>
   (:nvcase int symbol (list symbol) int (list insn) (maybe insn) cont)      ;; <reg> <dt> <tags> <jump-num> <alts> <ealt> <k>
   (:pvcase int (list symbol) (list int) int (list insn) (maybe insn) cont)  ;; <reg> <tags> <arities> <jump-num> <alts> <ealt> <k>
   )
@@ -817,7 +819,7 @@
   (define (ps x) (print x) (print-string " "))
   (define (ps2 x) (print-string x) (print-string " "))
   (match insn with
-    (insn:return target)	    -> (begin (newline) (indent d) (ps2 "- ret") (print target))
+    (insn:return result)            -> (begin (newline) (indent d) (ps2 "- ret") (print result))
     (insn:tail n c a)		    -> (print-line (lambda () (ps2 "tail") (ps n) (ps c) (ps a)) (cont:nil))
     (insn:trcall d n args)	    -> (print-line (lambda () (ps2 "trcall") (ps d) (ps n) (ps args)) (cont:nil))
     (insn:literal lit k)	    -> (print-line (lambda () (ps2 "lit") (ps2 (literal->string lit))) k)
@@ -861,6 +863,127 @@
 	k)
     ))
 
+;; goal: trim the list of free registers/conts to avoid passing any
+;;   unreferenced registers to fail/jump continuations.
+;; this is use-def for continuation registers.
+;; we want to walk the tree from the leaves up.
+;; we get the free references from the sub-expressions & continuation.
+;; when we see a definition, we remove it from the map.
+;; when we see a list of free vars, we look at the map and remove
+;;   any that are not referenced.
+
+;; what registers are directly referenced by this insn?
+(define insn->refs
+  (insn:return result)             -> (LIST result)
+  (insn:tail _ c a)                -> (LIST c a)
+  (insn:trcall _ _ args)           -> args
+  (insn:cexp _ _ _ args _)         -> args
+  (insn:ffi _ _ _ args _)          -> args
+  (insn:test reg _ _ _ _)          -> (LIST reg)
+  (insn:jump reg trg _ _)          -> (LIST reg trg)
+  (insn:varset _ _ v _)            -> (LIST v)
+  (insn:store _ a t _ _)           -> (LIST a t)
+  (insn:invoke _ c a _)            -> (LIST c a)
+  (insn:push r _)                  -> (LIST r)
+  (insn:pop r _)                   -> (LIST r)
+  (insn:primop _ _ _ args _)       -> args
+  (insn:move _ src _)              -> (LIST src)
+  (insn:testcexp args _ _ _ _ _ _) -> args
+  (insn:nvcase tr _ _ _ _ _ _)     -> (LIST tr)
+  (insn:pvcase tr _ _ _ _ _ _)     -> (LIST tr)
+  _                                -> (list:nil)
+  )
+
+;; sub-expressions of this insn. [not continuations]
+(define insn->subexps
+  (insn:test reg jn then else k)                 -> (LIST then else)
+  (insn:testcexp r s t jn k0 k1 k)               -> (LIST k0 k1)
+  (insn:close name nreg body k)                  -> (LIST body)
+  (insn:fatbar lab jn k0 k1 k)                   -> (LIST k0 k1)
+  (insn:nvcase tr dt labels jn alts ealt k)      -> (if-maybe alt ealt (list:cons alt alts) alts)
+  (insn:pvcase tr labels arities jn alts ealt k) -> (if-maybe alt ealt (list:cons alt alts) alts)
+  _                                              -> (list:nil)
+  )
+
+(define insn->cont
+  (insn:fatbar _ _ _ _ k)       -> k
+  (insn:close _ _ _ k)          -> k
+  (insn:test _ _ _ _ k)         -> k
+  (insn:testcexp _ _ _ _ _ _ k) -> k
+  (insn:nvcase _ _ _ _ _ _ k)   -> k
+  (insn:pvcase _ _ _ _ _ _ k)   -> k
+  (insn:literal _ k)            -> k
+  (insn:litcon _ _ k)           -> k
+  (insn:cexp _ _ _ _ k)         -> k
+  (insn:ffi _ _ _ _ k)          -> k
+  (insn:varref _ _ k)           -> k
+  (insn:varset _ _ _ k)         -> k
+  (insn:store _ _ _ _ k)        -> k
+  (insn:invoke _ _ _ k)         -> k
+  (insn:new-env _ _ _ k)        -> k
+  (insn:alloc _ _ k)            -> k
+  (insn:push _ k)               -> k
+  (insn:pop _ k)                -> k
+  (insn:primop _ _ _ _ k)       -> k
+  (insn:move _ _ k)             -> k
+  _ -> (cont:nil)
+  )
+
+(define (trim-free-regs insn)
+  ;; given an insn, we want to replace each insn's continuation
+  ;;  with a modified version that has its free vars (possibly)
+  ;;  reduced.  [can we modify the code so this can be done in-place?]
+
+  (let ((free (set/empty)))
+
+    (define (markup n)
+      (if (set/member? free int-cmp n)
+          (format (int n))
+          (format (bold (int n)))))
+
+  ;; first glance: let's just perform a use/def scan
+    (define (W insn d)
+      (let ((subs (insn->subexps insn))
+            (cont (insn->cont insn))
+            (refs (insn->refs insn)))
+        ;;(printf (repeat d " ") " " (variant->name insn) "\n")
+
+        ;; when we recurse, we get a list/set of all free refs from
+        ;;  the continuation.  our task is to remove anything from
+        ;;  `free` that is not in that set.
+        ;; the value that we return includes that set of values, minus
+        ;;  the target value for this continuation.
+        ;; now: how do we treat sub-expressions?  I believe we just merge
+        ;;  their result in.  I think we want an imperative set here.
+        ;; also: it might be possible to 'clean up' stuff like dead
+        ;;   targets, so we can avoid stuff like `r231 = PXLL_UNDEFINED`.
+
+        ;; recurse on sub-expressions
+        (for-list sub subs
+          (W sub (+ 1 d)))
+
+        ;; add all refs to the set...
+        (for-list ref refs
+          (set/add! free int-cmp ref))
+
+        (match cont with
+          (cont:k target free0 next)
+          -> (begin
+               ;; walk the rest of the cont...
+               (W next d)
+               ;; now remove target from the set (i.e. this is its defn)
+               (set/delete! free int-cmp target)
+               ;; XXX trim `free` here.
+               (printf (repeat d " ") (int target) ":" (join markup "," free0) "\n")
+               )
+          (cont:nil)
+          -> #u
+          )
+        (printf (repeat d " ") "|" (int (set/size free)) "|\n")
+        ))
+    (W insn 0)
+    ))
+
 (define (walk-insns p insn)
 
   (define (mwalk minsn d)
@@ -873,7 +996,7 @@
     (let ((k
 	   (match insn with
 	     ;; no continuation
-	     (insn:return target) -> (cont:nil)
+	     (insn:return _)      -> (cont:nil)
 	     (insn:tail _ _ _)	  -> (cont:nil)
 	     (insn:trcall _ _ _)  -> (cont:nil)
 	     (insn:jump _ _ _ _)  -> (cont:nil)

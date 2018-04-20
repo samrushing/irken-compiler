@@ -16,9 +16,13 @@
 (include "lib/counter.scm")
 (include "lib/stack.scm")
 (include "lib/set.scm")
+(include "lib/enum.scm")
 
 (include "self/backend.scm")
 (include "self/autoffi.scm")
+
+;(include "lib/metadata.scm")
+;(include "lib/reflection.scm")
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
@@ -208,7 +212,7 @@ default flags:
 	(_ (find-leaves noden))
 	(_ (find-free-refs noden))
         (_ (if-dump 'opt (pp-node noden)))
-	;; rebuild the graph yet again, so strongly will work.
+	;; build the graph again, so strongly will work.
         (_ (notquiet (printf "depgraph...\n")))
         (_ (build-dependency-graph noden))
         ;;(_ (print-graph the-context.dep-graph))
@@ -233,6 +237,7 @@ default flags:
 (define (main-compile base node)
   (let ((cps (compile node)))
     (if-dump 'cps (print-insn cps 0) (newline))
+    (trim-free-regs cps)
     (verbose
      (printf "\n-- datatypes --\n")
      (alist/iterate
