@@ -685,7 +685,7 @@
 
   (define (get-sref-scheme refexp)
     (let (((ref sname) (get-sref refexp))
-          (ftype (ctype->irken-type ref.ctype)))
+          (ftype (ctype->irken-type* ref.ctype)))
       (:scheme (LIST T0) (arrow (pred 'cref (LIST ftype))
                                 (LIST (pred 'cref
                                             (LIST (pred 'struct
