@@ -2,14 +2,18 @@
 
 (sodium
   (includes "sodium.h")
-  (constants crypto_hash_sha256_BYTES)
-  (structs crypto_hash_sha256_state)
+  (constants crypto_hash_sha256_BYTES crypto_hash_sha512_BYTES)
+  (structs crypto_hash_sha256_state crypto_hash_sha512_state)
   (sigs
    ;; note: these are the symbols as exported by C.
    crypto_hash_sha256
    crypto_hash_sha256_init
    crypto_hash_sha256_update
    crypto_hash_sha256_final
+   crypto_hash_sha512
+   crypto_hash_sha512_init
+   crypto_hash_sha512_update
+   crypto_hash_sha512_final
    ;;
    ;; from `genffi -try sodium.h`
    ;;
@@ -41,10 +45,10 @@
    ;; crypto_pwhash_scryptsalsa208sha256_memlimit_sensitive
    ;; crypto_pwhash_scryptsalsa208sha256
    ;; crypto_pwhash_scryptsalsa208sha256_ll
-   ;; crypto_scalarmult_curve25519_bytes
-   ;; crypto_scalarmult_curve25519_scalarbytes
-   ;; crypto_scalarmult_curve25519
-   ;; crypto_scalarmult_curve25519_base
+   crypto_scalarmult_curve25519_bytes
+   crypto_scalarmult_curve25519_scalarbytes
+   crypto_scalarmult_curve25519
+   crypto_scalarmult_curve25519_base
    ;; crypto_scalarmult_bytes
    ;; crypto_scalarmult_scalarbytes
    ;; crypto_scalarmult_primitive
@@ -76,20 +80,20 @@
    ;; crypto_shorthash_keybytes
    ;; crypto_shorthash_primitive
    ;; crypto_shorthash
-   ;; crypto_sign_ed25519_bytes
-   ;; crypto_sign_ed25519_seedbytes
-   ;; crypto_sign_ed25519_publickeybytes
-   ;; crypto_sign_ed25519_secretkeybytes
-   ;; crypto_sign_ed25519
-   ;; crypto_sign_ed25519_open
-   ;; crypto_sign_ed25519_detached
-   ;; crypto_sign_ed25519_verify_detached
-   ;; crypto_sign_ed25519_keypair
-   ;; crypto_sign_ed25519_seed_keypair
-   ;; crypto_sign_ed25519_pk_to_curve25519
-   ;; crypto_sign_ed25519_sk_to_curve25519
-   ;; crypto_sign_ed25519_sk_to_seed
-   ;; crypto_sign_ed25519_sk_to_pk
+   crypto_sign_ed25519_bytes
+   crypto_sign_ed25519_seedbytes
+   crypto_sign_ed25519_publickeybytes
+   crypto_sign_ed25519_secretkeybytes
+   crypto_sign_ed25519
+   crypto_sign_ed25519_open
+   crypto_sign_ed25519_detached
+   crypto_sign_ed25519_verify_detached
+   crypto_sign_ed25519_keypair
+   crypto_sign_ed25519_seed_keypair
+   crypto_sign_ed25519_pk_to_curve25519
+   crypto_sign_ed25519_sk_to_curve25519
+   crypto_sign_ed25519_sk_to_seed
+   crypto_sign_ed25519_sk_to_pk
    ;; crypto_sign_bytes
    ;; crypto_sign_seedbytes
    ;; crypto_sign_publickeybytes
@@ -147,7 +151,7 @@
    ;; crypto_verify_32
    ;; crypto_verify_64_bytes
    ;; crypto_verify_64
-   ;; randombytes_buf
+   randombytes_buf
    ;; randombytes_random
    ;; randombytes_uniform
    ;; randombytes_stir
