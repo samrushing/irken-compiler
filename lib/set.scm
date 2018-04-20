@@ -78,7 +78,7 @@
            (cmp:=) -> (maybe:yes k))
       )))
 
-(define (set/member s cmp k)
+(define (set/member? s cmp k)
   (match (tree/member s cmp k) with
     (maybe:yes _) -> #t
     (maybe:no)    -> #f
@@ -174,7 +174,7 @@
 (define (set/intersection cmp a b)
   (let ((result (set/empty)))
     (for-set x a
-      (if (set/member b cmp x)
+      (if (set/member? b cmp x)
 	  (set/add! result cmp x)))
     result))
 

@@ -33,12 +33,12 @@
       (set/add! visited cmp u)
       (when-maybe vl (tree/member g cmp u)
         (for-set v vl
-          (if (not (set/member visited cmp v))
+          (if (not (set/member? visited cmp v))
               (visit0 v))))
       (PUSH s u))
     ;; walk the graph forward, pushing finished nodes onto <s>
     (for-map u v g
-      (if (not (set/member visited cmp u))
+      (if (not (set/member? visited cmp u))
           (visit0 u)))
     (let ((gt (transpose g cmp))
           (visited (set/empty))
@@ -48,13 +48,13 @@
       (set/add! visited cmp u)
       (when-maybe vl (tree/member gt cmp u)
         (for-set v vl
-          (if (not (set/member visited cmp v))
+          (if (not (set/member? visited cmp v))
               (visit1 v))))
       (set/add! r1 cmp u))
     ;; walk backward, popping strongly connected components off <s>
     (while (not (null? s))
       (let ((u (pop s)))
-        (when (not (set/member visited cmp u))
+        (when (not (set/member? visited cmp u))
           (set! r1 (set/empty))
           (visit1 u)
           (PUSH r0 (set->list r1)))))
