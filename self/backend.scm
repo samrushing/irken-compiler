@@ -510,20 +510,27 @@ void prof_dump (void)
 ;; generate metadata for this program.  It is made available as a literal,
 ;; accessible via the 'irk_get_metadata'.
 (define (generate-metadata)
-  (let ((r '()))
-    (PUSH r (sexp1 'variants
-                   (alist/map
-                    (lambda (name index) (sexp (sym name) (int index)))
-                    the-context.variant-labels)))
-    (PUSH r (sexp1 'exceptions
-                   (alist/map
-                    (lambda (name type) (sexp (sym name) (type->sexp (apply-subst type))))
-                    the-context.exceptions)))
-    (PUSH r (sexp1 'datatypes
-                   (alist/map
-                    (lambda (name dt) (dt.to-sexp))
-                    the-context.datatypes)))
-    (let ((lit (unsexp (sexp1 'metadata r))))
-      (scan-literals (LIST lit))
-      (cmap/add the-context.literals lit))
+  (match (alist/lookup the-context.datatypes 'sexp) with
+    (maybe:yes _)
+    -> (let ((r '()))
+         (PUSH r (sexp1 'variants
+                        (alist/map
+                         (lambda (name index) (sexp (sym name) (int index)))
+                         the-context.variant-labels)))
+         (PUSH r (sexp1 'exceptions
+                        (alist/map
+                         (lambda (name type) (sexp (sym name) (type->sexp (apply-subst type))))
+                         the-context.exceptions)))
+         (PUSH r (sexp1 'datatypes
+                        (alist/map
+                         (lambda (name dt) (dt.to-sexp))
+                         the-context.datatypes)))
+         (let ((lit (unsexp (sexp1 'metadata r))))
+           (scan-literals (LIST lit))
+           (cmap/add the-context.literals lit))
+         )
+    ;; if the program doesn't even include lib/sexp, then it cannot make
+    ;;   use of metadata regardless. skip it.
+    (maybe:no)
+    -> (cmap/add the-context.literals (literal:undef))
     ))
