@@ -189,6 +189,20 @@ void prof_dump (void)
       (o.write (format "   {0, 0, \"" (join symbol->string "." name) "\"},"))))
   (o.write "   {0, 0, NULL}};"))
 
+;; with large programs, the constructed initializers can get *really*
+;;  long... long enough to cause problems even for emacs.
+(define (sprinkle-newlines parts)
+  (let ((n 0)
+        (r '()))
+    (for-list part parts
+      (cond ((= n 10)
+             (PUSH r (string-append "\n\t" part))
+             (set! n 0))
+            (else
+             (PUSH r part)))
+      (inc! n))
+    (reverse r)))
+
 ;; we support three types of non-immediate literals:
 ;;
 ;; 1) strings.  identical strings are merged. do not modify literal strings.
@@ -289,7 +303,7 @@ void prof_dump (void)
              (set! symbol-counter (+ 1 symbol-counter))
              )
         _ -> (let ((val (walk lit i))
-                   (rout (list:cons val (reverse output))))
+                   (rout (list:cons val (sprinkle-newlines (reverse output)))))
                (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
         ))
     (let ((symptrs '()))
@@ -298,7 +312,8 @@ void prof_dump (void)
 	 (PUSH symptrs (format "UPTR(" (int index) ",1)")))
        the-context.symbols)
       ;; XXX NOTE: this does not properly use TC_EMPTY_VECTOR
-      (o.write (format "pxll_int pxll_internal_symbols[] = {(" (int (length symptrs)) "<<8)|TC_VECTOR, " (join ", " symptrs) "};"))
+      (o.write (format "pxll_int pxll_internal_symbols[] = {("
+                       (int (length symptrs)) "<<8)|TC_VECTOR,\n\t" (join "," (sprinkle-newlines symptrs)) "};"))
       (o.write (format "object * irk_internal_symbols_p = (object*) &pxll_internal_symbols;"))
       )
     (o.indent)
