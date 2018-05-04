@@ -59,7 +59,7 @@
   (ansi-color <cyan>)    -> "36"
   (ansi-color <white>)   -> "37"
   )
-  
+
 (defmacro ansi*
   (ansi* color bright item ...) -> (format "\x1b[" bright (ansi-color color) "m" (format item ...) "\x1b[0m")
   )
@@ -95,6 +95,7 @@
   ;; maybe do more ansi codes?
   (fitem (<bold> item ...))     -> (format "\x1b[1;1m" item ... "\x1b[0m")
   (fitem (<ansi> spec item ...)) -> (ansi spec item ...)
+  (fitem (<maybe> mob yes no))  -> (if-maybe $x mob (yes $x) no)
   ;; XXX this might be nice?
   ;; (fitem (<tuple> x (a b c) (int a) (string b) (hex c)))
   (fitem x)			-> x	;; anything else must already be a string
