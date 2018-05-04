@@ -35,6 +35,8 @@
    ('PRIVATE     'red)
    ('CONSTRUCTOR 'green)
    ('ARROW       'yellow)
+   ('CHAR        'magenta)
+   ('FUNCTION    'cyan)
    ))
 
 (define CSI "\x1b[")
@@ -65,9 +67,10 @@ body  { background: #f8f8f8; }
 body .c { color: #408080; font-style: italic } /* Comment */
 body .err { border: 1px solid #FF0000 } /* Error */
 body .k { color: #008000; font-weight: bold } /* Keyword */
-body .s { color: #BA2121 } /* Literal.String */
+body .s { color: #BA2121; } /* Literal.String */
 body .p { color: #800000; } /* private */
-body .t { color: #B00040 } /* type */
+body .t { color: #800080; } /* type */
+body .f { color: #0000C0; font-weight:bold } /* function */
   </style>
 </head>
 <body>
@@ -78,12 +81,14 @@ body .t { color: #B00040 } /* type */
 
 (define css-color-table
   (alist/make
-   ('COMMENT 'c)
-   ('STRING  's)
+   ('COMMENT     'c)
+   ('STRING      's)
    ('CONSTRUCTOR 't)
-   ('KEYWORD 'k)
-   ('ARROW   'k)
-   ('PRIVATE 'p)
+   ('KEYWORD     'k)
+   ('ARROW       'k)
+   ('PRIVATE     'p)
+   ('CHAR        's)
+   ('FUNCTION    'f)
    ))
 
 (define html-escape-table
@@ -101,8 +106,42 @@ body .t { color: #B00040 } /* type */
       ))
   (string-concat (map escape (string->list s))))
 
-(define (html s color)
-  (format "<span class=\"" (sym color) "\">" (sanitize s) "</span>"))
+(define html
+  s 'none -> (sanitize s)
+  s class -> (format "<span class=\"" (sym class) "\">" (sanitize s) "</span>")
+  )
+
+;; can we annotate function/macro/datatype/etc names in a streaming fashion?
+;; NOTE: this processor is specific to Irken, whereas without it any lexer
+;;   using the same token classes can be used.  To do this correctly we need
+;;   to base this utility on a grammar, not a lexer.
+
+(define (annotate-functions gen)
+
+  (let ((last (make-vector 4 "")))
+
+    (define (is-fun? tok)
+      (and (eq? tok.kind 'SYMBOL)
+           (match last[0] last[1] last[2] last[3] with
+             _ "(" "define" "(" -> #t
+             _ _ "(" "define"   -> #t
+             _ _ "(" "defmacro" -> #t
+             _ _ "(" "datatype" -> #t
+             _ _ _ _            -> #f
+             )))
+    
+    (makegen emit
+      (for tok gen
+        (when (is-fun? tok)
+          (set! tok.kind 'FUNCTION))
+        (emit tok)
+        (when (not (eq? tok.kind 'WHITESPACE))
+          (set! last[0] last[1])
+          (set! last[1] last[2])
+          (set! last[2] last[3])
+          (set! last[3] tok.val)
+        )))
+    ))
 
 (if (< sys.argc 3)
     (begin (printf "\nSyntax Highlighter.\n\n")
@@ -124,7 +163,7 @@ body .t { color: #B00040 } /* type */
           (gen0 (file-char-generator sfile))
           (gen1 (make-lex-generator lexer gen0)))
       (printf header "\n")
-      (for tok gen1
+      (for tok (annotate-functions gen1)
         ;;(printf (ansi tok.val (alist/lookup* ansi-color-table tok.kind 'none)))
         (printf (html tok.val (alist/lookup* css-color-table tok.kind 'none)))
         )
