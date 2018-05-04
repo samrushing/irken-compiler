@@ -34,6 +34,7 @@
             "scopy"
             src src-start n dst dst-start)))
 
+;; XXX need a %copy-tuple prim. (or %copy-object?)
 ;; XXX why not use substring?
 (define (copy-string s1 n)
   (let ((s2 (make-string n)))
@@ -56,6 +57,7 @@
   ;; we copy because strings are mutable.
   (copy-string (if b "#t" "#f") 2))
 
+;; XXX these range checks need to raise an exception.
 (define (string-ref s n)
   (%backend c
     (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
