@@ -131,6 +131,16 @@
              (big:pos (int->digits absn '()))
              (big:neg (int->digits absn '())))))
 
+(define (big->int n)
+  (let ((digits (big->digits n)))
+    (when (> 1 (vector-length digits))
+      (raise (:Bignum/TooBig n)))
+    (match n with
+      (big:pos _) -> digits[0]
+      (big:neg _) -> (- digits[0])
+      (big:zero)  -> 0
+      )))
+
 (define big=
   (big:zero)  (big:zero)  -> #t
   (big:zero)  _		  -> #f
