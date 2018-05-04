@@ -578,6 +578,7 @@
    "  Create, scan, and execute two C programs\n"
    "  in order to build foo_ffi.scm\n\n"
    "Usage: " sys.argv[0] " -gen foo.ffi\n\n"
+   "       -gen generate foo_ffi.scm\n"
    "       -scan foo_iface1.cpp (dump info from intermediate file)\n"
    "       -v (enable verbose output)\n\n"
    "       -t (unwind typedefs for -scan, -try)\n\n"
