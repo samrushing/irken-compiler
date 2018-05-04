@@ -66,38 +66,40 @@
 	   (set! v[i] (new-label)))
 	v))
 
-    (define emitk
-      acc (cont:k _ _ k) -> (append acc (emit k))
-      acc (cont:nil)     -> acc
-      )
+    ;; XXX this append call is probably expensive, duh.
+    (define (emitk acc k)
+      (if (null-cont? k)
+          acc
+          (append acc (emit k.insn))))
 
     (define (emit insn)
       (match insn with
-        (insn:literal lit k)			      -> (emitk (emit-literal lit (k/target k)) k)
+        (insn:literal lit k)			      -> (emitk (emit-literal lit k.target) k)
         (insn:return target)                          -> (emit-return target)
-        (insn:cexp sig type template args k)          -> (emitk (emit-cexp sig type template args (k/target k)) k)
-        (insn:move dst var k)                         -> (emitk (emit-move dst var (k/target k)) k)
+        (insn:cexp sig type template args k)          -> (emitk (emit-cexp sig type template args k.target) k)
+        (insn:move dst var k)                         -> (emitk (emit-move dst var k.target) k)
         (insn:test reg jn k0 k1 k)                    -> (emit-test reg jn k0 k1 k)
-        (insn:jump reg target jn free)                -> (emit-jump reg target jn free)
-        (insn:close name nreg body k)                 -> (emitk (emit-close name nreg body (k/target k)) k)
-        (insn:new-env size top? types k)              -> (emitk (emit-new-env size top? types (k/target k)) k)
+        (insn:jump reg target jn free)                -> (emit-jump reg target jn free.val)
+        (insn:close name nreg body k)                 -> (emitk (emit-close name nreg body k.target) k)
+        (insn:new-env size top? types k)              -> (emitk (emit-new-env size top? types k.target) k)
         (insn:push r k)                               -> (emitk (emit-push r) k)
         (insn:store off arg tup i k)                  -> (emitk (emit-store off arg tup i) k)
-        (insn:varref d i k)                           -> (emitk (emit-varref d i (k/target k)) k)
+        (insn:varref d i k)                           -> (emitk (emit-varref d i k.target) k)
         (insn:tail name fun args)                     -> (emit-tail name fun args)
-        (insn:varset d i v k)                         -> (emitk (emit-varset d i v (k/target k)) k)
+        (insn:varset d i v k)                         -> (emitk (emit-varset d i v k.target) k)
         (insn:trcall d n args)                        -> (emit-trcall d n args)
         (insn:invoke name fun args k)                 -> (emitk (emit-call name fun args k) k)
-        (insn:pop r k)                                -> (emitk (emit-pop r (k/target k)) k)
+        (insn:pop r k)                                -> (emitk (emit-pop r k.target) k)
         (insn:primop name parm t args k)              -> (emitk (emit-primop name parm t args k) k)
         (insn:fatbar lab jn k0 k1 k)                  -> (emit-fatbar lab jn k0 k1 k)
-        (insn:fail label npop free)                   -> (emit-fail label npop free)
+        (insn:fail label npop free)                   -> (emit-fail label npop free.val)
         (insn:nvcase tr dt tags jn alts ealt k)       -> (emit-nvcase tr dt tags jn alts ealt k)
         (insn:pvcase tr tags arities jn alts ealt k)  -> (emit-pvcase tr tags arities jn alts ealt k)
-        (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind (k/target k)) k)
-        (insn:alloc tag size k)                       -> (emitk (emit-alloc tag size (k/target k)) k)
+        (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind k.target) k)
+        (insn:alloc tag size k)                       -> (emitk (emit-alloc tag size k.target) k)
         (insn:testcexp regs sig tmpl jn k0 k1 k)      -> (impossible)
         (insn:ffi sig type name args k)               -> (error1 "ffi being redesigned." insn)
+        (insn:label label next)                       -> (emit next)
         ))
 
     (define (encode-int n)
@@ -194,7 +196,7 @@
 
     (define (emit-test val jn k0 k1 cont)
       (let ((l0 (new-label))
-            (jcont (emit-jump-continuation jn (k/insn cont))))
+            (jcont (emit-jump-continuation jn cont.insn)))
         (append
          (LINSN 'tst val l0)
          (emit k0)
@@ -270,9 +272,9 @@
                    )))))
 
     (define (emit-call name fun args k)
-      (let ((free (sort < (k/free k)))
+      (let ((free (sort < k.free))
 	    (nregs (length free))
-	    (target (k/target k)))
+	    (target k.target))
         (append
          (if (= args -1)
              (LINSN 'call0 fun nregs)
@@ -309,7 +311,7 @@
       (define (primop-error)
 	(error1 "primop" name))
 
-      (let ((target (k/target k))
+      (let ((target k.target)
 	    (nargs (length args)))
 
         (define prim-dtcon
@@ -479,7 +481,7 @@
          '%exit        -> (prim-exit args)
          '%getcc       -> (prim-getcc args)
          '%putcc       -> (prim-putcc args)
-         '%ensure-heap -> (prim-heap args (k/free k))
+         '%ensure-heap -> (prim-heap args k.free)
          ;; -------------------- FFI --------------------
          ;; currently done with %%cexp (needs to be fixed)
          ;; '%ffi2         ->
@@ -512,7 +514,7 @@
          (emit k0)
          (LIST (stream:label lfail))
          (emit k1)
-         (emit-jump-continuation jn (k/insn k))
+         (emit-jump-continuation jn k.insn)
          )))
 
     (define (emit-fail label npop free)
@@ -566,7 +568,7 @@
                (append
                 (LIST (stream:insn 'nvcase (prepend test lelse ntags pairs)))
                 result
-                (emit-jump-continuation jump-num (k/insn k)))
+                (emit-jump-continuation jump-num k.insn))
                ))))
 
     (define (emit-pvcase test tags arities jump-num subs ealt k)
@@ -590,7 +592,7 @@
         (append
          (LIST (stream:insn 'nvcase (prepend test lelse ntags pairs)))
          result
-         (emit-jump-continuation jump-num (k/insn k))
+         (emit-jump-continuation jump-num k.insn)
          )))
 
     (define (emit-litcon index kind target)

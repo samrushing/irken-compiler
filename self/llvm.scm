@@ -721,76 +721,76 @@
 	   (oformat "tail call fastcc void @insn_return (i8** %r" (int reg) ")")
 	   (o.write "ret void"))
 
-      (insn:literal lit (cont:k reg _ k))
+      (insn:literal lit k)
       -> (begin
-	   (if (not (= reg -1)) ;; ignore dead literals
-	       (oformat "%r" (int reg) " = inttoptr i64 " (int (encode-immediate lit)) " to i8**"))
-	   (walk k))
+	   (if (not (= k.target -1)) ;; ignore dead literals
+	       (oformat "%r" (int k.target) " = inttoptr i64 " (int (encode-immediate lit)) " to i8**"))
+	   (walk k.insn))
 
-      (insn:varref depth index (cont:k reg _ k))
+      (insn:varref depth index k)
       -> (begin
 	   (if (= depth -1)
-	       (oformat "%r" (int reg) " = call fastcc i8** @insn_topref (i64 " (int index) ")")
-	       (oformat "%r" (int reg) " = call fastcc i8** @insn_varref "
+	       (oformat "%r" (int k.target) " = call fastcc i8** @insn_topref (i64 " (int index) ")")
+	       (oformat "%r" (int k.target) " = call fastcc i8** @insn_varref "
 			"(i64 " (int depth) ", i64 " (int index) ")"))
-	   (walk k))
+	   (walk k.insn))
 
-      (insn:varset depth index val (cont:k target _ k))
+      (insn:varset depth index val k)
       -> (begin
 	   (if (= depth -1)
 	       (oformat "call fastcc void @insn_topset (i64 " (int index) ", i8** %r" (int val) ")")
 	       (oformat "call fastcc void @insn_varset "
 			"(i64 " (int depth) ", i64 " (int index) ", i8** %r" (int val) ")"))
-	   (dead-set target)
-	   (walk k))
+	   (dead-set k.target)
+	   (walk k.insn))
 
-      (insn:test val jumpnum then else (cont:k _ _ k))
+      (insn:test val jumpnum then else k)
       -> (begin
-	   (push-jump-continuation k jumpnum)
+	   (push-jump-continuation k.insn jumpnum)
 	   (emit-test val then else))
 
       (insn:jump reg trg jn free)
-      -> (emit-jump reg trg jn free)
+      -> (emit-jump reg trg jn free.val)
 
-      (insn:move dst var (cont:k reg _ k))
-      -> (begin (emit-move dst var reg) (walk k))
+      (insn:move dst var k)
+      -> (begin (emit-move dst var k.target) (walk k.insn))
 
       ;; note: special case to ignore continuation after %exit.
       ;; XXX check if this is still needed.
-      (insn:primop '%exit params type args (cont:k target _ k))
-      -> (begin (emit-primop '%exit params type args target))
+      (insn:primop '%exit params type args k)
+      -> (begin (emit-primop '%exit params type args k.target))
 
-      (insn:primop name params type args (cont:k target _ k))
-      -> (begin (emit-primop name params type args target) (walk k))
+      (insn:primop name params type args k)
+      -> (begin (emit-primop name params type args k.target) (walk k.insn))
 
-      (insn:cexp sig type template args (cont:k target _ k))
+      (insn:cexp sig type template args k)
       -> (raise (:LLVMNoCexp "llvm: no cexps"))
 
-      (insn:ffi sig type name args (cont:k target _ k))
+      (insn:ffi sig type name args k)
       -> (raise (:TempNoFFI "llvm: temp no ffi"))
 
-      (insn:new-env size top? types (cont:k target _ k))
-      -> (begin (emit-new-env size top? types target) (walk k))
+      (insn:new-env size top? types k)
+      -> (begin (emit-new-env size top? types k.target) (walk k.insn))
 
-      (insn:push r (cont:k target _ k))
-      -> (begin (oformat "call fastcc void @push_env (i8** %r" (int r) ")") (walk k))
+      (insn:push r k)
+      -> (begin (oformat "call fastcc void @push_env (i8** %r" (int r) ")") (walk k.insn))
 
-      (insn:pop r (cont:k target _ k))
+      (insn:pop r k)
       -> (begin
 	   (oformat "call fastcc void @pop_env()")
-	   (move r target)
-	   (walk k))
+	   (move r k.target)
+	   (walk k.insn))
 
-      (insn:store off arg tup i (cont:k target _ k))
+      (insn:store off arg tup i k)
       -> (begin
 	   (oformat "call fastcc void @insn_store ("
 		    "i8** %r" (int tup)
 		    ", i64 " (int (+ 1 i off))
 		    ", i8** %r" (int arg)
 		    ")")
-	   (if (not (= target -1))
-	       (oformat "%r" (int target) " = inttoptr i64 " (int TC_UNDEFINED) " to i8**"))
-	   (walk k))
+	   (if (not (= k.target -1))
+	       (oformat "%r" (int k.target) " = inttoptr i64 " (int TC_UNDEFINED) " to i8**"))
+	   (walk k.insn))
 
       (insn:trcall d n args)
       -> (emit-trcall d n args)
@@ -798,36 +798,39 @@
       (insn:tail name fun args)
       -> (emit-tail name fun args)
 
-      (insn:invoke name fun args (cont:k target free k))
-      -> (emit-call name fun args target free k)
+      (insn:invoke name fun args k)
+      -> (emit-call name fun args k.target k.free k.insn)
 
-      (insn:alloc tag size (cont:k target _ k))
+      (insn:alloc tag size k)
       -> (let ((tag0 (if (= size 0) (UITAG tag) (UOTAG tag))))
 	   (if (= size 0)
-	       (oformat "%r" (int target) " = inttoptr i64 " (int tag0) " to i8**")
-	       (oformat "%r" (int target) " = call fastcc i8** @allocate (i64 " (int tag0) ", i64 " (int size) ")"))
-	   (walk k))
+	       (oformat "%r" (int k.target) " = inttoptr i64 " (int tag0) " to i8**")
+	       (oformat "%r" (int k.target) " = call fastcc i8** @allocate (i64 " (int tag0) ", i64 " (int size) ")"))
+	   (walk k.insn))
 
-      (insn:fatbar lab jn k0 k1 (cont:k _ free k))
-      -> (emit-fatbar lab jn k0 k1 free k)
+      (insn:fatbar lab jn k0 k1 k)
+      -> (emit-fatbar lab jn k0 k1 k.free k.insn)
 
       (insn:fail label npop free)
-      -> (emit-fail label npop free)
+      -> (emit-fail label npop free.val)
 
-      (insn:close name nreg body (cont:k target _ k))
-      -> (begin (emit-close name nreg body target) (walk k))
+      (insn:close name nreg body k)
+      -> (begin (emit-close name nreg body k.target) (walk k.insn))
 
-      (insn:litcon index kind (cont:k target _ k))
-      -> (begin (emit-litcon index kind target) (walk k))
+      (insn:litcon index kind k)
+      -> (begin (emit-litcon index kind k.target) (walk k.insn))
 
-      (insn:nvcase tr dt tags jn alts ealt (cont:k _ _ k))
-      -> (emit-nvcase tr dt tags jn alts ealt k)
+      (insn:nvcase tr dt tags jn alts ealt k)
+      -> (emit-nvcase tr dt tags jn alts ealt k.insn)
 
-      (insn:pvcase tr tags arities jn alts ealt (cont:k _ _ k))
-      -> (emit-pvcase tr tags arities jn alts ealt k)
+      (insn:pvcase tr tags arities jn alts ealt k)
+      -> (emit-pvcase tr tags arities jn alts ealt k.insn)
+
+      (insn:label label next)
+      -> (walk next)
 
       x -> (begin (printf "cps->llvm insn= ")
-      		  (print-insn x 0) (printf "\n")
+      		  (print-cps x 0) (printf "\n")
       		  (raise (:CPSNotImplemented x)))
       )
 

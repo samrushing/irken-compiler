@@ -128,9 +128,13 @@
 	 -> (match (used::get num) with
 	      (maybe:yes _) -> #u
 	      (maybe:no)    -> (used::add num (if (= target -1)
-						  free
-						  (list:cons target free)
+						  free.val
+						  (list:cons target free.val)
 						  )))
+         (insn:fail num npop free)
+         -> (match (used::get num) with
+              (maybe:yes _) -> #u
+              (maybe:no)    -> (used::add num free.val))
 	 _ -> #u))
      insns)
     used))

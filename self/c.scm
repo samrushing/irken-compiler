@@ -144,39 +144,34 @@
 	(fatbar-free (map-maker int-cmp))
 	(declared (set2-maker string-compare)))
 
-    (define emitk
-      (cont:k _ _ k) -> (emit k)
-      (cont:nil)     -> #u)
-
-    (define (emit insn)
-      (emitk
-       (match insn with
-	 (insn:return target)			      -> (begin (o.write (format "PXLL_RETURN(" (int target) ");")) (cont:nil))
-	 (insn:literal lit k)			      -> (begin (emit-literal lit (k/target k)) k)
-	 (insn:litcon i kind k)			      -> (begin (emit-litcon i kind (k/target k)) k)
-	 (insn:test reg jn k0 k1 k)		      -> (begin (emit-test reg jn k0 k1 k) (cont:nil))
-	 (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (begin (emit-testcexp regs sig tmpl jn k0 k1 k) (cont:nil))
-	 (insn:jump reg target jn free)		      -> (begin (emit-jump reg target jn free) (cont:nil))
-	 (insn:cexp sig type template args k)	      -> (begin (emit-cexp sig type template args (k/target k)) k)
-	 (insn:ffi sig type name args k)	      -> (error1 "no FFI in C backend" insn)
-	 (insn:close name nreg body k)		      -> (begin (emit-close name nreg body (k/target k)) k)
-	 (insn:varref d i k)			      -> (begin (emit-varref d i (k/target k)) k)
-	 (insn:varset d i v k)			      -> (begin (emit-varset d i v (k/target k)) k)
-	 (insn:new-env size top? types k)	      -> (begin (emit-new-env size top? types (k/target k)) k)
-	 (insn:alloc tag size k)		      -> (begin (emit-alloc tag size (k/target k)) k)
-	 (insn:store off arg tup i k)		      -> (begin (emit-store off arg tup i) k)
-	 (insn:invoke name fun args k)		      -> (begin (emit-call name fun args k) (cont:nil))
-	 (insn:tail name fun args)		      -> (begin (emit-tail name fun args) (cont:nil))
-	 (insn:trcall d n args)			      -> (begin (emit-trcall d n args) (cont:nil))
-	 (insn:push r k)			      -> (begin (emit-push r) k)
-	 (insn:pop r k)				      -> (begin (emit-pop r (k/target k)) k)
-	 (insn:primop name parm t args k)	      -> (begin (emit-primop name parm t args k) k)
-	 (insn:move dst var k)			      -> (begin (emit-move dst var (k/target k)) k)
-	 (insn:fatbar lab jn k0 k1 k)		      -> (begin (emit-fatbar lab jn k0 k1 k) (cont:nil))
-	 (insn:fail label npop free)		      -> (begin (emit-fail label npop free) (cont:nil))
-	 (insn:nvcase tr dt tags jn alts ealt k)      -> (begin (emit-nvcase tr dt tags jn alts ealt k) (cont:nil))
-	 (insn:pvcase tr tags arities jn alts ealt k) -> (begin (emit-pvcase tr tags arities jn alts ealt k) (cont:nil))
-	 )))
+    (define emit
+      (insn:return target)                         -> (o.write (format "PXLL_RETURN(" (int target) ");"))
+      (insn:literal lit k)                         -> (begin (emit-literal lit k.target) (emit k.insn))
+      (insn:litcon i kind k)                       -> (begin (emit-litcon i kind k.target) (emit k.insn))
+      (insn:test reg jn k0 k1 k)                   -> (emit-test reg jn k0 k1 k)
+      (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (emit-testcexp regs sig tmpl jn k0 k1 k)
+      (insn:jump reg target jn free)               -> (emit-jump reg target jn free.val)
+      (insn:cexp sig type template args k)         -> (begin (emit-cexp sig type template args k.target) (emit k.insn))
+      (insn:ffi sig type name args k)              -> (error1 "no FFI in C backend" name)
+      (insn:close name nreg body k)                -> (begin (emit-close name nreg body k.target) (emit k.insn))
+      (insn:varref d i k)                          -> (begin (emit-varref d i k.target) (emit k.insn))
+      (insn:varset d i v k)                        -> (begin (emit-varset d i v k.target) (emit k.insn))
+      (insn:new-env size top? types k)             -> (begin (emit-new-env size top? types k.target) (emit k.insn))
+      (insn:alloc tag size k)                      -> (begin (emit-alloc tag size k.target) (emit k.insn))
+      (insn:store off arg tup i k)                 -> (begin (emit-store off arg tup i) (emit k.insn))
+      (insn:invoke name fun args k)                -> (emit-call name fun args k)
+      (insn:tail name fun args)                    -> (emit-tail name fun args)
+      (insn:trcall d n args)                       -> (emit-trcall d n args)
+      (insn:push r k)                              -> (begin (emit-push r) (emit k.insn))
+      (insn:pop r k)                               -> (begin (emit-pop r k.target) (emit k.insn))
+      (insn:primop name parm t args k)             -> (begin (emit-primop name parm t args k) (emit k.insn))
+      (insn:move dst var k)                        -> (begin (emit-move dst var k.target) (emit k.insn))
+      (insn:fatbar lab jn k0 k1 k)                 -> (emit-fatbar lab jn k0 k1 k)
+      (insn:fail label npop free)                  -> (emit-fail label npop free.val)
+      (insn:nvcase tr dt tags jn alts ealt k)      -> (emit-nvcase tr dt tags jn alts ealt k)
+      (insn:pvcase tr tags arities jn alts ealt k) -> (emit-pvcase tr tags arities jn alts ealt k)
+      (insn:label label next)                      -> (emit next)
+      )
 
     ;; XXX arrange to avoid duplicates caused by jump conts
     (define (declare-function name extern? kfun?)
@@ -245,8 +240,8 @@
 	  (maybe:yes free)
 	  -> (o.write (format jname "(" (join (lambda (x) (format "r" (int x))) ", " free) ");"))
 	  (maybe:no)
-	  -> (impossible))
-	))
+	  -> (begin (printf "jump " (int jump-num) "\n") (impossible))
+          )))
 
     ;; XXX consider this: giving access to the set of free registers.
     ;;   would make it possible to do %ensure-heap in a %%cexp.
@@ -344,7 +339,7 @@
 	(maybe:yes free)
 	-> (let ((cname (format "JUMP_" (int jump))))
 	     (decls.write (format "static void " cname "(" (string-join (n-of (length free) "O") ", ") ");"))
-	     (push-continuation (format "JUMP_" (int jump)) (k/insn cont) free)
+	     (push-continuation (format "JUMP_" (int jump)) cont.insn free)
 	     )
 	(maybe:no)
 	-> #u))
@@ -418,9 +413,8 @@
 	    )))
 
     (define (emit-call name fun args k)
-      (let ((free (sort < (k/free k))) ;; sorting these might improve things
+      (let ((free (sort < k.free)) ;; sorting these might improve things
 	    (nregs (length free))
-	    (target (k/target k))
 	    (kfun (gen-function-cname current-function-name (current-function-part.inc)))
 	    )
 	;; save
@@ -448,9 +442,9 @@
 			   i nregs
 			   (format "O r" (int (nth free i)) " = k[" (int (+ i 4)) "]"))))
 		  (o.write (format (string-join restores "; ") "; lenv = k[2]; k = k[1];")))
-		(if (>= target 0)
-		    (o.write (format "O r" (int target) " = rr;")))
-		(emitk k)
+		(if (>= k.target 0)
+		    (o.write (format "O r" (int k.target) " = rr;")))
+		(emit k.insn)
 		(o.dedent)
 		(o.write (format "}"))
 		)
@@ -500,8 +494,7 @@
       (define (primop-error)
 	(error1 "primop" name))
 
-      (let ((target (k/target k))
-	    (nargs (length args)))
+      (let ((nargs (length args)))
 
         (define prim-dtcon
           (sexp:cons dtname altname)
@@ -510,11 +503,11 @@
                (maybe:yes dt)
                -> (let ((alt (dt.get altname)))
                     (cond ((= nargs 0)
-                           (o.write (format "O r" (int target) " = (object*)"
+                           (o.write (format "O r" (int k.target) " = (object*)"
                                             (get-uitag dtname altname alt.index) ";")))
                           (else
-                           (if (>= target 0)
-                               (let ((trg (format "r" (int target))))
+                           (if (>= k.target 0)
+                               (let ((trg (format "r" (int k.target))))
                                  (o.write (format "O " trg " = alloc_no_clear ("
                                                   (get-uotag dtname altname alt.index)
                                                   "," (int nargs) ");"))
@@ -529,7 +522,7 @@
 
         (define prim-nvget
           (sexp:list (_ (sexp:int index) _)) (reg)
-          -> (o.write (format "O r" (int target) " = UOBJ_GET(r" (int reg) "," (int index) ");"))
+          -> (o.write (format "O r" (int k.target) " = UOBJ_GET(r" (int reg) "," (int index) ");"))
           _ _ -> (primop-error))
 
         (define prim-make-vector
@@ -537,19 +530,19 @@
           -> (begin
                ;; since we cannot know the size at compile-time, there should
                ;; always be a call to ensure_heap() before any call to %make-vector
-               (o.write (format "O r" (int target) ";"))
-               (o.write (format "if (unbox(r" (int vlen) ") == 0) { r" (int target) " = (object *) TC_EMPTY_VECTOR; } else {"))
+               (o.write (format "O r" (int k.target) ";"))
+               (o.write (format "if (unbox(r" (int vlen) ") == 0) { r" (int k.target) " = (object *) TC_EMPTY_VECTOR; } else {"))
                (o.write (format "  O t = alloc_no_clear (TC_VECTOR, unbox(r" (int vlen) "));"))
                (o.write (format "  for (int i=0; i<unbox(r" (int vlen) "); i++) { t[i+1] = r" (int vval) "; }"))
-               (o.write (format "  r" (int target) " = t;"))
+               (o.write (format "  r" (int k.target) " = t;"))
                (o.write "}"))
           _ -> (primop-error))
 
         (define prim-array-ref
           (vec index)
-          -> (when (not (= -1 target))
+          -> (when (not (= -1 k.target))
                (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-               (o.write (format "O r" (int target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
+               (o.write (format "O r" (int k.target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
           _ -> (primop-error))
 
         (define prim-array-set
@@ -557,8 +550,8 @@
           -> (begin
                (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
                (o.write (format "((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";"))
-               (when (>= target 0)
-                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+               (when (>= k.target 0)
+                 (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error))
 
         (define (ambig code)
@@ -569,13 +562,13 @@
           -> (let ((label-code (lookup-label-code label)))
                (match (guess-record-type sig) with
                  (maybe:yes sig0)
-                 -> (o.write (format "O r" (int target) ;; compile-time lookup
+                 -> (o.write (format "O r" (int k.target) ;; compile-time lookup
                                      " = ((pxll_vector*)r" (int rec-reg)
                                      ")->val[" (int (index-eq label sig0))
                                      "];"))
                  (maybe:no)
                  -> (begin
-                      (o.write (format "O r" (int target) ;; run-time lookup
+                      (o.write (format "O r" (int k.target) ;; run-time lookup
                                        " = ((pxll_vector*)r" (int rec-reg)
                                        ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
                                        ")-TC_USEROBJ)>>2," (int label-code)
@@ -601,30 +594,30 @@
                                        ")] = r" (int arg-reg) ";"))
                       (ambig label-code)
                       ))
-               (when (>= target 0)
-                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+               (when (>= k.target 0)
+                 (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ _ -> (primop-error))
 
         (define (prim-callocate parm args)
           (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
             ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
-            (if (>= target 0)
-                (o.write (format "O r" (int target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
+            (if (>= k.target 0)
+                (o.write (format "O r" (int k.target) " = alloc_no_clear (TC_BUFFER, HOW_MANY (sizeof (" (irken-type->c-type type)
                                  ") * unbox(r" (int (car args)) "), sizeof (object)));"))
                 (error1 "%callocate: dead target?" type))))
 
         (define (prim-malloc parm args)
           (let ((type (parse-type parm)))
-            (cond ((>= target 0)
-                   (o.write (format "O r" (int target) " = make_foreign (malloc (sizeof ("
+            (cond ((>= k.target 0)
+                   (o.write (format "O r" (int k.target) " = make_foreign (malloc (sizeof ("
                                     (irken-type->c-type type) ") * unbox(r" (int (car args)) ")));")))
                   (else
                    (error1 "%malloc: dead target?" type)))))
 
         (define (prim-halloc parm args)
           (let ((type (parse-type parm)))
-            (cond ((>= target 0)
-                   (o.write (format "O r" (int target)
+            (cond ((>= k.target 0)
+                   (o.write (format "O r" (int k.target)
                                     " = make_halloc (sizeof ("
                                     (irken-type->c-type type) ") , unbox(r" (int (car args))
                                     "));")))
@@ -633,22 +626,22 @@
 
         (define (prim-free args)
           (o.write (format "free_foreign (r" (int (car args)) ");"))
-          (when (>= target 0)
-            (o.write (format "O r" (int target) " = PXLL_UNDEFINED;"))))
+          (when (>= k.target 0)
+            (o.write (format "O r" (int k.target) " = PXLL_UNDEFINED;"))))
 
         (define (prim-exit args)
           (o.write (format "exit_continuation(r" (int (car args)) ");"))
-          (when (> target 0)
-            (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+          (when (> k.target 0)
+            (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
 
         (define prim-getcc
-          () -> (o.write (format "O r" (int target) " = k; // %getcc"))
+          () -> (o.write (format "O r" (int k.target) " = k; // %getcc"))
           _  -> (primop-error))
 
         (define prim-putcc
           (rk rv) -> (begin
                        (o.write (format "k = r" (int rk) "; // %putcc"))
-                       (move rv target))
+                       (move rv k.target))
           _ -> (primop-error))
 
         (define (prim-ffi2 parm args)
@@ -660,12 +653,12 @@
                           (argt0 (map ctype->irken-type argtypes))
                           (args2 (map2 wrap-in argt0 args0))
                           (call0 (format (sym name) "(" (join "," args2) ")"))
-                          (call1 (if (= target -1) call0 (wrap-out type call0))))
-                      (if (= target -1)
+                          (call1 (if (= k.target -1) call0 (wrap-out type call0))))
+                      (if (= k.target -1)
                           (o.write (format call1 ";"))
-                          (o.write (format "O r" (int target) " = " call1 ";"))))
+                          (o.write (format "O r" (int k.target) " = " call1 ";"))))
                  (maybe:yes (csig:obj name obtype))
-                 -> (o.write (format "O r" (int target) " = make_foreign ((void*)&" (sym name) ");"))
+                 -> (o.write (format "O r" (int k.target) " = make_foreign ((void*)&" (sym name) ");"))
                  _ -> (primop-error))
             _ -> (primop-error)
             ))
@@ -675,7 +668,7 @@
             (src index) (type:pred 'cref (subtype) _)
             -> (let ((ctype (irken-type->c-type subtype)))
                  (o.write (format "// ctype = " ctype))
-                 (o.write (format "O r" (int target)
+                 (o.write (format "O r" (int k.target)
                                   " = offset_foreign (r" (int src)", sizeof(" ctype
                                   ") * UNBOX_INTEGER(r" (int index)"));")))
             _ _ -> (primop-error)))
@@ -684,7 +677,7 @@
           (src)
           -> (begin
                (o.write (format "// %c-get-ptr"))
-               (o.write (format "O r" (int target) " = make_foreign (*(void**)get_foreign (r" (int src) "));")))
+               (o.write (format "O r" (int k.target) " = make_foreign (*(void**)get_foreign (r" (int src) "));")))
           _ -> (primop-error)
           )
 
@@ -693,15 +686,15 @@
           -> (begin
                (o.write (format "// %c-set-ptr"))
                (o.write (format "*((void**)get_foreign (r" (int dst) ")) = get_foreign (r" (int src) ");"))
-               (when (> target 0)
-                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+               (when (> k.target 0)
+                 (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error)
           )
 
         (define (prim-c-sizeof ctexp)
           (let ((t0 (parse-type ctexp))
                 (t1 (irken-type->c-type t0)))
-            (o.write (format "O r" (int target) " = BOX_INTEGER (sizeof (" t1 "));"))))
+            (o.write (format "O r" (int k.target) " = BOX_INTEGER (sizeof (" t1 "));"))))
 
         ;; generic version, hopefully we can make this work.
         ;; things we can do:
@@ -718,9 +711,9 @@
                (type:pred 'struct _ _)
                -> (primop-error)
                (type:pred '* _ _)
-               -> (o.write (format "O r" (int target) " = make_foreign (*(void**)get_foreign (r" (int src) "));"))
+               -> (o.write (format "O r" (int k.target) " = make_foreign (*(void**)get_foreign (r" (int src) "));"))
                int-type
-               -> (o.write (format "O r" (int target) " = BOX_INTEGER((pxll_int)*(("
+               -> (o.write (format "O r" (int k.target) " = BOX_INTEGER((pxll_int)*(("
                                    (irken-type->c-type int-type) "*)get_foreign(r" (int src) ")));"))
                )
           _ -> (primop-error))
@@ -737,8 +730,8 @@
                -> (let ((ctype (irken-type->c-type type)))
                     (printf "prim-c-set ctype = " ctype " type = " (type-repr type) "\n")
                     (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNBOX_INTEGER(r" (int src) ");"))
-                    (when (> target 0)
-                      (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;")))
+                    (when (> k.target 0)
+                      (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;")))
                     )
                )
           _ -> (primop-error))
@@ -746,7 +739,7 @@
         (define prim-c-get-int
           (src)
           -> (o.write
-              (format "O r" (int target) " = BOX_INTEGER((pxll_int)*(("
+              (format "O r" (int k.target) " = BOX_INTEGER((pxll_int)*(("
                       (irken-type->c-type type) "*)get_foreign(r" (int src) ")));"))
           _ -> (primop-error))
 
@@ -757,8 +750,8 @@
                ;; XXX check against word size
                (printf "c-set-int " ctype "\n")
                (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNBOX_INTEGER(r" (int src) ");"))
-               (when (> target 0)
-                 (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
+               (when (> k.target 0)
+                 (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error))
 
         (define sref->c
@@ -772,7 +765,7 @@
 
         (define prim-c-sref
           refexp (src)
-          -> (o.write (format "O r" (int target) " = offset_foreign (r" (int src)
+          -> (o.write (format "O r" (int k.target) " = offset_foreign (r" (int src)
                               ;; this is very similar to the offsetof macro
                               ", ((size_t)&(" (sref->c refexp "0") ")));"))
           _ _ -> (primop-error))
@@ -780,31 +773,27 @@
         (define prim-c-sfromc
           (src len)
           -> (begin
-               (o.write (format "O r" (int target) " = make_string (UNBOX_INTEGER (r" (int len) "));"))
+               (o.write (format "O r" (int k.target) " = make_string (UNBOX_INTEGER (r" (int len) "));"))
                (o.write (format "memcpy (GET_STRING_POINTER (r"
-                                (int target) "), get_foreign (r" (int src)
+                                (int k.target) "), get_foreign (r" (int src)
                                 "), UNBOX_INTEGER (r" (int len) "));")))
           _ -> (primop-error))
 
         (define prim-string->cref
-          (src)
-          -> (o.write (format "O r" (int target) " = make_foreign (GET_STRING_POINTER (r" (int src) "));"))
+          (src) -> (o.write (format "O r" (int k.target) " = make_foreign (GET_STRING_POINTER (r" (int src) "));"))
           _ -> (primop-error))
 
         ;; essentially a no-op.
         (define prim-c-cast
-          (src)
-          -> (o.write (format "O r" (int target) " = r" (int src) ";"))
+          (src) -> (o.write (format "O r" (int k.target) " = r" (int src) ";"))
           _ -> (primop-error))
 
         (define prim-cref->int
-          (src)
-          -> (o.write (format "O r" (int target) " = BOX_INTEGER (((pxll_int) get_foreign (r" (int src) ")));"))
+          (src) -> (o.write (format "O r" (int k.target) " = BOX_INTEGER (((pxll_int) get_foreign (r" (int src) ")));"))
           _ -> (primop-error))
 
         (define prim-int->cref
-          (addr)
-          -> (o.write (format "O r" (int target) " = make_foreign ((void*)UNBOX_INTEGER (r" (int addr) "));"))
+          (addr) -> (o.write (format "O r" (int k.target) " = make_foreign ((void*)UNBOX_INTEGER (r" (int addr) "));"))
           _ -> (primop-error))
 
         (match name with
@@ -819,7 +808,7 @@
           '%exit         -> (prim-exit args)
           '%getcc        -> (prim-getcc args)
           '%putcc        -> (prim-putcc args)
-          '%ensure-heap  -> (emit-check-heap (k/free k) (format "unbox(r" (int (car args)) ")"))
+          '%ensure-heap  -> (emit-check-heap k.free (format "unbox(r" (int (car args)) ")"))
           ;; --------------- FFI ---------------
           '%malloc       -> (prim-malloc parm args)
           '%halloc       -> (prim-halloc parm args)
@@ -864,23 +853,27 @@
 
     ;; we emit insns for k0, which may or may not jump to fail continuation in k1
     (define (emit-fatbar label jn k0 k1 k)
-      (fatbar-free::add label (k/free k))
-      (push-fail-continuation k1 label (k/free k))
-      (push-jump-continuation k jn)
-      (o.write (format "// fatbar jn=" (int jn) " label=" (int label)))
-      (emit k0))
+      (match (used-jumps::get label) with
+        (maybe:yes free) -> (begin
+                              (fatbar-free::add label free)
+                              (push-fail-continuation k1 label free)
+                              (push-jump-continuation k jn)
+                              (o.write (format "// fatbar jn=" (int jn) " label=" (int label)))
+                              (emit k0))
+        _                -> (begin (printf "sucks dude: jn:"(int jn) " fail:" (int label) "\n") (impossible))
+        ))
 
     (define (emit-fail label npop free)
       (if (> npop 0)
 	  (o.write (format "lenv = ((object " (join (n-of npop "*")) ")lenv)" (join (n-of npop "[1]")) ";")))
       (let ((jname (format "FAIL_" (int label))))
 	(match (fatbar-free::get label) with
-	  (maybe:yes free)
+	  (maybe:yes free0)
 	  -> (begin
 	       (o.write (format jname "(" (join (lambda (x) (format "r" (int x))) ", " free) ");"))
 	       (decls.write (format "static void " jname "(" (string-join (n-of (length free) "O") ", ") ");")))
 	  (maybe:no)
-	  -> (impossible)
+	  -> (begin (printf "fail " (int label) "\n") (impossible))
 	  )))
 
     ;;
@@ -912,7 +905,7 @@
 		 ;;   ;; nothing to switch on, just emit the code
 		 ;;   (printf "unused jump-num: " (int jump-num) "\n")
 		 ;;   (emit (nth subs 0))
-		 ;;   (emitk k) ;; and continue...
+		 ;;   (emit k.insn) ;; and continue...
 		 ;;   )
 		 (let ((get-typecode (which-typecode-fun dt)))
 		   (push-jump-continuation k jump-num)

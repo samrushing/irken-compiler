@@ -6,7 +6,11 @@
 (include "lib/core.scm")
 (include "lib/pair.scm")
 (include "lib/string.scm")
+(include "lib/format.scm")
 (include "lib/symbol.scm")
+(include "lib/enum.scm")
+(include "lib/sexp.scm")
+(include "lib/stdio.scm")
 (include "lib/io.scm")
 (include "lib/os.scm")
 (include "lib/alist.scm")
@@ -187,7 +191,7 @@ Usage: compile <irken-src-file> [options]
   (let ((cps (compile node)))
     (verbose
      (printf "\n-- RTL --\n")
-     (print-insn cps 0)
+     (print-cps cps 0)
      (newline)
      (printf "\n-- datatypes --\n")
      (alist/iterate
