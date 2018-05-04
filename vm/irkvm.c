@@ -1540,7 +1540,7 @@ vm_go (void)
   pc += 3;
   DISPATCH();
  l_obptr2int:
-  // OB2INT target src
+  // OBPTR2INT target src
   REG1 = BOX_INTEGER ((pxll_int)(*REG2));
   pc += 3;
   DISPATCH();
