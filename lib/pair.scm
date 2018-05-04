@@ -228,6 +228,11 @@
   p (hd . tl) -> (if (p hd) (all p tl) #f)
   )
 
+(define any?
+  p ()        -> #f
+  p (hd . tl) -> (if (p hd) #t (any? p tl))
+  )
+
 ;; it's a shame that for-each puts the procedure first,
 ;;   definitely hurts readability when using a lambda.
 (define for-each
