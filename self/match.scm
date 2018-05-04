@@ -24,6 +24,7 @@
   (:variable symbol)
   (:constructor symbol symbol (list pattern))
   (:record (list fieldpair) bool) ;; fields open-record?
+  ;;(:vector (list pattern))
   )
 
 (define pattern-repr
@@ -33,6 +34,8 @@
   -> (format "(" (sym dt) ":" (sym alt) " " (join pattern-repr " " subs) ")")
   (pattern:record pairs open?)
   -> (format "{" (join fieldpair-repr " " pairs) (if open? "..." "") "}")
+  ;; (pattern:vector subs)
+  ;; -> (format "#(" (join pattern-repr " " subs) ")")
   )
 
 (datatype rule
@@ -67,6 +70,7 @@
     (define kind
       (sexp:symbol s)	   -> (pattern:variable s)
       (sexp:record fields) -> (parse-record-fields '() fields)
+      ;;(sexp:vector subs)   -> (pattern:vector (map kind subs))
       (sexp:bool b)	   -> (pattern:constructor 'bool (if b 'true 'false) '())
       (sexp:list l)
       -> (match l with
@@ -75,7 +79,8 @@
 	   ((sexp:cons dt alt) . args) -> (pattern:constructor dt alt (map kind args))
 	   ((sexp:symbol '.) last) -> (kind last)
 	   (hd . tl) -> (pattern:constructor 'list 'cons (LIST (kind hd) (kind (sexp:list tl))))
-	   _ -> (error1 "malformed pattern" (format (join repr " " l))))
+	   ;;_ -> (error1 "malformed pattern" (format (join repr " " l)))
+           )
       x -> (pattern:literal x))
     (kind exp))
 
@@ -96,6 +101,7 @@
     (pattern:variable _)	 -> 'variable
     (pattern:constructor _ _ _ ) -> 'constructor
     (pattern:record _ _)         -> 'record
+    ;;(pattern:vector _)           -> 'vector
     )
 
   ;; pull the first pattern out of each rule
@@ -139,6 +145,7 @@
       'variable    -> (variable-rule vars rules default)
       'constructor -> (constructor-rule vars rules default)
       'record      -> (record-rule vars rules default)
+      ;;'vector      -> (vector-rule vars rules default)
       _            -> (impossible)
       ))
 
@@ -214,16 +221,25 @@
 			     rules0
 			     default)))))
 
+  ;; assuming we only support exact-arity matches, then we'll need
+  ;;   to gate each match with an arity match, then recurse to the sub-matches.
+  ;; theoretically we could group matches of the same arity?  [no, because they
+  ;;   must be ordered as in the match]
+  ;; so I think the next step is to figure out how to use fatbar to implement the
+  ;;   arity check.
+  ;; (define (vector-rule vars rules default)
+  ;;   )
+
   (define pattern->literal
     (pattern:literal exp) -> exp
     _ -> (error "not a literal pattern"))
-  
+
   (define (first-literal=? r0 r1)
     (match r0 r1 with
       (rule:t pats0 _) (rule:t pats1 _)
       -> (sexp=? (pattern->literal (car pats0))
 		 (pattern->literal (car pats1)))))
-  
+
   (define (constant-rule vars rules default0)
     ;; group runs of the same literal together
     (let loop ((groups (pack rules first-literal=?))
@@ -265,7 +281,7 @@
   (define pattern->alt
     (pattern:constructor _ alt _) -> alt
     _ -> (error "not a constructor pattern"))
-  
+
   (define pattern->subs
     (pattern:constructor _ _ subs) -> subs
     _ -> (error "not a constructor pattern"))
@@ -273,7 +289,7 @@
   (define rule->constructor-dt
     (rule:t pats _)
     -> (pattern->dt (car pats)))
-  
+
   (define rule->constructor-alt
     (rule:t pats _)
     -> (pattern->alt (car pats)))
@@ -291,8 +307,7 @@
     (let ((dtname (rule->constructor-dt (car rules)))
 	  (alts (sort-constructor-rules rules))
 	  (nalts 0)
-	  (mdt (alist/lookup the-context.datatypes
-			 (rule->constructor-dt (car rules))))
+	  (mdt (alist/lookup the-context.datatypes (rule->constructor-dt (car rules))))
 	  (default0 (if (sexp=? default match-error) default match-fail))
 	  (cases '())
 	  )
