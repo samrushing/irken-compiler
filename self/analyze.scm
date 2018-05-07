@@ -155,6 +155,35 @@
   (search node (list:nil))
   )
 
+;; a %fatbar with no matching %fail means we have an overly-exhaustive
+;;  pattern match: usually an unnecessary fall-through case.  we can't
+;;  just make it a warning because it breaks the C backend.
+(define (find-unused-fatbar node)
+  (define (has-fail? node)
+    (match (noderec->t node) with
+      (node:primapp '%fatbar _)
+      -> (let ((subs (noderec->subs node))
+               (ktest (nth subs 0))
+               (kfail (nth subs 1)))
+           (when (not (has-fail? ktest))
+             (raise (:Analyze/MissingFail (noderec->id kfail))))
+           (has-fail? kfail))
+      (node:primapp '%fail _) -> #t
+      else                    -> (any? has-fail? (noderec->subs node))
+      ))
+  (try
+   (has-fail? node)
+   except
+   (:Analyze/MissingFail id)
+   -> (let ((funpath (get-node-funpath node id)))
+        (printf (join "\n" (get-node-context node id 30))
+                "node id=" (int id) "\n"
+                "in function: " (bold (join symbol->string "|" funpath)) "\n"
+                "Overly Exhaustive Pattern Match.\n  Patterns are complete, no need for fall-through.\n")
+        (error "overly-exhaustive"))
+   )
+  )
+
 (define (symbol-add-suffix sym suffix)
   (string->symbol (format (sym sym) suffix)))
 

@@ -382,9 +382,9 @@
      (cint:longlong) #t  -> 'longlong
      (cint:longlong) #f  -> 'ulonglong
      (cint:width w) _ -> (string->symbol (format (if signed? "i" "u") (int (* w 8))))
-     _ _              -> (error1 "unsupported cint type"
-                                 (format "cint=" (cint-repr cint signed?)
-                                         " signed=" (bool signed?)))
+     ;; _ _              -> (error1 "unsupported cint type"
+     ;;                             (format "cint=" (cint-repr cint signed?)
+     ;;                                     " signed=" (bool signed?)))
      )
    '()))
 

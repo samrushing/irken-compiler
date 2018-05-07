@@ -196,6 +196,7 @@ default flags:
 	(node0 (sexp->node exp1))
 	(node1 (apply-substs node0))
         (_ (if-dump 'ast (pp-node node1)))
+        (_ (find-unused-fatbar node1))
 	;; clear some memory usage
 	(_ (set! exp0 (sexp:int 0)))
 	(_ (set! exp1 (sexp:int 0)))

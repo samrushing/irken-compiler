@@ -38,6 +38,8 @@
   (:fix (list symbol))
   (:subst symbol symbol)
   (:primapp symbol sexp) ;; name params
+  ;; XXX there are several 'fake prims' like %fatbar that arguably
+  ;;   should be their own node types.
   )
 
 ;; to avoid recursive types, we wrap the node record in a datatype.
@@ -347,6 +349,22 @@
         (maybe:no) -> (result i)
         ))))
 
+(define (get-node-funpath root id)
+  (let/cc return
+    (let recur ((node root)
+                (funpath '()))
+      (let ((id0 (noderec->id node)))
+        (match (noderec->t node) with
+          (node:function name formals)
+          -> (PUSH funpath name)
+          _ -> #u)
+        (if (= id0 id)
+            (return (reverse funpath))
+            (for-list sub (noderec->subs node)
+              (recur sub funpath)))
+        '()
+        ))
+    ))
 
 ;; --- can-haz-literal? ---
 ;; this scans an s-expression to determine if it can be represented
@@ -592,7 +610,6 @@
          ;;_ -> (error1 "syntax error 1: " l)
          _ -> (raise (:Node/BadExpression l 3))
          )
-    x -> (error1 "syntax error 2: " x)
     )
 
   (define (walk exp)
@@ -657,7 +674,7 @@
           ()		 -> (maybe:no)
           (rib . next) -> (let loop1 ((l rib))
                             (match l with
-                              ()	  -> (loop0 next)
+                              ()	-> (loop0 next)
                               (vd . tl) -> (if (eq? name vd.name)
                                                (maybe:yes vd)
                                                (loop1 tl)))))))
