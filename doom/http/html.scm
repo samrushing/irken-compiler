@@ -3,7 +3,7 @@
 ;; DSL for generating HTML
 
 (define (rope-bracket left middle right)
-  (rope:node left (rope:node middle right)))
+  (rope-make left (rope-make middle right)))
 
 (define (open-tag name)
   (rope-bracket
@@ -39,5 +39,5 @@
 
 (defmacro html
   (html item) -> (hitem item)
-  (html item0 item1 ...) -> (rope:node (hitem item0) (html item1 ...))
+  (html item0 item1 ...) -> (rope-make (hitem item0) (html item1 ...))
   )
