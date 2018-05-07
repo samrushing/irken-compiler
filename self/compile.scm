@@ -237,7 +237,10 @@ default flags:
 
 (define (main-compile base node)
   (let ((cps (compile node)))
-    (trim-free-regs cps)
+    (when (not (eq? (backend:bytecode) the-context.options.backend))
+      ;; note: the VM's save/restore mechanism assumes regs
+      ;;   are saved in contiguous order, so we cannot trim.
+      (trim-free-regs cps))
     (if-dump 'cps (print-cps cps 0) (newline))
     (verbose
      (printf "\n-- datatypes --\n")
