@@ -1,12 +1,15 @@
 ;; -*- Mode: lisp -*-
 
 (posix
-  (includes "sys/utsname.h" "unistd.h" "sys/time.h" "sys/fcntl.h" "time.h" "stdlib.h")
-  (structs utsname timeval timezone tm)
+ (includes
+  "sys/utsname.h" "unistd.h" "sys/time.h" "sys/fcntl.h"
+  "time.h" "stdlib.h" "dirent.h")
+  (structs utsname timeval timezone tm dirent DIR)
   (constants
    STDIN_FILENO STDOUT_FILENO STDERR_FILENO
    O_RDONLY O_WRONLY O_RDWR O_CREAT O_TRUNC
    L_tmpnam
+   DT_REG DT_DIR DT_FIFO DT_SOCK DT_CHR DT_BLK DT_LNK
    )
   (sigs
    getpid
@@ -14,6 +17,8 @@
    localtime asctime ctime
    read write close unlink
    random srandom initstate setstate
+   ;; directory-related
+   opendir readdir closedir
    )
   (verbatim
    ;; we special-case this because it's quasi-variadic.
