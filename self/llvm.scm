@@ -1036,12 +1036,13 @@
                (set! symbol-counter (+ 1 symbol-counter)))
           _
           -> (let ((index (walk lit i))
-                   (vals (reverse output))
-                   (len (length vals))
+                   (vals0 (reverse output))
+                   (vals1 (map (lambda (x) (format "i64 " (int x))) vals0))
+                   (len (length vals1))
                    (lltype (format "[" (int len) " x i64]")))
                (info-map::add i (:tuple lltype (>> index 2)))
                (oformat "@lit." (int i) " = local_unnamed_addr global " lltype
-                        " [i64 " (join int->string ", i64 " vals) "]")
+                        " [" (join ", " vals1) "]")
                )
           ))
       ;; place all literals into a vector object.
