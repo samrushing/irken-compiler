@@ -83,7 +83,7 @@ print 'generating posix FFI...'
 system ('IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/posix.ffi')
 
 print 'compiling stage0 binary (with vm)...'
-system ('vm/irkvm self/compile.byc self/compile.scm -q')
+system ('IRKENLIB=. vm/irkvm self/compile.byc self/compile.scm -q')
 
 print 'compiling stage1 binary (with stage0):'
 system ('IRKENLIB=. self/compile self/compile.scm -q')
