@@ -27,6 +27,12 @@
         (%cref->string #f val* (libc/strlen val*))
         )))
 
+(define (getenv-or var default)
+  (let ((val (getenv var)))
+    (if (= 0 (string-length val))
+        default
+        val)))
+
 (define (unlink name)
   (syscall (posix/unlink (%string->cref #f (zero-terminate name)))))
 
@@ -63,4 +69,3 @@
     (posix/closedir DIR*)
     (reverse result)
     ))
-    

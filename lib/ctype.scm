@@ -270,7 +270,7 @@
      (printf "  " (sym k) " " (ctype-repr v) "\n")))
   )
 
-(define FFI-PATH "/usr/local/lib/irken/ffi/")
+(define FFI-PATH (getenv-or "IRKENLIB" "/usr/local/lib/irken/ffi/"))
 
 (define (read-spec name)
   (let ((path0 (format FFI-PATH (sym name) "_ffi.scm")))
