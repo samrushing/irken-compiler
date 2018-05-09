@@ -1003,9 +1003,8 @@
         ;;(printf (int cont.target) " " (join int->string "," (set->list refset)) "\n")
         refset
         ))
-    (printf "trim free start...\n")
     (W insn (set/empty))
-    (printf "trim free done.\n")
+    #u
     )
   )
 

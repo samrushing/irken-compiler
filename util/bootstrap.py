@@ -86,11 +86,11 @@ print 'compiling stage0 binary (with vm)...'
 system ('vm/irkvm self/compile.byc self/compile.scm -q')
 
 print 'compiling stage1 binary (with stage0):'
-system ('self/compile self/compile.scm -q')
+system ('IRKENLIB=. self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.1.c')
 
 print 'compiling stage2 binary (with stage1):'
-system ('self/compile self/compile.scm -q')
+system ('IRKENLIB=. self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.2.c')
 
 def diff (p0, p1):
