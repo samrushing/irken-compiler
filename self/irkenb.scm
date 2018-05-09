@@ -67,12 +67,6 @@
   (let ((file (find-file the-context.options.include-dirs path)))
     (reader path (lambda () (file/read-char file)))))
 
-(define (getenv-or var default)
-  (let ((val (getenv var)))
-    (if (= 0 (string-length val))
-        default
-        val)))
-
 (define (get-options argv options)
   (let ((filename-index 1))
     (for-range
