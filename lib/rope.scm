@@ -22,9 +22,15 @@
   (rope:node w _ r) acc -> (rope-weight r (+ w acc))
   )
 
-;; smart constructor [this could be wrapped with an nary macro]
+;; smart constructor
 (define (rope-make l r)
   (rope:node (rope-weight l 0) l r))
+
+;; compile-time construction (unbalanced)
+(defmacro rope
+  (rope a)       -> (rope:leaf a)
+  (rope a b ...) -> (rope-make (rope:leaf a) (rope b ...))
+  )
 
 ;; (list rope) -> rope
 (define rope-cat
@@ -34,10 +40,18 @@
   (hd . tl) -> (rope-make hd (rope-cat tl))
   )
 
-;; note: this makes a completely unbalanced rope.
 ;; (list string) -> rope
 (define (list->rope l)
-  (rope-cat (map rope:leaf l)))
+  ;; join pairs into a list of |l|/2, repeatedly.
+  (define recur
+    ()  ()         -> (rope:leaf "")
+    (a) ()         -> a
+    acc ()         -> (recur '() (reverse acc))
+    acc (a)        -> (recur (list:cons a acc) '())
+    acc (a b . tl) -> (recur (list:cons (rope:node (rope-weight a 0) a b) acc) tl)
+    )
+  (recur '() (map rope:leaf l))
+  )
 
 ;; rope -> (list string)
 (define (rope->list r)
