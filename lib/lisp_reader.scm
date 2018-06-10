@@ -191,13 +191,15 @@
     (define (read)
       (let ((result (read1)))
 	(skip-whitespace)
-	(let ((ch (peek)))
+	(let loop ((ch (peek)))
 	  (match ch with
             ;; ------ postfix/infix extensions -----
 	    ;; array-reference syntax
 	    #\[ -> (let ((index (read-array-index)))
 		     ;; primops take a parameter---------V
-		     (sexp (sexp:symbol '%array-ref) (sexp:bool #f) result index))
+		     (set! result (sexp (sexp:symbol '%array-ref) (sexp:bool #f) result index))
+                     (skip-whitespace)
+                     (loop (peek)))
 	    ;; infix colon syntax
 	    #\: -> (begin
 		     (next)
