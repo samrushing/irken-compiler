@@ -187,6 +187,17 @@
   (%backend bytecode (- -1 a))
   )
 
+(define (popcount n)
+  (%backend c
+    (%%cexp (int -> int) "__builtin_popcount(%0)" n))
+  (%backend llvm
+    (%llvm-call ("@irk_popcount" (int -> int)) n))
+  (%backend bytecode
+    (let loop ((count 0) (n n))
+      (if (zero? n)
+          count
+          (loop (+ 1 count) (logand n (- n 1)))))))
+
 (define (pow x n)
   (cond ((< n 0) (raise (:NotImplemented "negative exp" n)))
         ((= n 0) 1)
