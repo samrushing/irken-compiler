@@ -758,6 +758,12 @@ irk_cref_2_int (object * src)
   return BOX_INTEGER (((pxll_int *) src)[1]);
 }
 
+object *
+irk_int_2_cref (object * src)
+{
+  return make_foreign ((void*)UNBOX_INTEGER(src));
+}
+
 // XXX this needs more thought
 #include <errno.h>
 // Note: 'errno' is no longer simply an external int.  It can be defined in any of several ways,

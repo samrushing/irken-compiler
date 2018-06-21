@@ -60,6 +60,7 @@ declare i8** @free_foreign (i8** %foreign)
 declare i8** @irk_cref_2_string (i8** %src, i8** %len)
 declare i8** @irk_string_2_cref (i8** %src)
 declare i8** @irk_cref_2_int (i8** %src)
+declare i8** @irk_int_2_cref (i8** %src)
 
 ;; the following functions are written in llvm, often based on (or
 ;; compiled from) a prototype written in C.  Having them here, and
