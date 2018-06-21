@@ -1160,5 +1160,5 @@
     (notquiet (printf "wrote " (int (ollvm.get-total)) " bytes to " llpath ".\n"))
     ;; XXX header1.c needs something like find-file, but that currently returns
     ;;  an open file, not a valid pathname.
-    (LIST llpath "include/header1.c")))
+    (LIST llpath (string-append (last the-context.options.include-dirs) "include/header1.c"))))
 
