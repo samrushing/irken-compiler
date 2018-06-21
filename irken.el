@@ -22,11 +22,12 @@
 	      "include"
 	      "typealias"
               "letcc" "getcc" "putcc" "let/cc"
+              "make-enum"
 	      ) t)
        "\\>") 1)
      ;; named let
-     '("(let\\s-+\\(\\sw+\\)"
-       (1 font-lock-function-name-face))
+     '("(let\\s-+\\(\\sw+\\)" (1 font-lock-function-name-face))
+     '("(make-enum\\s-+\\([^ \t\n)]+\\)" (1 font-lock-type-face))
      ;; functions
      ;; SMR: 2015 - had to tweak this regex, something breaking, probably syntax-table related?
      ;;   may very well affect the other uses of \\sw...
