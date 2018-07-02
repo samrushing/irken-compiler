@@ -175,6 +175,11 @@
   (%backend bytecode (%%cexp (int int -> int) "xor" a b))
   )
 
+(defmacro logxor*
+  (logxor* x)       -> x
+  (logxor* a b ...) -> (logxor a (logxor* b ...))
+  )
+
 (define (logand a b)
   (%backend c (%%cexp (int int -> int) "%0&%1" a b))
   (%backend llvm (%llarith and a b))
@@ -208,6 +213,9 @@
 (define (odd? n)
   (= 1 (logand 1 n)))
 
+(define (even? n)
+  (= 0 (logand 1 n)))
+
 ;; note: use llvm.minnum
 (define (min x y)
   (if (< x y) x y))
@@ -235,13 +243,14 @@
 
 ;; int-cmp is important enough to be a primitive.
 (%backend c
-  (define (int-cmp a b)
+  (define (int-cmp a b) : (int int -> cmp)
     (%%cexp (int int -> cmp) "(object*)(pxll_int)UITAG((%0 < %1) ? 0 : ((%1 < %0) ? 2 : 1))" a b)))
 (%backend llvm
   (define (int-cmp a b)
     (%llvm-call ("@irk_int_cmp" (int int -> cmp)) a b)))
 (%backend bytecode
   ;; XXX needs an opcode, to be fair.
+  ;; XXX any reason to not use 'cmp'???
   (define (int-cmp a b)
     (cond ((< a b) (cmp:<))
           ((> a b) (cmp:>))
@@ -326,6 +335,15 @@
   (%backend bytecode
     (%%cexp ((vector 'a) -> int) "vlen" v))
   )
+
+;; (make-array (2 3) 0) => #(#(0 0 0) #(0 0 0))
+(defmacro make-array
+  (make-array (n) v)
+  -> (make-vector n v)
+  (make-array (n ns ...) v)
+  -> (list->vector
+      (map (lambda (x) (make-array (ns ...) v))
+           (n-of n 0))))
 
 (define (address-of ob)
   (%%cexp ('a -> int) "(pxll_int)%0" ob))
@@ -478,6 +496,7 @@
     ))
 
 ;; implements the 'generator protocol' for you.
+;; XXX note: makegen & make-generator should have their names swapped.
 (defmacro makegen
   (makegen emit body ...)
   -> (make-generator
