@@ -5,29 +5,19 @@
 ;;   (item1 data1 ...)
 ;;    ...)
 
-(define search-sexp-list
-  key ((sexp:list ((sexp:symbol name) . data)) . tl)
-  -> (if (eq? name key)
-         data
-         (search-sexp-list key tl))
-  key _ -> (raise (:KeyError key))
-  )
-
 (define (fetch-metadata key)
+  (define search-sexp-list
+    key ((sexp:list ((sexp:symbol name) . data)) . tl)
+    -> (if (eq? name key)
+           data
+           (search-sexp-list key tl))
+    key _ -> (raise (:Metadata/KeyError key))
+    )
   (match (get-metadata) with
     (sexp:list ((sexp:symbol 'metadata) . items))
     -> (search-sexp-list key items)
-    x -> (raise (:MalformedMetadata x))
+    x -> (raise (:Metadata/Malformed x))
     ))
-
-(define (lookup-datatype name)
-  (let ((datatypes (fetch-metadata 'datatypes)))
-    (printf (repr (car (search-sexp-list name datatypes))) "\n")
-    ))
-
-(define (lookup-variant name)
-  (let ((variants (fetch-metadata 'variants)))
-    (printf (repr (car (search-sexp-list name variants))) "\n")))
 
 (define the-variant-label-map #())
 
