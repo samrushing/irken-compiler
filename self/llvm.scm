@@ -384,7 +384,12 @@
     ;; returns: the var name/type holding the result.
     (define (ctype->irken ctype val)
       (match ctype with
-        (ctype:int cint signed?) -> (cint->irken cint signed? val)
+        (ctype:int cint signed?)
+        -> (cint->irken cint signed? val)
+        (ctype:name 'void)
+        -> (let ((id0 (ID)))
+             (oformat id0 " = inttoptr i64 " (int TC_UNDEFINED) " to i8**")
+             (format "i8** " id0))
         _ -> (let ((id0 (ID))) ;; anything else is a pointer
                (oformat id0 " = call i8** @make_foreign (" (ctype->llvm ctype) " " val ") ;; ctype->irken")
                (format "i8** " id0))
@@ -455,6 +460,7 @@
              -> (let ((args1 (map2 irken->ctype argtypes0 args))
                       (lrtype (ctype->llvm rtype))
                       (id0 (ID)))
+                  ;;(printf "ffi2 " (sym name) " (" (join ctype-repr ", " argtypes0) ") -> " (ctype-repr rtype) "\n")
                   (ffifuns::add name) ;; so we can declare it later
                   (oformat id0 " = call " lrtype " @" (sym name) "(" (join ", " args1) ")")
                   (oformat (maybe-target target) " = bitcast " (ctype->irken rtype id0) " to i8**")
@@ -560,19 +566,26 @@
 	))
 
     ;; we emit insns for k0, which may or may not jump to fail continuation in k1
-    (define (emit-fatbar label jn k0 k1 free k)
-      (fatbar-free::add label free)
-      (push-fail-continuation k1 label free)
-      (push-jump-continuation k jn)
-      (oformat ";; fatbar jn=" (int jn) " label=" (int label))
-      (walk k0))
+    (define (emit-fatbar label jn k0 k1 k)
+      (match (used-jumps::get label) with
+        (maybe:yes free)
+        -> (begin
+             (fatbar-free::add label free)
+             (push-fail-continuation k1 label free)
+             (push-jump-continuation k jn)
+             (oformat ";; fatbar jn=" (int jn) " label=" (int label))
+             (walk k0))
+        _
+        -> (begin (printf "sucks dude: jn:" (int jn) " fail:" (int label) "\n")
+                  (impossible))
+        ))
 
     (define (emit-fail label npop free)
       (for-range i npop
 	 (oformat "call fastcc void @pop_env()"))
       (let ((jname (format "FAIL_" (int label))))
     	(match (fatbar-free::get label) with
-    	  (maybe:yes free)
+    	  (maybe:yes free0)
 	  -> (begin
 	       (oformat "tail call fastcc void @" jname "(" (build-args free) ")")
 	       (o.write "ret void"))
@@ -793,7 +806,7 @@
 	   (walk k.insn))
 
       (insn:fatbar lab jn k0 k1 k)
-      -> (emit-fatbar lab jn k0 k1 k.free k.insn)
+      -> (emit-fatbar lab jn k0 k1 k.insn)
 
       (insn:fail label npop free)
       -> (emit-fail label npop free.val)
