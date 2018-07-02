@@ -282,7 +282,7 @@
                 (set! H.len 0))))
         ))
 
-    (define (digest)
+    (define (final)
       (let ((out (make-string 32))
             (padded (make-string 128))
             (total (+ H.len H.total))
@@ -327,11 +327,14 @@
         out
         ))
 
-    (define (total)
-      H.total
-      )
-
-    ;; this record is our interface: 3 functions.
-    {update=update digest=digest total=total}
+    {update=update final=final}
 
     ))
+
+(define sha256-hash {size=32 block-size=64 make=make-sha256})
+
+(define (sha256 m)
+  (let ((h (sha256-hash.make)))
+    (h.update m)
+    (h.final)))
+
