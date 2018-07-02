@@ -27,6 +27,8 @@
 ;; to send data, bracket it with (pos,end)
 ;; to recv data, set pos, then recv, then data is in (pos,end)
 
+(typealias buffer {buf=(cref (array char)) size=int pos=int end=int})
+
 (define (buffer/make size)
   {buf=(malloc char size) size=size pos=0 end=0})
 
@@ -173,13 +175,13 @@
      (socket/fcntl sock.fd F_SETFL (logior flags O_NDELAY)))
     ))
 
-(define (sock/recv sock buf)
+(define (sock/recv sock buf) : (sock buffer -> int)
   (let ((buf* (%c-cast void (c-aref buf.buf buf.pos)))
         (nbytes (syscall (socket/recv sock.fd buf* (- buf.size buf.pos) 0))))
     (set! buf.end (+ buf.end nbytes)) ;; trust recv(2) to not overrun?
     nbytes))
 
-(define (sock/send sock buf)
+(define (sock/send sock buf) : (sock buffer -> int)
   (let ((buf* (%c-cast void (c-aref buf.buf buf.pos)))
         (nbytes (syscall (socket/send sock.fd buf* (- buf.end buf.pos) 0))))
     nbytes))
