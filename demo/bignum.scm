@@ -819,7 +819,7 @@
   (big (</> a b))        -> (big-quo (big a) (big b))
   (big (<mod> a b))      -> (big-mod (big a) (big b))
   (big (<+> a b))        -> (big-add (big a) (big b))
-  (big (<+> a b))        -> (big-add (big a) (big (+ b ...)))
+  (big (<+> a b ...))    -> (big-add (big a) (big (+ b ...)))
   (big (<-> a b))        -> (big-sub (big a) (big b))
   (big (<pow> x n))      -> (big-pow (big x) n)
   (big (<=> a b))        -> (big= (big a) (big b))
@@ -1051,6 +1051,7 @@
   )
 
 (define big->u256
+  (big:zero)   -> ""
   (big:pos dv) -> (list->string (map int->char (digits->b256 dv)))
   n -> (raise (:NotPositive n))
   )
