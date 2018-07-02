@@ -201,3 +201,9 @@
 	   -> (begin body0 ...
 		     ($genloop ($gen))))))
   )
+
+(defmacro pipe
+  (pipe a)       -> a
+  (pipe a b)     -> (a b)
+  (pipe a b ...) -> (a (pipe b ...))
+  )
