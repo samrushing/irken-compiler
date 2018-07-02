@@ -343,7 +343,7 @@
     in len #x11 #t -> (ber:SET (decode-structured in len))
     in len tag  #f -> (decode-string in tag len)
     in len tag  #t -> (ber:RAW (asn1class:univ) #t tag (in.string len))
-    _ _    tag  _  -> (raise (:BER/UnknownTag "unknown universal structured tag" tag))
+    ;;_ _    tag  _  -> (raise (:BER/UnknownTag "unknown universal structured tag" tag))
     )
 
   ;; --- body of decode ---
