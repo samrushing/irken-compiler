@@ -641,6 +641,7 @@
   (sexp:list l)    -> (literal:cons 'sexp 'list (LIST (unsexp-list l)))
   (sexp:vector l)  -> (literal:cons 'sexp 'vector (map unsexp l))
   (sexp:attr b n)  -> (literal:cons 'sexp 'attr (LIST (unsexp b) (literal:symbol n)))
+  (sexp:cons d a)  -> (literal:cons 'sexp 'cons (LIST (literal:symbol d) (literal:symbol a)))
   exp -> (error1 "unsexp: unhandled literal type" exp)
   )
 
