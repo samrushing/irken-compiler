@@ -7,7 +7,7 @@
 ;; (when using the C or LLVM backends).
 
 ;; We can't use lib/basis.scm here, because we are trying to avoid
-;; 'unsafe' FFI like posix that use constants/structs/etc
+;; 'unsafe' FFI's like posix that use constants/structs/etc
 ;; that vary between platforms.  We stick to libc and stdio.
 ;;
 ;; Why?  Because we need to run this program in order to bootstrap
@@ -145,7 +145,8 @@
         (file (stdio/open-read cppfile))
         (gen0 (stdio-char-generator file))
         (gen1 (make-lex-generator dfa-c gen0))
-        (gen2 (partition-stream gen1))
+        (gen2 (partition-stream (strip-attributes (strip-whitespace gen1))))
+        ;;(gen2 (partition-stream (strip-whitespace gen1)))
         (typedefs (tree/empty))
         (structs (tree/empty))
         (functions (tree/empty)))

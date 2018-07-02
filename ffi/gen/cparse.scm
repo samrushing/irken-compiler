@@ -16,40 +16,56 @@
 ;;   the outermost level.
 
 (define (partition-stream gen) : ((-> (maybe token)) -> (-> (maybe (list token))))
-  (make-generator
-   (lambda (consumer)
-     (define (emit ob)
-       (consumer (maybe:yes ob)))
-     (let ((plevel 0)
-           (blevel 0)
-           (acc '()))
-       (define (add tok)
-         (PUSH acc tok))
-       (for tok gen
-         (match blevel plevel tok.kind with
-           ;; these are various tokens we ignore
-           _ _ 'WHITESPACE -> #u
-           _ _ 'COMMENT    -> #u
-           _ _ 'CPPLINE    -> #u
-           _ _ 'SKIP       -> #u
-           ;; a ';' at the outermost level means we need
-           ;; to flush the current declaration.
-           0 0 'SEMICOLON
-           -> (begin
-                (add tok)
-                (add {kind='eof val="" range=tok.range})
-                (emit (reverse acc))
-                (set! acc '()))
-           ;; maintain paren and brace level
-           n _ 'LBRACE -> (begin (add tok) (set! blevel (+ blevel 1)))
-           n _ 'RBRACE -> (begin (add tok) (set! blevel (- blevel 1)))
-           _ n 'LPAREN -> (begin (add tok) (set! plevel (+ plevel 1)))
-           _ n 'RPAREN -> (begin (add tok) (set! plevel (- plevel 1)))
-           _ _ _ -> (add tok)
-           ))
-       (emit (reverse acc))
-       (forever (consumer (maybe:no)))
-       ))))
+  (makegen emit
+    (let ((plevel 0)
+          (blevel 0)
+          (acc '()))
+      (define (add tok)
+        (PUSH acc tok))
+      (for tok gen
+        (match blevel plevel tok.kind with
+          ;; a ';' at the outermost level means we need
+          ;; to flush the current declaration.
+          0 0 'SEMICOLON
+          -> (begin
+               (add tok)
+               (add {kind='eof val="" range=tok.range})
+               (emit (reverse acc))
+               (set! acc '()))
+          ;; maintain paren and brace level
+          n _ 'LBRACE -> (begin (add tok) (set! blevel (+ blevel 1)))
+          n _ 'RBRACE -> (begin (add tok) (set! blevel (- blevel 1)))
+          _ n 'LPAREN -> (begin (add tok) (set! plevel (+ plevel 1)))
+          _ n 'RPAREN -> (begin (add tok) (set! plevel (- plevel 1)))
+          _ _ _ -> (add tok)
+          ))
+      (emit (reverse acc))
+      )))
+
+(define (strip-whitespace gen)
+  (makegen emit
+    (for tok gen
+      (match tok.kind with
+        'WHITESPACE -> #u
+        'COMMENT    -> #u
+        'CPPLINE    -> #u
+        'SKIP       -> #u
+        _           -> (emit tok)
+        ))))
+
+(define (strip-attributes gen)
+  (makegen emit
+    (let ((in-attr? #f)
+          (plevel 0))
+      (for tok gen
+        (match in-attr? plevel tok.kind with
+          #f 0 'ATTRIBUTE -> (set! in-attr? #t)
+          #f _ _          -> (emit tok)
+          #t _ 'LPAREN    -> (inc! plevel)
+          #t 1 'RPAREN    -> (begin (dec! plevel) (set! in-attr? #f))
+          #t _ 'RPAREN    -> (dec! plevel)
+          #t _ _          -> #u
+          )))))
 
 (define (toks->string toks)
   (format ";; " (join (lambda (x) x.val) " " toks) "\n"))
@@ -69,7 +85,7 @@
 ;; for now, we will only support simple integer sizes.  later, we may
 ;; try to implement sizeof and 'do the math'.
 (define walk-unary-chain
-  (parse:t {kind='NUMBER val=val ...}) -> (string->int val)
+  (parse:t {kind='NUMBER val=val ...}) -> (string->int val) ;; XXX strip U/L suffix!
   (parse:nt someExpression (sub))      -> (walk-unary-chain sub)
   x -> (raise (:TDParser/Complex x))
   )
@@ -259,6 +275,9 @@
        (parse-signature signature))
       (maybe:yes (parse-funident ident)))
   ;; the following rules just strip any attribute specifiers off.
+  ;; NOTE: these are probably no longer necessary since there is now
+  ;;   a pass that removes all __attribute__, but just in case I need to
+  ;;   back that out...
   (parse:nt 'fun_declaration
             (type ident signature
                   (parse:nt 'attribute_specifiers _)
@@ -267,6 +286,12 @@
   (parse:nt 'fun_declaration
             ((parse:nt 'attribute_specifiers _)
              type ident signature
+             SEMICOLON))
+  -> (parse-fundecl (parse:nt 'fun_declaration (LIST type ident signature SEMICOLON)))
+  (parse:nt 'fun_declaration
+            (type
+             (parse:nt 'attribute_specifiers _)
+             ident signature
              SEMICOLON))
   -> (parse-fundecl (parse:nt 'fun_declaration (LIST type ident signature SEMICOLON)))
   (parse:nt 'fun_declaration

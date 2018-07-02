@@ -34,6 +34,8 @@
       (type fun_ident signature attribute_specifiers SEMICOLON)
       (attribute_specifiers type fun_ident signature SEMICOLON)
       (attribute_specifiers type fun_ident signature attribute_specifiers SEMICOLON)
+      (type attribute_specifiers fun_ident signature SEMICOLON)
+      (attribute_specifiers type fun_ident signature attribute_specifiers SEMICOLON)
       )
      (declaration
       fun_declaration

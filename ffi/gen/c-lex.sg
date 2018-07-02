@@ -52,7 +52,7 @@
               ;; gcc
               (lit "__extension__")))
  (IDENT      (reg "[A-Za-z_][A-Za-z0-9_]*"))
- (NUMBER     (reg "[0-9]+"))
+ (NUMBER     (reg "[0-9]+[UL]?"))
  ;; simple floats only
  (FLOAT      (cat (reg "[0-9]+") (lit ".") (reg "[0-9]+")))
  (STRING     (cat (lit "\"")
