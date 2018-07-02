@@ -317,17 +317,16 @@
 	    (set! pos (+ 1 pos))
 	    r)))))
 
-(define (string-generator s)
-  (make-generator
-   (lambda (consumer)
-     (for-range i (string-length s)
-       (consumer (maybe:yes (string-ref s i))))
-     (forever (consumer (maybe:no))))))
-
 (defmacro for-string
   (for-string chname s body ...)
   -> (let (($s s)) ;; avoid duplicating <s> expression.
        (for-range $i (string-length $s)
 	 (let ((chname (string-ref $s $i)))
 	   body ...))))
+
+(define (string-generator s)
+  (makegen emit
+    (for-string ch s
+      (emit ch))))
+
 
