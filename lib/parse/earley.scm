@@ -155,7 +155,7 @@
             ;; 2) the state expects a terminal
             ;; 3) the state expects a non-terminal
             (if (completed? state)
-                ;; 1 state is complete
+                ;; 1) state is complete
                 (completer state.nt state.start)
                 (let ((nextprod (nth state.prod state.dot)))
                   (if (terminal? nextprod)
