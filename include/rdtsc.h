@@ -16,8 +16,6 @@ static __inline__ unsigned long long rdtsc(void)
 }
 #elif defined(__x86_64__)
 
-//typedef unsigned long long int unsigned long long;
-
 static __inline__ unsigned long long rdtsc(void)
 {
   unsigned hi, lo;
@@ -27,19 +25,17 @@ static __inline__ unsigned long long rdtsc(void)
 
 #elif defined(__ppc64__)
 
-//typedef unsigned long long int unsigned long long;
-
 static __inline__ unsigned long long rdtsc(void)
 {
   unsigned long long int result=0;
   unsigned long int upper, lower,tmp;
   __asm__ volatile(
-                "0:                  \n"
-                "\tmftbu   %0           \n"
-                "\tmftb    %1           \n"
-                "\tmftbu   %2           \n"
-                "\tcmpw    %2,%0        \n"
-                "\tbne     0b         \n"
+                "0:                \n"
+                "\tmftbu   %0      \n"
+                "\tmftb    %1      \n"
+                "\tmftbu   %2      \n"
+                "\tcmpw    %2,%0   \n"
+                "\tbne     0b      \n"
                 : "=r"(upper),"=r"(lower),"=r"(tmp)
                 );
   result = upper;
@@ -51,19 +47,17 @@ static __inline__ unsigned long long rdtsc(void)
 
 #elif defined(__ppc__)
 
-//typedef unsigned long long int unsigned long long;
-
 static __inline__ unsigned long long rdtsc(void)
 {
   unsigned long long int result=0;
   unsigned long int upper, lower,tmp;
   __asm__ volatile(
-                "0:                  \n"
-                "\tmftbu   %0           \n"
-                "\tmftb    %1           \n"
-                "\tmftbu   %2           \n"
-                "\tcmpw    %2,%0        \n"
-                "\tbne     0b         \n"
+                "0:                \n"
+                "\tmftbu   %0      \n"
+                "\tmftb    %1      \n"
+                "\tmftbu   %2      \n"
+                "\tcmpw    %2,%0   \n"
+                "\tbne     0b      \n"
                 : "=r"(upper),"=r"(lower),"=r"(tmp)
                 );
   result = upper;
@@ -72,6 +66,15 @@ static __inline__ unsigned long long rdtsc(void)
 
   return(result);
 }
+
+#elif defined(__riscv) && (__riscv_xlen == 64)
+static __inline__ unsigned long rdtsc(void)
+{
+  unsigned long result;
+  __asm__ volatile ("rdcycle %0" : "=r" (result));
+  return result;
+}
+
 
 #else
 error ("no rdtsc() on this platform?");
