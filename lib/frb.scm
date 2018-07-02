@@ -189,7 +189,7 @@
 (define (tree/get root cmp key)
   (match (tree/member root cmp key) with
     (maybe:yes val) -> val
-    (maybe:no) -> (raise (:KeyError key))
+    (maybe:no) -> (raise (:KeyError))
     ))
 
 (define tree/min
@@ -261,13 +261,18 @@
   )
 
 (define (tree/make-generator t)
-  (make-generator
-   (lambda (consumer)
-     (tree/inorder
-      (lambda (k v)
-	(consumer (maybe:yes (:tuple k v))))
-      t)
-     (forever (consumer (maybe:no))))))
+  (makegen emit
+    (tree/inorder
+     (lambda (k v)
+       (emit (:tuple k v)))
+     t)))
+
+(define (tree/make-reverse-generator t)
+  (makegen emit
+    (tree/reverse
+     (lambda (k v)
+       (emit (:tuple k v)))
+     t)))
 
 ;; do a range query [lo, hi) over the map/set.
 (define (tree/range root cmp lo hi p)
