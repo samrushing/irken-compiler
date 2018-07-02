@@ -692,12 +692,20 @@
                                                         (LIST (pred sname '()))))))))
       ))
 
+  ;; for typing purposes, all int-like args (and results) become 'int'.
+  ;; XXX this would be the place to handle other immediate types like char, #t/#f, etc.
+  (define frob-int-arg
+    (ctype:int _ _) -> (ctype:int (cint:int) #t)
+    x               -> x
+    )
+
   ;; XXX do we need to scan the resulting type for tvars to add to gens?
   (define lookup-ffi-scheme
     (sexp:symbol name)
     -> (match (ffi-info.sigs::get name) with
          (maybe:yes (csig:fun _ rtype argtypes))
-         -> (:scheme '() (arrow (ffi-type-wrap-out (ctype->irken-type rtype)) (map ctype->irken-type argtypes)))
+         -> (:scheme '() (arrow (ffi-type-wrap-out (ctype->irken-type rtype))
+                                (map ctype->irken-type (map frob-int-arg argtypes))))
          (maybe:yes (csig:obj _ obtype))
          -> (:scheme '() (arrow (pred 'cref (LIST (ffi-type-wrap-out (ctype->irken-type obtype)))) '()))
          (maybe:no)

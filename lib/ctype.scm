@@ -173,7 +173,9 @@
                  (args (slice sig 0 (- siglen 2))))
              (csig:fun name
                        (parse-ctype rtype)
-                       (map frob-int-arg (map parse-ctype args))))
+                       ;;(map frob-int-arg (map parse-ctype args))
+                       (map parse-ctype args)
+                       ))
            (csig:obj name (parse-ctype (sexp:list sig))))
     name sig
     -> (csig:obj name (parse-ctype sig))

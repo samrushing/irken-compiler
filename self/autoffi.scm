@@ -49,10 +49,13 @@
   )
 
 ;; special-case: all integer arguments/return-values become 'int
-(define argtype->sexp
-  (ctype:int _ s?) -> (sexp:symbol 'int)
-  arg              -> (ctype->sexp arg)
-  )
+;; (define argtype->sexp
+;;   (ctype:int _ s?) -> (sexp:symbol 'int)
+;;   arg              -> (ctype->sexp arg)
+;;   )
+
+(define (argtype->sexp x)
+  (ctype->sexp x))
 
 (define (argnames n)
   (map (lambda (x)
