@@ -22,7 +22,7 @@
 	      "include"
 	      "typealias"
               "letcc" "getcc" "putcc" "let/cc"
-              "make-enum"
+              "make-enum" "try" "except"
 	      ) t)
        "\\>") 1)
      ;; named let
