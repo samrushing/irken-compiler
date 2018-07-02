@@ -946,17 +946,6 @@
     (define (trim-free refset free)
       (filter (lambda (x) (in-refset? refset x)) free))
 
-    (define (W insn refset)
-      ;; special handling for labels.
-      (match insn with
-        (insn:label num next)
-        -> (begin
-             (set! refset (W* next refset))
-             (tree/insert! jumps int-cmp num refset)
-             refset)
-        _ -> (W* insn refset)
-        ))
-
     ;; these three insns discard/ignore any continuation, so they represent
     ;;  leaf nodes in the use/free/ref set.
     (define no-cont?
@@ -965,6 +954,16 @@
       (insn:trcall _ _ _) -> #t
       _                   -> #f
       )
+
+    (define (W insn refset)
+      ;; special handling for labels.
+      (match insn with
+        (insn:label num next)
+        -> (let ((refset (W* next refset)))
+             (tree/insert! jumps int-cmp num refset)
+             refset)
+        _ -> (W* insn refset)
+        ))
 
     (define (W* insn refset)
       (let ((cont (insn->cont insn)))
