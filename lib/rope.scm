@@ -26,22 +26,21 @@
 (define (rope-make l r)
   (rope:node (rope-weight l 0) l r))
 
-;; compile-time construction (unbalanced)
+;; compile-time construction from ropes (unbalanced).
+(defmacro rope/build
+  (rope/build)         -> (rope:leaf "")
+  (rope/build a)       -> a
+  (rope/build a b ...) -> (rope-make a (rope/build b ...))
+  )
+
+;; compile-time construction from strings (unbalanced)
 (defmacro rope
   (rope a)       -> (rope:leaf a)
   (rope a b ...) -> (rope-make (rope:leaf a) (rope b ...))
   )
 
 ;; (list rope) -> rope
-(define rope-cat
-  ()        -> (rope:leaf "")
-  (a)       -> a
-  (a b)     -> (rope-make a b)
-  (hd . tl) -> (rope-make hd (rope-cat tl))
-  )
-
-;; (list string) -> rope
-(define (list->rope l)
+(define (rope/cat l)
   ;; join pairs into a list of |l|/2, repeatedly.
   (define recur
     ()  ()         -> (rope:leaf "")
@@ -50,8 +49,12 @@
     acc (a)        -> (recur (list:cons a acc) '())
     acc (a b . tl) -> (recur (list:cons (rope:node (rope-weight a 0) a b) acc) tl)
     )
-  (recur '() (map rope:leaf l))
+  (recur '() l)
   )
+
+;; (list string) -> rope
+(define (list->rope l)
+  (rope/cat (map rope:leaf l)))
 
 ;; rope -> (list string)
 (define (rope->list r)
