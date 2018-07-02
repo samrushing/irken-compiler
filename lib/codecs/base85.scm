@@ -18,73 +18,71 @@
 ;;  and 'y' chars.
 
 ;; char * 4 -> uint32
-(define (int32-enc gen)
-  (make-generator
-   (lambda (consumer)
-     (define (get)
-       (match (gen) with
-         (maybe:no)      -> (forever (consumer (maybe:no)))
-         (maybe:yes val) -> (char->int val)
-         ))
-     (while #t
-       (consumer
-        (maybe:yes
-         (logior* (<< (get) 24)
-                  (<< (get) 16)
-                  (<< (get)  8)
-                  (<< (get)  0)))))
-     )))
+(define (ch->u32 gen)
+  (let ((v 0)
+        (n 0))
+    (makegen emit
+      (for ch gen
+        (set! v (logior (<< v 8) (char->int ch)))
+        (inc! n)
+        (when (= n 4)
+          (emit v)
+          (set! v 0)
+          (set! n 0))))))
 
 ;; uint32 -> char * 4
-(define (int32-dec gen)
-  (make-generator
-   (lambda (consumer)
-     (define (put n)
-       (consumer (maybe:yes (int->char (logand #xff n)))))
-     (while #t
-       (match (gen) with
-         (maybe:no) -> (forever (consumer (maybe:no)))
-         (maybe:yes val)
-         -> (begin
-              (put (>> val 24))
-              (put (>> val 16))
-              (put (>> val  8))
-              (put (>> val  0))))))))
+(define (u32->ch gen)
+  (makegen emit
+    (define (put n)
+      (emit (int->char (logand #xff n))))
+    (for val gen
+      (put (>> val 24))
+      (put (>> val 16))
+      (put (>> val  8))
+      (put (>> val  0))
+      )))
 
 ;; uint32 -> char * 5
-(define (b85/32-enc gen32)
-  (make-generator
-   (lambda (consumer)
-     (define (put n)
-       (consumer (maybe:yes (int->char (+ 33 n)))))
-     (for val gen32
-       (let loop ((i 0) (vals '()) (val val))
-         (if (= i 5)
-             (for-each put vals)
-             (loop (+ i 1) (list:cons (mod val 85) vals) (/ val 85)))))
-     (forever (consumer (maybe:no)))
-     )))
+(define (u32->b85 gen32)
+  (let ((vals (list:nil)))
+    (makegen emit
+      (for val gen32
+        (for-range i 5
+          (PUSH vals (int->char (+ 33 (mod val 85))))
+          (set! val (/ val 85)))
+        (for-each emit vals)
+        (set! vals (list:nil))
+        ))))
 
 ;; char * 5 -> uint32
-(define (b85/32-dec gen)
-  (make-generator
-   (lambda (consumer)
-     (define (get)
-       (match (gen) with
-         (maybe:no)      -> (forever (consumer (maybe:no)))
-         (maybe:yes val) -> (- (char->int val) 33)
-         ))
-     (while #t
-       (consumer
-        (maybe:yes
-         (let ((val 0))
-           (for-range i 5
-             (set! val (+ (get) (* val 85))))
-           val))))
-     )))
+(define (b85->u32 gen)
+  (let ((val 0)
+        (n 0))
+    (makegen emit
+      (for ch gen
+        (set! val (+ (* val 85) (- (char->int ch) 33)))
+        (inc! n)
+        (when (= n 5)
+          (emit val)
+          (set! val 0)
+          (set! n 0))
+        ))))
 
 (define (b85-enc gen)
-  (b85/32-enc (int32-enc gen)))
+  (u32->b85 (ch->u32 gen)))
 
 (define (b85-dec gen)
-  (int32-dec (b85/32-dec gen)))
+  (u32->ch (b85->u32 gen)))
+
+(define (string->b85 s)
+  (let ((result (list:nil)))
+    (for ch (b85-enc (string-generator s))
+      (PUSH result ch))
+    (list->string result)))
+
+(define (b85->string s)
+  (let ((result (list:nil)))
+    (for ch (b85-dec (string-generator s))
+      (PUSH result ch))
+    (list->string result)))
+
