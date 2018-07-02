@@ -33,11 +33,19 @@
             (int->char r)))))
 
 (define (stdio/read-line FILE*)
-  (let loop ((ch (stdio/read-char FILE*))
-         (r '()))
-    (if (eq? ch #\newline)
-        (list->string (reverse r))
-        (loop (stdio/read-char FILE*) (list:cons ch r)))))
+  (let loop ((line '()))
+    (match (stdio/read-char FILE*) with
+      #\eof     -> (maybe:no)
+      #\newline -> (maybe:yes (list->string (reverse line)))
+      ch        -> (loop (list:cons ch line))
+      )))
+
+(define (stdio/read-lines FILE*)
+  (let loop ((lines '()))
+    (match (stdio/read-line FILE*) with
+      (maybe:yes line) -> (loop (list:cons line lines))
+      (maybe:no)       -> (reverse lines)
+      )))
 
 (define (stdio/flush FILE*)
   (stdio/fflush FILE*))
