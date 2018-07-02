@@ -138,9 +138,9 @@
   )
 
 (define take
-  ()       _ -> (error "list index out of range")
   xs       0 -> (list:nil)
   (x . xs) n -> (list:cons x (take xs (- n 1)))
+  ()       _ -> (error "list index out of range")
   )
 
 (define drop
@@ -299,6 +299,16 @@
            ((lt? b a) #f)
            (else (list<? lt? as bs))))
 
+(define list-cmp
+  cmp () () -> (cmp:=)
+  cmp _  () -> (cmp:>)
+  cmp () _  -> (cmp:<)
+  cmp (a . as) (b . bs)
+  -> (match (cmp a b) with
+       (cmp:=) -> (list-cmp cmp as bs)
+       result  -> result
+       ))
+
 ;; print a list with <proc>, and print <sep> between each item.
 (define print-sep
   proc sep ()	     -> #u
@@ -376,3 +386,19 @@
      (for-list item L
        (consumer (maybe:yes item)))
      (forever (consumer (maybe:no))))))
+
+(define (generator->list gen)
+  (let ((r '()))
+    (for item gen
+      (PUSH r item))
+    (reverse r)))
+
+;; take `n` elements from a generator into a list.
+(define (gen-take n gen)
+  (define loop
+    1 acc (maybe:yes item) -> (reverse (list:cons item acc))
+    n acc (maybe:yes item) -> (loop (- n 1) (list:cons item acc) (gen))
+    n acc (maybe:no)       -> (list:nil)
+    )
+  (loop n '() (gen)))
+
