@@ -18,11 +18,13 @@
 (include "lib/set.scm")
 (include "lib/enum.scm")
 
+(include "lib/metadata.scm")
+(include "lib/reflection.scm")
+(include "lib/exception.scm")
+
 (include "self/backend.scm")
 (include "self/autoffi.scm")
 
-;(include "lib/metadata.scm")
-;(include "lib/reflection.scm")
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
