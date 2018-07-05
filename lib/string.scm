@@ -20,9 +20,15 @@
     (%%cexp (int -> string) "smake" n))
   )
 
+(defmacro string-range-check
+  (string-range-check s lo hi)
+  -> (when (or (> hi (string-length s)) (< lo 0))
+       (raise (:String/Range s lo hi))))
+
 (define (buffer-copy src src-start n dst dst-start)
+  (string-range-check src src-start (+ src-start n))
+  (string-range-check dst dst-start (+ dst-start n))
   (%backend c
-    ;; XXX range check
     (%%cexp
      (string int string int int -> undefined)
      "memcpy (%0+%1, %2+%3, %4)" dst dst-start src src-start n))
@@ -42,7 +48,6 @@
     s2))
 
 (define (substring src start end)
-  ;; XXX range check
   (let ((n (- end start))
 	(r (make-string n)))
     (buffer-copy src start n r 0)
@@ -59,22 +64,20 @@
 
 ;; XXX these range checks need to raise an exception.
 (define (string-ref s n)
+  (string-range-check s n n)
   (%backend c
-    (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
     (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
   (%backend llvm
-    ;; XXX range check
     (%llvm-call ("@irk_string_ref" (string int -> char)) s n))
   (%backend bytecode
     (%%cexp (string int -> char) "sref" s n)))
 
 (define (string-set! s n c)
+  (string-range-check s n n)
   (%backend c
-    (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
     (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c)
     #u) ;; avoid C warning.
   (%backend llvm
-    ;; XXX range check
     (%llvm-call ("@irk_string_set" (string int char -> undefined)) s n c))
   (%backend bytecode
     (%%cexp (string int char -> undefined) "sset" s n c)))
@@ -121,8 +124,7 @@
   (%backend llvm
     (%llvm-call ("@irk_string_cmp" (string string -> cmp) ccc) a b))
   (%backend bytecode
-    (magic-cmp a b))
-  )
+    (magic-cmp a b)))
 
 (define (string-find-from a b pos)
   ;; find <a> in <b>, starting at b[pos]
