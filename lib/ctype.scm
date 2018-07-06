@@ -200,13 +200,13 @@
     x -> (error1 "malformed tdef" x)
     )
 
-  (define parse-includes
+  (define parse-string-list
     acc ()
-    -> (set! info.includes (append acc info.includes))
-    acc ((sexp:string path) . rest)
-    -> (parse-includes (list:cons path acc) rest)
+    -> (reverse acc)
+    acc ((sexp:string item) . rest)
+    -> (parse-string-list (list:cons item acc) rest)
     acc x
-    -> (error1 "malformed includes" x)
+    -> (raise (:FFISpec/malformed x))
     )
 
   (define parse-form
@@ -221,7 +221,11 @@
     (sexp:list ((sexp:symbol 'tdef) . rest))
     -> (parse-tdef rest)
     (sexp:list ((sexp:symbol 'includes) . rest))
-    -> (parse-includes '() rest)
+    -> (set! info.includes (parse-string-list '() rest))
+    (sexp:list ((sexp:symbol 'cflags) . rest))
+    -> (set! info.cflags (parse-string-list '() rest))
+    (sexp:list ((sexp:symbol 'lflags) . rest))
+    -> (set! info.lflags (parse-string-list '() rest))
     x -> (error1 "malformed spec file" (repr x))
     )
 
@@ -241,6 +245,8 @@
    sigs     = (map-maker symbol-index-cmp)
    tdefs    = (map-maker symbol-index-cmp)
    includes = '()
+   cflags   = '()
+   lflags   = '()
    })
 
 (define ffi-info (make-ffi-info))
@@ -253,10 +259,14 @@
   (ffi-info.tdefs::union info.tdefs)
   ;; XXX this should probably be a set rather than a list
   (set! ffi-info.includes (append ffi-info.includes info.includes))
+  (append! ffi-info.cflags info.cflags)
+  (append! ffi-info.lflags info.lflags)
   )
 
 (define (dump-ffi-info)
   (printf "includes: " (join " " ffi-info.includes) "\n")
+  (printf "cflags: " (join " " ffi-info.cflags) "\n")
+  (printf "lflags: " (join " " ffi-info.lflags) "\n")
   (printf "sigs:\n")
   (map csig-print (ffi-info.sigs::values))
   (printf "defs:\n")

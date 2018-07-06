@@ -278,6 +278,8 @@
   (match exp with
     (sexp:list ((sexp:symbol iface) . lists)) ;; lists := (list sexp)
     -> (let ((includes '())
+             (cflags '())
+             (lflags '())
              (structs '())
              (constants '())
              (sigs '())
@@ -291,11 +293,17 @@
              (append! sigs (map sexp->symbol obs)))
            (when-maybe obs (sexp-starting-with 'includes list)
              (append! includes (map sexp->string obs)))
+           (when-maybe obs (sexp-starting-with 'cflags list)
+             (append! cflags (map sexp->string obs)))
+           (when-maybe obs (sexp-starting-with 'lflags list)
+             (append! lflags (map sexp->string obs)))
            (when-maybe exps (sexp-starting-with 'verbatim list)
              (append! verbatim exps))
            )
          {iface=iface
           includes=includes
+          cflags=cflags
+          lflags=lflags
           structs=structs
           sigs=sigs
           constants=constants
@@ -365,7 +373,7 @@
     (W "}\n")
     (stdio/close ofile)
     (let ((cpp-path (format base "_iface1.cpp")))
-      (compile (LIST "-E" opath ">" cpp-path))
+      (compile (append iface.cflags (LIST "-E" opath ">" cpp-path)))
       (genc2 iface base cpp-path))
     (%exit #f 0)
     ))
@@ -525,6 +533,14 @@
           (for-list include iface.includes
             (stdio/write iface-file (format (string include) " ")))
           (stdio/write iface-file ")\n")
+          (stdio/write iface-file "(cflags ")
+          (for-list cflag iface.cflags
+            (stdio/write iface-file (format (string cflag) " ")))
+          (stdio/write iface-file ")\n")
+          (stdio/write iface-file "(lflags ")
+          (for-list lflag iface.lflags
+            (stdio/write iface-file (format (string lflag) " ")))
+          (stdio/write iface-file ")\n")
           ;; emit verbatim exps
           (for-list exp iface.verbatim
             (stdio/write iface-file (format (repr exp) "\n")))
@@ -532,11 +548,11 @@
           (write-sigs iface types (lambda (s) (stdio/write iface-file s)))
           (stdio/close iface-file)
           ;; compile iface2
-          (compile (LIST opath "-o" iface2))
+          (compile (append iface.lflags (append iface.cflags (LIST opath "-o" iface2))))
           ;; append to interface
           (system (format iface2 " >> " iface-path))
           ;; compile iface1
-          (compile (LIST (format iface1 ".c") "-o" iface1))
+          (compile (append iface.cflags (LIST (format iface1 ".c") "-o" iface1)))
           ;; append to interface
           (system (format iface1 " >> " iface-path)))
         ))))

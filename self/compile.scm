@@ -84,11 +84,27 @@
 
 (include "self/flags.scm")
 
+(define (get-ffi-cflags)
+  (let ((r '()))
+    (for-list name (cmap/keys the-context.ffi-map)
+      (let ((iface (require-ffi* name)))
+        (append! r iface.cflags)))
+    r))
+
+(define (get-ffi-lflags)
+  (let ((r '()))
+    (for-list name (cmap/keys the-context.ffi-map)
+      (let ((iface (require-ffi* name)))
+        (append! r iface.lflags)))
+    r))
+
 (define (invoke-cc base paths options extra)
   (let ((cc (getenv-or "CC" CC))
         (cflags (getenv-or "CFLAGS" CFLAGS))
         (cflags (format cflags " " (if options.optimize "-O" "") " " options.extra-cflags))
+        (cflags (format cflags " " (join " " (get-ffi-cflags))))
         (libs (format (join " " (map (lambda (lib) (format "-l" lib)) options.libraries))))
+        (libs (format libs " " (join " " (get-ffi-lflags))))
         (cmd (format cc " " cflags " " (join " " paths) " " extra " " libs " -o " base)))
     (notquiet (print-string (format "system: " cmd "\n")))
     (if (not (= 0 (system cmd)))
