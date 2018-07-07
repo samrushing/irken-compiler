@@ -21,8 +21,11 @@
   )
 
 (defmacro string-range-check
+  (string-range-check s n)
+  -> (when (not (and (<= 0 n) (< n (string-length s))))
+       (raise (:String/Range s n n)))
   (string-range-check s lo hi)
-  -> (when (or (> hi (string-length s)) (< lo 0))
+  -> (when (not (and (<= 0 lo) (<= lo hi) (<= hi (string-length s))))
        (raise (:String/Range s lo hi))))
 
 (define (buffer-copy src src-start n dst dst-start)
@@ -64,7 +67,7 @@
 
 ;; XXX these range checks need to raise an exception.
 (define (string-ref s n)
-  (string-range-check s n n)
+  (string-range-check s n)
   (%backend c
     (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
   (%backend llvm
@@ -73,7 +76,7 @@
     (%%cexp (string int -> char) "sref" s n)))
 
 (define (string-set! s n c)
-  (string-range-check s n n)
+  (string-range-check s n)
   (%backend c
     (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c)
     #u) ;; avoid C warning.
