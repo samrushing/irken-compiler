@@ -125,5 +125,6 @@
      send=send
      close=close
      get-fd=get-fd
+     sock=sock
      }
     ))
