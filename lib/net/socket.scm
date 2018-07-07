@@ -35,6 +35,9 @@
 (define (buffer/contents buf)
   (cref->string (c-aref buf.buf buf.pos) (- buf.end buf.pos)))
 
+(define (buffer/ready buf)
+  (- buf.end buf.pos))
+
 ;; add data to a buffer, adjusting `end`.
 (define (buffer/add! buf s)
   (let ((slen (string-length s))
@@ -54,6 +57,12 @@
       (let ((r (cref->string (c-aref buf.buf buf.pos) n)))
         (inc! buf.pos n)
         r)))
+
+(define (buffer/get-all! buf)
+  (let ((ready (buffer/ready buf)))
+    (if (<= ready 0)
+        (raise (:Socket/BufferUnderflow))
+        (buffer/get! buf ready))))
 
 (define (buffer/grow! buf newsize)
   (let ((newbuf (%c-cast (array char) (libc/realloc (%c-cast void buf.buf) newsize))))
