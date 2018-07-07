@@ -1,13 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "doom/doom.scm")
-(include "doom/http/hpack.scm")
-(include "doom/s2n.scm")
-(include "lib/rope.scm")
-(include "doom/http/html.scm")
-
 ;; RFC7540
 
 ;; see [https://www.iana.org/assignments/http2-parameters/http2-parameters.xhtml]
@@ -142,7 +134,7 @@
         (H2-SETTINGS:MAX_FRAME_SIZE)         -> (set! settings.max-frame-size value)
         (H2-SETTINGS:MAX_HEADER_LIST_SIZE)   -> (set! settings.max-header-list-size value)
         )
-      (printf " set " (sym (H2-SETTINGS->name (int->H2-SETTINGS ident))) " = " (int value) "\n")
+      ;;(printf " set " (sym (H2-SETTINGS->name (int->H2-SETTINGS ident))) " = " (int value) "\n")
       )
 
     (define (unpack-frame-header h)
@@ -168,7 +160,6 @@
           (raise (:H2/BadPreface preface)))
         (send-settings)
         (while (not done)
-          (printf "waiting for frame...\n")
           (let (((flen ftype flags stream-id) (unpack-frame-header (conn.recv-exact 9)))
                 (payload (if (> flen 0) (conn.recv-exact flen) ""))
                 (frame {type=ftype flags=flags stream-id=stream-id payload=payload}))
@@ -178,17 +169,19 @@
         ))
 
     (define (print-frame f)
-      (printf (ansi (bold blue) "<-- " (sym (H2-FRAME->name f.type)))
-              " flags=" (hex f.flags)
-              " stream-id=" (int f.stream-id)
-              " plen=" (int (string-length f.payload))
+      (printf (ansi (bold blue) "<-- " (rpad 13 (sym (H2-FRAME->name f.type))))
+              " stream=" (lpad 3 (int f.stream-id))
+              " flags=" (zpad 4 (hex f.flags))
+              " len=" (int (string-length f.payload))
               "\n"))
 
     ;; XXX implement a FIFO for outgoing frames.
     (define (send-frame type flags stream-id payload)
-      (printf (ansi (bold red) "--> " (sym (H2-FRAME->name type)))
-              " stream " (int stream-id)
-              " [" (int (string-length payload)) " bytes] flags=" (int flags) "\n")
+      (printf (ansi (bold red) "--> " (rpad 13 (sym (H2-FRAME->name type))))
+              " stream=" (lpad 3 (int stream-id))
+              " flags=" (zpad 4 (int flags))
+              " len=" (int (string-length payload))
+              "\n")
       (conn.send (pack-frame-header type flags stream-id (string-length payload)))
       (conn.send payload)
       )
@@ -228,7 +221,7 @@
       (let ((increment (ui32 f.payload 0)))
         (when (< increment 0)
           (raise (:H2/BadFrame f)))
-        (printf "window-update stream=" (int f.stream-id) " increment " (int increment) "\n")
+        ;;(printf "window-update stream=" (int f.stream-id) " increment " (int increment) "\n")
         ))
 
     (define (print-headers h)
@@ -249,11 +242,16 @@
       (define (send-data data last?)
         (send-frame (H2-FRAME:DATA) (if last? H2-FLAGS-END-STREAM 0) stream-id data))
 
+      (define (get-conn)
+        conn)
+
       {send-headers = send-headers
        send-data    = send-data
        ;;recv-data    = recv-data
        stream-id    = stream-id
        headers      = iheaders
+       ;; hack to get at TLS data
+       get-conn     = get-conn
        })
 
     (define (handle-headers f)
@@ -267,7 +265,7 @@
           (set! pad-len (ubyte f.payload pos))
           (inc! pos))
         (when (flag-set? H2-FLAGS-PRIORITY f.flags)
-          ;; note: this is identical to the PRIORITY layout, should 
+          ;; note: this is identical to the PRIORITY layout, should
           ;;   probably pull this into its own function.
           (match (ustreamid f.payload pos) with
             (:tuple e? sid) -> (begin (set! exclusive? e?)
@@ -284,7 +282,7 @@
 
     (define (handle-rst-stream f)
       (let ((code (uu32 f.payload 0)))
-        (printf "    RST_STREAM " (int code) " " (sym (H2-ERROR->name (int->H2-ERROR code))) "\n")
+        ;;(printf "    RST_STREAM " (int code) " " (sym (H2-ERROR->name (int->H2-ERROR code))) "\n")
         (when (= f.stream-id 0) (set! done #t))
         ))
 
@@ -293,33 +291,38 @@
       (let (((_ last-stream-id) (ustreamid f.payload 0))
             (error-code (uu32 f.payload 4))
             (debug (substring f.payload 8 (string-length f.payload))))
-        (printf "    GOAWAY last-stream-id " (int last-stream-id) " code " (int error-code) " debug '" debug "'\n")
+        ;;(printf "    GOAWAY last-stream-id " (int last-stream-id) " code " (int error-code) " debug '" debug "'\n")
         (set! done #t)))
 
     (define (handle-priority f)
       (let (((exclusive? stream-dep) (ustreamid f.payload 0))
             (weight (ubyte f.payload 4)))
-        (printf "    PRIORITY " (int weight)
-                " stream-dep " (int stream-dep)
-                " exclusive? " (bool exclusive?) "\n")))
+        ;; (printf "    PRIORITY " (int weight)
+        ;;         " stream-dep " (int stream-dep)
+        ;;         " exclusive? " (bool exclusive?) "\n")
+        #u
+        ))
 
     (define (handle-data f)
       (let ((padlen (ubyte f.payload 0)))
         ;; XXX data + padding
         ;; XXX need a way to feed this into a request.
-        (printf "    DATA unhandled " (int (- (string-length f.payload) padlen 1)) " bytes.\n")
+        ;;(printf "    DATA unhandled " (int (- (string-length f.payload) padlen 1)) " bytes.\n")
+        #u
         ))
 
     (define (handle-push-promise f)
       (let ((padlen (ubyte f.payload 0))
             (stream-id (ui32 f.payload 1))
             (fragment (substring f.payload 5 (- (string-length f.payload) padlen))))
-        (printf "    ignoring PUSH_PROMISE on stream " (int stream-id)
-                " of " (int (- (string-length f.payload) padlen 5)) "\n")
+        ;; (printf "    ignoring PUSH_PROMISE on stream " (int stream-id)
+        ;;         " of " (int (- (string-length f.payload) padlen 5)) "\n")
+        #u
         ))
 
     (define (handle-continuation f)
-      (printf "    ignoring CONTINUATION of " (int (string-length f.payload)) " bytes.\n")
+      ;;(printf "    ignoring CONTINUATION of " (int (string-length f.payload)) " bytes.\n")
+      #u
       )
 
     (define (dispatch frame)
@@ -339,75 +342,3 @@
     read-frames
 
     ))
-
-(define thing-counter 0)
-
-(define (hack a b)
-  (:tuple a b))
-
-(define format-header
-  (:tuple name val) -> (html (dt name) (dd val))
-  )
-
-;; XXX maybe use a multi-map for headers?
-(define lookup-header
-  key () -> (maybe:no)
-  key ((:tuple name val) . rest)
-  -> (if (string=? name key)
-         (maybe:yes val)
-         (lookup-header key rest)))
-
-(define (dummy-handler request)
-  (printf "got request\n")
-  (let ((path (lookup-header ":path" request.headers)))
-    (if (match path with (maybe:yes path) -> (string=? path "/") (maybe:no) -> #f)
-        (begin
-          (request.send-headers
-           (LIST (hack ":status" "200")
-                 (hack "content-type" "text/html")) #t)
-          (request.send-data
-           (rope->string
-            (html
-             (html
-              (body (h1 (&f "request " (int thing-counter)))
-                    (h2 (&f "stream-id: " (int request.stream-id)))
-                    (pre (dl (&cat (map format-header request.headers))))
-                    ))))
-           #t)
-          (inc! thing-counter)
-          )
-        (request.send-headers (LIST (hack ":status" "404")) #f)
-        )))
-
-(define (fun-h2-conn handler)
-  (lambda (sockfun addr)
-    (let ((sock (sockfun 8192 8192))
-          (h2-conn (make-h2-conn sock handler)))
-      (printn (address/unparse addr))
-      (try
-       (h2-conn)
-       except
-       (:Doom/EOF _)
-       -> #u
-       (:H2/BadFrame f)
-       -> (printf "conn exit - bad frame\n")
-       (:H2/BadPreface p)
-       -> (printf "conn exit - bad preface: " (string p) "\n")
-       )
-      (sock.close))
-    ))
-
-(define (main)
-  (s2n-init)
-  (let ((config
-         (make-config "doom/tls/cert.pem"
-                      "doom/tls/key.pem"
-                      "doom/tls/dhparam.pem"
-                      '("h2")))
-        (handler dummy-handler)
-        )
-    (serve config (address/make4 "0.0.0.0" 9004) (fun-h2-conn handler))
-    (poller/wait-and-schedule)
-    ))
-
-(main)
