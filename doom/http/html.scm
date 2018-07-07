@@ -119,7 +119,7 @@
 (define (pp-html exp width)
 
   (define (indent n)
-    (rope:leaf (format (repeat n "&nbsp;"))))
+    (rope/repeat n (rope:leaf "&nbsp;")))
 
   (makegen emit
     (let recur ((d 0) (exp exp))
