@@ -52,6 +52,29 @@
   (recur '() l)
   )
 
+(define (rope/join sep l)
+  (define rj
+    ()        acc -> (rope/cat (reverse acc))
+    (one)     acc -> (rope/cat (reverse (list:cons one acc)))
+    (hd . tl) acc -> (rj tl (list:cons sep (list:cons hd acc))))
+  (rj l (list:nil)))
+
+;; return `n` as a list of bits, msb-first.
+(define n->bits
+  0 acc -> acc
+  n acc -> (n->bits (>> n 1) (list:cons (if (odd? n) #t #f) acc))
+  )
+
+(define (rope/repeat n s)
+  (define loop
+    ()       acc -> acc
+    (#f . tl) acc -> (loop tl (rope-make acc acc)) ;; 2 * acc
+    (#t . tl) acc -> (loop tl (rope-make (rope-make acc acc) s)) ;; 2 * acc + acc
+    )
+  (if (= n 0)
+      (rope:leaf "")
+      (loop (cdr (n->bits n '())) s)))
+
 ;; (list string) -> rope
 (define (list->rope l)
   (rope/cat (map rope:leaf l)))
