@@ -6,7 +6,8 @@
 
 ;; XXX test with more complicated keys (like records)
 ;; XXX test with magic-cmp
-;; XXX test with a set of sets.
+;; XXX use mtwist (posix/random is not identical across platforms)
+;; XXX of course, use assert & make this an actual test.
 
 (define (t0)
   (let ((nums '(3 1 4 1 5 9 2 6 5 3 5 8 9 7 9 3 2 3))
@@ -73,7 +74,7 @@
       )
     (printf "}\n")
     (printn (reverse r0))
-    (tree/range s0 int-cmp 4000 6000 (lambda (k v) (PUSH r1 k)))
+    (set/range s0 int-cmp 4000 6000 (lambda (k) (PUSH r1 k)))
     (printn (reverse r1))
     (printn (set/range->list s0 int-cmp 4000 6000))
     )
