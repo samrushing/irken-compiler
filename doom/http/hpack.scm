@@ -520,7 +520,7 @@
 
     (define (emit-header name val)
       ;;(printf "emit-header " name " " val "\n")
-      (cond ((set/member never string-compare name)
+      (cond ((set/member? never string-compare name)
              ;; literal name & value: never index
              ;;(printf "*** never " name " " val "\n")
              (emit-integer 1 4 0)
