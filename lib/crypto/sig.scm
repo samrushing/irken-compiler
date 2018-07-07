@@ -27,16 +27,11 @@
 
 (define decode-pkcs8
   (ber:SEQUENCE
-   ((ber:INTEGER 0)
-    (ber:SEQUENCE
-     ((ber:OID oid)
-      (ber:NULL)))
+   ((ber:INTEGER 0) (ber:SEQUENCE ((ber:OID oid) (ber:NULL)))
     (ber:STRING (asn1string:OCTET) encapsulated)))
   -> (:tuple oid encapsulated)
   (ber:SEQUENCE
-   ((ber:INTEGER 0)
-    (ber:SEQUENCE
-     ((ber:OID oid))) ;; note: no NULL
+   ((ber:INTEGER 0) (ber:SEQUENCE ((ber:OID oid))) ;; note: no NULL
     (ber:STRING (asn1string:OCTET) encapsulated)))
   -> (:tuple oid encapsulated)
   x -> (raise (:SIG/ExpectedPKCS8 x))
@@ -79,14 +74,10 @@
            dQ   = (b256->big exp2)
            qInv = (b256->big qInv)
            }
-   val -> ;;(raise (:SIG/InvalidKey (ber-repr val)))
-   (begin
-     (printf "strange key:\n")
-     (pp-ber val 0)
-     (raise (:SIG/InvalidKey (ber-repr val))))
+   val -> (raise (:SIG/InvalidKey (ber-repr val)))
    )
 
-;; assumes sha-256
+;; assumes sha256
 ;; 9.2 EMSA-PKCS1-v1_5
 (define (pad-and-annotate digest mlen)
   (let ((diglen (string-length digest))
@@ -137,9 +128,9 @@
         (nbytes (big/nbytes skey.n))
         (padded (pad-and-annotate H nbytes))
         (s (big-exp-mod (b256->big padded) skey.d skey.n)))
-    (printf " --- sign ---\n")
-    (printf "digest " (string->hex H) "\n")
-    (printf "nbytes " (int nbytes) "\n")
+    ;; (printf " --- sign ---\n")
+    ;; (printf "digest " (string->hex H) "\n")
+    ;; (printf "nbytes " (int nbytes) "\n")
     (I2OSP s nbytes)
     ))
 
@@ -151,11 +142,11 @@
         (m (big-exp-mod s e n))
         (EM0 (I2OSP m nbytes))
         (EM1 (pad-and-annotate (sha256 M) nbytes)))
-    (printf " --- verify ---\n")
-    (printf "s " (big-repr s) "\n")
-    (printf "H   " (string->hex (sha256 M)) "\n")
-    (printf "EM0 " (string->hex EM0) "\n")
-    (printf "EM1 " (string->hex EM1) "\n")
+    ;; (printf " --- verify ---\n")
+    ;; (printf "s " (big-repr s) "\n")
+    ;; (printf "H   " (string->hex (sha256 M)) "\n")
+    ;; (printf "EM0 " (string->hex EM0) "\n")
+    ;; (printf "EM1 " (string->hex EM1) "\n")
     (when (not (= nbytes Slen))
       (raise (:SIG/SigWrongSize nbytes Slen)))
     (string=? EM0 EM1)))
@@ -163,12 +154,14 @@
 (define (xor-strings a b)
   (when (not (= (string-length a) (string-length b)))
     (raise (:SIG/XorStringUnequalLength a b)))
-  (let ((r (make-string (string-length a))))
+  (let ((result (make-string (string-length a))))
     (for-range i (string-length a)
-      (string-set! r i (int->char
-                        (logxor (char->int (string-ref a i))
-                                (char->int (string-ref b i))))))
-    r))
+      (string-set!
+       result i
+       (int->char
+        (logxor (char->int (string-ref a i))
+                (char->int (string-ref b i))))))
+    result))
 
 ;; 9.1.1
 (define (emsa-pss RNG hash sLen)
@@ -221,8 +214,8 @@
         (EM (PSS.encode msg (- modbits 1)))
         (m (OS2IP EM))
         ;;(s (big-exp-mod m skey.d skey.n))
-        (s2 (RSASP1 skey m))
+        (s (RSASP1 skey m))
         (nbytes (big/nbytes skey.n)))
-    (I2OSP s2 nbytes)
+    (I2OSP s nbytes)
     ))
 
