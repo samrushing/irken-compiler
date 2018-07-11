@@ -1,61 +1,225 @@
 ;; -*- Mode: Irken -*-
 
 ;; XXX choose either 'get/put' or 'pack/unpack', let's not use both.
-
-;; XXX rather than manually calling pack-xxx for each kind and layer,
-;;   we should probably use the datatypes directly, so the only 'pack'
-;;   function called is a high-level one, pack-record, that would accept
-;;   a `tls-record` type rather than a rope/string.  this will simplify
-;;   the code and make it safer.
+;;     [unless 'unpack' means we were given a length?]
 
 ;; --- unpack ---
 
-;; XXX this design of returning (:tuple ob pos) is quite clumsy,
-;;   I think I want to rewrite this to use a record holding the
-;;   current position.
+(define (get-records get-fragment)
 
-(define (int-at s pos)
-  (char->int (string-ref s pos)))
+  (let ((kind -1)
+        (buf "")
+        (blen 0)
+        (pos 0)       ;; current read position
+        (vpos 0)      ;; stream read position
+        (current '()) ;; pieces of the current record
+        )
 
-(define (get-u8 s pos)
-  (:tuple (int-at s pos) (+ pos 1)))
+    (define (assure n)
+      (when (> n (- blen pos))
+        (PUSH current buf)
+        (let (((fkind frag) (get-fragment))
+              (flen (string-length frag)))
+          (when (not (or (= kind -1) (= fkind kind)))
+            (raise (:TLS/Alert (tls-alert-desc:unexpected-message) "unexpected handshake")))
+          (cond ((> blen pos)
+                 (set! buf (string-append (substring buf pos blen) frag))
+                 (set! pos 0)
+                 (set! blen (string-length buf)))
+                ((= blen pos)
+                 (set! buf frag)
+                 (set! pos 0)
+                 (set! blen flen)))
+          (set! kind fkind)
+          (assure n))))
 
-(define (get-u16 s pos)
-  (let ((b0 (int-at s (+ pos 0)))
-        (b1 (int-at s (+ pos 1))))
-    (:tuple (logior (<< b0 8) b1) (+ pos 2))
+    (define (bump exp n)
+      (inc! pos n)
+      (inc! vpos n)
+      exp)
+
+    (define (get-u8)
+      (assure 1)
+      (bump (char->int (string-ref buf pos)) 1))
+
+    (define (get-opaque n)
+      (assure n)
+      (bump (substring buf pos (+ pos n)) n))
+
+    (define (get-u16)
+      (let ((b0 (get-u8))
+            (b1 (get-u8)))
+      (logior (<< b0 8) b1)))
+
+    (define (get-u24)
+      (let ((b0 (get-u8))
+            (b1 (get-u8))
+            (b2 (get-u8)))
+        (logior* (<< b0 16) (<< b1 8) (<< b2 0))))
+
+    (define (get-vector get-size getsub)
+      (let ((size (get-size))
+            (stop (+ size vpos)))
+        (let loop ((acc '()))
+          (cond ((= vpos stop) (reverse acc))
+                ((> vpos stop) (raise (:TLS/Underflow)))
+                (else
+                 (let ((item (getsub)))
+                   (loop (list:cons item acc))))))))
+
+    (define (get-vector-8 getsub)
+      (get-vector get-u8 getsub))
+
+    (define (get-vector-16 getsub)
+      (get-vector get-u16 getsub))
+
+    (define (get-vector-opaque get-size)
+      (get-opaque (get-size)))
+
+    (define (get-host-name)
+      (get-vector-opaque get-u16))
+
+    (define (get-protocol-name)
+      (get-vector-opaque get-u8))
+
+    (define (get-server-name)
+      (let ((ntype (get-u8)))
+        (match ntype with
+          0 -> (get-host-name)
+          _  -> (raise (:TLS/BadValue "NameType" ntype))
+          )))
+
+    (define (get-key-share)
+      (let ((group (get-u16))
+            (kex (get-vector-opaque get-u16)))
+        {group=group kex=kex}
+        ))
+
+    (define (get-padding elen)
+      ;; XXX do we need to check the padding?
+      (let ((padding (get-opaque elen)))
+        elen))
+
+    (define (get-other elen)
+      (get-opaque elen))
+
+    (define (get-maxfraglen)
+      (match (get-u8) with
+        1 -> 512
+        2 -> 1024
+        3 -> 2048
+        4 -> 4096
+        _ -> (raise (:TLS/Alert (tls-alert-desc:illegal-parameter) "bad maxfraglen value"))
+        ))
+
+    ;; XXX the shape of these extensions can vary between client and server.
+    ;;     e.g. the key_share extension is a vector in ClientHello, but a single
+    ;;          element in ServerHello.  So we need to either parameterize this
+    ;;          or make two different versions.  [though we might paper around it
+    ;;          by using a single-element list]
+    ;; XXX or we could use a mode boolean arg to tls-unpacker?
+
+    (define (get-extension-by-type etype elen)
+      (match etype with
+        00 -> (tlsext:server-names (get-vector-16 get-server-name))
+        01 -> (tlsext:maxfraglen (get-maxfraglen))
+        10 -> (tlsext:named-groups (get-vector-16 get-u16))
+        13 -> (tlsext:sigalgs (get-vector-16 get-u16))
+        16 -> (tlsext:alpn (get-vector-16 get-protocol-name))
+        21 -> (tlsext:padding (get-padding elen))
+        43 -> (tlsext:supported-versions (get-vector-8 get-u16))
+        45 -> (tlsext:psk-kex-modes (get-vector-8 get-u8))
+        50 -> (tlsext:sigalgs-cert (get-vector-16 get-u16))
+        51 -> (tlsext:client-shares (get-vector-16 get-key-share))
+        xx -> (tlsext:other xx (get-other elen))
+        ))
+
+    (define (get-extension)
+      (let ((etype (get-u16))
+            (elen (get-u16))
+            (pos0 pos)
+            (result (get-extension-by-type etype elen)))
+        (when (not (= pos (+ pos0 elen)))
+          (raise (:TLS/Alert (tls-alert-desc:decode-error) "bad extension length")))
+        result))
+
+    (define (unpack-client-hello len)
+      (let ((pos0 pos)
+            (legacy-version (get-u16))
+            (random (get-opaque 32))
+            (legacy-session-id (get-vector-opaque get-u8))
+            (cipher-suites (get-vector-16 get-u16))
+            (legacy-compression-methods (get-vector-opaque get-u8))
+            (extensions (get-vector-16 get-extension))
+            (result (tls-hsk:client-hello
+                     {legver=legacy-version
+                      random=random
+                      sessid=legacy-session-id
+                      suites=cipher-suites
+                      exts=extensions})))
+        (when (not (= pos (+ pos0 len)))
+          (raise (:TLS/Alert (tls-alert-desc:decode-error) "bad length")))
+        result))
+
+    (define (unpack-finished len)
+      (tls-hsk:finished (get-opaque len)))
+
+    (define (unpack-alert)
+      (let ((level (get-u8))
+            (desc (get-u8)))
+        (tls-record:alert
+         (int->tls-alert-level level)
+         (int->tls-alert-desc desc))))
+
+    (define (unpack-appdata)
+      (tls-record:appdata (get-opaque (- blen pos))))
+
+    (define (unpack-hsk)
+      (let ((kind (get-u8))
+            (len (get-u24)))
+        (tls-record:hsk
+         (match (int->tls-hsk-type kind) with
+           (tls-hsk-type:client-hello) -> (unpack-client-hello len)
+           (tls-hsk-type:finished)     -> (unpack-finished len)
+           _ -> (raise (:TLS/Alert (tls-alert-desc:unexpected-message) "unexpected handshake"))
+           ))))
+
+    (define (unpack-change-cipher-spec)
+      (let ((dummy (get-u8)))
+        (if (= dummy #x01)
+            (tls-record:change-cipher-spec)
+            (raise (:TLS/Alert (tls-alert-desc:unexpected-message) "unexpected ChangeCipherSpec")))))
+
+    (define (unpack-record kind)
+      (printf "unpack record kind = " (int kind) "\n")
+      (let ((ctype (int->tls-ctype kind)))
+        (match ctype with
+          (tls-ctype:hsk)                -> (unpack-hsk)
+          (tls-ctype:alert)              -> (unpack-alert)
+          (tls-ctype:change-cipher-spec) -> (unpack-change-cipher-spec)
+          (tls-ctype:appdata)            -> (unpack-appdata)
+          x                              -> (raise (:NotImplemented)) ;; XXX raise alert
+          )))
+
+    ;; read one or more full records.
+    (let ((records '())
+          (start vpos))
+      (assure 1) ;; we get a record kind with the first fragment
+      (while (> (- blen pos) 0)
+        (let ((record (unpack-record kind))
+              ;; reconstruct full raw packet.
+              (last (substring buf 0 pos))
+              (pkt (string-concat (reverse (list:cons last current))))
+              (plen (string-length pkt)))
+          (PUSH records {raw=pkt record=record kind=kind version=#x303 length=plen})))
+      (reverse records))
     ))
 
-(define (get-u24 s pos)
-  (let ((b0 (int-at s (+ pos 0)))
-        (b1 (int-at s (+ pos 1)))
-        (b2 (int-at s (+ pos 2))))
-    (:tuple (logior* (<< b0 16) (<< b1 8) b2) (+ pos 3))
+(define (unpack-header s)
+  (match (map char->int (string->list s)) with
+    (k v0 v1 l0 l1) -> (:tuple k (logior (<< v0 8) v1) (logior (<< l0 8) l1))
+    _ -> (raise (:TLS/Alert (tls-alert-desc:decode-error) "bad header"))
     ))
-
-(define (get-vector get-size getsub s pos)
-  (let (((size pos) (get-size s pos))
-        (stop (+ size pos)))
-    (let loop ((acc '())
-               (pos pos))
-      (cond ((= pos stop) (:tuple (reverse acc) pos))
-            ((> pos stop) (raise (:TLS/Underflow pos s)))
-            (else
-             (let (((item pos0) (getsub s pos)))
-               (loop (list:cons item acc) pos0)))))))
-
-(define (get-opaque n s pos)
-  (:tuple (substring s pos (+ pos n)) (+ pos n)))
-
-(define (get-vector-8 getsub s pos)
-  (get-vector get-u8 getsub s pos))
-
-(define (get-vector-16 getsub s pos)
-  (get-vector get-u16 getsub s pos))
-
-(define (get-vector-opaque get-size s pos)
-  (let (((size pos) (get-size s pos)))
-    (get-opaque size s pos)))
 
 ;; --- pack ---
 
@@ -124,76 +288,6 @@
 
 ;; --------------------------------------------------------------------------------
 
-(define (get-host-name s pos)
-  (get-vector-opaque get-u16 s pos))
-
-(define (get-protocol-name s pos)
-  (get-vector-opaque get-u8 s pos))
-
-(define (get-server-name s pos)
-  (let (((ntype pos) (get-u8 s pos)))
-    (match ntype with
-       0 -> (get-host-name s pos)
-      _  -> (raise (:TLS/BadValue "NameType" ntype))
-      )))
-
-(define (get-key-share s pos)
-  (let (((group pos) (get-u16 s pos))
-        ((kex pos) (get-vector-opaque get-u16 s pos)))
-    (:tuple {group=group kex=kex} pos)))
-
-;; XXX the shape of these extensions can vary between client and server.
-;;     e.g. the key_share extension is a vector in ClientHello, but a single
-;;          element in ServerHello.  So we need to either parameterize this
-;;          or make two different versions.  [though we might paper around it
-;;          by using a single-element list]
-(define (get-extension-by-type etype s pos)
-  (match etype with
-    00 -> (let (((names pos) (get-vector-16 get-server-name s pos)))
-            (:tuple (tlsext:server-names names) pos))
-    10 -> (let (((groups pos) (get-vector-16 get-u16 s pos)))
-            (:tuple (tlsext:named-groups groups) pos))
-    13 -> (let (((algos pos) (get-vector-16 get-u16 s pos)))
-            (:tuple (tlsext:sigalgs algos) pos))
-    16 -> (let (((alpns pos) (get-vector-16 get-protocol-name s pos)))
-            (:tuple (tlsext:alpn alpns) pos))
-    43 -> (let (((versions pos) (get-vector-8 get-u16 s pos)))
-            (:tuple (tlsext:supported-versions versions) pos))
-    45 -> (let (((modes pos) (get-vector-8 get-u8 s pos)))
-            (:tuple (tlsext:psk-kex-modes modes) pos))
-    50 -> (let (((algos pos) (get-vector-16 get-u16 s pos)))
-            (:tuple (tlsext:sigalgs-cert algos) pos))
-    51 -> (let (((shares pos) (get-vector-16 get-key-share s pos)))
-            (:tuple (tlsext:client-shares shares) pos))
-    21 -> (:tuple (tlsext:padding (string-length s)) (+ pos (string-length s)))
-    xx -> (:tuple (tlsext:other xx s) (+ pos (string-length s)))
-    ))
-
-(define (get-extension s pos)
-  (let (((etype pos) (get-u16 s pos))
-        ((edata pos) (get-vector-opaque get-u16 s pos))
-        ((ext pos0) (get-extension-by-type etype edata 0)))
-    ;; XXX use an exception
-    (assert (= pos0 (string-length edata)))
-    (:tuple ext pos)))
-
-;; XXX can we define these packers/unpackers declaratively?
-(define (unpack-client-hello s pos len)
-  (let (((legacy-version pos) (get-u16 s pos))
-        ((random pos) (get-opaque 32 s pos))
-        ((legacy-session-id pos) (get-vector-opaque get-u8 s pos))
-        ((cipher-suites pos) (get-vector-16 get-u16 s pos))
-        ((legacy-compression-methods pos) (get-vector-opaque get-u8 s pos))
-        ((extensions pos) (get-vector-16 get-extension s pos))
-        )
-    (tls-hsk:client-hello
-     {legver=legacy-version
-      random=random
-      sessid=legacy-session-id
-      suites=cipher-suites
-      exts=extensions}
-     )))
-
 (define (share->sexp share)
   (sexp (sym (string->symbol (named-group->string share.group)))
         (string (string->hex share.kex))))
@@ -209,6 +303,7 @@
   (tlsext:key-share share)             -> (sexp (sym 'key-share) (share->sexp share))
   (tlsext:padding len)                 -> (sexp (sym 'padding) (int len))
   (tlsext:alpn protos)                 -> (sexp1 'alpn (map sexp:string protos))
+  (tlsext:maxfraglen code)             -> (sexp (sym 'maxfraglen) (int code))
   (tlsext:other etype data)            -> (sexp (sym 'other) (int etype) (string (string->hex data)))
   )
 
@@ -222,33 +317,13 @@
    (sexp1 'extensions (map extension->sexp ch.exts))
    ))
 
-;; XXX kinda broken because extensions can differ between client & server.
-(define (unpack-server-hello s pos len)
-  (let (((legacy-version pos) (get-u16 s pos))
-        ((random pos) (get-opaque 32 s pos))
-        ((legacy-session-id pos) (get-vector-opaque get-u8 s pos))
-        ((cipher-suite pos) (get-u16 s pos))
-        ((legacy-compression-methods pos) (get-u8 s pos))
-        ((extensions pos) (get-vector-16 get-extension s pos))
-        )
-    (tls-hsk:server-hello
-     {legver=legacy-version
-      random=random
-      sessid=legacy-session-id
-      suite=cipher-suite
-      exts=extensions})))
+;; --------------------------------------------------------------------------------
 
-;; (define (print-server-hello sh)
-;;   (printf "(server-hello\n")
-;;   (printf "  (legacy-version " (hex sh.legver) "\n"
-;;           "  (random " (string->hex sh.random) ")\n"
-;;           "  (legacy-session-id " (string->hex sh.sessid) ")\n"
-;;           "  (suite " (hex sh.suite) ")\n")
-;;   (printf "  (extensions \n")
-;;   (for-list ext sh.extensions
-;;     (printf "    " (extension-repr ext) "\n"))
-;;   (printf "    ))\n")
-;;   )
+;; XXX rather than manually calling pack-xxx for each kind and layer,
+;;   we should probably use the datatypes directly, so the only 'pack'
+;;   function called is a high-level one, pack-record, that would accept
+;;   a `tls-record` type rather than a rope/string.  this will simplify
+;;   the code and make it safer.
 
 (define (put-key-share ks)
   (rope-make
@@ -265,17 +340,11 @@
     (tlsext:supported-versions (v)) -> (:tuple 43 (put-u16 v))
     (tlsext:key-share ks)           -> (:tuple 51 (put-key-share ks))
     (tlsext:alpn alpns)             -> (:tuple 16 (put-alpns alpns))
+    (tlsext:maxfraglen v)           -> (:tuple  1 (put-maxfraglen v))
     _                               -> (raise (:TLS/NotImplemented))
     )
   (let (((code ext0) (encode ext)))
     (rope/build (put-u16 code) (put-var-16 ext0))))
-
-(define (unpack-header s pos)
-  (let (((kind pos) (get-u8 s pos))
-        ((version pos) (get-u16 s pos))
-        ((length pos) (get-u16 s pos)))
-    (:tuple kind version length pos)
-    ))
 
 (define (pack-header ctype len)
   (rope/build
@@ -308,43 +377,6 @@
    (put-u8 (tls-alert-level->int level))
    (put-u8 (tls-alert-desc->int desc))))
 
-(define (unpack-hsk s pos)
-  (let (((kind pos) (get-u8 s pos))
-        ((len pos) (get-u24 s pos))
-        (hstype (int->tls-hsk-type kind)))
-    (tls-record:hsk
-     (match hstype with
-       (tls-hsk-type:client-hello) -> (unpack-client-hello s pos len)
-       (tls-hsk-type:server-hello) -> (unpack-server-hello s pos len)
-       (tls-hsk-type:finished)     -> (unpack-finished s pos len)
-       _ -> (raise (:NotImplemented))
-       ))))
-
-(define (unpack-alert s pos)
-  (let (((level pos) (get-u8 s pos))
-        ((desc pos) (get-u8 s pos)))
-    (tls-record:alert
-     (int->tls-alert-level level)
-     (int->tls-alert-desc desc))))
-
-(define (unpack-appdata s pos)
-  (tls-record:appdata s))
-
-(define (unpack-finished s pos len)
-  (tls-hsk:finished (substring s pos (+ pos len))))
-
-(define (unpack-record kind s pos)
-  ;;(printf "unpack record kind = " (int kind) "\n")
-  (let ((ctype (int->tls-ctype kind)))
-    (match ctype with
-      (tls-ctype:hsk)                -> (unpack-hsk s pos)
-      (tls-ctype:alert)              -> (unpack-alert s pos)
-      (tls-ctype:change-cipher-spec) -> (tls-record:change-cipher-spec)
-      (tls-ctype:appdata)            -> (unpack-appdata s pos)
-      x                              -> (raise (:NotImplemented))
-      )
-    ))
-
 (define (put-cert-entry x509)
   (rope/build
    (put-opaque-24 x509)
@@ -359,3 +391,13 @@
   (rope/build
    (put-u16 scheme)
    (put-opaque-16 sig)))
+
+(define (put-maxfraglen fraglen)
+  (put-u8
+   (match fraglen with
+      512 -> 1
+     1024 -> 2
+     2048 -> 3
+     4096 -> 4
+     _    -> (raise (:TLS/Alert (tls-alert-desc:illegal-parameter) "bad maxfraglen value"))
+     )))

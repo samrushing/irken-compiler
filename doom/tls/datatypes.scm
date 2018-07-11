@@ -82,7 +82,7 @@
 
 (make-enum tlsext-type
   (server-name            0)  ;; RFC 6066
-  (max-fragment-length    1)  ;; RFC 6066
+  (maxfraglen             1)  ;; RFC 6066
   (status-request         5)  ;; RFC 6066
   (supported-groups       10) ;; RFC 4492, 7919
   (sigalgs                13) ;; [[this document]]
@@ -97,7 +97,7 @@
   (early-data             42) ;; [[this document]]
   (supported-versions     43) ;; [[this document]]
   (cookie                 44) ;; [[this document]]
-  (psk-key-exchange-modes 45) ;; [[this document]]
+  (psk-kex-modes          45) ;; [[this document]]
   (cert-authorities       47) ;; [[this document]]
   (oid-filters            48) ;; [[this document]]
   (post-hsk-auth          49) ;; [[this document]]
@@ -116,6 +116,7 @@
   (:key-share {group=int kex=string})
   (:padding int)
   (:alpn (list string))
+  (:maxfraglen int) ;; this could be an enum to clamp to 1..4
   (:other int string)
   )
 
@@ -130,6 +131,7 @@
   (tlsext:key-share _)          -> 'key-share
   (tlsext:padding _)            -> 'padding
   (tlsext:alpn _)               -> 'alpn
+  (tlsext:maxfraglen _)         -> 'maxfraglen
   (tlsext:other _ _)            -> 'other
   )
 
