@@ -830,7 +830,7 @@
     (let ((name0 (symbol->string name))
           (parts (string-split name0 #\_)))
       (let loop ((parts (reverse parts)))
-        (if (all digit? (string->list (car parts)))
+        (if (all? digit? (string->list (car parts)))
             (loop (cdr parts))
             (format (join "_" (reverse parts)))))))
 

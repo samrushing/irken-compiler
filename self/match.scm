@@ -370,7 +370,7 @@
   (define (arity-check rules)
     (let ((lengths (map (lambda (rule) (length (rule->pats rule))) rules))
           (arity (car lengths)))
-      (when (not (all (lambda (x) (= x arity)) (cdr lengths)))
+      (when (not (all? (lambda (x) (= x arity)) (cdr lengths)))
         (printf "arity mismatch in patterns:\n\t"
                 (join rule-repr "\n\t" rules))
         (error "arity mismatch in patterns"))

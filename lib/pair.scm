@@ -223,9 +223,9 @@
 		     (list:cons hd (filter p tl))
 		     (filter p tl)))
 
-(define all
+(define all?
   p ()        -> #t
-  p (hd . tl) -> (if (p hd) (all p tl) #f)
+  p (hd . tl) -> (if (p hd) (all? p tl) #f)
   )
 
 (define any?

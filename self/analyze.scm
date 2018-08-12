@@ -343,7 +343,7 @@
     (define (makes-funcalls? node)
       (match (noderec->t node) with
         (node:call) -> #t
-        _ -> (all makes-funcalls? (noderec->subs node))
+        _ -> (all? makes-funcalls? (noderec->subs node))
         ))
 
     (define (inline-application fun rands)
