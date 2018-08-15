@@ -323,8 +323,14 @@
   (%backend bytecode
     (%%cexp (int 'a -> (vector 'a))
             "vmake"
-            n val))
-  )
+            n val)))
+
+(define (copy-vector v)
+  (let ((vlen (vector-length v))
+        (r (make-vector vlen v[0])))
+    (for-range i vlen
+      (set! r[i] v[i]))
+    r))
 
 (define (vector-length v)
   (%backend c
@@ -619,6 +625,14 @@
   (%backend c (%%cexp ('a -> int) "unbox(irk_objectptr2int(%0))" ob))
   (%backend llvm (%llvm-call ("@irk_objectptr2int" ('a -> int) ccc) ob))
   (%backend bytecode (%%cexp ('a -> int) "obptr2int" ob))
+  )
+
+(define (read-cycle-counter)
+  (%backend c
+    (%%cexp (-> int) "(pxll_int)rdtsc()"))
+  (%backend llvm
+    (%llvm-call ("@irk_readcyclecounter" (-> int))))
+  ;; TBD: vm
   )
 
 ;; VM needs to shift all argv right by one.
