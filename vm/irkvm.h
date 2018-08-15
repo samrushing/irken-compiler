@@ -7,7 +7,7 @@ typedef struct {
   int target;
 } opcode_info_t;
 
-opcode_info_t irk_opcodes[93] = {
+opcode_info_t irk_opcodes[94] = {
   {"lit",         2, 0, 1},
   {"litc",        2, 0, 1},
   {"ret",         1, 0, 0},
@@ -70,10 +70,9 @@ opcode_info_t irk_opcodes[93] = {
   {"rset",        3, 0, 0},
   {"getcc",       1, 0, 1},
   {"putcc",       3, 0, 1},
-  {"dlsym",       2, 0, 1},
   {"ffi",         4, 1, 1},
   {"smake",       2, 0, 1},
-  {"sfromc",      2, 0, 1},
+  {"sfromc",      3, 0, 1},
   {"slen",        2, 0, 1},
   {"sref",        3, 0, 1},
   {"sset",        3, 0, 0},
@@ -91,16 +90,18 @@ opcode_info_t irk_opcodes[93] = {
   {"free",        1, 0, 0},
   {"sizeoff",     2, 0, 0},
   {"sgetp",       2, 0, 1},
-  {"caref",       3, 0, 1},
+  {"caref",       4, 0, 1},
   {"csref",       3, 0, 1},
-  {"dlsym2",      2, 0, 1},
+  {"dlopen",      2, 0, 1},
+  {"dlsym0",      2, 0, 1},
+  {"dlsym",       3, 0, 1},
   {"csize",       2, 0, 1},
   {"cref2int",    2, 0, 1},
   {"int2cref",    2, 0, 1},
   {"ob2int",      2, 0, 1},
   {"obptr2int",   2, 0, 1},
-  {"errno",       0, 0, 1},
-  {"meta",        0, 0, 1}
+  {"errno",       1, 0, 1},
+  {"meta",        1, 0, 1}
 };
 #define IRK_OP_LIT        0
 #define IRK_OP_LITC       1
@@ -164,35 +165,36 @@ opcode_info_t irk_opcodes[93] = {
 #define IRK_OP_RSET       59
 #define IRK_OP_GETCC      60
 #define IRK_OP_PUTCC      61
-#define IRK_OP_DLSYM      62
-#define IRK_OP_FFI        63
-#define IRK_OP_SMAKE      64
-#define IRK_OP_SFROMC     65
-#define IRK_OP_SLEN       66
-#define IRK_OP_SREF       67
-#define IRK_OP_SSET       68
-#define IRK_OP_SCOPY      69
-#define IRK_OP_UNCHAR     70
-#define IRK_OP_GIST       71
-#define IRK_OP_ARGV       72
-#define IRK_OP_QUIET      73
-#define IRK_OP_HEAP       74
-#define IRK_OP_READF      75
-#define IRK_OP_MALLOC     76
-#define IRK_OP_HALLOC     77
-#define IRK_OP_CGET       78
-#define IRK_OP_CSET       79
-#define IRK_OP_FREE       80
-#define IRK_OP_SIZEOFF    81
-#define IRK_OP_SGETP      82
-#define IRK_OP_CAREF      83
-#define IRK_OP_CSREF      84
-#define IRK_OP_DLSYM2     85
-#define IRK_OP_CSIZE      86
-#define IRK_OP_CREF2INT   87
-#define IRK_OP_INT2CREF   88
-#define IRK_OP_OB2INT     89
-#define IRK_OP_OBPTR2INT  90
-#define IRK_OP_ERRNO      91
-#define IRK_OP_META       92
-#define IRK_NUM_OPCODES 93
+#define IRK_OP_FFI        62
+#define IRK_OP_SMAKE      63
+#define IRK_OP_SFROMC     64
+#define IRK_OP_SLEN       65
+#define IRK_OP_SREF       66
+#define IRK_OP_SSET       67
+#define IRK_OP_SCOPY      68
+#define IRK_OP_UNCHAR     69
+#define IRK_OP_GIST       70
+#define IRK_OP_ARGV       71
+#define IRK_OP_QUIET      72
+#define IRK_OP_HEAP       73
+#define IRK_OP_READF      74
+#define IRK_OP_MALLOC     75
+#define IRK_OP_HALLOC     76
+#define IRK_OP_CGET       77
+#define IRK_OP_CSET       78
+#define IRK_OP_FREE       79
+#define IRK_OP_SIZEOFF    80
+#define IRK_OP_SGETP      81
+#define IRK_OP_CAREF      82
+#define IRK_OP_CSREF      83
+#define IRK_OP_DLOPEN     84
+#define IRK_OP_DLSYM0     85
+#define IRK_OP_DLSYM      86
+#define IRK_OP_CSIZE      87
+#define IRK_OP_CREF2INT   88
+#define IRK_OP_INT2CREF   89
+#define IRK_OP_OB2INT     90
+#define IRK_OP_OBPTR2INT  91
+#define IRK_OP_ERRNO      92
+#define IRK_OP_META       93
+#define IRK_NUM_OPCODES 94

@@ -644,31 +644,36 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
     }
     if (FFI_OK == ffi_prep_cif (&cif, FFI_DEFAULT_ABI, nargs, rtype, args)) {
       void * pfun = (void*) get_foreign (vm_regs[bytecode[pc+2]]);
-      ffi_arg rc;
-      ffi_call (&cif, pfun, &rc, pvals);
-      switch (rcode) {
-      case 'i':
-        *result = BOX_INTEGER ((pxll_int)(int)rc);
-        break;
-      case 's':
-        if ((char*)rc == NULL) {
-          // XXX silent error.
-          *result = irk_copy_string ("");
-        } else {
-          *result = irk_copy_string ((char*)rc);
+      if (pfun) {
+        ffi_arg rc;
+        ffi_call (&cif, pfun, &rc, pvals);
+        switch (rcode) {
+        case 'i':
+          *result = BOX_INTEGER ((pxll_int)(int)rc);
+          break;
+        case 's':
+          if ((char*)rc == NULL) {
+            // XXX silent error.
+            *result = irk_copy_string ("");
+          } else {
+            *result = irk_copy_string ((char*)rc);
+          }
+          break;
+        case 'p':
+          *result = make_foreign ((void *) rc);
+          break;
+        case 'u':
+          *result = (object *) PXLL_UNDEFINED;
+          break;
+        case 'c':
+          *result = TO_CHAR ((uint8_t)rc);
+          break;
         }
-        break;
-      case 'p':
-        *result = make_foreign ((void *) rc);
-        break;
-      case 'u':
-        *result = (object *) PXLL_UNDEFINED;
-        break;
-      case 'c':
-        *result = TO_CHAR ((uint8_t)rc);
-        break;
+        return 0;
+      } else {
+        fprintf (stderr, "ffi: null function address\n");
+        return -1;
       }
-      return 0;
     } else {
       fprintf (stderr, "ffi_prep_cif failed\n");
       return -1;
@@ -720,6 +725,12 @@ vm_cget (object ** result, object * src, pxll_int code)
     break;
   case 'L':
     *result = BOX_INTEGER ((pxll_int)*((unsigned long *)p));
+    break;
+  case 'n':
+    *result = BOX_INTEGER ((pxll_int)*((long long *)p));
+    break;
+  case 'N':
+    *result = BOX_INTEGER ((pxll_int)*((unsigned long long *)p));
     break;
   case 'p':
     *result = make_foreign (*((void**)p));
@@ -783,6 +794,12 @@ vm_cset (object * dst, pxll_int code, object * val)
   case 'L':
     * ((unsigned long *)p) = (unsigned long) UNBOX_INTEGER (val);
     break;
+  case 'n':
+    * ((long long *)p) = (long long) UNBOX_INTEGER (val);
+    break;
+  case 'N':
+    * ((unsigned long long *)p) = (unsigned long long) UNBOX_INTEGER (val);
+    break;
   case 'p':
     * ((object*)p) = get_foreign (val);
     break;
@@ -840,12 +857,12 @@ vm_go (void)
     &&l_pop0, &&l_epop, &&l_tron, &&l_troff, &&l_gc, &&l_imm, &&l_make,
     &&l_makei, &&l_exit, &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref,
     &&l_vset, &&l_vmake, &&l_alloc, &&l_rref, &&l_rset, &&l_getcc,
-    &&l_putcc, &&l_dlsym, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
+    &&l_putcc, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist, &&l_argv,
     &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
-    &&l_dlsym2, &&l_csize, &&l_cref2int, &&l_int2cref, &&l_ob2int,
-    &&l_obptr2int, &&l_errno, &&l_meta
+    &&l_dlopen, &&l_dlsym0, &&l_dlsym, &&l_csize, &&l_cref2int, &&l_int2cref,
+    &&l_ob2int, &&l_obptr2int, &&l_errno, &&l_meta
   };
 
   assert ((sizeof (dispatch_table) / sizeof (void *)) == (sizeof (irk_opcodes) / sizeof (opcode_info_t)));
@@ -860,7 +877,7 @@ vm_go (void)
   } while (0)
 
 
-//#define DISPATCH() DEBUG_DISPATCH()
+  //#define DISPATCH() DEBUG_DISPATCH()
 #define DISPATCH() NORMAL_DISPATCH()
 
   // print_regs ((object*)vm_regs, 10);
@@ -1277,16 +1294,6 @@ vm_go (void)
  //    pc += 4 + nargs;
  //  }
  //  DISPATCH();
- // l_getc:
- //  // GETC target
- //  REG1 = vm_the_closure;
- //  pc += 2;
- //  DISPATCH();
- l_dlsym:
-  // DLSYM target name
-  REG1 = BOX_INTEGER ((pxll_int)dlsym (RTLD_DEFAULT, GET_STRING_POINTER (REG2)));
-  pc += 3;
-  DISPATCH();
  l_ffi: {
     // FFI target pfun rtype nargs arg0 ...
     pxll_int nargs = UNBOX_INTEGER (REG4);
@@ -1514,10 +1521,20 @@ vm_go (void)
     pc += 4;
     DISPATCH();
   }
- l_dlsym2:
-  // DLSYM2 target name
+ l_dlopen:
+  // DLOPEN target name
+  REG1 = make_foreign (dlopen (GET_STRING_POINTER (REG2), RTLD_LAZY));
+  pc += 3;
+  DISPATCH();
+ l_dlsym0:
+  // DLSYM target name
   REG1 = make_foreign (dlsym (RTLD_DEFAULT, GET_STRING_POINTER (REG2)));
   pc += 3;
+  DISPATCH();
+ l_dlsym:
+  // DLSYM target handle name
+  REG1 = make_foreign (dlsym (get_foreign(REG2), GET_STRING_POINTER (REG3)));
+  pc += 4;
   DISPATCH();
  l_csize:
   // CSIZE target sindex

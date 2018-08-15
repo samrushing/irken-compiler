@@ -420,10 +420,24 @@
        (define (prim-string->cref args)
          (LINSN 'sgetp target (car args)))
 
+       ;; this is a limited-remit function needed only to 'fill in' missing
+       ;;   params for a handful of FFI-related primops.
+       (define irken-type->sexp
+         (type:pred sym () _)   -> (sexp:symbol sym)
+         (type:pred sym subs _) -> (sexp1 sym (map irken-type->sexp subs))
+         x                      -> (raise (:Types/IrkenType2Sexp (type-repr x)))
+         )
+
        (define prim-c-aref
-         parm (src index)
-         -> (let ((sindex (get-sizeoff parm)))
-              ;;(printf "c-aref parm = " (repr parm) "\n")
+         ;;parm (src index)
+         _ (src index)
+         -> (let ((tsexp (irken-type->sexp (un-cref type)))
+                  (sindex (get-sizeoff tsexp)))
+              (printf "c-aref parm = " (repr parm) " sizeoff " (int sindex) "\n"
+                      "       type = " (type-repr type) "\n"
+                      "       sexp = " (repr tsexp) "\n"
+                      "     sindex = " (int sindex) "\n"
+                      )
               (LINSN 'caref target src sindex index))
          _ _ -> (primop-error))
 
@@ -432,43 +446,54 @@
          -> (LINSN 'sfromc target src len)
          _ -> (primop-error))
 
+       (define (irken-type->bytecode t)
+         (char->int (ctype->code (irken-type->ctype type))))
+
        (define prim-cget-int
-         (sexp:symbol itype) (src)
+         ;;(sexp:symbol itype) (src)
+         _ (src)
          ;; CGET target src code
-         -> (LINSN 'cget target src (irken-type->code itype))
+         -> (begin
+              (printf "c-get-int type = " (type-repr type) "\n"
+                      "          code = " (char (int->char (irken-type->bytecode type))) "\n")
+              (LINSN 'cget target src (irken-type->bytecode type)))
          _ _ -> (primop-error)
          )
 
-        (define prim-cset-int
-          (sexp:symbol itype) (src dst)
-          ;; CSET dst code val
-          -> (LINSN 'cset dst (irken-type->code itype) src)
-          _ _ -> (primop-error)
-          )
+       (define prim-cset-int
+         ;;(sexp:symbol itype) (src dst)
+         _ (dst src)
+         ;; CSET dst code val
+         -> (begin
+              (printf "c-set-int type = " (type-repr type) "\n"
+                      "          code = " (char (int->char (irken-type->bytecode type))) "\n")
+              (LINSN 'cset dst (irken-type->bytecode type) src))
+         _ _ -> (primop-error)
+         )
 
-        (define prim-c-sref
-          srefexp (src)
-          ;; SREF target src sindex
-          -> (let ((sindex (get-sizeoff parm)))
-               ;;(printf "c-sref, sindex=" (int sindex) " parm = " (repr parm) "\n")
-               (LINSN 'csref target src sindex))
-          _ _ -> (primop-error)
-          )
+       (define prim-c-sref
+         srefexp (src)
+         ;; SREF target src sindex
+         -> (let ((sindex (get-sizeoff parm)))
+              ;;(printf "c-sref, sindex=" (int sindex) " parm = " (repr parm) "\n")
+              (LINSN 'csref target src sindex))
+         _ _ -> (primop-error)
+         )
 
-        (define (prim-c-sizeof parm)
-          (LINSN 'csize target (get-sizeoff parm)))
+       (define (prim-c-sizeof parm)
+         (LINSN 'csize target (get-sizeoff parm)))
 
-        (define prim-cref->int
-          (src)
-          -> (LINSN 'cref2int target src)
-          _ -> (primop-error)
-          )
+       (define prim-cref->int
+         (src)
+         -> (LINSN 'cref2int target src)
+         _ -> (primop-error)
+         )
 
-        (define prim-int->cref
-          (src)
-          -> (LINSN 'int2cref target src)
-          _ -> (primop-error)
-          )
+       (define prim-int->cref
+         (src)
+         -> (LINSN 'int2cref target src)
+         _ -> (primop-error)
+         )
 
        (match name with
          '%dtcon       -> (prim-dtcon parm)
@@ -773,9 +798,11 @@
 
     (define (encode-insn name args)
       (let ((info (name->info name)))
-        (if (>= (length args) info.nargs)
-            (string-concat (map encode-int (cons info.code args)))
-            (raise (:BadArity name)))))
+        (match (int-cmp (length args) info.nargs) info.varargs with
+          (cmp:<)  _ -> (raise (:BadArity name))
+          (cmp:>) #f -> (raise (:BadArity name))
+          _ _        -> (string-concat (map encode-int (cons info.code args)))
+          )))
 
     (define (emit-stream s)
       ;; first, compute the length (in words) of this stream.
@@ -835,14 +862,14 @@
            _ -> 0))
        cps))
 
-    (define sizeoff-prims '(%malloc %c-aref %c-sref))
+    (define sizeoff-prims '(%malloc '%halloc %c-aref %c-sref))
 
     (define (find-sizeoff-prims cps)
       (walk-insns
        (lambda (insn depth)
          (match insn with
            (insn:primop name parm _ _ _)
-           -> (if (member-eq? name sizeoff-prims)
+           -> (if (and (member-eq? name sizeoff-prims) (not (eq? parm (sexp:bool #f))))
                   (let ((sindex (get-sizeoff parm)))
                     ;;(printf "find-sizeoff-prims parm = " (repr parm) " sindex = " (int sindex) "\n")
                     (if (not (< sindex 55))
@@ -854,10 +881,11 @@
 
     (define (build-sizeoff-literal)
       (let ((r '()))
-        ;;(printf "build sizeoff vector...")
+        (printf "build sizeoff vector...")
         (for-range i sizeoff-map.count
+          (printf "  " (int i) " " (repr (cmap->item sizeoff-map i)) "\n")
           (PUSH r (unsexp (cmap->item sizeoff-map i))))
-        ;;(printf "done...\n")
+        (printf "done...\n")
         (reverse r)))
 
     (define (walk-literal lit p)

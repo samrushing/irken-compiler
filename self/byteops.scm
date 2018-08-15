@@ -78,10 +78,10 @@
     (OI 'putcc   3      #f     #t)   ;; target k val
     ;; (OI 'irk     3      #t     #t)   ;; target closure nargs arg0 ...
     ;; (OI 'getc    1      #f     #t)   ;; target
-    (OI 'dlsym   2      #f     #t)   ;; target name
+    ;;(OI 'dlsym   2      #f     #t)   ;; target name
     (OI 'ffi     4      #t     #t)   ;; target fun nargs arg0 ...
     (OI 'smake   2      #f     #t)   ;; target size
-    (OI 'sfromc  2      #f     #t)   ;; target src
+    (OI 'sfromc  3      #f     #t)   ;; target src len
     (OI 'slen    2      #f     #t)   ;; target string
     (OI 'sref    3      #f     #t)   ;; target string index
     (OI 'sset    3      #f     #f)   ;; string index char
@@ -99,16 +99,18 @@
     (OI 'free    1      #f     #f)   ;; src
     (OI 'sizeoff 2      #f     #f)   ;; index val
     (OI 'sgetp   2      #f     #t)   ;; dst src
-    (OI 'caref   3      #f     #t)   ;; dst sindex num
+    (OI 'caref   4      #f     #t)   ;; dst src sindex num
     (OI 'csref   3      #f     #t)   ;; dst src sindex
-    (OI 'dlsym2  2      #f     #t)   ;; target name
+    (OI 'dlopen  2      #f     #t)   ;; target name
+    (OI 'dlsym0  2      #f     #t)   ;; target name
+    (OI 'dlsym   3      #f     #t)   ;; target handle name
     (OI 'csize   2      #f     #t)   ;; target sindex
     (OI 'cref2int 2     #f     #t)   ;; target src
     (OI 'int2cref 2     #f     #t)   ;; target src
     (OI 'ob2int  2      #f     #t)   ;; target src
     (OI 'obptr2int 2    #f     #t)   ;; target src
-    (OI 'errno   0      #f     #t)   ;; target
-    (OI 'meta    0      #f     #t)   ;; target
+    (OI 'errno   1      #f     #t)   ;; target
+    (OI 'meta    1      #f     #t)   ;; target
     ;;  name   nargs varargs target? args
     ))
 
