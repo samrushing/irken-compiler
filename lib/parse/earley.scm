@@ -21,11 +21,11 @@
   )
 
 (define prod-repr
-  (prod:nt name) -> (format "<" (sym name) ">")
-  (prod:t name)  -> (format "{" (sym name) "}")
+  (prod:nt name) -> (format (ansi green "<" (sym name) ">"))
+  (prod:t name)  -> (format (ansi blue "{" (sym name) "}"))
   )
 
-(define EOF (prod:t 'eof))
+(define EOF (prod:t 'EOF))
 (define NULTOK {kind='nul val="" range=(range:f)})
 
 (datatype parse
@@ -93,9 +93,12 @@
   (eq? (prod->name p0) (prod->name p1)))
 
 (define (earley grammar nt0 tokgen)
-  (let ((S (make-gvec 1 (make-gvec 1 {nt=nt0 dot=0 prod=(LIST nt0 EOF) start=0})))
+  (let ((top-prod (prod:nt 'top))
+        (S (make-gvec 1 (make-gvec 1 {nt=top-prod dot=0 prod=(LIST nt0 EOF) start=0})))
+        (M (make-gvec 1 (cmap/make magic-cmp)))
         (k 0)
-        (toks (make-gvec 0 NULTOK)))
+        (toks (make-gvec 0 NULTOK))
+        )
 
     (define get-prod
       (prod:nt name)
@@ -103,14 +106,25 @@
       x -> (error1 "get-prod: not an NT?" x)
       )
 
+    ;; (define (maybe-add index state)
+    ;;   (let ((states (S.ref index))
+    ;;         (found #f))
+    ;;     (for-range i (states.len)
+    ;;       (if (magic=? state (states.ref i))
+    ;;           (set! found #t)))
+    ;;     (when (not found)
+    ;;       (states.append state))))
+
+    ;; this version uses a counting-map to quickly determine if the
+    ;;   state is already present.
     (define (maybe-add index state)
       (let ((states (S.ref index))
-            (found #f))
-        (for-range i (states.len)
-          (if (magic=? state (states.ref i))
-              (set! found #t)))
-        (when (not found)
-          (states.append state))))
+            (map (M.ref index))
+            (count map.count))
+        (cmap/add map state)
+        (when (> map.count count)
+          (states.append state))
+        ))
 
     (define (bump-dot x)
       {nt=x.nt dot=(+ 1 x.dot) prod=x.prod start=x.start}
@@ -120,14 +134,14 @@
       ;; For every state in S(k) of the form (X → γ •, j), find states
       ;; in S(j) of the form (Y → α • X β, i) and add (Y → α X • β, i)
       ;; to S(k).
+      ;; (printf (bold "complete " (prod-repr nt) " " (int start) "\n"))
       (let ((states (S.ref start)))
         (for-range i (states.len)
           (let ((state (states.ref i)))
-            (if (and
-                 (> (length state.prod) state.dot)
-                 (prod=? nt (nth state.prod state.dot)))
-                (maybe-add k (bump-dot state))
-                )))))
+            (when (and (> (length state.prod) state.dot)
+                       (prod=? nt (nth state.prod state.dot)))
+              (maybe-add k (bump-dot state))
+              )))))
 
     (define (predictor nt)
       ;; For every state in S(k) of the form (X → α • Y β, j) (where j
@@ -138,15 +152,17 @@
         (maybe-add k {nt=nt dot=0 prod=prod start=k})))
 
     (define (add-next state)
-      (if (= (S.len) (+ k 1))
-          (S.append (make-gvec 1 state))
-          (maybe-add (+ 1 k) state)))
+      (cond ((= (S.len) (+ k 1))
+             (S.append (make-gvec 1 state))
+             (M.append (cmap/make magic-cmp)))
+            (else
+             (maybe-add (+ 1 k) state))))
 
     (define (step tok)
       (let ((states (S.ref k))
             (j 0)
             (scanned? #f))
-        ;;(printf "step " (int k) " " (sym tok.kind) "\n")
+        ;; (printf "step " (int k) " " (sym tok.kind) " " (string tok.val) "\n")
         (while (< j (states.len))
           (let ((state (states.ref j)))
             (set! j (+ j 1))
@@ -158,6 +174,7 @@
                 ;; 1) state is complete
                 (completer state.nt state.start)
                 (let ((nextprod (nth state.prod state.dot)))
+                  ;; (printf "state: " (state-repr state) "\n")
                   (if (terminal? nextprod)
                       ;; 2) expects a terminal
                       (when (eq? tok.kind (prod->name nextprod))
@@ -181,49 +198,144 @@
       ;; also: reverse the states since we want to visit them in that order.
       (define (complete-states)
         (list->vector
-         (map (lambda (x)
-                (reverse (filter completed? (x.list))))
-              (S.list))))
+         (map
+          (lambda (x)
+            (filter completed? (x.list)))
+          (S.list))))
+
+      ;; we eliminate some items from consideration by computing
+      ;; an earliest possible start position.  If we are looking
+      ;; at a production: `thing : X Y Z sub0 @ 0`, then 'sub0' cannot
+      ;; possibly start earlier than position 3 because of the three
+      ;; terminals at the start of the rule.
+      (define (earliest-start item)
+        (let loop ((start item.start)
+                   (prods item.prod))
+          (match prods with
+            ((prod:t _) . tl) -> (loop (+ 1 start) tl)
+            _                 -> start
+            )))
 
       ;; remove non-completed states
       (let ((all (complete-states)))
 
-        (define (walk d nt end)
-          (let/cc return
-            (while (> (length all[end]) 0)
-              ;; pop each state off of the list in order to avoid
-              ;; infinite recursion on the same rule.
-              (let ((item (pop all[end])))
-                (if (prod=? item.nt nt)
-                    (let ((r '()))
-                      (for-list x (reverse item.prod)
-                        (if (not (terminal? x))
-                            (let (((y end0) (walk (+ d 1) x end)))
-                              (PUSH r y)
-                              (set! end end0))
-                            (begin
-                              (set! end (- end 1))
-                              (PUSH r (parse:t (toks.ref end)))
-                              )))
-                      (return (:tuple (parse:nt (prod->name nt) r) end)))))
-              )
-            (raise (:NoParse NULTOK))
-            ))
-        (let ((end0 (- (vector-length all) 1))
-              ((r end) (walk 0 nt0 end0)))
-          (match r with
-            ;; strip off outer result caused by the fake production
-            ;; rule we put in of `root := root EOF`.
-            (parse:nt _ (root eof))
-            -> root
-            _ -> (impossible)
-            ))))
+        (define (indent d)
+          (printf (lpad 3 (int d)) " " (repeat d " ")))
+
+        (defmacro indentf
+          (indentf d x ...)
+          -> (begin (indent d) (printf x ...))
+          )
+
+        ;; generate all possible parses of this NT.
+        (define (walk-rule d subs start end visited)
+          ;; (indentf d "walk* s=" (int start) " e=" (int end) " (" (join prod-repr ", " subs) ")\n")
+          (makegen emit
+            (match subs with
+              () -> (emit (:tuple start end '()))
+              (hd . tl) ;; NOTE: we are walking the items in reverse here!
+              -> (cond ((terminal? hd)
+                        (for tl-parse (walk-rule d tl start (- end 1) visited)
+                          (match tl-parse with
+                            (:tuple start0 end0 y)
+                            ;; hd = Z tl = (Y X)
+                            ;; start = tl_start
+                            ;; end   = hd_end (in this case 'end')
+                            -> (let ((e-1 (- end 1))
+                                     (x (parse:t (toks.ref e-1)))
+                                     (r (list:cons x y)))
+                                 ;; (indentf d  "=>  T s=" (int start0)
+                                 ;;          " e=" (int end)
+                                 ;;          " (" (join parse-repr " " r)
+                                 ;;          ")\n")
+                                 (emit (:tuple start0 end r)))
+                            )))
+                       (else
+                        ;; here we encode the following common-sense rule:
+                        ;; if we are trying 'x -> TERM0 TERM1 TERM2 y @7',
+                        ;; then we know that 'y' has a hard start at 10.
+                        (let ((hard? (all? terminal? tl))
+                              (start0 (if hard? (+ start (length tl)) start)))
+                          (for hd-parse (walk (+ 1 d) hd start0 end visited hard?)
+                            (match hd-parse with
+                              (:tuple start1 end1 x)
+                              -> (begin
+                                   ;; (indentf d "hd s=" (int start1) " e=" (int end1)
+                                   ;;          " hd=" (prod-repr hd) " " (parse-repr x) "\n")
+                                   ;; (indentf d "tl = (" (join prod-repr ", " tl) ")\n")
+                                   (for tl-parse (walk-rule d tl start start1 visited)
+                                     (match tl-parse with
+                                       (:tuple start0 end0 y)
+                                       -> (let ((r (list:cons x y)))
+                                            ;; (indentf d "=> NT s=" (int start0)
+                                            ;;          " e=" (int end1)
+                                            ;;          " (" (join parse-repr " " r)
+                                            ;;          ")\n")
+                                            (emit (:tuple start0 end1 r)))))
+                                   )
+                              )))))
+              )))
+
+        (define (candidate? item start end hard-start?)
+          (cond (hard-start?
+                 (= item.start start))
+                ((terminal? (last item.prod))
+                 #t)
+                (else
+                 ;; each sub in the prod must have length at least one.
+                 (<= (length item.prod) (- end start)))))
+
+        (define (walk d nt start end visited hard-start?)
+          ;; (indentf d "walk  s=" (int start) " e=" (int end)
+          ;;          " " (prod-repr nt) " hard? " (bool hard-start?) "\n")
+          (makegen emit
+            (for-list item all[end]
+               (when (not (member-eq? item visited))
+                 (let ((estart (earliest-start item)))
+                   ;; (indentf d "try? " (state-repr item) "\n")
+                   (when (and (prod=? item.nt nt)
+                              (candidate? item start end hard-start?))
+                     ;; this is a candidate production. we want to generate all
+                     ;; possible parses from it.
+                     (for parse (walk-rule d (reverse item.prod) item.start end (list:cons item visited))
+                       (match parse with
+                         (:tuple start0 end0 plist)
+                         -> (let ((parse (parse:nt (prod->name nt) (reverse plist))))
+                              ;; (indentf "=> s=" (int start0)
+                              ;;          " e=" (int end0) " " (parse-repr parse) "\n")
+                              (emit (:tuple start0 end0 parse)))
+                         )))))
+               )))
+
+        ;; (printf "|all| = " (int (vector-length all)) "\n")
+        ;; (for-range i (vector-length all)
+        ;;   (printf "i " (bold (int i)) "\n")
+        ;;   (for-list state all[i]
+        ;;      (printf "  " (state-repr state) "\n")))
+
+        (makegen emit
+          (for parse (walk 0 top-prod 0 (- (vector-length all) 1) '() #t)
+            (match parse with
+              (:tuple start end parse)
+              -> (begin
+                   (if (= 0 start)
+                       (emit parse)
+                       (printf "rejecting " (parse-repr parse) "\n"))
+                   )
+              )))
+        ))
 
     (for tok tokgen
       (step tok)
       (toks.append tok)
       (set! k (+ 1 k)))
-    (build-parse-tree)
+    (let ((gen (build-parse-tree)))
+      ;; return the first parse we find.
+      (match (gen) with
+        (maybe:yes (parse:nt 'top (parse EOF))) -> parse
+        (maybe:yes weird) -> (raise (:NoParse NULTOK))
+        (maybe:no) -> (raise (:NoParse NULTOK))
+        ))
     ))
 
 (define (sexp->grammar exp)
