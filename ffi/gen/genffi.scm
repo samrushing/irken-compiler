@@ -18,6 +18,7 @@
 (include "lib/string.scm")
 (include "lib/format.scm")
 (include "lib/symbol.scm")
+(%backend bytecode (include "lib/vmffi.scm"))
 (include "lib/queue.scm")
 (include "lib/set.scm")
 (include "lib/alist.scm")
@@ -64,6 +65,9 @@
   (define M
     (ctype2:struct name _) -> (ctype2:struct name (maybe:no))
     (ctype2:union name _)  -> (ctype2:union name (maybe:no))
+    ;; replace enum {...} with 'int'. eventually we want full
+    ;;  support for enums.
+    (ctype2:enum _ _)      -> (ctype2:int (cint:int) #t)
     t -> t)
   (map-type M type))
 
@@ -145,8 +149,13 @@
         (file (stdio/open-read cppfile))
         (gen0 (stdio-char-generator file))
         (gen1 (make-lex-generator dfa-c gen0))
-        (gen2 (partition-stream (strip-attributes (strip-whitespace gen1))))
-        ;;(gen2 (partition-stream (strip-whitespace gen1)))
+        (typedef-names (cmap/make string-compare))
+        ;; this is the 'lexer hack' often used with C parsers.
+        (gen2 (partition-stream
+               (frob-typedef-names
+                (strip-attributes
+                 (strip-whitespace gen1))
+                typedef-names)))
         (typedefs (tree/empty))
         (structs (tree/empty))
         (functions (tree/empty)))
@@ -154,14 +163,14 @@
     (define (parse-toks toks root)
       (earley tdgram (prod:nt root) (list-generator toks)))
 
-    (define (try-parse toks root parser)
+    (define (try-parse toks)
       (try
-       (maybe:yes (parser (parse-toks toks root)))
+       (maybe:yes (parse-translation-unit (parse-toks toks 'translationUnit) typedef-names))
        except
        (:NoParse tok)
        -> (begin
             (verbose
-             (printf (bold "unable to parse " (sym root) " expression:\n"))
+             (printf (bold "unable to parse expression:\n"))
              (printf " toks = " (toks->string toks) "\n")
              (printf " at token = " (token-repr tok) "\n"))
             (maybe:no))))
@@ -199,14 +208,27 @@
       -> (impossible)
       )
 
+    ;; hack: predefine some 'typedef names'.
+    ;; without these additions, some declarations will fail to parse correctly.
+    (cmap/add typedef-names "__builtin_va_list")
+    (cmap/add typedef-names "__builtin_offsetof")
+    (cmap/add typedef-names "__int128")
+    (cmap/add typedef-names "__uint128")
+    (cmap/add typedef-names "__int128_t")
+    (cmap/add typedef-names "__uint128_t")
+
     (printf "processing '" cppfile "' ...\n")
     (for toks gen2
-      ;;(printf (toks->string toks))
-      (match (%%attr (car toks) kind) with
-        'eof     -> #u
-        'TYPEDEF -> (when-maybe ob (try-parse toks 'typedef parse-typedef) (add-typedef! ob))
-        _        -> (when-maybe ob (try-parse toks 'declaration parse-declaration) (add-declaration! ob))
-        ))
+      (when-maybe decl-pairs (try-parse toks)
+        (for-list decl-pair decl-pairs
+          (match decl-pair with
+            (:tuple typedef? decls)
+            -> (for-list decl decls
+                 ;; (printf "decl: " (declarator-repr decl) "\n")
+                 (if typedef?
+                     (add-typedef! decl)
+                     (add-declaration! decl)))
+            ))))
     (printf "...done.\n")
     ;; our result, a kind of database gleaned from the cpp file.
     {typedefs=typedefs structs=structs functions=functions}
@@ -245,7 +267,8 @@
           (match slot with
             (declarator:t type (maybe:yes name))
             -> (printf (lpad 16 (sym name)) " : " (ctype2-repr type) "\n")
-            _ -> (impossible)
+            (declarator:t type (maybe:no))
+            -> (printf "(bitfield padding) : " (ctype2-repr type) "\n")
             )))
       (printf "}\n")
       ))

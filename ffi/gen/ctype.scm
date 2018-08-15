@@ -17,15 +17,25 @@
   ;; XXX seriously consider collapsing this into a single alt
   ;;   with a boolean to indicate which kind.  would avoid much
   ;;   code duplication.
+  ;; note: we use (maybe list) because these are two different things:
+  ;; struct thing;
+  ;; struct thing { };
   (:struct symbol (maybe (list declarator)))
   (:union  symbol (maybe (list declarator)))
-  (:function ctype2 (list declarator))
+  (:enum symbol (maybe (list enum-pair)))
+  (:function ctype2 (list declarator)) ;; XXX add a bool to indicate '...'
   )
 
 ;; a 'declarator' is a combination of name and type.  sometimes the
 ;; name is not present (e.g. parameters in function declarations)
 (datatype declarator
   (:t ctype2 (maybe symbol))
+  )
+
+;; XXX alternatively perform the assignment algorithm and give every one a value.
+(datatype enum-pair
+  (:t symbol int)
+  (:f symbol)
   )
 
 ;; a ctype in s-expression form.
@@ -40,6 +50,8 @@
   (ctype2:struct name (maybe:yes slots)) -> (format "(struct " (sym name) " (" (join declarator-repr " " slots) "))")
   (ctype2:union name (maybe:no))         -> (format "(union " (sym name) ")")
   (ctype2:union name (maybe:yes slots))  -> (format "(union " (sym name) " (" (join declarator-repr " " slots) "))")
+  (ctype2:enum name (maybe:no))          -> (format "(enum " (sym name) ")")
+  (ctype2:enum name (maybe:yes pairs))   -> (format "(enum " (sym name) " (" (join enum-pair-repr " " pairs) "))")
   (ctype2:function type args)            -> (format "(fun " (join declarator-repr " " args) " -> " (ctype2-repr type) ")")
   )
 
@@ -48,6 +60,11 @@
   -> (format (ctype2-repr type))
   (declarator:t type (maybe:yes name))
   -> (format "(named " (sym name) " " (ctype2-repr type) ")")
+  )
+
+(define enum-pair-repr
+  (enum-pair:t name val) -> (format (sym name) "=" (int val))
+  (enum-pair:f name)     -> (format (sym name))
   )
 
 ;; ...and back into C
@@ -85,6 +102,9 @@
   -> (format "struct " (sym name) " {\n  " (join declarator->c ";\n  " slots) ";\n}")
   (ctype2:union name (maybe:yes slots))
   -> (format "union " (sym name) " {\n  " (join declarator->c ";\n  " slots) ";\n}")
+  (ctype2:enum name (maybe:no))   -> (format "enum " (sym name))
+  (ctype2:enum name (maybe:yes pairs))
+  -> (format "enum " (sym name) " {\n  " (join enum-pair-repr ",\n  " pairs) "}")
   (ctype2:function rtype args) ;; unnamed function pointer.
   -> (format (ctype2->c rtype) "(*)(" (join declarator->c ", " args) ")")
   )
