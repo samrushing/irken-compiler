@@ -92,6 +92,14 @@
       (set! r[i] v[(+ i n)]))
     r))
 
+(define (vslice v start end)
+  (if (< (- end start) 0)
+      #()
+      (let ((r (make-vector (- end start) 0)))
+        (for-range i (- end start)
+          (set! r[i] v[(+ i start)]))
+        r)))
+
 ;; drop any leading zeros
 (define (canon digs)
   (let ((len (vlen digs))
@@ -167,14 +175,6 @@
     (for-range i len
       (set! r[(+ i n)] digs[i]))
     r))
-
-(define (vslice v start end)
-  (if (< (- end start) 0)
-      #()
-      (let ((r (make-vector (- end start) 0)))
-        (for-range i (- end start)
-          (set! r[i] v[(+ i start)]))
-        r)))
 
 (define power-of-two?
   2 acc -> (maybe:yes acc)
@@ -745,11 +745,42 @@
     v  #f -> (big:neg v)
     ))
 
+(define (burnzieg da db)
+  (let ((la (vlen da))
+	(lb (vlen db)))
+    (if (or (< lb BURNZIEG-CUTOFF) (< (- la lb) BURNZIEG-CUTOFF))
+        (divschool2 da db)
+	(let ((n (/ (- lb 1) 2))
+	      (a0 (vslice da (- la n) la))
+	      (a1 (vslice da 0 (- la n))))
+	  (if (digits< db a1)
+	      ;; simple case
+	      (let (((q1 r1) (burnzieg a1 db))
+                    ((q0 r0) (burnzieg (digits-add (shift r1 n) a0) db)))
+		(:tuple (digits-add (shift q1 n) q0) r0))
+              ;; remainder check case
+              (let ((b0 (vslice db (- lb n) lb))
+        	    (b1 (vslice db 0 (- lb n)))
+                    ((q1 r1) (burnzieg a1 b1))
+                    (a0pr1 (digits-add (shift r1 n) a0))
+                    (b0xq1 (digits-mul b0 q1)))
+                (if (not (digits< a0pr1 b0xq1))
+                    (:tuple q1
+                            (digits-sub a0pr1 b0xq1))
+                    (:tuple (digits-sub q1 digits/1)
+                            (digits-sub db (digits-sub b0xq1 a0pr1)))
+                    )))))))
+
+(define BURNZIEG-CUTOFF 10)
+
 (define (digits-div da db pos?)
-  ;; XXX burnzieg goes here.
-  (match (divschool2 da db) with
-    (:tuple quo rem)
-    -> (:tuple (digits->big quo pos?) (digits->big rem #t))))
+  (if (and (= 1 (vlen da)) (= 1 da[0]))
+      (:tuple big/0 big/1)
+      (begin
+        (match (burnzieg da db) with
+        ;;(match (divschool2 da db) with
+          (:tuple quo rem)
+          -> (:tuple (digits->big quo pos?) (digits->big rem #t))))))
 
 ;; XXX handle powers of two with shifting
 (define big-div
@@ -892,8 +923,7 @@
                (t (big-mod (big-mul x x) m)))
            (if (big-odd? e)
                (big-mod (big-mul t b) m)
-               t))
-    ))
+               t))))
 
 ;; XXX this should be named big/bits.  in fact, we need to
 ;;     do an audit of the names in this file to get a clear
