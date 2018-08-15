@@ -48,6 +48,9 @@
 
   )
 
+(define (set/one item)
+  (set:red (set:empty) (set:empty) item))
+
 ;; deletion translated from https://github.com/bmeurer/ocaml-rbsets
 
 (define (set/delete-check root cmp k)
