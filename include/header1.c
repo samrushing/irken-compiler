@@ -1,6 +1,21 @@
 
 #include "pxll.h"
 
+#ifdef IRK_PROFILE
+static int64_t prof_mark0;
+static int64_t prof_mark1;
+typedef struct {
+  int calls;
+  int64_t ticks;
+  int64_t allocs;
+  int64_t alloc_words;
+  char * name;
+} pxll_prof;
+static pxll_prof prof_funs[];
+static int prof_current_fun;
+static int prof_num_funs;
+#endif
+
 static int lookup_field (int tag, int label);
 object * irk_get_metadata();
 
@@ -635,6 +650,10 @@ allocate (pxll_int tc, pxll_int size)
 #else
   // if you use this version, be sure to set <clear_tospace>!
   freep += size + 1;
+#endif
+#ifdef IRK_PROFILE
+  prof_funs[prof_current_fun].allocs++;
+  prof_funs[prof_current_fun].alloc_words += size;
 #endif
   return save;
 }

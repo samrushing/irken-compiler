@@ -280,26 +280,32 @@
 	(o.write "}")
 	))
 
+    (define (emit-profile o name call?)
+      (match (tree/member the-context.profile-funs symbol-index-cmp name) with
+        (maybe:yes {index=index names=_})
+        -> (o.write
+            (format "if (prof_current_fun != " (int (+ index 1)) ") {\n"
+                    "    prof_mark1 = rdtsc();\n"
+                    ;; charge to the calling function
+                    "    prof_funs[prof_current_fun].ticks += (prof_mark1 - prof_mark0);\n"
+                    ;; set the current function (note: 'top' is at position zero)
+                    "    prof_current_fun = " (int (+ index 1)) ";\n"
+                    (if call?
+                        "    prof_funs[prof_current_fun].calls++;\n"
+                        "")
+                    "  }"))
+        (maybe:no) -> (begin
+                        (printf "missing profile fun? " (sym name) "\n")
+                        (impossible))
+        ))
+
     (define (emit-cfun o name cname body)
       (set! current-function-name name)
       (set! current-function-cname cname)
       (o.write (format "static void " cname " (void) {"))
       (o.indent)
       (when the-context.options.trace (o.write (format "TRACE(\"" cname "\");")))
-      (when the-context.options.profile
-	(match (tree/member the-context.profile-funs symbol-index-cmp name) with
-	  (maybe:yes {index=index names=_})
-	  -> (o.write
-              (format "if (prof_current_fun != " (int (+ index 1)) ") {\n"
-                      "    prof_mark1 = rdtsc();\n"
-                      ;; charge to the calling function
-                      "    prof_funs[prof_current_fun].ticks += (prof_mark1 - prof_mark0);\n"
-                      ;; set the current function (note: 'top' is at position zero)
-                      "    prof_current_fun = " (int (+ index 1)) ";\n"
-                      "    prof_funs[prof_current_fun].calls++;\n"
-                      "  }"))
-	  (maybe:no) -> (impossible)
-	  ))
+      (when the-context.options.profile (emit-profile o name #t))
       (if (vars-get-flag name VFLAG-ALLOCATES)
 	  ;; XXX this only works because we disabled letreg around functions
 	  (emit-check-heap '() "0"))
@@ -326,6 +332,7 @@
 		(o.write (format "static void " cname "(" args ") {"))
 		(o.indent)
 		(when the-context.options.trace (o.write (format "TRACE(\"" cname "\");")))
+                (when the-context.options.profile (emit-profile o current-function-name #f))
 		(emit insn)
 		(o.dedent)
 		(o.write "}")
@@ -415,6 +422,7 @@
     (define (emit-call name fun args k)
       (let ((free (sort < k.free)) ;; sorting these might improve things
 	    (nregs (length free))
+            (current-name current-function-name)
 	    (kfun (gen-function-cname current-function-name (current-function-part.inc)))
 	    )
 	;; save
@@ -436,6 +444,7 @@
 		(set! current-function-cname kfun)
 		(o.write (format "static void " kfun " (O rr) {"))
 		(o.indent)
+                (when the-context.options.profile (emit-profile o current-name #f))
 		;; restore
 		(let ((restores
 		       (map-range
