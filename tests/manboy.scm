@@ -12,4 +12,11 @@
       (+ (x4) (x5))
       (B)))
 
-(A 10 (lambda () 1) (lambda () -1) (lambda () -1) (lambda () 1) (lambda () 0))
+(printn
+ (A 10
+    (lambda ()  1)
+    (lambda () -1)
+    (lambda () -1)
+    (lambda ()  1)
+    (lambda ()  0)
+    ))
