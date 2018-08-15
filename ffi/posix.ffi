@@ -3,8 +3,8 @@
 (posix
  (includes
   "sys/utsname.h" "unistd.h" "sys/time.h" "sys/fcntl.h"
-  "time.h" "stdlib.h" "dirent.h")
-  (structs utsname timeval timezone tm dirent DIR)
+  "time.h" "stdlib.h" "dirent.h" "sys/stat.h")
+  (structs utsname timeval timezone tm dirent DIR stat)
   (constants
    STDIN_FILENO STDOUT_FILENO STDERR_FILENO
    O_RDONLY O_WRONLY O_RDWR O_CREAT O_TRUNC
@@ -18,7 +18,7 @@
    read write close unlink
    random srandom initstate setstate
    ;; directory-related
-   opendir readdir closedir
+   opendir readdir closedir stat
    )
   (verbatim
    ;; we special-case this because it's quasi-variadic.
