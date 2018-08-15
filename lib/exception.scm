@@ -5,7 +5,7 @@
 ;; to get there, we will need to extend `raise` to capture
 ;; the current continuation so it can be examined.
 
-(define (print-exception-exit e)
+(define (print-exception-exit e) : ((rsum 'a) -> 'b)
   (let ((name (variant->name e)))
     (printf "Exception \"" (sym name) "\" raised.\n")
     (printf "   values: ")
