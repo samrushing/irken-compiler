@@ -30,7 +30,7 @@
   (for-range i dfa.size
     (let ((rx (nth dfa.states i))
           (label (format (join "\\n|" (map escape-string (string-split (pp-rx rx) #\|)))))
-          (shape (if (maybe? (tree/member dfa.finals int-cmp i))
+          (shape (if (set/member? dfa.finals int-cmp i)
                      "doublecircle"
                      "circle")))
       (printf "  node [ shape = " shape
