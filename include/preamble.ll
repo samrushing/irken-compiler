@@ -21,6 +21,7 @@
 ;; intrinsics
 declare void @llvm.memcpy.p0i8.p0i8.i64(i8* %dst, i8* %src, i64 %len, i32 %align, i1 %isvolatile)
 declare i64 @llvm.ctpop.i64 (i64 %n)
+declare i64 @llvm.readcyclecounter ()
 
 ;; with LTO, many/most of these functions could be written in C.
 
@@ -511,6 +512,12 @@ define internal fastcc i8** @irk_ll_div2b1 (i8** %ah, i8** %al, i8** %b, i8** %r
 define internal fastcc i8** @irk_popcount (i8** %n) {
   %n0 = call fastcc i64 @insn_unbox (i8** %n)
   %r0 = call i64 @llvm.ctpop.i64 (i64 %n0)
+  %r1 = call fastcc i8** @insn_box (i64 %r0)
+  ret i8** %r1
+}
+
+define internal fastcc i8** @irk_readcyclecounter () {
+  %r0 = call i64 @llvm.readcyclecounter()
   %r1 = call fastcc i8** @insn_box (i64 %r0)
   ret i8** %r1
 }
