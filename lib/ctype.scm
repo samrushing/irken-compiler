@@ -226,6 +226,8 @@
     -> (set! info.cflags (parse-string-list '() rest))
     (sexp:list ((sexp:symbol 'lflags) . rest))
     -> (set! info.lflags (parse-string-list '() rest))
+    (sexp:list ((sexp:symbol 'dll) (sexp:string dll)))
+    -> (set! info.dll dll)
     x -> (error1 "malformed spec file" (repr x))
     )
 
@@ -247,6 +249,7 @@
    includes = '()
    cflags   = '()
    lflags   = '()
+   dll      = ""
    })
 
 (define ffi-info (make-ffi-info))
@@ -267,6 +270,7 @@
   (printf "includes: " (join " " ffi-info.includes) "\n")
   (printf "cflags: " (join " " ffi-info.cflags) "\n")
   (printf "lflags: " (join " " ffi-info.lflags) "\n")
+  (printf "dll: " (string ffi-info.dll) "\n")
   (printf "sigs:\n")
   (map csig-print (ffi-info.sigs::values))
   (printf "defs:\n")
@@ -457,8 +461,12 @@
   (ctype:int (cint:char) #t)        -> #\b
   (ctype:int (cint:int) #f)         -> #\i
   (ctype:int (cint:int) #t)         -> #\I
+  (ctype:int (cint:short) #f)       -> #\H
+  (ctype:int (cint:short) #t)       -> #\h
   (ctype:int (cint:long) #f)        -> #\l
   (ctype:int (cint:long) #t)        -> #\L
+  (ctype:int (cint:longlong) #f)    -> #\n
+  (ctype:int (cint:longlong) #f)    -> #\N
   (ctype:int (cint:width 1) #f)     -> #\B
   (ctype:int (cint:width 1) #t)     -> #\b
   (ctype:int (cint:width 2) #f)     -> #\H
@@ -474,30 +482,32 @@
   (ctype:union _)                   -> #\p
   (ctype:name 'char)                -> #\c
   (ctype:name 'void)                -> (raise (:VoidDereference))
-  x                                 -> (raise (:StrangeCtype x))
+  x                                 -> (raise (:StrangeCtype (ctype-repr x)))
   )
 
 ;; convert an irken 'sexp type' to an `op_cget` code (used by the VM).
 (define (irken-type->code type-sexp)
   (char->ascii
    (match type-sexp with
-     'int    -> #\i
-     'uint   -> #\I
-     'short  -> #\h
-     'ushort -> #\H
-     'long   -> #\l
-     'ulong  -> #\L
-     'u8     -> #\B
-     'i8     -> #\b
-     'u16    -> #\H
-     'i16    -> #\h
-     'u32    -> #\M
-     'i32    -> #\m
-     'u64    -> #\Q
-     'i64    -> #\q
-     'string -> #\s
-     'char   -> #\c
-     x       -> (raise (:StrangeType x))
+     'int       -> #\i
+     'uint      -> #\I
+     'short     -> #\h
+     'ushort    -> #\H
+     'long      -> #\l
+     'ulong     -> #\L
+     'longlong  -> #\n
+     'ulonglong -> #\N
+     'u8        -> #\B
+     'i8        -> #\b
+     'u16       -> #\H
+     'i16       -> #\h
+     'u32       -> #\M
+     'i32       -> #\m
+     'u64       -> #\Q
+     'i64       -> #\q
+     'string    -> #\s
+     'char      -> #\c
+     x          -> (raise (:StrangeType x))
      )))
 
 ;; macros that expand into implementations of the foreign functions
@@ -511,20 +521,20 @@
 (%backend (c llvm)
 
   (defmacro build-ffi-fun
-    (build-ffi-fun name ztname rtype rcode nargs argtypes (formal0 ...))
-    -> (lambda (formal0 ...) (%ffi2 name formal0 ...)))
+    (build-ffi-fun iface name ztname rtype rcode nargs argtypes (formal0 ...))
+    -> (lambda (formal0 ...) (%ffi2 name formal0 ...))
+    )
 
   (defmacro build-ffi-ob
-    (build-ffi-ob name ztname obtype obcode)
-    -> (%ffi2 name))
+    (build-ffi-ob iface name ztname obtype obcode)
+    -> (%ffi2 name)
+    )
 
   (defmacro fetch-ffi-constant
     ;; we have the correct value at compile time... but in order
     ;;  for the generated C to be portable, we need to emit a %%cexp here.
-    ;;-> (%%cexp int (%unimplemented-stringify-operator name))
     (fetch-ffi-constant name val)
     -> (%%cexp int (%%stringify name))
-    ;;-> val
     )
 
   )
@@ -532,18 +542,18 @@
 (%backend bytecode
 
   (defmacro build-ffi-fun
-    (build-ffi-fun name ztname rtype rcode nargs (argtype0 ...) (formal0 ...))
-    -> (let (($pfun (%%cexp (string -> int) "dlsym2" ztname)))
+    (build-ffi-fun iface name ztname rtype rcode nargs (argtype0 ...) (formal0 ...))
+    -> (let (($pfun (vm-get-sym-handle (quote iface) ztname)))
          (lambda (formal0 ...)
-           ;;(printf "** ffi " name "\n")
-           (%%cexp (int char int argtype0 ... -> rtype)
+           (%%cexp ((cref void) char int argtype0 ... -> rtype)
                    "ffi"
                    $pfun rcode nargs
                    formal0 ...))))
 
+
   (defmacro build-ffi-ob
-    (build-ffi-ob name ztname obtype obcode)
-    -> (%%cexp (string -> (cref obtype)) "dlsym2" ztname))
+    (build-ffi-ob iface name ztname obtype obcode)
+    -> (%%cexp (string -> (cref obtype)) "dlsym0" ztname))
 
   (defmacro fetch-ffi-constant
     ;; we need to fetch the correct value at runtime.
@@ -561,6 +571,8 @@
        (cref-field fname ref0))
   x -> (raise (:SexpRefError x))
   )
+
+;; compute the size/offset of a type at runtime (VM).
 
 (define sexp->sizeoff
   (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
