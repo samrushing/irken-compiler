@@ -116,11 +116,16 @@
 
 ;; 5.2.1 RSASP1
 
+;; (define (RSASP1 skey m)
+;;   (let ((m1 (big-exp-mod m skey.dP skey.p))
+;;         (m2 (big-exp-mod m skey.dQ skey.q))
+;;         (h (big-mod (big-mul skey.qInv (big-sub m1 m2)) skey.p)))
+;;     (big-add m2 (big-mul skey.q h))))
+
+;; This version uses the translated version of BearSSL's constant-time i31 code.
+
 (define (RSASP1 skey m)
-  (let ((m1 (big-exp-mod m skey.dP skey.p))
-        (m2 (big-exp-mod m skey.dQ skey.q))
-        (h (big-mod (big-mul skey.qInv (big-sub m1 m2)) skey.p)))
-    (big-add m2 (big-mul skey.q h))))
+  (i31/rsa-crt m skey))
 
 ;; 8.2.1
 (define (rsa-sign skey msg)
