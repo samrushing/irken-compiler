@@ -22,6 +22,13 @@
   {s=s e=e ms=(mstate:after)}  -> (format "<" (int s) "-" (int e) ">")
   )
 
+(define match->sexp
+  {s=s e=e ms=(mstate:before)} -> (sexp (sym 'before))
+  {s=s e=e ms=(mstate:start)}  -> (sexp (sym 'start) (int s))
+  {s=s e=e ms=(mstate:final)}  -> (sexp (sym 'final) (int s) (int e))
+  {s=s e=e ms=(mstate:after)}  -> (sexp (sym 'after) (int s) (int e))
+  )
+
 (typealias mrange {lo=int hi=int})
 
 (datatype rx
@@ -35,6 +42,9 @@
   (:group int match rx) ;; submatch
   )
 
+;; XXX now not needed because rx->sexp
+;;     though - rx->sexp does lots of tidying up that might
+;;     not always be wanted.
 (define rx-repr
   (rx:eps)         -> "ε"
   (rx:sym s)       -> (charset-repr s)
@@ -46,16 +56,36 @@
   (rx:group n m a) -> (format "(group " (int n) " " (match-repr m) " " (rx-repr a) ")")
   )
 
+(define rx->sexp
+  (rx:eps)               -> (sexp:symbol 'eps)
+  (rx:sym s)             -> (charset->sexp s)
+  (rx:cat a (rx:star b)) -> (if (magic=? a b)
+                                (sexp (sym '+) (rx->sexp a))
+                                (sexp (sym 'cat) (rx->sexp a) (sexp (sym '*) (rx->sexp b))))
+  (rx:cat a b)           -> (sexp1 'cat (map rx->sexp (cat->list (rx:cat a b) '())))
+  (rx:star a)            -> (sexp (sym '*) (rx->sexp a))
+  (rx:or (rx:eps) a)     -> (sexp (sym '?) (rx->sexp a))
+  (rx:or a b)            -> (sexp1 'or (map rx->sexp (or->list (rx:or a b) '())))
+  (rx:and a b)           -> (sexp1 'and (map rx->sexp (and->list (rx:and a b) '())))
+  (rx:not a)             -> (sexp (sym 'not) (rx->sexp a))
+  (rx:group n m a)       -> (sexp (sym 'group) (int n) (match->sexp m) (rx->sexp a))
+  )
+
+;; this is a half-hearted attempt to render an rx in the usual form.
+;; unforunately it's not quite good enough (yet) to reliably translate
+;; back and forth. [there are issues around escaping, backslashes, etc]
 (define pp-rx
-  (rx:eps)             -> "ε"
-  (rx:sym s)           -> (charset-repr s)
-  (rx:cat a b)         -> (format (pp-rx a) (pp-rx b))
-  (rx:or a b)          -> (format "(" (join pp-rx "|" (or->list  (rx:or a b) '()))  ")")
-  (rx:and a b)         -> (format "(" (join pp-rx "&" (and->list (rx:and a b) '())) ")")
-  (rx:star (rx:sym s)) -> (format (charset-repr s) "*")
-  (rx:star a)          -> (format "(" (pp-rx a) ")*")
-  (rx:not a)           -> (format (pp-rx a) "~")
-  (rx:group n m a)     -> (format "{" (int n) (match-repr m) " " (pp-rx a) "}")
+  (rx:eps)                    -> "ε"
+  (rx:sym s)                  -> (charset-repr s)
+  (rx:cat a b)                -> (format (pp-rx a) (pp-rx b))
+  (rx:or (rx:eps) (rx:sym s)) -> (format (charset-repr s) "?")
+  (rx:or (rx:eps) a)          -> (format "(" (pp-rx a) ")?")
+  (rx:or a b)                 -> (format "(" (join pp-rx "|" (or->list  (rx:or a b) '()))  ")")
+  (rx:and a b)                -> (format "(" (join pp-rx "&" (and->list (rx:and a b) '())) ")")
+  (rx:star (rx:sym s))        -> (format (charset-repr s) "*")
+  (rx:star a)                 -> (format "(" (pp-rx a) ")*")
+  (rx:not a)                  -> (format (pp-rx a) "~")
+  (rx:group n m a)            -> (format "{" (int n) (match-repr m) " " (pp-rx a) "}")
   )
 
 ;; should probably be a primop that does this.
@@ -104,34 +134,32 @@
     cmp -> cmp
     ))
 
-(define fold-or
-  ()        -> (impossible)
-  (hd)      -> hd
-  (hd . tl) -> (rx:or hd (fold-or tl))
-  )
+(define (fold-or l)
+  (nary->binary rx:or l))
 
-(define fold-and
-  ()        -> (impossible)
-  (hd)      -> hd
-  (hd . tl) -> (rx:and hd (fold-and tl))
-  )
+(define (fold-and l)
+  (nary->binary rx:and l))
 
+;; note: these three funs are carefully written to preserve order.
 (define cat->list
-  (rx:cat (rx:cat a b) c) acc -> (cat->list c (list:cons a (list:cons b acc)))
-  (rx:cat a b) acc            -> (cat->list a (list:cons b acc))
-  tail acc                    -> (list:cons tail acc)
+  (rx:cat (rx:cat a b) c) acc -> (cat->list c (list:cons b (list:cons a acc)))
+  (rx:cat a (rx:cat b c)) acc -> (cat->list c (list:cons b (list:cons a acc)))
+  (rx:cat a b) acc            -> (cat->list b (list:cons a acc))
+  tail acc                    -> (reverse (list:cons tail acc))
   )
 
 (define or->list
-  (rx:or (rx:or a b) c) acc -> (or->list c (list:cons a (list:cons b acc)))
+  (rx:or (rx:or a b) c) acc -> (or->list c (list:cons b (list:cons a acc)))
+  (rx:or a (rx:or b c)) acc -> (or->list c (list:cons b (list:cons a acc)))
   (rx:or a b) acc           -> (or->list b (list:cons a acc))
-  tail acc                  -> (list:cons tail acc)
+  tail acc                  -> (reverse (list:cons tail acc))
   )
 
 (define and->list
-  (rx:and (rx:and a b) c) acc -> (and->list c (list:cons a (list:cons b acc)))
+  (rx:and (rx:and a b) c) acc -> (and->list c (list:cons b (list:cons a acc)))
+  (rx:and a (rx:and b c)) acc -> (and->list c (list:cons b (list:cons a acc)))
   (rx:and a b) acc            -> (and->list b (list:cons a acc))
-  tail acc                    -> (list:cons tail acc)
+  tail acc                    -> (reverse (list:cons tail acc))
   )
 
 ;; we need to walk an expression, and collect any string of
@@ -230,6 +258,13 @@
   r s                    -> (canon-order-or (rx:or r s))
   )
 
+;; belongs in lib/pair.scm?
+(define nary->binary
+  p ()        -> (raise (:RX/EmptyNary))
+  p (hd)      -> hd
+  p (hd . tl) -> (p hd (nary->binary p tl))
+  )
+
 (define rx-and
   (rx:sym ()) r         -> rx-null
   r (rx:sym ())         -> rx-null
@@ -303,6 +338,13 @@
       #\\ -> (loop (list:cons (string-ref s (+ pos 1)) chars) (+ pos 2))
       ch  -> (loop (list:cons ch chars) (+ pos 1))
       )))
+
+;; parse an rx in the usual form.
+;; note: there are some unusual operators here:
+;; {..} : group-matching
+;; `~`  : negation
+;; `^'  : intersection
+;; `-`  : difference
 
 (define (p-rx rx pos0)
 
