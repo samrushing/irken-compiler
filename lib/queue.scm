@@ -65,3 +65,9 @@
     ))
 
 ;; todo: queue/iterate (currently not used anywhere).
+
+(defmacro while-queue
+  (while-queue item queue body ...)
+  -> (while (> queue.len 0)
+       (when-maybe item (queue/pop! queue)
+         body ...)))
