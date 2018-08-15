@@ -84,7 +84,7 @@
     (let loop ((ch (next-char))
 	       (last 'not-final)
 	       (current (list:nil)))
-      ;;(printf "state " (int state) " ch " (char ch) "\n")
+      ;; (printf "state " (int state) " ch " (char ch) "\n")
       (cond ((char=? ch #\eof)
              (when (> (length current) 0)
                ;; tricky: when the file does not end with a newline,
@@ -95,7 +95,7 @@
                (emit {kind=last
                       val=(list->string (reverse current))
                       range=(range:t tline tpos lline lpos)}))
-	     (emit {kind='eof val="" range=(range:t tline tpos line pos)}))
+	     (emit {kind='EOF val="" range=(range:t tline tpos line pos)}))
 	    (else
 	     (set! state (dfa.step ch state))
 	     (set! action dfa.finals[state])
@@ -104,7 +104,7 @@
 		    (loop (next-char) action (list:cons ch current)))
 		   ;;((and (final? last) (not (final? action)))
 		   ((and (final? last) (eq? action '%%sink%%))
-                    ;;(printf "exit final to " (int state) "\n")
+                    ;; (printf "exit final to " (int state) "\n")
 		    ;; we've left a final state - longest match - emit token
 		    (emit {kind=last
                            val=(list->string (reverse current))
