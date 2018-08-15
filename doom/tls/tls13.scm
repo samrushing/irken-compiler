@@ -144,11 +144,10 @@
         (set! draft-version version)
         (PUSH info (sexp (sym 'version) (int version)))
         (PUSH info (client-hello->sexp ch))
-        (pp (client-hello->sexp ch) 132)
+        ;;(pp (client-hello->sexp ch) 132)
         (find-sigalg ch)
         (find-keyshare ch)
         (find-maxfraglen ch)
-        (printf "maxfraglen " (int maxfraglen) "\n")
         (when (not (null? alpns))
           (find-alpn ch))
         (set-state! (tls-state:rcvch))
@@ -365,25 +364,24 @@
 
     ;; --- create socket object ---
     ;; XXX TODO?: half-closed connections.
-    (let loop ()
-      (try
-       ;; get connected
-       (while (not (eq? state (tls-state:cnctd)))
-         (read-records))
-       except
-       (:TLS/Alert desc msg)
-       -> (begin (printf "sending tls alert: '" (sym (tls-alert-desc->name desc)) "' " msg "\n")
-                 (set-state! (tls-state:closed))
-                 (send-alert desc)
-                 #u)
-       (:TLS/ReceivedFatalAlert desc)
-       -> (begin (printf "received tls alert: '" (sym (tls-alert-desc->name desc)) "\n")
-                 (set-state! (tls-state:closed)) ;; half-closed?
-                 #u)
-       (:Doom/EOF s)
-       -> (begin (printf "EOF\n")
-                 #u)
-       ))
+    (try
+     ;; get connected
+     (while (not (eq? state (tls-state:cnctd)))
+       (read-records))
+     except
+     (:TLS/Alert desc msg)
+     -> (begin (printf "sending tls alert: '" (sym (tls-alert-desc->name desc)) "' " msg "\n")
+               (set-state! (tls-state:closed))
+               (send-alert desc)
+               #u)
+     (:TLS/ReceivedFatalAlert desc)
+     -> (begin (printf "received tls alert: '" (sym (tls-alert-desc->name desc)) "\n")
+               (set-state! (tls-state:closed)) ;; half-closed?
+               #u)
+     (:Doom/EOF s)
+     -> (begin (printf "EOF\n")
+               #u)
+     )
     (when (not (eq? state (tls-state:cnctd)))
       (raise (:TLS/Failed)))
     ;; return our doom-tls-socket object
