@@ -121,6 +121,7 @@
 	  (else
 	   (loop (+ i 1) j acc)))))
 
+;; XXX this needs to be renamed 'string-cmp'
 (define (string-compare a b) : (string string -> cmp)
   (%backend c
     (%%cexp ((raw string) (raw string) -> cmp) "irk_string_cmp (%0, %1)" a b))
@@ -259,17 +260,27 @@
 (define (upcase s)
   (list->string (map toupper (string->list s))))
 
+(define (tolower ch)
+  (if (upper? ch)
+      (ascii->char (+ (char->ascii ch) 32))
+      ch))
+
+(define (downcase s)
+  (list->string (map tolower (string->list s))))
+
 (define safe-char
   #\space   -> " "
   #\newline -> "\\n"
   #\tab     -> "\\t"
   #\return  -> "\\r"
   #\"       -> "\\\""
+  #\\       -> "\\\\"
   ch        -> (if (printable? ch)
                    (char->string ch)
                    (format "\\x" (zpad 2 (hex (char->ascii ch)))))
   )
 
+;; XXX this should be called string-repr!
 (define (repr-string s)
   (format "\"" (join (map safe-char (string->list s))) "\""))
 
