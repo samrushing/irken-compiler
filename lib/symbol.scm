@@ -12,15 +12,11 @@
   )
 
 (define symbol-table-size 0)
-(define the-symbol-table (tree/empty))
+(define the-symbol-table (initial-symbol-table))
 
 (define (intern-symbol sym)
-  (set! the-symbol-table
-	(tree/insert the-symbol-table
-		     string-compare
-		     (symbol->string sym)
-		     sym))
-  (set! symbol-table-size (+ 1 symbol-table-size))
+  (tree/insert! the-symbol-table string-compare (symbol->string sym) sym)
+  (inc! symbol-table-size)
   sym
   )
 
@@ -51,15 +47,11 @@
     (list->vector (%%cexp (list symbol) "gist")))
   )
 
-(define (initialize-symbol-table)
-  (let ((v (get-internal-symbols)))
-    (set! the-symbol-table (tree/empty)) ;; necessary because of problems with topological sort
+(define (initial-symbol-table)
+  (let ((v (get-internal-symbols))
+        (map (tree/empty)))
     (for-range i (vector-length v)
-      (intern-symbol v[i]))
-    #u
+      (tree/insert! map string-compare (symbol->string v[i]) v[i]))
+    (set! symbol-table-size (vector-length v))
+    map
     ))
-
-;; Note: it is important that this be done relatively early at runtime,
-;;  there are subsystems (like FFI) that need this to have already happened.
-
-(initialize-symbol-table)
