@@ -32,15 +32,20 @@
    '("0123456789"
      "abcdefghijklmnopqrstuvwxyz"
      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-     "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ")))
+     "!\"#$%&'()*+,-./:;<=>?@[]^_`{|}~ ")))
 
 ;; XXX why is this not a vector[256]?  was I thinking of unicode?
 (define printable-map
-  (let ((chars (string->list printable-chars)))
-    (fold
-     (lambda (ch t) (tree/insert t int-cmp (char->ascii ch) (char->string ch)))
-     (tree:empty)
-     chars)))
+  (let ((chars (string->list printable-chars))
+        (map (fold
+              (lambda (ch t) (tree/insert t int-cmp (char->ascii ch) (char->string ch)))
+              (tree:empty)
+              chars)))
+    (tree/insert! map int-cmp (char->int #\newline) "\\n")
+    (tree/insert! map int-cmp (char->int #\return) "\\r")
+    (tree/insert! map int-cmp (char->int #\tab) "\\t")
+    (tree/insert! map int-cmp (char->int #\\) "\\\\")
+    map))
 
 (define (char-repr ch)
   (match (tree/member printable-map int-cmp ch) with
@@ -81,6 +86,27 @@
     (for-list x s
       (PUSH r (format (zpad 2 (hex x.lo)) "-" (zpad 2 (hex x.hi)))))
     (format "{" (join "," (reverse r)) "}")))
+
+(define (charset->sexp* s)
+  (let ((r '()))
+    (for-list x s
+      (cond ((= x.lo (- x.hi 1)) ;; single char
+             (PUSH r (sexp:char (int->char x.lo))))
+            ((and (printable? (int->char x.lo)) (printable? (int->char (- x.hi 1))))
+             (PUSH r (sexp (char (int->char x.lo)) (char (int->char (- x.hi 1))))))
+            (else
+             (PUSH r (sexp (int x.lo) (int x.hi))))))
+    (sexp1 'set (reverse r))
+    ))
+
+(define (charset->sexp s)
+  (let ((size (charset/size s)))
+    (cond ((= size 256)
+           (sexp (sym 'set) (sym 'dot)))
+          ((> size 128)
+           (sexp (sym 'not) (charset->sexp* (charset/invert s))))
+          (else
+           (charset->sexp* s)))))
 
 ;; note: this is not meant for overlap detection, it is
 ;;  for maintaining sets/maps of charsets.
@@ -244,4 +270,5 @@
 		       tl (charset/merge
 			   r (charset/single (char->ascii a))))
     ;; backslashes? hex-escapes, ']', '[', etc..
+    ;; [note: partially handled by rx.scm:find-and-parse-charset]
     ))
