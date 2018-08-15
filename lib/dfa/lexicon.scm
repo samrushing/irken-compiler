@@ -19,26 +19,20 @@
 (define (make-one sym s)
   (:tuple sym s))
 
-(define build-or
-  ()        -> (raise (:Lex/BogusOr))
-  (a b)     -> (rx-or a b)
-  (hd . tl) -> (rx-or hd (build-or tl))
-  )
-
 (define (lexicon->dfa lexicon)
   (let ((subs '())
         (i 0)
         (labels (alist:nil)))
     (for-list item lexicon
       (match item with
-        (:tuple kind regex)
-        -> (let (((rx pos) (p-rx regex 0)))
-             (assert (= pos (string-length regex)))
+        (:tuple kind rx)
+        -> (begin
+             ;; (printf "regex = " (string regex) " rx = " (rx-repr rx) "\n")
              (alist/push labels i kind)
              (PUSH subs (rx-group i nullmatch rx))
              (set! i (+ i 1)))
         ))
-    (let ((rx (build-or (reverse subs)))
+    (let ((rx (nary->binary rx-or (reverse subs)))
           (dfa (rx->dfa rx)))
       ;;(printf "\nrx = " (pp-rx rx) "\n")
       ;;(print-dfa dfa)
@@ -198,33 +192,56 @@
   (define (upsym sym)
     (string->symbol (upcase (symbol->string sym))))
 
-  (define sexp->item
+  ;; we have a tiny DSL for charsets here:
+  ;; (WHITESPACE (+ (set (9 11) (32 33))))
+  ;; (NUMBER (+ (set (#\0 #\9))))
+  ;; (NAME (+ (set #\_ (#\A #\Z) (#\a #\z))))
+
+  (define sexp->charset
+    acc ()
+    -> acc
+    acc ((sexp:list ((sexp:int lo) (sexp:int hi))) . tl)
+    -> (sexp->charset (charset/merge (LIST {lo=lo hi=hi}) acc) tl) ;; note: range is [lo,hi)
+    acc ((sexp:list ((sexp:char lo) (sexp:char hi))) . tl)
+    -> (sexp->charset (charset/merge (charset/range (char->int lo) (+ 1 (char->int hi))) acc) tl)
+    acc ((sexp:char ch) . tl)
+    -> (sexp->charset (charset/merge (charset/single (char->int ch)) acc) tl)
+    acc x
+    -> (raise (:Lexicon/MalformedCharset (repr (sexp:list x))))
+    )
+
+  (define sexp->rx
     (sexp:list ((sexp:symbol 'lit) (sexp:string lit)))
-    -> (rx-safe-string lit)
+    -> (parse-rx (rx-safe-string lit))
     (sexp:list ((sexp:symbol 'reg) (sexp:string reg)))
-    -> reg
+    -> (parse-rx reg)
     (sexp:list ((sexp:symbol 'or) . items))
-    -> (format (join "|" (map sexp->item items)))
+    -> (nary->binary rx-or (map sexp->rx items))
     (sexp:list ((sexp:symbol 'cat) . items))
-    -> (format "(" (join "" (map sexp->item items)) ")")
+    -> (nary->binary rx-cat (map sexp->rx items))
     (sexp:list ((sexp:symbol '*) item))
-    -> (format "(" (sexp->item item) ")*")
+    -> (rx-star (sexp->rx item))
     (sexp:list ((sexp:symbol '+) item))
-    -> (format "(" (sexp->item item) ")+")
+    -> (rx-plus (sexp->rx item))
     (sexp:list ((sexp:symbol 'not) item))
-    -> (format "(" (sexp->item item) ")~")
+    -> (rx-not (sexp->rx item))
     (sexp:list ((sexp:symbol '?) item))
-    -> (format "(" (sexp->item item) ")?")
-    exp -> (raise (:Lexicon/Error "sexp->item" exp))
+    -> (rx-optional (sexp->rx item))
+    (sexp:list ((sexp:symbol 'set) (sexp:symbol 'dot)))
+    -> (rx-sym charset/dot)
+    (sexp:list ((sexp:symbol 'set) . ranges))
+    -> (rx-sym (sexp->charset (charset/empty) ranges))
+    exp -> (raise (:Lexicon/Error "sexp->rx" (repr exp)))
     )
 
   (define sexp->lexeme
     (sexp:list ((sexp:symbol kind) item))
-    -> (:tuple (upsym kind) (sexp->item item))
-    exp -> (raise (:Lexicon/Error "sexp->lexeme" exp))
+    ;;-> (:tuple (upsym kind) (sexp->rx item))
+    -> (:tuple kind (sexp->rx item))
+    exp -> (raise (:Lexicon/Error "sexp->lexeme" (repr exp)))
     )
   (match exp with
     (sexp:list ((sexp:symbol 'lexicon) . rest))
     -> (map sexp->lexeme rest)
-    exp -> (raise (:Lexicon/Error "sexp->lexicon" exp))
+    exp -> (raise (:Lexicon/Error "sexp->lexicon" (repr exp)))
     ))
