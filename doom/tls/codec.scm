@@ -191,7 +191,7 @@
             (raise (:TLS/Alert (tls-alert-desc:unexpected-message) "unexpected ChangeCipherSpec")))))
 
     (define (unpack-record kind)
-      (printf "unpack record kind = " (int kind) "\n")
+      ;;(printf "unpack record kind = " (int kind) "\n")
       (let ((ctype (int->tls-ctype kind)))
         (match ctype with
           (tls-ctype:hsk)                -> (unpack-hsk)
