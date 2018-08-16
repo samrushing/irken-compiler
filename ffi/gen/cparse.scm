@@ -95,6 +95,24 @@
           #t _ _           -> #u
           )))))
 
+(define (strip-asm gen)
+  (makegen emit
+    (let ((in-asm? #f)
+          (plevel 0))
+      (for tok gen
+        (match in-asm? plevel tok.kind with
+          #f 0 'Asm        -> (set! in-asm? #t)
+          #f _ _           -> (emit tok)
+          #t _ 'LeftParen  -> (inc! plevel)
+          #t 1 'RightParen -> (begin
+                                (dec! plevel)
+                                (set! in-asm? #f)
+                                (emit {kind='AsmStatement val="__asm__()" range=tok.range})
+                                )
+          #t _ 'RightParen -> (dec! plevel)
+          #t _ _           -> #u
+          )))))
+
 (define (frob-typedef-names gen name-map)
   (makegen emit
     (for tok gen

@@ -153,8 +153,9 @@
         ;; this is the 'lexer hack' often used with C parsers.
         (gen2 (partition-stream
                (frob-typedef-names
-                (strip-attributes
-                 (strip-whitespace gen1))
+                (strip-asm
+                 (strip-attributes
+                  (strip-whitespace gen1)))
                 typedef-names)))
         (typedefs (tree/empty))
         (structs (tree/empty))
@@ -170,6 +171,8 @@
        (:NoParse tok)
        -> (begin
             (verbose
+             (for-list tok toks
+               (printf " " (sym tok.kind) " " (string tok.val) "\n"))
              (printf (bold "unable to parse expression:\n"))
              (printf " toks = " (toks->string toks) "\n")
              (printf " at token = " (token-repr tok) "\n"))

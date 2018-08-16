@@ -189,6 +189,7 @@
       (LeftParen pointer directDeclarator RightParen)
       (LeftParen typeSpecifier pointer directDeclarator RightParen))
      (gccDeclaratorExtension
+      AsmStatement
       (Asm LeftParen gccDeclaratorExtension-0 RightParen)
       gccAttributeSpecifier)
      (gccAttributeSpecifier (Attribute LeftParen LeftParen gccAttributeList RightParen RightParen))
@@ -268,7 +269,8 @@
       expressionStatement
       selectionStatement
       iterationStatement
-      jumpStatement)
+      jumpStatement
+      AsmStatement)
      (labeledStatement
       (Identifier Colon statement)
       (Case constantExpression Colon statement)
