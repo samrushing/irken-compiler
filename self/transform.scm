@@ -9,8 +9,6 @@
 
 (define (transformer)
 
-  (define counter 0)
-
   (define (go exp)
     (let ((expanded
 	   (match (splice exp) with
@@ -643,6 +641,32 @@
     (sexp:symbol (string->symbol (string-concat (makesym forms '()))))
     )
 
+  (define next-gensym-counter
+    (let ((counter 0))
+      (lambda ()
+        (let ((val counter))
+          (inc! counter)
+          val))))
+
+  (define expand-%%gensym
+    ()                -> (sexp:symbol (string->symbol (format "g" (int (next-gensym-counter)))))
+    ((sexp:string s)) -> (sexp:symbol (string->symbol (format s (int (next-gensym-counter)))))
+    ((sexp:symbol s)) -> (sexp:symbol (string->symbol (format (sym s) (int (next-gensym-counter)))))
+    x                 -> (raise (:SyntaxError (repr (sexp:list (list:cons (sexp:symbol '%%gensym) x)))))
+    )
+
+  (define (expand-%%record forms)
+    (define collect
+      acc ()
+      -> (reverse acc)
+      acc ((sexp:list ((sexp:symbol name) val)) . rest)
+      -> (collect (list:cons (field:t name val) acc) rest)
+      acc (x . _)
+      -> (error1 "bad arg to %%record" (repr x))
+      )
+    (sexp:record (collect '() forms))
+    )
+
   ;; --------------------------------------------------------------------------------
   ;; constant folding. this *really* needs to go into analyze.scm, so that it can
   ;;  benefit from inlining.
@@ -738,6 +762,8 @@
       ('%%constructor expand-%%constructor)
       ('%%stringify expand-%%stringify)
       ('%%symbol expand-%%symbol)
+      ('%%record expand-%%record)
+      ('%%gensym expand-%%gensym)
       ('<< expand-<<)
       ('binary- expand-binary-)
       ('binary+ expand-binary+)
