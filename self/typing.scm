@@ -300,12 +300,18 @@
     (type:pred 'raw (arg) _) -> arg
     t -> t)
 
+  ;; HACK: frob signature if bogus-bytecode-cexp.
+  (define (maybe-frob-cexp-sig pargs)
+    (if (eq? the-context.options.backend (backend:bytecode))
+        (map ffi-type-frob-int pargs)
+        pargs))
+
   (define (type-of-cexp gens sig exp tenv)
     (match (instantiate-type-scheme gens sig) with
       (type:pred 'arrow pargs _)
       -> (if (not (= (- (length pargs) 1) (length (noderec->subs exp))))
              (error1 "wrong number of args to cexp" exp)
-             (match pargs with
+             (match (maybe-frob-cexp-sig pargs) with
                () -> (error1 "malformed arrow type" sig)
                (result-type . parg-types)
                -> (let ((arg-types (map (lambda (x) (type-of x tenv)) (noderec->subs exp))))
@@ -664,7 +670,7 @@
       ;; -------------------- FFI --------------------
       _ -> (error1 "lookup-primapp" name)))
 
-  (define (ffi-type-wrap-out type)
+  (define (ffi-type-frob-int type)
     (match type with
       ;; promote all c int types to irken ints.
       (type:pred kind _ _) -> (if (member-eq? kind c-int-types)
@@ -704,10 +710,10 @@
     (sexp:symbol name)
     -> (match (ffi-info.sigs::get name) with
          (maybe:yes (csig:fun _ rtype argtypes))
-         -> (:scheme '() (arrow (ffi-type-wrap-out (ctype->irken-type rtype))
+         -> (:scheme '() (arrow (ffi-type-frob-int (ctype->irken-type rtype))
                                 (map ctype->irken-type (map frob-int-arg argtypes))))
          (maybe:yes (csig:obj _ obtype))
-         -> (:scheme '() (arrow (pred 'cref (LIST (ffi-type-wrap-out (ctype->irken-type obtype)))) '()))
+         -> (:scheme '() (arrow (pred 'cref (LIST (ffi-type-frob-int (ctype->irken-type obtype)))) '()))
          (maybe:no)
          -> (error1 "lookup-ffi-scheme: unknown name" name))
     x -> (error1 "lookup-ffi-scheme: malformed" (repr x))
