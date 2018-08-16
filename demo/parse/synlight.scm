@@ -1,6 +1,18 @@
 ;; -*- Mode: Irken -*-
 
+;; syntax highlighting.
+
+;; while this includes an irken-specific hack, it can be
+;;  used with any lexer that uses the same token scheme.
+;; [i.e., if you have a pascal lexer that generates
+;;  COMMENT/STRING/etc... tokens it will work with this
+;;  utility]
+;;
+;; at some point I'd like to design a markup system that
+;;  lets you attach markup to grammar productions.
+
 (include "lib/basis.scm")
+(include "lib/getopt.scm")
 (include "lib/map.scm")
 (include "lib/cmap.scm")
 (include "lib/counter.scm")
@@ -41,7 +53,7 @@
 
 (define CSI "\x1b[")
 
-(define (ansi s color)
+(define (ansi-markup s color)
   (match (alist/lookup* ansi-colors color -1) with
     -1  -> (format CSI "0m" s) ;; turn it all off
     n   -> (format CSI (int n) "m" s CSI "0m")
@@ -106,7 +118,7 @@ body .f { color: #0000C0; font-weight:bold } /* function */
       ))
   (string-concat (map escape (string->list s))))
 
-(define html
+(define html-markup
   s 'none -> (sanitize s)
   s class -> (format "<span class=\"" (sym class) "\">" (sanitize s) "</span>")
   )
@@ -129,7 +141,7 @@ body .f { color: #0000C0; font-weight:bold } /* function */
              _ _ "(" "datatype" -> #t
              _ _ _ _            -> #f
              )))
-    
+
     (makegen emit
       (for tok gen
         (when (is-fun? tok)
@@ -143,12 +155,47 @@ body .f { color: #0000C0; font-weight:bold } /* function */
         )))
     ))
 
-(if (< sys.argc 3)
-    (begin (printf "\nSyntax Highlighter.\n\n")
-           (printf "Usage: " sys.argv[0] " <lexicon.sg> <input-file>\n")
-           (printf "    example: $ " sys.argv[0] " irken-lex.sg demo/brainfuck.scm\n"))
-    (let ((lexpath sys.argv[1])
-          (lexfile (file/open-read lexpath))
+(define program-options
+  (makeopt
+   (flag 'h)    ;; help
+   (flag 'html) ;; html output
+   (flag 'ansi) ;; ansi output
+   (pos 'lexer (string ""))
+   (pos 'input (string ""))
+   ))
+
+(define (get-options)
+  (if (< sys.argc 3)
+      (usage)
+      (try
+       (process-options program-options (rest (vector->list sys.argv)))
+       except
+       (:Getopt/MissingArg _ _) -> (usage)
+       (:Getopt/UnknownArg _ _) -> (usage)
+       )))
+
+(define (usage)
+  (printf "\nSyntax Highlighter.\n\n")
+  (printf "Usage: " sys.argv[0] " [-html|-ansi] <lexicon.sg> <input-file>\n")
+  (printf "    example: $ " sys.argv[0] " irken-lex.sg demo/brainfuck.scm\n")
+  (%exit #f -1))
+
+(define (main)
+  (let ((opts (get-options))
+        (html? #f)
+        (lexpath "")
+        (input ""))
+    (when-maybe b (get-bool-opt opts 'h)
+      (usage))
+    (when-maybe b (get-bool-opt opts 'html)
+      (set! html? #t))
+    (when-maybe b (get-bool-opt opts 'ansi)
+      (set! html? #f))
+    (when-maybe path (get-string-opt opts 'lexer)
+      (set! lexpath path))
+    (when-maybe path (get-string-opt opts 'input)
+      (set! input path))
+    (let ((lexfile (file/open-read lexpath))
           ;; read the parser spec as an s-expression
           (exp (reader lexpath (lambda () (file/read-char lexfile))))
           (lexicon (sexp->lexicon (car exp)))
@@ -158,14 +205,17 @@ body .f { color: #0000C0; font-weight:bold } /* function */
           ;; build a lexer from the dfa
           (lexer (dfa->lexer dfa0))
           ;; lex the given file
-          (spath sys.argv[2])
-          (sfile (file/open-read spath))
+          (sfile (file/open-read input))
           (gen0 (file-char-generator sfile))
           (gen1 (make-lex-generator lexer gen0)))
-      (printf header "\n")
+      (when html?
+        (printf header "\n"))
       (for tok (annotate-functions gen1)
-        ;;(printf (ansi tok.val (alist/lookup* ansi-color-table tok.kind 'none)))
-        (printf (html tok.val (alist/lookup* css-color-table tok.kind 'none)))
-        )
-      (printf footer "\n")
-      ))
+        (if html?
+            (printf (html-markup tok.val (alist/lookup* css-color-table tok.kind 'none)))
+            (printf (ansi-markup tok.val (alist/lookup* ansi-color-table tok.kind 'none)))))
+      (when html?
+        (printf footer "\n"))
+      )))
+
+(main)
