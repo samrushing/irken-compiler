@@ -435,7 +435,7 @@
     (define (safe-for-let-reg exp names)
       (and (not the-context.options.noletreg)
 	   (node-get-flag exp NFLAG-LEAF)
-	   (< (length names) 5)
+	   (< (length names) 15)
 	   (not (some?
 		 (lambda (name)
 		   (vars-get-flag name VFLAG-FREEREF))
@@ -710,6 +710,8 @@
       (insn:invoke name closure-reg args-reg k))
     (define (gen-tail name closure-reg args-reg k)
       (insn:tail name closure-reg args-reg))
+
+    (tree/insert! the-context.profile-funs symbol-index-cmp 'toplevel {index=0 names=current-funs})
 
     (try
      (compile #t exp (cpsenv:nil) null-cont)
