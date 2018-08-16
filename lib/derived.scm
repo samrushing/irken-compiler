@@ -120,12 +120,13 @@
 ;; XXX doesn't work when <hi> is calculated.
 (defmacro for-range*
   (for-range* vname lo hi body ...)
-  -> (let (($n hi))
-       (let $loop ((vname lo))
-	 (if (= vname $n)
-	     #u
-	     (begin body ...
-		    ($loop (+ vname 1)))))))
+  -> (let $loop ((vname lo)
+                 ($stop hi))
+       (if (= vname $stop)
+           #u
+           (begin
+             body ...
+             ($loop (+ vname 1) $stop)))))
 
 (defmacro for-range
   (for-range vname num body ...)
@@ -134,11 +135,12 @@
 
 (defmacro for-range-rev*
   (for-range-rev* vname lo hi body ...)
-  -> (let $loop ((vname (- hi 1)))
-       (if (< vname lo)
+  -> (let $loop ((vname (- hi 1))
+                 ($stop lo))
+       (if (< vname $stop)
            #u
            (begin body ...
-                  ($loop (- vname 1))))))
+                  ($loop (- vname 1) $stop)))))
 
 (defmacro for-range-rev
   (for-range-rev vname num body ...)
