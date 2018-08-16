@@ -12,9 +12,16 @@
     (match (get 0) (get 1) (get 2) with
       #xda #x0f #xf0 -> #f
       #xf0 #x0f #xda -> #t
-      _ _ _          -> (raise (:I_Am_Confused))
+      x y z
+      -> (begin
+           (printf "vals " (int x) " " (int y) " " (int z) "\n")
+           (raise (:I_Am_Confused)))
       )))
 
-(printf "big-endian? " (bool big-endian?) "\n")
+(printf
+ (match big-endian? with
+   #t -> "big-endian"
+   #f -> "little-endian")
+ "\n")
 
 
