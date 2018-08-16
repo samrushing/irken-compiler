@@ -632,7 +632,8 @@
     (%%cexp (-> int) "(pxll_int)rdtsc()"))
   (%backend llvm
     (%llvm-call ("@irk_readcyclecounter" (-> int))))
-  ;; TBD: vm
+  (%backend bytecode
+    (raise (:NotImplemented "read-cycle-counter")))
   )
 
 ;; VM needs to shift all argv right by one.
