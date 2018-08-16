@@ -365,7 +365,10 @@
   ;; XXX also need to handle 64-bit types on a 32-bit platform.
   '(uint8_t uint16_t uint32_t uint64_t
     int8_t int16_t int32_t int64_t
-    uint long ulong longlong ulonglong
+    ;; these are via lib/ctypes
+    int uint short ushort long ulong longlong ulonglong
+    i8 u8 i16 u16 i32 u32 i64 u64
+    ;; note: 128 & 256 are not here.
     ))
 
 (define (int-ctype->itype cint signed?)
