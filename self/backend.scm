@@ -166,32 +166,22 @@
 
 (define (emit-profile-0 o)
   (o.write "
-static int64_t prof_mark0;
-static int64_t prof_mark1;
-typedef struct {
-  int calls;
-  int64_t ticks;
-  char * name;
-} pxll_prof;
-static pxll_prof prof_funs[];
-static int prof_current_fun;
-static int prof_num_funs;
 void prof_dump (void)
 {
  int i=0;
- fprintf (stderr, \"%20s\\t%20s\\t%s\\n\", \"calls\", \"ticks\", \"name\");
+ fprintf (stderr, \"%15s\\t%15s\\t%15s\\t%15s\\t%s\\n\", \"calls\", \"ticks\", \"allocs\", \"words\", \"name\");
  for (i=0; prof_funs[i].name; i++) {
-   fprintf (stderr, \"%20d\\t%20\" PRIu64 \"\\t%s\\n\", prof_funs[i].calls, prof_funs[i].ticks, prof_funs[i].name);
+   fprintf (stderr, \"%15d\\t%15\" PRIu64 \"%15\" PRIu64 \"%15\" PRIu64 \"\\t%s\\n\", prof_funs[i].calls, prof_funs[i].ticks, prof_funs[i].allocs, prof_funs[i].alloc_words, prof_funs[i].name);
  }
 }
 "))
 
 (define (emit-profile-1 o)
-  (o.write "static pxll_prof prof_funs[] = \n  {{0, 0, \"top\"},")
+  (o.write "static pxll_prof prof_funs[] = \n  {{0, 0, 0, 0, \"top\"},")
   (for-map k v the-context.profile-funs
     (let ((name (cdr (reverse v.names)))) ;; strip 'top' off
-      (o.write (format "   {0, 0, \"" (join symbol->string "." name) "\"},"))))
-  (o.write "   {0, 0, NULL}};"))
+      (o.write (format "   {0, 0, 0, 0, \"" (join symbol->string "." name) "\"},"))))
+  (o.write "   {0, 0, 0, 0, NULL}};"))
 
 ;; with large programs, the constructed initializers can get *really*
 ;;  long... long enough to cause problems even for emacs.
