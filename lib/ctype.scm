@@ -185,6 +185,9 @@
   (define parse-sig
     ((sexp:symbol name) sig)
     -> (info.sigs::add name (parse-sig* name sig))
+    ((sexp:list ((sexp:symbol name0) (sexp:symbol name1))) sig)
+    -> (let ((sig0 (parse-sig* name1 sig)))
+         (info.sigs::add name0 sig0))
     x -> (error1 "malformed sig" (repr (sexp:list x)))
     )
 

@@ -137,9 +137,27 @@
         ))))
 
 (define *verbose-flag* #f)
+(define *keep-temps* #f)
 (defmacro verbose
   (verbose item ...) -> (if *verbose-flag* (begin item ... #u)))
 (define *typedefs-flag* #f)
+
+(define (process-dm-file dmfile)
+
+  (define (paren-free? s)
+    (and (= -1 (string-find "(" s))
+         (> (string-length s) 0)))
+
+  (let ((renames (tree/empty)))
+    (for line (stdio/line-generator (stdio/open-read dmfile))
+      (let ((parts (string-split line #\space)))
+        (match parts with
+          (_ name0 name1)
+          -> (when (and (paren-free? name0) (paren-free? name1))
+               (tree/insert! renames string-compare name0 name1))
+          _ -> #u
+          )))
+    renames))
 
 ;; here 'cpp' means 'c, pre-processed', not c++.
 
@@ -394,13 +412,18 @@
     ;; write code to emit constants (this will be appended to the xxx_ffi.scm file)
     (W (format "\nint main (int argc, char * argv[]) {\n"))
     (for-list constant iface.constants
-      (W (format "  fprintf (stdout, \"(con " (sym constant)
-                 " %\" PRIdPTR \")\\n\", (intptr_t)" (sym constant) ");\n")))
+      (W (format "#ifdef " (sym constant) "\n"
+                 "  fprintf (stdout, \"(con " (sym constant)
+                 " %\" PRIdPTR \")\\n\", (intptr_t)" (sym constant) ");\n"
+                 "#endif\n"
+                 )))
     (W "}\n")
     (stdio/close ofile)
-    (let ((cpp-path (format base "_iface1.cpp")))
+    (let ((cpp-path (format base "_iface1.cpp"))
+          (dm-path (format base "_iface1.dm")))
       (compile (append iface.cflags (LIST "-E" opath ">" cpp-path)))
-      (genc2 iface base cpp-path))
+      (compile (append iface.cflags (LIST "-dM" "-E" opath ">" dm-path)))
+      (genc2 iface base cpp-path dm-path))
     (%exit #f 0)
     ))
 
@@ -464,21 +487,34 @@
   )
 
 ;; write sigs to the interface file.
-(define (write-sigs iface types W)
-  (for-list sig iface.sigs
-    (match (tree/member types.functions symbol-index-cmp sig) with
-      (maybe:yes type)
-      ;; (sig accept (int (* (struct sockaddr)) (* uint) -> int))
-      -> (match (sanitize-sig type) with
-           (ctype2:function rtype args)
-           -> (W (format "(sig " (sym sig) " ("
-                         (join declarator-repr " " args)
-                         " -> " (ctype2-repr rtype) "))\n"))
-           _
-           -> (W (format "(sig " (sym sig) " " (ctype2-repr type) ")\n"))
-           )
+(define (write-sigs iface types renames W)
+
+  (define (write-sig type name)
+    (match (sanitize-sig type) with
+      (ctype2:function rtype args)
+      -> (W (format " ("
+                    (join declarator-repr " " args)
+                    " -> " (ctype2-repr rtype) "))\n"))
+      _
+      -> (W (format " " (ctype2-repr type) ")\n"))
+      ))
+
+  (for-list name iface.sigs
+    (W (format "(sig "))
+    (match (tree/member renames string-compare (symbol->string name)) with
+      (maybe:yes name1)
+      -> (begin
+           ;; if the function is renamed with a #define, emit `(visible-name linkage-name)`.
+           (W (format "(" (sym name) " " name1 ")"))
+           (set! name (string->symbol name1))
+           0)
       (maybe:no)
-      -> (raise (:GenFFI/NoSuchFun "gen-sigs: no such function/object" sig))
+      -> (W (format (sym name))))
+    (match (tree/member types.functions symbol-index-cmp name) with
+      (maybe:yes type)
+      -> (write-sig type name)
+      (maybe:no)
+      -> (raise (:GenFFI/NoSuchFun "gen-sigs: no such function/object" name))
       )))
 
 (define (add-prefix type)
@@ -493,8 +529,9 @@
 ;; The second C file generated is used to compute the sizes and offsets
 ;;   of all required structs/unions.
 
-(define (genc2 iface base cpp-path)
-  (let ((types (process-cpp-file cpp-path))
+(define (genc2 iface base cpp-path dm-path)
+  (let ((renames (process-dm-file dm-path))
+        (types (process-cpp-file cpp-path))
         (opath (format base "_iface2.c"))
         (ofile (stdio/open-write opath)))
 
@@ -540,9 +577,12 @@
                     -> (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym name) " "
                                   (ctype2-repr (map-type remove-argnames type))
                                   ")\\n\", "
-                                  (if (eq? kind 'struct) (format "offsetof(" sname1 ", " (sym name) ")") "(intptr_t)0")
+                                  (if (eq? kind 'struct)
+                                      (format "offsetof(" sname1 ", " (sym name) ")")
+                                      "(intptr_t)0")
                                   ");\n"))
-                    _ -> (impossible)
+                    (declarator:t type (maybe:no))
+                    -> (W (format "  // un-named slot of type " (ctype2-repr type) "\n"))
                     ))
                 (W "  fprintf (stdout, \" )\\n\");\n")
                 )
@@ -571,7 +611,7 @@
           (for-list exp iface.verbatim
             (stdio/write iface-file (format (repr exp) "\n")))
           ;; emit the signatures...
-          (write-sigs iface types (lambda (s) (stdio/write iface-file s)))
+          (write-sigs iface types renames (lambda (s) (stdio/write iface-file s)))
           (stdio/close iface-file)
           ;; compile iface2
           (compile (append iface.lflags (append iface.cflags (LIST opath "-o" iface2))))
@@ -580,8 +620,24 @@
           ;; compile iface1
           (compile (append iface.cflags (LIST (format iface1 ".c") "-o" iface1)))
           ;; append to interface
-          (system (format iface1 " >> " iface-path)))
-        ))))
+          (system (format iface1 " >> " iface-path))
+          (cleanup base)
+          )))))
+
+(define (cleanup base)
+  (when (not *keep-temps*)
+    (system
+     (format
+      "rm -f "
+      base "_iface1.c "
+      base "_iface1.cpp "
+      base "_iface1.dm "
+      base "_iface2.c "
+      base "_iface1 "
+      base "_iface2 "
+      ))
+    #u
+    ))
 
 ;; this is for giving a 'test drive' to an API, given its include file.
 (define (try-include path)
@@ -610,6 +666,7 @@
    (flag 'h)
    (flag 'v)
    (flag 't)
+   (flag 'tmp)
    (arg 'gen (string ""))
    (arg 'scan (string ""))
    (arg 'try (string ""))
@@ -625,6 +682,7 @@
    "       -scan foo_iface1.cpp (dump info from intermediate file)\n"
    "       -v (enable verbose output)\n\n"
    "       -t (unwind typedefs for -scan, -try)\n\n"
+   "       -tmp (keep temp files)\n\n"
    "       -try png.h (scan one include file)\n\n"
    )
   (%exit #f -1)
@@ -648,6 +706,8 @@
       (set! *verbose-flag* #t))
     (when-maybe b (get-bool-opt opts 't)
       (set! *typedefs-flag* #t))
+    (when-maybe b (get-bool-opt opts 'tmp)
+      (set! *keep-temps* #t))
     (when-maybe ffipath (get-string-opt opts 'gen)
       (genc1 ffipath)
       #u)

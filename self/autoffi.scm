@@ -134,13 +134,13 @@
 
       ;; function/variable definitions
       (info.sigs::iterate
-       (lambda (k v)
+       (lambda (visible-name v)
          (match v with
            (csig:fun name rtype argtypes)
            -> (let ((ztname (zero-terminate (symbol->string name))))
                 (PUSH forms
                       (sexp (sexp:symbol 'define)
-                            (sexp:symbol (iface-prefix name))
+                            (sexp:symbol (iface-prefix visible-name))
                             (sexp (sexp:symbol 'build-ffi-fun)
                                   (sexp:symbol interface)
                                   (sexp:symbol name)
@@ -155,7 +155,7 @@
            -> (let ((ztname (zero-terminate (symbol->string name))))
                 (PUSH forms
                       (sexp (sexp:symbol 'define)
-                            (sexp:symbol (iface-prefix name))
+                            (sexp:symbol (iface-prefix visible-name))
                             (sexp (sexp:symbol 'build-ffi-ob)
                                   (sexp:symbol interface)
                                   (sexp:symbol name)
