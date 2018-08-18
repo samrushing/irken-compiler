@@ -57,22 +57,22 @@
 
 ;; generates blocks, not characters.
 (define (make-stdio-generator FILE*)
-  (make-generator
-   (lambda (consumer)
-     (let loop ((buf (stdio/read FILE* 4096)))
-       (if (= 0 (string-length buf))
-           (consumer (maybe:no))
-           (consumer (maybe:yes buf)))
-       (loop (stdio/read FILE* 4096))))))
+  (makegen emit
+    (let loop ((buf (stdio/read FILE* 4096)))
+      (when (> 0 (string-length buf))
+        (emit buf)
+        (loop (stdio/read FILE* 4096))))))
 
 (define (stdio-char-generator FILE*)
-  (make-generator
-   (lambda (consumer)
-     (let ((done #f))
-       (while (not done)
-         (let ((ch (stdio/read-char FILE*)))
-           (if (eq? ch #\eof)
-               (set! done #t)
-               (consumer (maybe:yes ch)))))
-       (forever (consumer (maybe:no)))
-       ))))
+  (makegen emit
+    (let loop ((ch (stdio/read-char FILE*)))
+      (when (not (eq? ch #\eof))
+        (emit ch)
+        (loop (stdio/read-char FILE*))))))
+
+(define (stdio/line-generator FILE*)
+  (makegen emit
+    (let loop ((mline (stdio/read-line FILE*)))
+      (when-maybe line mline
+        (emit line)
+        (loop (stdio/read-line FILE*))))))
