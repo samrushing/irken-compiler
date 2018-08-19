@@ -19,7 +19,7 @@
 
 (define (stdio/read FILE* size)
   (let ((buffer (%c-aref char (halloc char size) 0))
-        (nbytes (stdio/fread buffer 1 size FILE*)))
+        (nbytes (stdio/fread (%c-cast void buffer) 1 size FILE*)))
     (%cref->string #f buffer nbytes)))
 
 (define (stdio/read-char FILE*)
@@ -53,7 +53,7 @@
 (define (stdio/write FILE* s)
   (let ((slen (string-length s))
         (s* (cstring s)))
-    (stdio/fwrite s* 1 slen FILE*)))
+    (stdio/fwrite (%c-cast void s*) 1 slen FILE*)))
 
 ;; generates blocks, not characters.
 (define (make-stdio-generator FILE*)
