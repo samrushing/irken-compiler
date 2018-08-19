@@ -37,6 +37,13 @@
 (include "ffi/gen/cparse.scm")
 (include "ffi/gen/ctype.scm")
 
+(define *verbose-flag* #f)
+(define *keep-temps* #f)
+(defmacro verbose
+  (verbose item ...) -> (if *verbose-flag* (begin item ... #u)))
+(define *typedefs-flag* #f)
+(define *platform* (maybe:no))
+
 ;; scan for typedefs, structs, and function declarations in
 ;;   preprocessed C output.
 
@@ -135,12 +142,6 @@
         (tree/delete! types.structs magic-cmp (:tuple struct #t))
         (tree/insert! types.structs magic-cmp (:tuple struct #t) type1)
         ))))
-
-(define *verbose-flag* #f)
-(define *keep-temps* #f)
-(defmacro verbose
-  (verbose item ...) -> (if *verbose-flag* (begin item ... #u)))
-(define *typedefs-flag* #f)
 
 (define (process-dm-file dmfile)
 
@@ -304,6 +305,45 @@
 
 ;; parse an FFI spec file.
 (define (parse-ffi exp)
+
+  (define (scan-for-meta exp)
+
+    ;; for now, we only support '%platform', but this
+    ;;  could be extended with boolean logic, integers, etc..
+
+    (define W*
+      acc (hd . tl) -> (W* (W acc hd) tl)
+      acc ()        -> (reverse acc)
+      )
+
+    ;; (%platform OS0 Val0 OS1 Val1 ... else ValN)
+    (define do-platform
+      acc ()
+      -> acc
+      acc ((sexp:symbol 'else) exp)
+      -> (W acc exp)
+      acc ((sexp:symbol platform) exp . rest)
+      -> (match *platform* with
+           (maybe:yes name)
+           -> (if (eq? platform name) (W acc exp) (do-platform acc rest))
+           (maybe:no)
+           -> (do-platform acc rest))
+      acc x
+      -> (raise (:BadPlatform "malformed %platform expression: " (repr (sexp:list x))))
+      )
+
+    (define W
+      acc (sexp:list ((sexp:symbol '%platform) . exps))
+      -> (do-platform acc exps)
+      acc (sexp:list items)
+      -> (list:cons (sexp:list (W* '() items)) acc)
+      acc item
+      -> (list:cons item acc)
+      )
+
+    (first (W '() exp))
+    )
+
   (define sexp->string
     (sexp:string s) -> s
     exp -> (raise (:GenFFI/Error "expected string" exp))
@@ -319,7 +359,7 @@
            (maybe:no))
     _ _ -> (maybe:no)
     )
-  (match exp with
+  (match (scan-for-meta exp) with
     (sexp:list ((sexp:symbol iface) . lists)) ;; lists := (list sexp)
     -> (let ((includes '())
              (cflags '())
@@ -495,8 +535,8 @@
       -> (W (format " ("
                     (join declarator-repr " " args)
                     " -> " (ctype2-repr rtype) "))\n"))
-      _
-      -> (W (format " " (ctype2-repr type) ")\n"))
+      nonfun
+      -> (W (format " " (ctype2-repr nonfun) ")\n"))
       ))
 
   (for-list name iface.sigs
@@ -670,6 +710,7 @@
    (arg 'gen (string ""))
    (arg 'scan (string ""))
    (arg 'try (string ""))
+   (arg 'plat (string ""))
    ))
 
 (define (usage)
@@ -682,6 +723,7 @@
    "       -scan foo_iface1.cpp (dump info from intermediate file)\n"
    "       -v (enable verbose output)\n\n"
    "       -t (unwind typedefs for -scan, -try)\n\n"
+   "       -plat (specify platform [i.e. `uname`])\n\n"
    "       -tmp (keep temp files)\n\n"
    "       -try png.h (scan one include file)\n\n"
    )
@@ -708,6 +750,8 @@
       (set! *typedefs-flag* #t))
     (when-maybe b (get-bool-opt opts 'tmp)
       (set! *keep-temps* #t))
+    (when-maybe plat (get-string-opt opts 'plat)
+      (set! *platform* (maybe:yes (string->symbol plat))))
     (when-maybe ffipath (get-string-opt opts 'gen)
       (genc1 ffipath)
       #u)
