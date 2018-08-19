@@ -3,7 +3,7 @@
 (sodium
  (includes "sodium.h")
  (cflags "-I/usr/local/include")
- (lflags "-lsodium")
+ (lflags "-L/usr/local/lib -lsodium")
  (constants crypto_hash_sha256_BYTES crypto_hash_sha512_BYTES
             crypto_pwhash_SALTBYTES crypto_pwhash_BYTES_MIN
             crypto_pwhash_OPSLIMIT_INTERACTIVE
