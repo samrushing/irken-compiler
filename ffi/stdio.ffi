@@ -1,23 +1,14 @@
 ;; -*- Mode: lisp -*-
 
 (stdio
-  (includes stdio.h)
+  (includes "stdio.h")
   (structs) ;; note: FILE is an opaque type.
   (constants)
+  (lflags)
+  (cflags)
   (sigs
-   (fopen (* char) (* char) -> (* FILE))
-   (fwrite (* char) int int (* FILE) -> int)
-   (fread (* char) int int (* FILE) -> int)
-   (fgetc (* FILE) -> int)
-   (fclose (* FILE) -> int)
-   (fflush (* FILE) -> int)
-   (fdopen int (* char) -> (* FILE))
-   (putchar int -> int)
-   (getchar -> int)
-   ;; NOTE: stdout/stdin/stderr cannot be accessed portably from
-   ;;  the LLVM backend because they are macros.  It may be possible
-   ;;  to sorta work around this using `fdopen`.
-   (stdout (* FILE)) ;; llvm: works on linux
-   ;;(__stdoutp (* FILE)) ;; llvm: works on freebsd/macos
+   fopen fwrite fread fgetc fclose fflush fdopen putchar getchar
+   stdin stdout stderr
    ))
+
 
