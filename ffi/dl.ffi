@@ -1,7 +1,7 @@
 ;; -*- Mode: lisp -*-
 
 (dl
- (lflags "-ldl")
+ (lflags) ;; -ldl not needed on freebsd/darwin/linux.
  (includes "dlfcn.h")
  (constants RTLD_LAZY RTLD_NOW RTLD_GLOBAL RTLD_LOCAL RTLD_DEFAULT)
  (sigs dlopen dlsym dlerror)
