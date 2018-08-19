@@ -1,12 +1,13 @@
 ;; -*- Mode: Irken -*-
 
 (decaf
- ;; XXX two problems:
- ;;     1) I'm not sure which file is the correct one to include ('decaf.h' doesn't work)
- ;;     2) The install procedure seems to require this sub-dir include, I think it's wrong?
- ;;        [I think install is adding an extra level of '../decaf/..']
  (includes "decaf/ed448.h")
- (cflags "-I/usr/local/include/decaf")
+ (cflags (%platform
+          ;; freebsd pkg gets rid of the extra level...
+          FreeBSD "-I/usr/local/include/"
+          ;; via 'make install' from git sources.
+          else "-I/usr/local/include/decaf/")
+         )
  (lflags "-L/usr/local/lib" "-ldecaf")
  (constants
   DECAF_EDDSA_448_PUBLIC_BYTES
