@@ -8,14 +8,13 @@
     EVFILT_READ EVFILT_WRITE EVFILT_AIO EVFILT_VNODE EVFILT_PROC
     EVFILT_SIGNAL
     ;; Darwin only
-    ;; EVFILT_MACHPORT
+    EVFILT_MACHPORT
     EVFILT_TIMER EVFILT_SYSCOUNT
     ;; ------------- flags -------------------
     EV_ADD EV_ENABLE EV_DISABLE EV_DELETE
+    EV_RECEIPT EV_ONESHOT EV_CLEAR EV_EOF EV_ERROR
     ;; +FreeBSD/-Darwin
-    ;; EV_DISPATCH
-    EV_RECEIPT
-    EV_ONESHOT EV_CLEAR EV_EOF EV_ERROR
+    EV_DISPATCH
     ;; ----- facility-specific constants -----
     ;; for EVFILT_VNODE
     NOTE_DELETE NOTE_WRITE NOTE_EXTEND NOTE_ATTRIB NOTE_LINK
@@ -25,9 +24,12 @@
     ;; marked deprecated: NOTE_REAP
     ;; for EVFILT_TIMER
     NOTE_SECONDS NOTE_USECONDS NOTE_NSECONDS
-    ;; +Darwin NOTE_MACHTIME
-    ;; +FreeBSD NOTE_MSECONDS
-    ;; +Darwin NOTE_CRITICAL NOTE_BACKGROUND NOTE_LEEWAY
+    ;; +Darwin
+    NOTE_MACHTIME
+    ;; +FreeBSD
+    NOTE_MSECONDS
+    ;; +Darwin
+    NOTE_CRITICAL NOTE_BACKGROUND NOTE_LEEWAY
     )
    (sigs kqueue kevent)
    )
