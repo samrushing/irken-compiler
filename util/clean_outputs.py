@@ -23,8 +23,18 @@ for root, dirs, files in os.walk (path):
                 to_remove.append (pj (root, base + '.c'))
             if base + '.ll' in files:
                 to_remove.append (pj (root, base + '.ll'))
+            if base + '.byc' in files:
+                to_remove.append (pj (root, base + '.byc'))
             if base in files:
                 to_remove.append (pj (root, base))
 
+PRECIOUS = [
+    './self/compile',
+    './self/compile.c',
+    './self/compile.byc',
+    './ffi/gen/genffi.byc',
+    ]
+
 for path in to_remove:
-    os.unlink (path)
+    if path not in PRECIOUS:
+        os.unlink (path)
