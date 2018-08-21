@@ -141,8 +141,8 @@
     (set! x[0] m-bitlen)
     (when (not (= m-bitlen 0))
       (if (< a-bitlen m-bitlen)
-          (for-range* i 1 mlen
-            (set! x[i] (if (< i alen) a[i] 0)))
+          (for-range* i 1 (+ 1 mlen)
+            (set! x[i] (if (<= i alen) a[i] 0)))
           (begin
             (for-range* i 1 mlen
               (set! x[i] a[(+ i 1 (- alen mlen))]))
@@ -415,7 +415,6 @@
         (q31 (big->i31 sk.q))
         (dPs (big->u256 sk.dP))
         (dQs (big->u256 sk.dQ))
-        (xlen (>> (+ 7 (big->bits sk.n)) 3))
         (p0i (i31/ninv31 p31[1]))
         (q0i (i31/ninv31 q31[1]))
         (s1 (i31/make p31[0]))
