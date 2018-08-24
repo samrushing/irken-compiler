@@ -93,6 +93,7 @@
 (put 'when 'scheme-indent-function 1)
 (put 'when-maybe 'scheme-indent-function 2)
 (put 'while-maybe 'scheme-indent-function 2)
+(put 'while-queue 'scheme-indent-function 2)
 (put '%backend 'scheme-indent-function 1)
 (put 'make-enum 'scheme-indent-function 1)
 (put 'with-file 'scheme-indent-function 2)
