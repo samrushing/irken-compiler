@@ -7,6 +7,7 @@
 
 (include "demo/maze/gen.scm")
 (include "demo/maze/ascii.scm")
+(include "demo/maze/js.scm")
 (include "demo/maze/solve.scm")
 
 ;; use the standard svg renderer.
@@ -31,6 +32,7 @@
   (makeopt
    (arg 's (int 10))
    (flag 'ascii)
+   (flag 'js)
    (flag 'hex)
    (flag 'solve)
    (arg 'seed (int 31415926535))
@@ -54,6 +56,7 @@
           "  [-s=10]  scale\n"
           "  [-seed=31415926535] random seed\n"
           "  [-ascii] ASCII output\n"
+          "  [-js] javascript output\n"
           "  [-hex] HEX output\n"
           "  [-solve] add the solution to SVG output\n"
           "example: $ " sys.argv[0] " 50 50\n")
@@ -72,12 +75,15 @@
         (s 10)
         (hex #f)
         (ascii #f)
+        (js #f)
         (solve? #f)
         )
     (when-maybe v (get-bool-opt opts 'hex)
       (set! hex #t))
     (when-maybe v (get-bool-opt opts 'ascii)
       (set! ascii #t))
+    (when-maybe v (get-bool-opt opts 'js)
+      (set! js #t))
     (when-maybe v (get-bool-opt opts 'solve)
       (set! solve? #t))
     (when-maybe v (get-int-opt opts 'h)
@@ -92,8 +98,10 @@
     (let ((maze (make-maze w h s))
           (solution (if solve? (BFS maze w h) (list:nil))))
       (cond (ascii (graph->ascii maze w h solution))
+            (js (graph->js maze w h s solution))
             (hex (graph->hex maze w h))
-            (else (graph->svg maze w h s solution))))
+            (else (graph->svg maze w h s solution)))
+      )
     ))
 
 (main)
