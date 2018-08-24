@@ -28,6 +28,18 @@
     G ;; return the graph
     ))
 
+(define *random-seed* 0)
+
+(define (get-seed)
+  (when (= 0 *random-seed*)
+    (set! *random-seed* (read-cycle-counter)))
+  *random-seed*)
+
+(define (make-maze m n)
+  (let ((G (make-grid m n))
+        (G0 (DFS G m n)))
+    G0))
+
 (define (bit-set? n i)
   (not (= (logand n (<< 1 i)) 0)))
 
@@ -117,11 +129,3 @@
     G
     ))
 
-;; note: this is still twice as large as it needs to be,
-;;  since there is redundancy in the wall flags. I think
-;;  we can cut this in half.
-(define (graph->hex G m n)
-  (for-range y n
-    (for-range x m
-      (printf (zpad 1 (hex G[(+ x (* m y))]))))
-    (printf "\n")))

@@ -26,7 +26,7 @@
 ;; and only three drawable elements:
 ;; U, L, UL
 
-(define (graph->svg G m n S solution)
+(define (graph-svg-gen G m n S solution)
 
   (define SS (format (int S)))
 
@@ -35,84 +35,95 @@
     ;; S = scale factor
     (+ S (* S n)))
 
-  ;; draw a column of `name` markers along column `x` at `points`.
-  (define (markers name x points)
-    (when (not (null? points))
-      (printf "<g marker-start=\"url(#" name ")\"\n"
-              "   marker-mid=\"url(#" name ")\"\n"
-              "   marker-end=\"url(#" name ")\">\n"
-              "  <polyline fill=\"none\" stroke=\"none\" points=\""
-              (join (lambda (y) (format (int (T x)) " " (int (T y))))
-                    "," points)
-              "\"/></g>\n")))
+  (defmacro emitf
+    (emitf x ...)
+    -> (emit (format x ...)))
 
-  (printf "<svg version=\"1.1\" width=\"" (int (+ 10 (T m)))
-          "\" height=\"" (int (+ 30 (T n))) ;; extra room for text at the bottom.
-          "\" xmlns=\"http://www.w3.org/2000/svg\""
-          ">\n")
+  (makegen emit
 
-  ;; first let's define our three shapes...
-  (printf "<defs>\n"
-          " <marker id=\"U\" viewBox=\"0 0 " SS " " SS "\"\n"
-          "   markerWidth=\"" SS "\" markerHeight=\"" SS "\"\n"
-          "   refX=\"0\" refY=\"0\"\n"
-          "  >\n"
-          "    <path fill=\"none\" stroke=\"black\" d=\"M0 0 h " SS "\"/>\n"
-          "  </marker>\n"
-          " <marker id=\"L\" viewBox=\"0 0 " SS " " SS "\"\n"
-          "   markerWidth=\"" SS "\" markerHeight=\"" SS "\"\n"
-          "   refX=\"0\" refY=\"0\"\n"
-          "  >\n"
-          "    <path fill=\"none\" stroke=\"black\" d=\"M0 0 v " SS "\"/>\n"
-          "  </marker>\n"
-          " <marker id=\"UL\" viewBox=\"0 0 " SS " " SS "\"\n"
-          "   markerWidth=\"" SS "\" markerHeight=\"" SS "\"\n"
-          "   refX=\"0\" refY=\"0\"\n"
-          "  >\n"
-          "    <path fill=\"none\" stroke=\"black\" d=\"M0 " SS " v -" SS " h " SS "\"/>\n"
-          "  </marker>\n"
-          "</defs>\n")
+    ;; draw a column of `name` markers along column `x` at `points`.
+    (define (markers name x points)
+      (when (not (null? points))
+        (emitf "<g marker-start=\"url(#" name ")\"\n"
+               "   marker-mid=\"url(#" name ")\"\n"
+               "   marker-end=\"url(#" name ")\">\n"
+               "  <polyline fill=\"none\" stroke=\"none\" points=\""
+               (join (lambda (y) (format (int (T x)) " " (int (T y))))
+                     "," points)
+               "\"/></g>\n")))
 
-  ;; draw the maze itself...
-  (printf "<g stroke=\"black\" fill=\"none\">\n")
-  (for-range x m
-    (let ((u '())
-          (l '())
-          (ul '()))
-      (for-range y n
-        (let ((walls G[(+ x (* y m))]))
-          (match (bit-set? walls 3) (bit-set? walls 1) with
-            ;; U L
-            #t #f -> (PUSH u y)
-            #f #t -> (PUSH l y)
-            #t #t -> (PUSH ul y)
-            _ _   -> #u
-          )))
-      ;; draw a column of each of the markers placed.
-      (markers "U" x u)
-      (markers "L" x l)
-      (markers "UL" x ul)
-      ))
+    (emitf "<svg version=\"1.1\" width=\"" (int (+ 10 (T m)))
+            "\" height=\"" (int (+ 30 (T n))) ;; extra room for text at the bottom.
+            "\" xmlns=\"http://www.w3.org/2000/svg\""
+            ">\n")
 
-  ;; draw the boundary
-  (printf "<path d=\"M" SS " " SS
-          " h " (int (* m S))
-          " v " (int (* n S))
-          " h " (int (- (* m S)))
-          " v " (int (- (* n S)))
-          "\"/>\n")
+    ;; first let's define our three shapes...
+    (emitf "<defs>\n"
+            " <marker id=\"U\" viewBox=\"0 0 " SS " " SS "\"\n"
+            "   markerWidth=\"" SS "\" markerHeight=\"" SS "\"\n"
+            "   refX=\"0\" refY=\"0\"\n"
+            "  >\n"
+            "    <path fill=\"none\" stroke=\"black\" d=\"M0 0 h " SS "\"/>\n"
+            "  </marker>\n"
+            " <marker id=\"L\" viewBox=\"0 0 " SS " " SS "\"\n"
+            "   markerWidth=\"" SS "\" markerHeight=\"" SS "\"\n"
+            "   refX=\"0\" refY=\"0\"\n"
+            "  >\n"
+            "    <path fill=\"none\" stroke=\"black\" d=\"M0 0 v " SS "\"/>\n"
+            "  </marker>\n"
+            " <marker id=\"UL\" viewBox=\"0 0 " SS " " SS "\"\n"
+            "   markerWidth=\"" SS "\" markerHeight=\"" SS "\"\n"
+            "   refX=\"0\" refY=\"0\"\n"
+            "  >\n"
+            "    <path fill=\"none\" stroke=\"black\" d=\"M0 " SS " v -" SS " h " SS "\"/>\n"
+            "  </marker>\n"
+            "</defs>\n")
 
-  (printf "</g>\n")
+    ;; draw the maze itself...
+    (emitf "<g stroke=\"black\" fill=\"none\">\n")
+    (for-range x m
+      (let ((u '())
+            (l '())
+            (ul '()))
+        (for-range y n
+          (let ((walls G[(+ x (* y m))]))
+            (match (bit-set? walls 3) (bit-set? walls 1) with
+              ;; U L
+              #t #f -> (PUSH u y)
+              #f #t -> (PUSH l y)
+              #t #t -> (PUSH ul y)
+              _ _   -> #u
+              )))
+        ;; draw a column of each of the markers placed.
+        (markers "U" x u)
+        (markers "L" x l)
+        (markers "UL" x ul)
+        ))
 
-  ;; draw the solution (if present)
-  (when (not (null? solution))
-    (printf "<polyline fill=\"none\" stroke=\"red\" points=\"")
-    (for-list node solution
-      (let (((y x) (divmod node m))
-            (x0 (+ (/ S 2) (T x)))
-            (y0 (+ (/ S 2) (T y))))
-        (printf (int x0) " " (int y0) ",")))
-    (printf "\"/>\n"))
+    ;; draw the boundary
+    (emitf "<path d=\"M" SS " " SS
+            " h " (int (* m S))
+            " v " (int (* n S))
+            " h " (int (- (* m S)))
+            " v " (int (- (* n S)))
+            "\"/>\n")
 
-  (printf "</svg>\n")
-  )
+    (emitf "</g>\n")
+
+    ;; draw the solution (if present)
+    (when (not (null? solution))
+      (emitf "<polyline fill=\"none\" stroke=\"red\" points=\"")
+      (for-list node solution
+        (let (((y x) (divmod node m))
+              (x0 (+ (/ S 2) (T x)))
+              (y0 (+ (/ S 2) (T y))))
+          (emitf (int x0) " " (int y0) ",")))
+      (emitf "\"/>\n"))
+
+    (emitf "</svg>\n")
+    ))
+
+(define (graph->svg G m n S solution)
+  (for s (graph-svg-gen G m n S solution)
+    (print-string s)))
+

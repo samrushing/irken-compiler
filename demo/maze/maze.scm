@@ -4,6 +4,7 @@
 (include "lib/map.scm")
 (include "lib/mtwist.scm")
 (include "lib/getopt.scm")
+(include "lib/codecs/base85.scm")
 
 (include "demo/maze/gen.scm")
 (include "demo/maze/ascii.scm")
@@ -16,24 +17,13 @@
 ;; use the 'marker-based' svg renderer.
 (include "demo/maze/svg2.scm")
 
-(define *random-seed* 0)
-
-(define (get-seed)
-  (when (= 0 *random-seed*)
-    (set! *random-seed* (read-cycle-counter)))
-  *random-seed*)
-
-(define (make-maze m n scale)
-  (let ((G (make-grid m n))
-        (G0 (DFS G m n)))
-    G0))
-
 (define program-options
   (makeopt
    (arg 's (int 10))
    (flag 'ascii)
    (flag 'js)
    (flag 'hex)
+   (flag 'b85)
    (flag 'solve)
    (arg 'seed (int 31415926535))
    (pos 'w (int 115))
@@ -57,6 +47,7 @@
           "  [-seed=31415926535] random seed\n"
           "  [-ascii] ASCII output\n"
           "  [-js] javascript output\n"
+          "  [-b85] base85 output\n"
           "  [-hex] HEX output\n"
           "  [-solve] add the solution to SVG output\n"
           "example: $ " sys.argv[0] " 50 50\n")
@@ -76,6 +67,7 @@
         (hex #f)
         (ascii #f)
         (js #f)
+        (b85 #f)
         (solve? #f)
         )
     (when-maybe v (get-bool-opt opts 'hex)
@@ -84,6 +76,8 @@
       (set! ascii #t))
     (when-maybe v (get-bool-opt opts 'js)
       (set! js #t))
+    (when-maybe v (get-bool-opt opts 'b85)
+      (set! b85 #t))
     (when-maybe v (get-bool-opt opts 'solve)
       (set! solve? #t))
     (when-maybe v (get-int-opt opts 'h)
@@ -95,10 +89,11 @@
     (when-maybe v (get-int-opt opts 'seed)
       (set! *random-seed* v))
 
-    (let ((maze (make-maze w h s))
+    (let ((maze (make-maze w h))
           (solution (if solve? (BFS maze w h) (list:nil))))
       (cond (ascii (graph->ascii maze w h solution))
             (js (graph->js maze w h s solution))
+            (b85 (graph->base85 maze w h))
             (hex (graph->hex maze w h))
             (else (graph->svg maze w h s solution)))
       )
