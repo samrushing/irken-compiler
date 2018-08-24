@@ -61,20 +61,17 @@
     (emitf "<defs>\n"
             " <marker id=\"U\" viewBox=\"0 0 " SS " " SS "\"\n"
             "   markerWidth=\"" SS "\" markerHeight=\"" SS "\"\n"
-            "   refX=\"0\" refY=\"0\"\n"
-            "  >\n"
+            "   refX=\"0\" refY=\"0\">\n"
             "    <path fill=\"none\" stroke=\"black\" d=\"M0 0 h " SS "\"/>\n"
             "  </marker>\n"
             " <marker id=\"L\" viewBox=\"0 0 " SS " " SS "\"\n"
             "   markerWidth=\"" SS "\" markerHeight=\"" SS "\"\n"
-            "   refX=\"0\" refY=\"0\"\n"
-            "  >\n"
+            "   refX=\"0\" refY=\"0\">\n"
             "    <path fill=\"none\" stroke=\"black\" d=\"M0 0 v " SS "\"/>\n"
             "  </marker>\n"
             " <marker id=\"UL\" viewBox=\"0 0 " SS " " SS "\"\n"
             "   markerWidth=\"" SS "\" markerHeight=\"" SS "\"\n"
-            "   refX=\"0\" refY=\"0\"\n"
-            "  >\n"
+            "   refX=\"0\" refY=\"0\">\n"
             "    <path fill=\"none\" stroke=\"black\" d=\"M0 " SS " v -" SS " h " SS "\"/>\n"
             "  </marker>\n"
             "</defs>\n")
@@ -109,6 +106,10 @@
             "\"/>\n")
 
     (emitf "</g>\n")
+
+    (emitf "<text x=\"40\" y=\"" (int (+ 20 (T n))) "\" class=\"small\">"
+           (int m) "x" (int n)
+           " seed " (int *random-seed*) "</text>\n")
 
     ;; draw the solution (if present)
     (when (not (null? solution))
