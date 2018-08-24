@@ -169,6 +169,8 @@
 		       #\x -> (begin (next) (sexp:int (read-hex-int)))
 		       #\O -> (begin (next) (sexp:int (read-oct-int)))
 		       #\o -> (begin (next) (sexp:int (read-oct-int)))
+                       #\B -> (begin (next) (sexp:int (read-bin-int)))
+                       #\b -> (begin (next) (sexp:int (read-bin-int)))
 		       #\T -> (begin (next) (sexp:bool #t))
 		       #\t -> (begin (next) (sexp:bool #t))
 		       #\F -> (begin (next) (sexp:bool #f))
@@ -331,6 +333,15 @@
 	  (match (alist/lookup oct-map ch) with
 	    (maybe:yes digit) -> (loop (+ (* r 8) digit) (skip-peek))
 	    (maybe:no) -> (if neg? (- 0 r) r)))))
+
+    (define (read-bin-int)
+      (let ((neg? (eq? (peek) #\-)))
+        (if neg? (begin (next) #u))
+        (let loop ((r 0) (ch (peek)))
+          (match ch with
+            #\0 -> (loop (<< r 1) (skip-peek))
+            #\1 -> (loop (logior (<< r 1) 1) (skip-peek))
+            ch  -> (if neg? (- 0 r) r)))))
 
     (define (read-all)
       (let loop ((result '()))
