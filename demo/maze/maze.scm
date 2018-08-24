@@ -7,8 +7,13 @@
 
 (include "demo/maze/gen.scm")
 (include "demo/maze/ascii.scm")
-(include "demo/maze/svg.scm")
 (include "demo/maze/solve.scm")
+
+;; use the standard svg renderer.
+;;(include "demo/maze/svg.scm")
+
+;; use the 'marker-based' svg renderer.
+(include "demo/maze/svg2.scm")
 
 (define *random-seed* 0)
 
