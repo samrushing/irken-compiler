@@ -27,50 +27,47 @@
 
   (let ((visited (make-vector (* m n) #f))
         (queue (set/empty))
-        (goal (coord->node (- m 1) (- n 1))))
+        (goal (coord->node (- m 1) (- n 1)))
+        (solution '()))
 
-    (define move
-      k #b0001 -> (+ k 1)
-      k #b0010 -> (- k 1)
-      k #b0100 -> (+ k m)
-      k #b1000 -> (- k m)
-      _ _      -> (impossible)
-      )
+    (let/cc all-done
 
-    (define (get-unvisited-neighbors node)
-      (let ((walls G[node])
-            (r '()))
-        (for-range i 4
-          (when (not (bit-set? walls i))
-            (let ((node0 (move node (<< 1 i))))
-              (when (not visited[node0])
-                (PUSH r node0)))))
-        r))
+      (define move
+        k #b0001 -> (+ k 1)
+        k #b0010 -> (- k 1)
+        k #b0100 -> (+ k m)
+        k #b1000 -> (- k m)
+        k v      -> (impossible)
+        )
 
-    (define (search node dx path)
-      (set! visited[node] #t)
-      (let ((neighbors (get-unvisited-neighbors node)))
-        (for-list node0 neighbors
-          (set/insert! queue magic-cmp (:tuple (+ dx 1) node0 (list:cons node0 path)))
-          (when (= node0 goal)
-            (raise (:Done (list:cons goal path))))
-          )
-        (when (not (set/empty? queue))
-          (let ((least (set/min queue))
-                ((dx0 node0 path0) least))
-            (set/delete! queue magic-cmp least)
-            (search node0 dx0 path0)))))
+      (define (get-unvisited-neighbors node)
+        (let ((walls G[node])
+              (r '()))
+          (for-range i 4
+            (when (not (bit-set? walls i))
+              (let ((node0 (move node (<< 1 i))))
+                (when (not visited[node0])
+                  (PUSH r node0)))))
+          r))
 
-    ;; (printf "adding boundary walls...\n")
-    (set! G (add-boundary-walls))
-    ;; (printf "done.\n")
-    (try
-     (begin
-       (search 0 0 (LIST 0))
-       (list:nil)) ;; unreached
-     except
-     (:Done path)
-     -> (reverse path)
-     )
-    ))
+      (define (search node dx path)
+        (set! visited[node] #t)
+        (let ((neighbors (get-unvisited-neighbors node)))
+          (for-list node0 neighbors
+            (set/add! queue magic-cmp (:tuple (+ dx 1) node0 (list:cons node0 path)))
+            (when (= node0 goal)
+              (all-done (reverse (list:cons goal path)))))
+          (when (not (set/empty? queue))
+            (let ((least (set/min queue))
+                  ((dx0 node0 path0) least))
+              (set/delete! queue magic-cmp least)
+              (search node0 dx0 path0)))))
+
+      ;; (printf "adding boundary walls...\n")
+      (set! G (add-boundary-walls))
+      ;; (printf "done.\n")
+      (search 0 0 (LIST 0))
+      '() ;; failure
+      )))
+
 
