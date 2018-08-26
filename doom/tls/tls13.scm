@@ -18,7 +18,7 @@
 ;; libraries to consider for ECDSA: micro-ecc/easy-ecc?, crypto++.
 ;;
 ;; TODO:
-;;  * HelloRetryRequest
+;;  * HelloRetryRequest [in progress]
 ;;  * KeyUpdate
 ;;
 ;; FUTURE:
@@ -60,10 +60,11 @@
         (selected-suite (cipher-suite:chacha20-poly1305-sha256))
         (signer (make-signer skey))
         (extensions-to-push (list:nil))
+        (pkts-to-push (list:nil))
         (ksched (keysched/make sha256-hash aead-chacha20poly1305 #x304)))
 
     (define (set-state! new)
-      (printf "[" (sym (tls-state->name new)) "]")
+      ;; (printf "[" (bold (int *thread-id*)) "." (sym (tls-state->name new)) "]\n")
       (set! state new))
 
     (define (choose-version versions)
@@ -97,10 +98,17 @@
       (match (find-extension 'client-shares ch.exts) with
         (maybe:yes (tlsext:client-shares shares))
         -> (match (find-share kex-priority-list shares) with
-             (maybe:yes pair) -> (begin (set! client-share pair.kex) (set! kex (make-kex pair.group)) (kex.gen))
-             (maybe:no)       -> (raise (:TLS/Alert (tls-alert-desc:hsk-failure) "no shared group")))
-        _ -> (raise (:TLS/Alert (tls-alert-desc:missing-extension) "missing client-shares extension"))
+             (maybe:yes pair)
+             -> (begin
+                  (set! client-share pair.kex)
+                  (set! kex (make-kex pair.group))
+                  (kex.gen) #t)
+             (maybe:no)       -> #f)
+        _ -> #f
         ))
+
+    ;; (raise (:TLS/Alert (tls-alert-desc:hsk-failure) "no shared group"))
+    ;; (raise (:TLS/Alert (tls-alert-desc:missing-extension) "missing client-shares extension"))
 
     (define (find-sigalg ch)
       (match (find-extension 'sigalgs ch.exts) with
@@ -135,24 +143,60 @@
           _ -> (impossible)
           )))
 
+    (define (find-supported-groups ch)
+      (match (find-extension 'supported-groups ch.exts) with
+        (maybe:yes (tlsext:supported-groups groups))
+        -> groups
+        _ -> (raise (:TLS/Alert (tls-alert-desc:missing-extension) "no supported-groups extension present"))
+        ))
+
+    (define hrr-magic (hex->string "CF21AD74E59A6111BE1D8C021E65B891C2A211167ABB8C5E079E09E2C8A8339C"))
+
+    (define (send-hello-retry-request version ch)
+      (let ((suite (select-suite suite-priority-list ch.suites))
+            (group (select-group kex-priority-list (find-supported-groups ch)))
+            (sh {random = hrr-magic
+                 sessid = ch.sessid
+                 suite = suite
+                 exts = (LIST (tlsext:supported-versions (LIST version)) ;; only one
+                              (tlsext:hrr-key-share (named-group->int group)))})
+            ;; note: hello-retry-request is just a magic server-hello
+            (hrr (pack-hsk (tls-hsk-type:server-hello) (pack-server-hello sh))))
+        (send-packet (tls-ctype:hsk) hrr)
+        (PUSH pkts-to-push (rope->string hrr))
+        (set-state! (tls-state:start))
+        ))
+
     (define (handle-client-hello pkt ch)
       (let ((version (supports-tls13? ch)))
         (when (= -1 version)
           (raise (:TLS/Alert (tls-alert-desc:protocol-version) "no tls-1.3 support")))
         (when (> version 0)
-          (printf "protocol version: " (zpad 4 (hex version)) "\n"))
+          (debugf "protocol version: " (zpad 4 (hex version)) "\n"))
         (set! draft-version version)
         (PUSH info (sexp (sym 'version) (int version)))
         (PUSH info (client-hello->sexp ch))
-        ;;(pp (client-hello->sexp ch) 132)
+        (PUSH pkts-to-push pkt)
         (find-sigalg ch)
-        (find-keyshare ch)
-        (find-maxfraglen ch)
-        (when (not (null? alpns))
-          (find-alpn ch))
-        (set-state! (tls-state:rcvch))
-        (send-server-hello pkt ch version)
+        (cond ((not (find-keyshare ch))
+               (send-hello-retry-request version ch))
+              (else
+               (find-maxfraglen ch)
+               (when (not (null? alpns))
+                 (find-alpn ch))
+               (set-state! (tls-state:rcvch))
+               (send-server-hello pkt ch version)
+               ))
         ))
+
+    (define select-group
+      () groups
+      -> (raise (:TLS/Alert (tls-alert-desc:hsk-failure) "no shared group"))
+      (group . tl) groups
+      -> (let ((code (named-group->int group)))
+           (if (member-eq? code groups)
+               group
+               (select-group tl groups))))
 
     (define suite->keysched
       (cipher-suite:chacha20-poly1305-sha256) -> (keysched/make sha256-hash aead-chacha20poly1305 draft-version)
@@ -163,13 +207,12 @@
     (define select-suite
       () suites
       -> (raise (:TLS/Alert (tls-alert-desc:hsk-failure) "no shared suite"))
-      (hd . tl) suites
-      -> (let ((code (cipher-suite->int hd)))
+      (suite . tl) suites
+      -> (let ((code (cipher-suite->int suite)))
            (if (member-eq? code suites)
                (begin
-                 (set! selected-suite hd)
-                 (set! ksched (suite->keysched hd))
-                 code)
+                 (set! selected-suite suite)
+                 suite)
                (select-suite tl suites))))
 
     (define (send-server-hello ch-pkt ch version)
@@ -183,7 +226,10 @@
             (server-hello (pack-hsk (tls-hsk-type:server-hello) (pack-server-hello sh)))
             (enc-exts (pack-hsk (tls-hsk-type:enc-exts) (pack-enc-exts extensions-to-push)))
             (cert (pack-hsk (tls-hsk-type:cert) (put-cert certs))))
-        (ksched.add-tscript-packet ch-pkt)
+        (set! ksched (suite->keysched suite))
+        (for-list pkt (reverse pkts-to-push)
+          (ksched.add-tscript-packet pkt))
+        (set! pkts-to-push '())
         (send-packet (tls-ctype:hsk) server-hello)
         (set-state! (tls-state:negot))
         (ksched.add-tscript-packet (rope->string server-hello))
@@ -370,16 +416,16 @@
        (read-records))
      except
      (:TLS/Alert desc msg)
-     -> (begin (printf "sending tls alert: '" (sym (tls-alert-desc->name desc)) "' " msg "\n")
+     -> (begin (debugf "sending tls alert: '" (sym (tls-alert-desc->name desc)) "' " msg "\n")
                (set-state! (tls-state:closed))
                (send-alert desc)
                #u)
      (:TLS/ReceivedFatalAlert desc)
-     -> (begin (printf "received tls alert: '" (sym (tls-alert-desc->name desc)) "\n")
+     -> (begin (debugf "received tls alert: '" (sym (tls-alert-desc->name desc)) "\n")
                (set-state! (tls-state:closed)) ;; half-closed?
                #u)
      (:Doom/EOF s)
-     -> (begin (printf "EOF\n")
+     -> (begin (debugf "EOF\n")
                #u)
      )
     (when (not (eq? state (tls-state:cnctd)))

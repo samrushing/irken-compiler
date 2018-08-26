@@ -123,7 +123,7 @@
       (match etype with
         00 -> (tlsext:server-names (get-vector-16 get-server-name))
         01 -> (tlsext:maxfraglen (get-maxfraglen))
-        10 -> (tlsext:named-groups (get-vector-16 get-u16))
+        10 -> (tlsext:supported-groups (get-vector-16 get-u16))
         13 -> (tlsext:sigalgs (get-vector-16 get-u16))
         16 -> (tlsext:alpn (get-vector-16 get-protocol-name))
         21 -> (tlsext:padding (get-padding elen))
@@ -294,13 +294,14 @@
 
 (define extension->sexp
   (tlsext:server-names names)          -> (sexp1 'server-names (map sexp:string names))
-  (tlsext:named-groups groups)         -> (sexp1 'named-groups (map sexp:string (map named-group->string groups)))
-  (tlsext:sigalgs algos)               -> (sexp1 'signature-algorithms (map sexp:string (map sigalg->string algos)))
+  (tlsext:supported-groups groups)     -> (sexp1 'supported-groups (map sexp:int groups))
   (tlsext:supported-versions versions) -> (sexp1 'supported-versions (map sexp:int versions))
+  (tlsext:sigalgs algos)               -> (sexp1 'signature-algorithms (map sexp:string (map sigalg->string algos)))
   (tlsext:psk-kex-modes modes)         -> (sexp1 'psk-kex-modes (map sexp:int modes))
   (tlsext:sigalgs-cert algos)          -> (sexp1 'sigalgs-cert (map sexp:string (map sigalg->string algos)))
   (tlsext:client-shares shares)        -> (sexp1 'client-shares (map share->sexp shares))
   (tlsext:key-share share)             -> (sexp (sym 'key-share) (share->sexp share))
+  (tlsext:hrr-key-share share)         -> (sexp (sym 'key-share) (int share))
   (tlsext:padding len)                 -> (sexp (sym 'padding) (int len))
   (tlsext:alpn protos)                 -> (sexp1 'alpn (map sexp:string protos))
   (tlsext:maxfraglen code)             -> (sexp (sym 'maxfraglen) (int code))
@@ -326,12 +327,15 @@
 ;;   the code and make it safer.
 
 (define (put-key-share ks)
-  (rope-make
+  (rope/build
    (put-u16 ks.group)
    (put-opaque-16 ks.kex)))
 
 (define (put-alpns alpns)
   (put-vector-16 put-opaque-8 alpns))
+
+(define (put-hrr-key-share group)
+  (put-u16 group))
 
 ;; only need two to start, supported versions and key share.
 (define (put-extension ext)
@@ -339,6 +343,7 @@
     ;; XXX since the enum is only used in two places, maybe let's not enum.
     (tlsext:supported-versions (v)) -> (:tuple 43 (put-u16 v))
     (tlsext:key-share ks)           -> (:tuple 51 (put-key-share ks))
+    (tlsext:hrr-key-share group)    -> (:tuple 51 (put-hrr-key-share group))
     (tlsext:alpn alpns)             -> (:tuple 16 (put-alpns alpns))
     (tlsext:maxfraglen v)           -> (:tuple  1 (put-maxfraglen v))
     _                               -> (raise (:TLS/NotImplemented))
@@ -357,7 +362,7 @@
    (put-u16 #x303)        ;; legacy version == tls1.2
    (put-opaque sh.random) ;; 32 bytes
    (put-opaque-8 sh.sessid)
-   (put-u16 sh.suite) ;; server chosen cipher suite
+   (put-u16 (cipher-suite->int sh.suite)) ;; server chosen cipher suite
    (put-u8 0)         ;; legacy compression method
    (put-vector-16 put-extension sh.exts)
    ))

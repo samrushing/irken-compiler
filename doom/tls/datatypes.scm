@@ -107,13 +107,14 @@
 
 (datatype tlsext
   (:server-names (list string))
-  (:named-groups (list int))
+  (:supported-groups (list int))
   (:sigalgs (list int))
   (:supported-versions (list int))
   (:psk-kex-modes (list int))
   (:sigalgs-cert (list int))
   (:client-shares (list {group=int kex=string}))
   (:key-share {group=int kex=string})
+  (:hrr-key-share int)
   (:padding int)
   (:alpn (list string))
   (:maxfraglen int) ;; this could be an enum to clamp to 1..4
@@ -122,13 +123,14 @@
 
 (define tlsext->name
   (tlsext:server-names _)       -> 'server-names
-  (tlsext:named-groups _)       -> 'named-groups
+  (tlsext:supported-groups _)   -> 'supported-groups
   (tlsext:sigalgs _)            -> 'sigalgs
   (tlsext:supported-versions _) -> 'supported-versions
   (tlsext:psk-kex-modes _)      -> 'psk-kex-modes
   (tlsext:sigalgs-cert _)       -> 'sigalgs-cert
   (tlsext:client-shares _)      -> 'client-shares
   (tlsext:key-share _)          -> 'key-share
+  (tlsext:hrr-key-share _)      -> 'hrr-key-share
   (tlsext:padding _)            -> 'padding
   (tlsext:alpn _)               -> 'alpn
   (tlsext:maxfraglen _)         -> 'maxfraglen
