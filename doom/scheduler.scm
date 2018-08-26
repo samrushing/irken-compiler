@@ -15,16 +15,46 @@
 
 (define the-poller (make-poller))
 
+;; store the thread-id and current exc handler along with the continuation.
 (define (poller/enqueue k)
-  (queue/add! the-poller.runnable k))
+  (queue/add! the-poller.runnable (:tuple *thread-id* *the-exception-handler* k)))
+
+(define (poller/enqueue* thread-id exc-handler k)
+  (queue/add! the-poller.runnable (:tuple thread-id exc-handler k)))
+
+(define (protect thunk thread-id)
+  ;; (printf "starting thread " (int thread-id) "\n")
+  (try
+   (begin
+     (set! *thread-id* thread-id)
+     (thunk))
+   except
+   ;; XXX something forbids us from making a wildcard handler without
+   ;;     handling a 'real' exception.  probably the try/except macro?
+   (:OSError n)
+   -> (printf "OSError " (int n) " in thread.\n")
+   anything
+   -> (begin
+        (printf "unhandled exception in thread: " (int thread-id) "\n")
+        (print-exception anything))
+   ))
+
+(define next-thread-id
+  (let ((thread-counter 1))
+    (lambda ()
+      (let ((val thread-counter))
+        (inc! thread-counter)
+        val))))
+
+(define *thread-id* 0)
 
 ;; TODO: since this code is using getcc/putcc directly, it's possible
 ;; that it's not type-safe around coro switch boundaries. look into
 ;; this.
 
-(define (poller/fork f)
+(define (poller/fork thunk)
   (poller/enqueue (getcc))
-  (f)
+  (protect thunk (next-thread-id))
   (poller/dispatch))
 
 (define (poller/yield)
@@ -33,8 +63,13 @@
 
 (define (poller/dispatch)
   (match (queue/pop! the-poller.runnable) with
-    (maybe:yes k) -> (putcc k #u)
-    (maybe:no)	  -> (poller/wait-and-schedule)))
+    (maybe:yes (:tuple thread-id eh k))
+    -> (begin
+         (set! *the-exception-handler* eh)
+         (set! *thread-id* thread-id)
+         (putcc k #u))
+    (maybe:no)
+    -> (poller/wait-and-schedule)))
 
 ;; these funs know that EVFILT values are consecutive small negative ints
 
@@ -48,7 +83,9 @@
 
 (define (poller/add-event ident filter k)
   (inc! the-poller.nwait)
-  (tree/insert! (kfilt filter) int-cmp ident k))
+  (tree/insert! (kfilt filter)
+                int-cmp ident
+                (:tuple *thread-id* *the-exception-handler* k)))
 
 (define (poller/delete-event ident filter)
   (tree/delete! (kfilt filter) int-cmp ident)
@@ -65,7 +102,7 @@
 	   (poller/dispatch)
 	   #u
 	   )
-      (maybe:yes _) -> (raise (:PollerEventAlreadyPresent))
+      (maybe:yes _) -> (raise (:PollerEventAlreadyPresent ident filter))
       )))
 
 (define (poller/wait-for-read fd)
@@ -77,10 +114,10 @@
 (define poller/enqueue-waiting-thread
   (:kev ident filter)
   -> (match (poller/lookup-event ident filter) with
-       (maybe:yes k)
+       (maybe:yes (:tuple thread-id exc-handler k))
        -> (begin
             (poller/delete-event ident filter)
-            (poller/enqueue k))
+            (poller/enqueue* thread-id exc-handler k))
        (maybe:no)
        -> (begin
             (printf "poller: no such event: " (int ident) " " (int filter) "\n")
