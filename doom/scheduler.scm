@@ -48,6 +48,11 @@
 
 (define *thread-id* 0)
 
+(defmacro debugf
+  (debugf x ...)
+  -> (printf (bold "[" (int *thread-id*) "]") x ...)
+  )
+
 ;; TODO: since this code is using getcc/putcc directly, it's possible
 ;; that it's not type-safe around coro switch boundaries. look into
 ;; this.
