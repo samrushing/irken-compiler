@@ -12,9 +12,11 @@ function draw_maze (data, w, h, s) {
     var canvas = document.getElementById('maze');
     if (canvas.getContext) {
         var ctx = canvas.getContext('2d');
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1;
         ctx.lineCap = 'round';
-        ctx.strokeStyle = 'black';
+        ctx.strokeStyle = '#000000';
+        // magic to make the lines not blurry.
+        ctx.translate (0.5, 0.5);
         for (y=0; y < h; y++) {
             for (x=0; x < w; x++) {
                 switch (data[y][x]) {
@@ -44,38 +46,47 @@ function draw_maze (data, w, h, s) {
 }
 ")
 
-(define (graph->js G m n scale solution)
+(define (graph-js-gen G m n scale solution)
 
-  (define (print-data)
-    (let ((lines '())
-          (line '()))
-      (for-range y n
-        (for-range x m
-          (let ((walls G[(+ x (* y m))]))
-            (match (bit-set? walls 3) (bit-set? walls 1) with
-              #t #t -> (PUSH line #\T)
-              #t #f -> (PUSH line #\U)
-              #f #t -> (PUSH line #\L)
-              #f #f -> (PUSH line #\space)
-              )))
-        (PUSH lines (list->string (reverse line)))
-        (set! line '()))
-      (printf "maze_data = [\n")
-      (for-list line (reverse lines)
-        (printf "  \"" line "\",\n"))
-      (printf "];\n")
-      ))
+  (defmacro emitf
+    (emitf x ...)
+    -> (emit (format x ...)))
 
-  (printf "<canvas id=\"maze\" "
-          "width=\"" (int (+ scale (* scale m))) "\" "
-          "height=\"" (int (+ scale (* scale n))) "\">"
-          (int m) "x" (int n) " seed " (int *random-seed*)
-          "</canvas>\n")
-  (printf "<script>\n"
-          js-script)
-  (print-data)
-  (printf "draw_maze (maze_data, " (int m) ", " (int n) ", " (int scale) ");\n"
-          "</script>\n"
-          "<br>" (int m) "x" (int n) " seed " (int *random-seed*) "\n")
-  )
+  (makegen emit
 
+    (define (print-data)
+      (let ((lines '())
+            (line '()))
+        (for-range y n
+          (for-range x m
+            (let ((walls G[(+ x (* y m))]))
+              (match (bit-set? walls 3) (bit-set? walls 1) with
+                #t #t -> (PUSH line #\T)
+                #t #f -> (PUSH line #\U)
+                #f #t -> (PUSH line #\L)
+                #f #f -> (PUSH line #\space)
+                )))
+          (PUSH lines (list->string (reverse line)))
+          (set! line '()))
+        (emitf "maze_data = [\n")
+        (for-list line (reverse lines)
+          (emitf "  \"" line "\",\n"))
+        (emitf "];\n")
+        ))
+
+    (emitf "<canvas id=\"maze\" "
+           "width=\"" (int (+ scale (* scale m))) "\" "
+           "height=\"" (int (+ scale (* scale n))) "\">"
+           (int m) "x" (int n) " seed " (int *random-seed*)
+           "</canvas>\n")
+    (emitf "<script>\n"
+           js-script)
+    (print-data)
+    (emitf "draw_maze (maze_data, " (int m) ", " (int n) ", " (int scale) ");\n"
+           "</script>\n"
+           "<br/>" (int m) "x" (int n) " seed " (int *random-seed*) "\n")
+    ))
+
+(define (graph->js G m n S solution)
+  (for s (graph-js-gen G m n S solution)
+    (print-string s)))
