@@ -309,12 +309,6 @@
        result  -> result
        ))
 
-;; print a list with <proc>, and print <sep> between each item.
-(define print-sep
-  proc sep ()	     -> #u
-  proc sep (one)     -> (proc one)
-  proc sep (hd . tl) -> (begin (proc hd) (print-string sep) (print-sep proc sep tl)))
-
 ;; collect lists of duplicate runs
 ;; http://www.christiankissig.de/cms/files/ocaml99/problem09.ml
 ;; I put in the '(reverse s)' call to make the algorithm 'stable'.
