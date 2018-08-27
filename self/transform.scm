@@ -131,17 +131,11 @@
 
   (define (expand* exp)
     (match exp with
-      (sexp:symbol _)	   -> exp
-      (sexp:string _)	   -> exp
-      (sexp:char _)	   -> exp
-      (sexp:bool _)	   -> exp
-      (sexp:int _)	   -> exp
-      (sexp:undef)	   -> exp
-      (sexp:cons _ _)	   -> exp
       (sexp:list l)	   -> (maybe-expand l)
       (sexp:vector rands)  -> (sexp:vector (map expand rands))
       (sexp:record fields) -> (sexp:record (map expand-field fields))
       (sexp:attr exp sym)  -> (sexp:attr (expand exp) sym)
+      _                    -> exp
       ))
 
   (define (expand exp)
