@@ -311,40 +311,38 @@
 	  (default0 (if (sexp=? default match-error) default match-fail))
 	  (cases '())
 	  )
-      (alist/iterate
-       (lambda (tag rules-stack)
-	 (let ((arity (match mdt with
-			(maybe:no) -> (length (pattern->subs (car (rule->pats (rules-stack.top)))))
-			(maybe:yes dt) -> (let ((alt (dt.get tag)))
-					    alt.arity)))
-	       (vars0 (nthunk arity new-match-var))
-	       (wild (make-vector arity #t))
-	       (rules1 '()))
-	   (set! nalts (+ nalts 1))
-	   (define frob-rule
-	     (rule:t pats code)
-	     -> (let ((subs (pattern->subs (car pats))))
-		  (when (not (= (length subs) arity))
-                    (printf "arity mismatch in constructor pattern:\n\t" (rule-repr (rule:t pats code)))
-                    (error "arity mismatch in constructor pattern"))
-		  (PUSH rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
-		  (for-range i arity
-                    (match (nth subs i) with
-                      (pattern:variable '_) -> #u
-                      _ -> (set! wild[i] #f))
-                    )))
-	   (for-each frob-rule (rules-stack.get))
-	   ;; if every pattern has a wildcard for this arg of the constructor,
-	   ;;  then use '_' rather than the symbol we generated.
-	   (let ((vars1 (map-range i arity (if wild[i] '_ (nth vars0 i)))))
-	     (PUSH cases
-		   ;; ((:tag var0 var1 ...) (match ...))
-		   (sexp
-		    (sexp:list
-		     (list:cons (sexp:cons 'nil tag) (map sexp:symbol vars1)))
-		    ;; we don't reverse rules1 because we popped it off a reversed stack already
-		    (compile-match (append vars0 (cdr vars)) rules1 default0))))))
-       alts)
+      (for-alist tag rules-stack alts
+        (let ((arity (match mdt with
+                       (maybe:no) -> (length (pattern->subs (car (rule->pats (rules-stack.top)))))
+                       (maybe:yes dt) -> (let ((alt (dt.get tag)))
+                                           alt.arity)))
+              (vars0 (nthunk arity new-match-var))
+              (wild (make-vector arity #t))
+              (rules1 '()))
+          (set! nalts (+ nalts 1))
+          (define frob-rule
+            (rule:t pats code)
+            -> (let ((subs (pattern->subs (car pats))))
+                 (when (not (= (length subs) arity))
+                   (printf "arity mismatch in constructor pattern:\n\t" (rule-repr (rule:t pats code)))
+                   (error "arity mismatch in constructor pattern"))
+                 (PUSH rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
+                 (for-range i arity
+                   (match (nth subs i) with
+                     (pattern:variable '_) -> #u
+                     _ -> (set! wild[i] #f))
+                   )))
+          (for-each frob-rule (rules-stack.get))
+          ;; if every pattern has a wildcard for this arg of the constructor,
+          ;;  then use '_' rather than the symbol we generated.
+          (let ((vars1 (map-range i arity (if wild[i] '_ (nth vars0 i)))))
+            (PUSH cases
+                  ;; ((:tag var0 var1 ...) (match ...))
+                  (sexp
+                   (sexp:list
+                    (list:cons (sexp:cons 'nil tag) (map sexp:symbol vars1)))
+                   ;; we don't reverse rules1 because we popped it off a reversed stack already
+                   (compile-match (append vars0 (cdr vars)) rules1 default0))))))
       (let ((result
 	     (match mdt with
 	       (maybe:yes dt)

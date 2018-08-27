@@ -428,13 +428,11 @@
   (define (wrap-with-constructors body)
     (let ((names '())
 	  (constructors '()))
-      (alist/iterate
-       (lambda (name dt)
-	 (dt.iterate
-	  (lambda (tag alt)
-	    (PUSH names (string->symbol (format (sym dt.name) ":" (sym tag))))
-	    (PUSH constructors (make-constructor dt.name tag alt.arity)))))
-       the-context.datatypes)
+      (for-alist name dt the-context.datatypes
+        (dt.iterate
+         (lambda (tag alt)
+           (PUSH names (string->symbol (format (sym dt.name) ":" (sym tag))))
+           (PUSH constructors (make-constructor dt.name tag alt.arity)))))
       (wrap-fix (map sexp:symbol names) constructors body)))
 
   (define (make-constructor dt tag arity)

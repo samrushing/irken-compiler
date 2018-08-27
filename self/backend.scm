@@ -475,13 +475,11 @@ void prof_dump (void)
 
 (define (emit-datatype-table o)
   (o.write (format "// datatype table"))
-  (alist/iterate
-   (lambda (name dt)
-     (o.write (format "// name: " (sym name)))
-     (dt.iterate
-      (lambda (tag alt)
-	(o.write (format "//  (:" (sym tag) " " (join type-repr " " alt.types) ")")))))
-   the-context.datatypes))
+  (for-alist name dt the-context.datatypes
+    (o.write (format "// name: " (sym name)))
+    (dt.iterate
+     (lambda (tag alt)
+       (o.write (format "//  (:" (sym tag) " " (join type-repr " " alt.types) ")"))))))
 
 (define (get-file-contents path)
   (read-file-contents

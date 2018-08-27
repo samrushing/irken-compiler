@@ -184,40 +184,29 @@ Usage: compile <irken-src-file> [options]
 (define (main-compile base node)
   (let ((cps (compile node)))
     (verbose
-     (printf "\n-- RTL --\n")
-     (print-cps cps 0)
-     (newline)
      (printf "\n-- datatypes --\n")
-     (alist/iterate
-      (lambda (name dt)
-        (print-datatype dt))
-      the-context.datatypes)
+     (for-alist name dt the-context.datatypes
+       (print-datatype dt))
      (printf "\n-- typealiases --\n")
-     (alist/iterate
-      (lambda (name alias)
-	(printf (format "  " (sym name) " : " (scheme-repr alias) "\n")))
-      the-context.aliases)
+     (for-alist name alias the-context.aliases
+       (printf (format "  " (sym name) " : " (scheme-repr alias) "\n")))
      (printf "\n-- variables --\n")
      (print-vars)
      (printf "\n-- labels --\n")
-     (printn the-context.labels)
+     (for-map index label the-context.labels.rev
+       (printf "  " (int index) " : " (sym label) "\n"))
      (printf "\n-- records --\n")
-     (printn the-context.records)
+     (for-map index sig the-context.records.rev
+       (printf "  " (int index) " : (" (join symbol->string " " sig) ")\n"))
      (printf "\n-- symbols --\n")
-     (tree/inorder
-      (lambda (sym index)
-	(printf "  " (int index) " : " (sym sym) "\n"))
-      the-context.symbols)
+     (for-map sym index the-context.symbols
+       (printf "  " (int index) " : " (sym sym) "\n"))
      (printf "\n-- variant labels --\n")
-     (alist/iterate
-      (lambda (sym index)
-	(printf "  " (int index) " : " (sym sym) "\n"))
-      the-context.variant-labels)
+     (for-alist sym index the-context.variant-labels
+       (printf "  " (int index) " : " (sym sym) "\n"))
      (printf "\n-- exceptions --\n")
-     (alist/iterate
-      (lambda (name type)
-	(printf "  " (sym name) " : " (type-repr (apply-subst type)) "\n"))
-	the-context.exceptions)
+     (for-alist name type the-context.exceptions
+       (printf "  " (sym name) " : " (type-repr (apply-subst type)) "\n"))
      (printf "\n-- FFI --\n")
      (dump-ffi-info)
      )
