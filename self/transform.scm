@@ -163,7 +163,7 @@
 		(maybe:yes fun)
                 -> (fun rands)
 		(maybe:no)
-                -> (match (alist/lookup the-context.macros sym) with
+                -> (match (tree/member the-context.macros symbol-index-cmp sym) with
                      (maybe:yes macro) -> (expand (macro.apply (sexp:list l) the-context.options.debugmacroexpansion))
                      (maybe:no)
                      -> (if (primop? sym)
@@ -354,7 +354,7 @@
 		      (in-pat (sexp:symbol '->) out-pat . rest)
 		      -> (list:cons (:pair in-pat out-pat) (loop rest))
 		      _ -> (error1 "malformed macro definition:" (format "(" (join repr " " exps))))))))
-	 (alist/push the-context.macros name macro))
+         (tree/insert! the-context.macros symbol-index-cmp name macro))
     x -> (error1 "malformed macro definition:" (format "(" (join repr " " x)))
     )
 

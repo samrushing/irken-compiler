@@ -31,7 +31,7 @@
 (define (make-context)
   {datatypes            = (alist/make)
     aliases             = (alist/make)
-    macros              = (alist/make)
+    macros              = (tree/empty)
     dep-graph           = (map-maker symbol-index-cmp)
     scc-graph           = '()
     vars                = (tree/empty)
