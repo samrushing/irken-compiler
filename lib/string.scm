@@ -157,10 +157,10 @@
       (let ((where (string-find-from split src pos)))
         (if (= where -1)
             (begin
-              (PUSH r (substring src pos len0))
+              (push! r (substring src pos len0))
               (reverse r))
             (begin
-              (PUSH r (substring src pos where))
+              (push! r (substring src pos where))
               (loop (+ where len1))))))))
 
 (define (string-replace-all src from to)

@@ -772,19 +772,19 @@
             (stream:label _)
             -> #u
             (stream:insn 'tst (target index))
-            -> (PUSH r (INSN 'tst target (resolve index)))
+            -> (push! r (INSN 'tst target (resolve index)))
             (stream:insn 'jmp (index))
-            -> (PUSH r (INSN 'jmp (resolve index)))
+            -> (push! r (INSN 'jmp (resolve index)))
             (stream:insn 'fun (target index))
-            -> (PUSH r (INSN 'fun target (resolve index)))
+            -> (push! r (INSN 'fun target (resolve index)))
             (stream:insn 'trcall (index depth nregs . args))
-            -> (PUSH r (stream:insn 'trcall (prepend (resolve index) depth nregs args)))
+            -> (push! r (stream:insn 'trcall (prepend (resolve index) depth nregs args)))
             (stream:insn 'trcall0 (index depth))
-            -> (PUSH r (INSN 'trcall0 (resolve index) depth))
+            -> (push! r (INSN 'trcall0 (resolve index) depth))
             (stream:insn 'nvcase (ob elabel nalts . pairs))
             -> (let ((pairs0 (resolve-tag-pairs pairs)))
-                 (PUSH r (stream:insn 'nvcase (prepend ob (resolve elabel) nalts pairs0))))
-            _ -> (PUSH r insn)
+                 (push! r (stream:insn 'nvcase (prepend ob (resolve elabel) nalts pairs0))))
+            _ -> (push! r insn)
             )
           ;; bump pc *after* offsets resolved.
           (match insn with
@@ -887,7 +887,7 @@
         (printf "build sizeoff vector...")
         (for-range i sizeoff-map.count
           (printf "  " (int i) " " (repr (cmap->item sizeoff-map i)) "\n")
-          (PUSH r (unsexp (cmap->item sizeoff-map i))))
+          (push! r (unsexp (cmap->item sizeoff-map i))))
         (printf "done...\n")
         (reverse r)))
 

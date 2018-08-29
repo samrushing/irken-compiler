@@ -70,11 +70,11 @@
     (printf "{")
     (for-set x s0
       (printf (int x) " ")
-      (if (and (not (< x 4000)) (< x 6000)) (PUSH r0 x))
+      (if (and (not (< x 4000)) (< x 6000)) (push! r0 x))
       )
     (printf "}\n")
     (printn (reverse r0))
-    (set/range s0 int-cmp 4000 6000 (lambda (k) (PUSH r1 k)))
+    (set/range s0 int-cmp 4000 6000 (lambda (k) (push! r1 k)))
     (printn (reverse r1))
     (printn (set/range->list s0 int-cmp 4000 6000))
     )

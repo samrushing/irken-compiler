@@ -83,7 +83,7 @@
 (define (rope->list r)
   (let ((result '()))
     (define walk
-      (rope:leaf s)     -> (PUSH result s)
+      (rope:leaf s)     -> (push! result s)
       (rope:node w l r) -> (begin (walk l) (walk r))
       )
     (walk r)

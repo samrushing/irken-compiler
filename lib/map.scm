@@ -42,7 +42,7 @@
 
   (define (map self p)
     (let ((r '()))
-      (tree/reverse (lambda (k v) (PUSH r (p k v))) self.t)
+      (tree/reverse (lambda (k v) (push! r (p k v))) self.t)
       r))
 
   (define (keys self)

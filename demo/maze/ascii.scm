@@ -126,7 +126,7 @@
 (define (graph->base85 G m n)
   (let ((result '()))
     (for ch (b85-enc (bytegen G m n))
-      (PUSH result ch))
+      (push! result ch))
     (printf (list->string (reverse result)) "\n")
     ))
 

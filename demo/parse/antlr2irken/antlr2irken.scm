@@ -296,7 +296,7 @@
     (define (replace-rule exp make)
       (let ((index (cmap/add rule-map exp))
             (new-name (string->symbol (format (sym name) "-" (int index)))))
-        (PUSH new-rules (make new-name exp))
+        (push! new-rules (make new-name exp))
         (exp:name new-name)))
 
     (define walk-exp
@@ -340,8 +340,8 @@
                        (for-list mhi hd0
                          (for-list tli tl0
                            (match mhi with
-                             (maybe:yes hi) -> (PUSH r (list:cons hi tli))
-                             (maybe:no)     -> (PUSH r tli)
+                             (maybe:yes hi) -> (push! r (list:cons hi tli))
+                             (maybe:no)     -> (push! r tli)
                              )))
                        ;; (printf "recur: => ") (printn r)
                        (reverse r)))
@@ -369,7 +369,7 @@
     (let ((new-alts '()))
       (for-list alt alts
         (for-list alt0 (process-alt alt)
-          (PUSH new-alts alt0)))
+          (push! new-alts alt0)))
       (:tuple (reverse new-alts) (reverse new-rules))
       )))
 
@@ -386,7 +386,7 @@
       (match rule with
         (rule:parse name exp)
         -> (let (((new-alts new-rules) (convert-rule name (exp->alts exp))))
-             (PUSH result (rule:parse name (exp:or new-alts)))
+             (push! result (rule:parse name (exp:or new-alts)))
              (for-list new-rule new-rules
                (queue/add! fifo new-rule)))
         other
@@ -416,7 +416,7 @@
   (let ((chars (string->list (read-antlr-string s)))
         (r '()))
     (for-list ch chars
-      (PUSH r (rx:sym (charset/single (char->int ch)))))
+      (push! r (rx:sym (charset/single (char->int ch)))))
     (nary->binary rx:cat (reverse r))))
 
 (define (cs->rx s)
@@ -504,7 +504,7 @@
       (for-list exp exps
         (match exp with
           (exp:literal lit)
-          -> (PUSH lits (lit->rx lit))
+          -> (push! lits (lit->rx lit))
           _ -> (raise (:ANTLR2Irken/UnexpectedGrammarItem (rule-repr rule)))
           ))
       (nary->binary rx:or lits)))
@@ -595,12 +595,12 @@
           (lexicon '()))
       (for-list rule new-rules
         (let (((rrxmap0 earley-rule) (rule->earley rrxmap rule)))
-          (PUSH earley-rules earley-rule)
+          (push! earley-rules earley-rule)
           (set! rrxmap rrxmap0)))
       (set! used-terminals (collect-used-terminals used-terminals earley-rules))
       (for-map rx name rrxmap
         (when (set/member? used-terminals symbol-index-cmp name)
-          (PUSH lexicon (sexp (sym name) (rx->sexp rx)))))
+          (push! lexicon (sexp (sym name) (rx->sexp rx)))))
       (printf ";; -*- Mode: Lisp -*-\n")
       (pp (sexp (sym 'parser)
                 (sexp1 'lexicon (reverse lexicon))

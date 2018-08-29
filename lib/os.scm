@@ -63,7 +63,7 @@
     (printn DIR*)
     (let loop ((dirent* (posix/readdir DIR*)))
       (cond ((not (cref-null? dirent*))
-             (PUSH result {kind = (get-file-type dirent*) name = (get-file-name dirent*)})
+             (push! result {kind = (get-file-type dirent*) name = (get-file-name dirent*)})
              (loop (posix/readdir DIR*)))
             (else #u)))
     (posix/closedir DIR*)

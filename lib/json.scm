@@ -229,7 +229,7 @@
          (match sub with
            (:tuple key val)
            -> (if (string=? key name)
-                  (PUSH r val))))
+                  (push! r val))))
        (reverse r)
        )
   ob name -> (raise (:Json/ExpectedObject ob))

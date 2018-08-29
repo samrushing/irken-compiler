@@ -322,14 +322,14 @@
     (define (emit-close name nreg body target)
       (let ((cname (gen-function-cname name 0)))
 	(declare-function cname #f #f)
-	(PUSH fun-stack (lambda () (emit-cfun o name cname body)))
+	(push! fun-stack (lambda () (emit-cfun o name cname body)))
 	(o.write (format "O r" (int target) " = allocate (TC_CLOSURE, 2);"))
 	(o.write (format "r" (int target) "[1] = " cname "; r" (int target) "[2] = lenv;"))
 	))
 
     (define (push-continuation cname insn args)
       (let ((args (format (join (lambda (x) (format "O r" (int x))) ", " args))))
-	(PUSH fun-stack
+	(push! fun-stack
 	      (lambda ()
 		(o.write (format "static void " cname "(" args ") {"))
 		(o.indent)
@@ -441,7 +441,7 @@
 	      (o.write (format "r" (int args) "[1] = r" (int fun) "[2]; lenv = r" (int args) "; " funcall))
 	      (o.write (format "lenv = r" (int fun) "[2]; " funcall))))
 	;; emit a new c function to represent the continuation of the current irken function
-	(PUSH fun-stack
+	(push! fun-stack
 	      (lambda ()
 		(set! current-function-cname kfun)
 		(o.write (format "static void " kfun " (O rr) {"))
@@ -1003,7 +1003,7 @@
     (let loop ()
       (match fun-stack with
 	() -> #u
-	_  -> (begin ((pop fun-stack)) (loop))
+	_  -> (begin ((pop! fun-stack)) (loop))
 	))
     (emit-get-metadata o)
     (emit-c-lookup-field-hashtables o)

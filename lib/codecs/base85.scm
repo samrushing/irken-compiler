@@ -48,7 +48,7 @@
     (makegen emit
       (for val gen32
         (for-range i 5
-          (PUSH vals (int->char (+ 33 (mod val 85))))
+          (push! vals (int->char (+ 33 (mod val 85))))
           (set! val (/ val 85)))
         (for-each emit vals)
         (set! vals (list:nil))
@@ -77,12 +77,12 @@
 (define (string->b85 s)
   (let ((result (list:nil)))
     (for ch (b85-enc (string-generator s))
-      (PUSH result ch))
+      (push! result ch))
     (list->string result)))
 
 (define (b85->string s)
   (let ((result (list:nil)))
     (for ch (b85-dec (string-generator s))
-      (PUSH result ch))
+      (push! result ch))
     (list->string result)))
 

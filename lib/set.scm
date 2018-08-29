@@ -231,7 +231,7 @@
 ;; some way to do these using foldr?
 (define (set/keys t)
   (let ((r '()))
-    (set/reverse (lambda (k) (PUSH r k)) t)
+    (set/reverse (lambda (k) (push! r k)) t)
     r))
 
 (define set/dump
@@ -352,7 +352,7 @@
 ;; XXX fold?
 (define (set->list s)
   (let ((r '()))
-    (set/reverse (lambda (k) (PUSH r k)) s)
+    (set/reverse (lambda (k) (push! r k)) s)
     r))
 
 (defmacro for-set2
@@ -379,7 +379,7 @@
 
 (define (set/range->list s cmp lo hi)
   (let ((r '()))
-    (set/range s cmp lo hi (lambda (k) (PUSH r k)))
+    (set/range s cmp lo hi (lambda (k) (push! r k)))
     (reverse r)))
 
 (define (set/fold acc s cmp p)

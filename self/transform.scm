@@ -61,8 +61,8 @@
           (inits '()))
       (for-each
        (lambda (:pair name init)
-         (PUSH names (sexp:symbol name))
-         (PUSH inits (expand init)))
+         (push! names (sexp:symbol name))
+         (push! inits (expand init)))
        defs)
       (try
        (wrap-fix (reverse names) (reverse inits) (wrap-begin exps))
@@ -335,17 +335,17 @@
 						  (list:cons
 						   (sexp formal (make-nvget dt tag j arity value))
 						   r)))))))
-	       (PUSH arities arity)
+	       (push! arities arity)
 	       (if (not (null? binds))
 		   ;; (let ((f0 (%nvget (list:cons 0) value))
 		   ;;       (f1 (%nvget (list:cons 1) value)))
 		   ;;   body)
-		   (PUSH alts0
+		   (push! alts0
 			 (sexp:list
 			  (append (LIST (sexp:symbol 'let) (sexp:list binds))
 				  (LIST (nth alts i)))))
 		   ;; body
-		   (PUSH alts0 (nth alts i)))))
+		   (push! alts0 (nth alts i)))))
          (sexp (sym '%nvcase) (sym dt) (sym value)
                (list (map sexp:symbol tags))
                (list (map sexp:int (reverse arities)))
@@ -417,7 +417,7 @@
               (type:tvar id _) -> (cmap/add tvar-cmap id)
               _ -> (impossible)))
           (for-list alt (reverse (alt-map::values))
-            (PUSH r (sexp (sym alt.name)
+            (push! r (sexp (sym alt.name)
                           (int index)
                           (list (map (lambda (t) (type->sexp* tvar-cmap t)) alt.types))))
             (set! index (+ 1 index)))
@@ -443,8 +443,8 @@
       (for-alist name dt the-context.datatypes
         (dt.iterate
          (lambda (tag alt)
-           (PUSH names (string->symbol (format (sym dt.name) ":" (sym tag))))
-           (PUSH constructors (make-constructor dt.name tag alt.arity)))))
+           (push! names (string->symbol (format (sym dt.name) ":" (sym tag))))
+           (push! constructors (make-constructor dt.name tag alt.arity)))))
       (wrap-fix (map sexp:symbol names) constructors body)))
 
   (define (make-constructor dt tag arity)
@@ -570,7 +570,7 @@
   (define expand-cinclude
     ((sexp:string path))
     -> (begin
-	 (PUSH the-context.cincludes path)
+	 (push! the-context.cincludes path)
          (sexp:undef)
          )
     x -> (error1 "malformed <cinclude>" x)
@@ -579,7 +579,7 @@
   (define expand-linclude
     ((sexp:string path))
     -> (begin
-	 (PUSH the-context.lincludes path)
+	 (push! the-context.lincludes path)
          (sexp:undef)
          )
     x -> (error1 "malformed <linclude>" x)
@@ -588,7 +588,7 @@
   (define expand-cverbatim
     ((sexp:string path))
     -> (begin
-	 (PUSH the-context.cverbatim path)
+	 (push! the-context.cverbatim path)
          (sexp:undef)
          )
     x -> (error1 "malformed <cverbatim>" x)

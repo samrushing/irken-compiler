@@ -46,6 +46,7 @@
 (define (queue/make)
   {len=0 q=(fqueue/empty)})
 
+;; XXX why is this not called 'push'???
 (define (queue/add! q x)
   (set! q.q (fqueue/snoc x q.q))
   (inc! q.len))

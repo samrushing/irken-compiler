@@ -34,7 +34,7 @@
 (define (big->string n)
   (let ((r '()))
     (while (not (big-zero? n))
-      (PUSH r (big->int (big-rem n (int->big 256))))
+      (push! r (big->int (big-rem n (int->big 256))))
       (set! n (big (>> n 8))))
     (list->string (map int->char (ensure-sign r #f)))
     ))

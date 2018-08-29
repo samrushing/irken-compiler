@@ -144,7 +144,7 @@
       (let ((r b))
         (for-list ai a
           (if (not (member? ai b =))
-              (PUSH r ai)))
+              (push! r ai)))
         r))
 
     (define (set-flag! flag)
@@ -285,7 +285,7 @@
 
     (define (c-function name formals id body lenv k)
       (set-flag! VFLAG-ALLOCATES)
-      (PUSH current-funs name)
+      (push! current-funs name)
       (let ((regvars (get-register-variables '() lenv))
 	    (r
 	     (insn:close
@@ -298,7 +298,7 @@
 		       )
 	      k)))
 	(tree/insert! the-context.profile-funs symbol-index-cmp name {index=0 names=current-funs})
-	(pop current-funs)
+	(pop! current-funs)
 	r))
 
     (define search-rib

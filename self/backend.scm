@@ -8,7 +8,7 @@
         (nbytes 0)
         (total 0))
     (define (push s)
-      (PUSH buffer s)
+      (push! buffer s)
       (set! nbytes (+ nbytes (string-length s)))
       (if (>= nbytes 16384)
           (flush)))
@@ -150,7 +150,7 @@
       (for-each
        (lambda (sig0)
          (if (subset? sig sig0)
-             (PUSH candidates sig0)))
+             (push! candidates sig0)))
        (cmap/keys the-context.records))
       (if (= 1 (length candidates))
 	  ;; unambiguous - there's only one possible match.
@@ -187,10 +187,10 @@ void prof_dump (void)
         (r '()))
     (for-list part parts
       (cond ((= n 10)
-             (PUSH r (string-append "\n\t" part))
+             (push! r (string-append "\n\t" part))
              (set! n 0))
             (else
-             (PUSH r part)))
+             (push! r part)))
       (inc! n))
     (reverse r)))
 
@@ -235,8 +235,8 @@ void prof_dump (void)
 		 ;; constructor with args
 		 (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
 		       (addr (+ 1 (length output))))
-		   (PUSH output (uohead nargs dt variant alt.index))
-		   (for-each (lambda (x) (PUSH output x)) args0)
+		   (push! output (uohead nargs dt variant alt.index))
+		   (for-each (lambda (x) (push! output x)) args0)
 		   (format "UPTR(" (int litnum) "," (int addr) ")"))
 		 ;; nullary constructor - immediate
 		 (uitag dt variant alt.index)))
@@ -246,8 +246,8 @@ void prof_dump (void)
 	-> (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
 		 (nargs (length args))
 		 (addr (+ 1 (length output))))
-	     (PUSH output (format "(" (int nargs) "<<8)|TC_VECTOR"))
-	     (for-each (lambda (x) (PUSH output x)) args0)
+	     (push! output (format "(" (int nargs) "<<8)|TC_VECTOR"))
+	     (for-each (lambda (x) (push! output x)) args0)
 	     (format "UPTR(" (int litnum) "," (int addr) ")"))
         (literal:record tag fields)
         -> (let ((args0 (map (lambda (field)
@@ -257,8 +257,8 @@ void prof_dump (void)
                              fields))
                  (nargs (length args0))
                  (addr (+ 1 (length output))))
-             (PUSH output (format "(" (int nargs) "<<8)|UOTAG(" (int tag) ")"))
-             (for-each (lambda (x) (PUSH output x)) args0)
+             (push! output (format "(" (int nargs) "<<8)|UOTAG(" (int tag) ")"))
+             (for-each (lambda (x) (push! output x)) args0)
              (format "UPTR(" (int litnum) "," (int addr) ")"))
 	(literal:symbol sym)
         -> (let ((index (tree/get the-context.symbols symbol-index-cmp sym)))
@@ -300,7 +300,7 @@ void prof_dump (void)
     (let ((symptrs '()))
       (tree/inorder
        (lambda (symbol index)
-	 (PUSH symptrs (format "UPTR(" (int index) ",1)")))
+	 (push! symptrs (format "UPTR(" (int index) ",1)")))
        the-context.symbols)
       ;; XXX NOTE: this does not properly use TC_EMPTY_VECTOR
       (o.write (format "pxll_int pxll_internal_symbols[] = {("
@@ -416,7 +416,7 @@ void prof_dump (void)
                     (set! item 0)
                     (set! slots (list:nil)))
                   (begin
-                    (PUSH slots slot)
+                    (push! slots slot)
                     (set! item (+ item 1))))))
           (set! slots (reverse slots))
           (set! G[(hash-item #x01000193 (nth bucket 0) size)] d)
@@ -430,12 +430,12 @@ void prof_dump (void)
     (let ((freelist '()))
       (for-range i size
         (if (= V[i] not-there)
-            (PUSH freelist i)))
+            (push! freelist i)))
       (for-range i size
         (let ((bucket buckets[i])
               (blen (length bucket)))
           (when (= blen 1)
-            (let ((slot (pop freelist))
+            (let ((slot (pop! freelist))
                   (elem (nth bucket 0)))
               ;; we subtract one to ensure it's negative even if the zeroeth slot was
               ;; used.
@@ -459,7 +459,7 @@ void prof_dump (void)
           (let ((label-code (lookup-label-code (nth sig i))))
             (match (tree/member the-context.ambig-rec int-cmp label-code) with
               (maybe:yes _)
-              -> (PUSH ambs (:tuple i label-code))
+              -> (push! ambs (:tuple i label-code))
               (maybe:no)
               -> #u)))
         (when (> (length ambs) 0)
@@ -502,15 +502,15 @@ void prof_dump (void)
   (match (alist/lookup the-context.datatypes 'sexp) with
     (maybe:yes _)
     -> (let ((r '()))
-         (PUSH r (sexp1 'variants
+         (push! r (sexp1 'variants
                         (alist/map
                          (lambda (name index) (sexp (sym name) (int index)))
                          the-context.variant-labels)))
-         (PUSH r (sexp1 'exceptions
+         (push! r (sexp1 'exceptions
                         (alist/map
                          (lambda (name type) (sexp (sym name) (type->sexp (apply-subst type))))
                          the-context.exceptions)))
-         (PUSH r (sexp1 'datatypes
+         (push! r (sexp1 'datatypes
                         (alist/map
                          (lambda (name dt) (dt.to-sexp))
                          the-context.datatypes)))

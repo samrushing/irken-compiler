@@ -137,7 +137,7 @@
     (for-list rand rands
       (match rand with
         (sexp:symbol name)
-        -> (begin (PUSH formals name) (univ:undef))
+        -> (begin (push! formals name) (univ:undef))
         _ -> (repl-error (format "bad formals: " (repr (sexp:list rands))))
         ))
     (univ:function (reverse formals) body)

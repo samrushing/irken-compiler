@@ -76,7 +76,7 @@
       (rx:not r)   -> (W r)
       (rx:group n {s=_  e=_ ms=(mstate:before)} r) -> (W r)
       (rx:group n {s=_  e=_ ms=(mstate:start)} r) -> (W r)
-      (rx:group n m r) -> (begin (PUSH ms (:tuple n m.s m.e)) (W r))
+      (rx:group n m r) -> (begin (push! ms (:tuple n m.s m.e)) (W r))
       _ -> #u
       )
     (W d)

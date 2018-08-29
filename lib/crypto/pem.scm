@@ -13,7 +13,7 @@
         (cond ((char=? ch #\newline)
                (emit (list->string (reverse acc)))
                (set! acc '()))
-              (else (PUSH acc ch)))
+              (else (push! acc ch)))
         ))))
 
 (define (pem-b64-gen linegen)
@@ -37,7 +37,7 @@
                           (set! label "null")
                           (set! data '()))
                          (else
-                          (PUSH data line)))
+                          (push! data line)))
           )))))
 
 (define (pem-gen chargen)

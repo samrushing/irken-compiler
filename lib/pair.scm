@@ -32,13 +32,13 @@
   (LIST)         -> (list:nil)
   (LIST x y ...) -> (list:cons x (LIST y ...)))
 
-(defmacro PUSH
-  (PUSH l v)     -> (set! l (list:cons v l))
+(defmacro push!
+  (push! l v) -> (set! l (list:cons v l))
   )
 
-(defmacro pop
-  (pop l) -> (match l with
-	       (list:nil) -> (error "pop")
+(defmacro pop!
+  (pop! l) -> (match l with
+	       (list:nil) -> (error "pop!")
 	       (list:cons hd tl) -> (begin (set! l tl) hd)))
 
 (defmacro prepend
@@ -384,7 +384,7 @@
 (define (generator->list gen)
   (let ((r '()))
     (for item gen
-      (PUSH r item))
+      (push! r item))
     (reverse r)))
 
 ;; take `n` elements from a generator into a list.

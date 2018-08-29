@@ -35,7 +35,7 @@
     (for-range i n
        (let ((v (random)))
          (tree/insert! t int-cmp v i)
-         (PUSH keys0 v)
+         (push! keys0 v)
          ))
     (assert (tree/verify t))
     (let ((t2 t))

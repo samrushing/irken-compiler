@@ -61,12 +61,12 @@ function draw_maze (data, w, h, s) {
           (for-range x m
             (let ((walls G[(+ x (* y m))]))
               (match (bit-set? walls 3) (bit-set? walls 1) with
-                #t #t -> (PUSH line #\T)
-                #t #f -> (PUSH line #\U)
-                #f #t -> (PUSH line #\L)
-                #f #f -> (PUSH line #\space)
+                #t #t -> (push! line #\T)
+                #t #f -> (push! line #\U)
+                #f #t -> (push! line #\L)
+                #f #f -> (push! line #\space)
                 )))
-          (PUSH lines (list->string (reverse line)))
+          (push! lines (list->string (reverse line)))
           (set! line '()))
         (emitf "maze_data = [\n")
         (for-list line (reverse lines)

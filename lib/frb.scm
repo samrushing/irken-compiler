@@ -246,12 +246,12 @@
 ;; some way to do these using foldr?
 (define (tree/keys t)
   (let ((r '()))
-    (tree/reverse (lambda (k v) (PUSH r k)) t)
+    (tree/reverse (lambda (k v) (push! r k)) t)
     r))
 
 (define (tree/values t)
   (let ((r '()))
-    (tree/reverse (lambda (k v) (PUSH r v)) t)
+    (tree/reverse (lambda (k v) (push! r v)) t)
     r))
 
 (define tree/dump

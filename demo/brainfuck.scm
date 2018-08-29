@@ -31,7 +31,7 @@
              #\, -> (loop (cons (insn:in) code) (+ i 1))
              #\[ -> (let ((sub (P))
                           (len (length sub)))
-                      (PUSH code (insn:left len))
+                      (push! code (insn:left len))
                       (loop (append sub code) (+ i len)))
              #\] -> (let ((len (length code)))
                       (cons (insn:right (+ len 1)) code))

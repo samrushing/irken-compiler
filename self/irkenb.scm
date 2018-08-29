@@ -79,7 +79,7 @@
 	i (vector-length argv)
 	(match sys.argv[i] with
 	  "-v"    -> (set! options.verbose #t)
-	  "-I"    -> (begin (set! i (+ i 1)) (PUSH options.include-dirs argv[i]))
+	  "-I"    -> (begin (set! i (+ i 1)) (push! options.include-dirs argv[i]))
           "-O"    -> (begin (set! i (+ i 1)) (set! options.opt-rounds (string->int argv[i])))
 	  "-m"    -> (set! options.debugmacroexpansion #t)
 	  "-dt"   -> (set! options.debugtyping #t)

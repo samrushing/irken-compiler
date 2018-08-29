@@ -76,7 +76,7 @@
           (format "%r" (int target))))
 
     (define (push-continuation name cname cps args)
-      (PUSH fun-stack (lambda () (cps->llvm cps o name cname args #f))))
+      (push! fun-stack (lambda () (cps->llvm cps o name cname args #f))))
 
     (define (push-fail-continuation cps jump args)
       (push-continuation 'fail (format "FAIL_" (int jump)) cps args))
@@ -547,7 +547,7 @@
         (emit-call* name fun)
 	(oformat "ret void")
 	;; emit a new c function to represent the continuation of the current irken function
-	(PUSH fun-stack
+	(push! fun-stack
 	      (lambda ()
 		(oformat "\ndefine internal fastcc void @" kfun "(i8** %rr) {")
 		(o.indent)
@@ -605,7 +605,7 @@
 
     (define (emit-close name nreg body target)
       (let ((cname (gen-function-cname name 0)))
-	(PUSH fun-stack
+	(push! fun-stack
 	      (lambda ()
 		(cps->llvm body o name cname '() #f)))
 	(oformat "%r" (int target) " = call fastcc i8** @insn_close (void()* @" cname ")")
@@ -868,7 +868,7 @@
 
     ;; emit JUMP and FAIL functions...
     (while (not (null? fun-stack))
-      ((pop fun-stack)))
+      ((pop! fun-stack)))
 
     ))
 
@@ -925,7 +925,7 @@
         (info-map (map-maker int-cmp)))
 
     (define (push-val n)
-      (PUSH output n)
+      (push! output n)
       (set! oindex (+ 1 oindex)))
 
     ;; hacks for datatypes known by the runtime
@@ -1048,7 +1048,7 @@
       (o.copy (vector-header "@lits.all" lits.count))
       (let ((lines '()))
         (for-map i lit lits.rev
-          (PUSH lines (lit-ref i)))
+          (push! lines (lit-ref i)))
         (oformat (join ",\n" (reverse lines)) "\n  ]"))
       ;; emit table of offsets (into each i64[] literal)
       (o.copy (format "@lits.offsets = global [" (int (+ 1 lits.count)) " x i32] ["))

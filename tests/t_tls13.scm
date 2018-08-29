@@ -63,7 +63,7 @@
           (result '()))
       (for pem pgen
         (match pem with
-          (:tuple "CERTIFICATE" asn1) -> (PUSH result asn1)
+          (:tuple "CERTIFICATE" asn1) -> (push! result asn1)
           _ -> (raise (:TLS/ExpectedCertificate path))
           ))
       (reverse result))))

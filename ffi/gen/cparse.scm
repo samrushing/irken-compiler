@@ -41,7 +41,7 @@
           (last 'bogus)
           (acc '()))
       (define (add tok)
-        (PUSH acc tok))
+        (push! acc tok))
       (for tok gen
         (match blevel plevel tok.kind with
           ;; a ';' at the outermost level means we need
@@ -716,7 +716,7 @@
                  (cmap/add typedef-name-map (symbol->string name))
                  #u)
                ;;(printf " name: " (bold (sym name)) " type: " (ctype2-repr type) "\n")
-               (PUSH result (declarator:t type (maybe:yes name)))
+               (push! result (declarator:t type (maybe:yes name)))
                #u
                )
           ))

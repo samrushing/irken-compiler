@@ -29,7 +29,7 @@
         -> (begin
              ;; (printf "regex = " (string regex) " rx = " (rx-repr rx) "\n")
              (alist/push labels i kind)
-             (PUSH subs (rx-group i nullmatch rx))
+             (push! subs (rx-group i nullmatch rx))
              (set! i (+ i 1)))
         ))
     (let ((rx (nary->binary rx-or (reverse subs)))

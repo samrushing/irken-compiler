@@ -88,7 +88,7 @@
           (if (arg-matches? opt args)
               (let (((name value rest) (get-value opt args)))
                 (set! found #t)
-                (PUSH result (:tuple name value))
+                (push! result (:tuple name value))
                 (set! args rest))))
         (if (not found)
             (begin
@@ -104,7 +104,7 @@
                 -> (begin
                      (printf "Missing argument: '" (sym name) "'\n")
                      (raise (:Getopt/MissingArg "missing argument" name)))
-                _ -> #u ;; (PUSH result (:tuple (option->name opt) (option->default opt)))
+                _ -> #u ;; (push! result (:tuple (option->name opt) (option->default opt)))
                 ))))
       (reverse result)))
 

@@ -149,7 +149,7 @@
 (define (get-args n)
   (let ((r '()))
     (for-range i n
-      (PUSH r CODE[(+1 (+ pc i))]))
+      (push! r CODE[(+1 (+ pc i))]))
     (reverse r)))
 
 (define (print-lenv)

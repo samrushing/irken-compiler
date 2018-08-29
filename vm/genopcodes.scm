@@ -31,7 +31,7 @@
     (let ((lines '()))
       (for-range i (vector-length opcode-info)
         (let ((op opcode-info[i]))
-          (PUSH lines
+          (push! lines
                 (format
                  "  {"(rpad 15 "\"" (sym op.name) "\", ")
                  (int op.nargs) ", "

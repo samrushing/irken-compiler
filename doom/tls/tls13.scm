@@ -134,7 +134,7 @@
                () -> (raise (:TLS/Alert (tls-alert-desc:no-application-protocol) "no matching ALPN"))
                (alpn . rest)
                -> (if (member? alpn client-alpns string=?)
-                      (PUSH extensions-to-push (tlsext:alpn (LIST alpn)))
+                      (push! extensions-to-push (tlsext:alpn (LIST alpn)))
                       (loop rest))))
         ;; XXX should this be a policy decision?
         _ -> (raise (:TLS/Alert (tls-alert-desc:no-application-protocol) "no ALPN extension present"))
@@ -146,7 +146,7 @@
           (tlsext:maxfraglen val)
           -> (begin
                (set! maxfraglen val)
-               (PUSH extensions-to-push ext))
+               (push! extensions-to-push ext))
           _ -> (impossible)
           )))
 
@@ -170,7 +170,7 @@
             ;; note: hello-retry-request is just a magic server-hello
             (hrr (pack-hsk (tls-hsk-type:server-hello) (pack-server-hello sh))))
         (send-packet (tls-ctype:hsk) hrr)
-        (PUSH pkts-to-push (rope->string hrr))
+        (push! pkts-to-push (rope->string hrr))
         (set-state! (tls-state:start))
         ))
 
@@ -181,9 +181,9 @@
         (when (> version 0)
           (debugf "protocol version: " (zpad 4 (hex version)) "\n"))
         (set! draft-version version)
-        (PUSH info (sexp (sym 'version) (int version)))
-        (PUSH info (client-hello->sexp ch))
-        (PUSH pkts-to-push pkt)
+        (push! info (sexp (sym 'version) (int version)))
+        (push! info (client-hello->sexp ch))
+        (push! pkts-to-push pkt)
         (find-sigalg ch)
         (cond ((not (find-keyshare ch))
                (send-hello-retry-request version ch))
@@ -242,7 +242,7 @@
         (ksched.add-tscript-packet (rope->string server-hello))
         (ksched.set-hsk-key shared-key)
         (ksched.add-tscript-packet (rope->string enc-exts))
-        (PUSH info (sexp1 'encrypted-extensions (map extension->sexp extensions-to-push)))
+        (push! info (sexp1 'encrypted-extensions (map extension->sexp extensions-to-push)))
         (ksched.add-tscript-packet (rope->string cert))
         (let ((tscript-hash (ksched.get-tscript-hash))
               (tbs (format (repeat 64 " ") "TLS 1.3, server CertificateVerify\x00" tscript-hash))

@@ -26,7 +26,7 @@
 	     ))
       (node:function name _)
       -> (begin
-	   (PUSH fenv name)
+	   (push! fenv name)
 	   (tree/insert! the-context.funs symbol-index-cmp name exp)
 	   (vars-set-flag! name VFLAG-FUNCTION))
       ;; a convenient place to detect this.
@@ -364,18 +364,18 @@
                            (rand (nth rands i)))
                        (if (or (> fvar.sets 0) (> fvar.refs 1))
                            ;; if a formal is assigned to, or referenced more than once...
-                           (PUSH complex i) ;; ... it must go into a let.
+                           (push! complex i) ;; ... it must go into a let.
                            (match (noderec->t rand) with
                              (node:literal _)
-                             -> (PUSH simple i)
+                             -> (push! simple i)
                              (node:varref arg)
                              -> (let ((avar (vars-get-var arg)))
                                   (if (> avar.sets 0)
-                                      (PUSH complex i)
-                                      (PUSH simple i)))
+                                      (push! complex i)
+                                      (push! simple i)))
                              _ -> (if (not (makes-funcalls? rand))
-                                      (PUSH simple i)
-                                      (PUSH complex i))
+                                      (push! simple i)
+                                      (push! complex i))
                              ))))
                    ;;(print-string "   simple, complex=") (print simple) (printn complex) (newline)
                    (let ((body (instantiate fun)) ;; alpha converted copy of the function
@@ -392,9 +392,9 @@
                              (let ((name (symbol-add-suffix
                                           (nth formals i)
                                           (format "_i" (int (rename-counter.inc))))))
-                               (PUSH names name)
-                               (PUSH inits (nth rands i))
-                               (PUSH substs (:pair (nth formals i) (node/varref name)))
+                               (push! names name)
+                               (push! inits (nth rands i))
+                               (push! substs (:pair (nth formals i) (node/varref name)))
                                ))
                            ;;(print-string "substs = ") (printn substs)
                            (let ((body (substitute body substs)))
@@ -615,7 +615,7 @@
                    (when (and (= var.refs 1) (= var.sets 0)
                               (not (bit-get var.flags VFLAG-FREEREF)))
                      (tree/insert! subst symbol-index-cmp name (nth subs i))
-                     (PUSH removed i)
+                     (push! removed i)
                      )))
                (when (> (length removed) 0)
                  ;; trim this let
@@ -624,8 +624,8 @@
                        (n (length names)))
                    (for-range-rev i n
                      (when (not (member-eq? i removed))
-                       (PUSH leftnames (nth names i))
-                       (PUSH leftvals (search (nth subs i)))))
+                       (push! leftnames (nth names i))
+                       (push! leftvals (search (nth subs i)))))
                    (return (node/let leftnames leftvals (search (nth subs n)))))))
           (node:varref name)
           -> (match (tree/member subst symbol-index-cmp name) with
@@ -740,7 +740,7 @@
 	     (if fatbar?
 		 ;; if we are in a fatbar, preserve the value of fat-env for the second branch.
 		 (set! fat-env fat-env2))
-	     (PUSH new-subs new-sub)))
+	     (push! new-subs new-sub)))
 	 exp.subs)
 	(set! exp.subs (reverse new-subs))
 	(set! exp.size (sum-size exp.subs))
@@ -806,7 +806,7 @@
 		    (for-range
 			i n
 			(if (not (seen::in (nth names i)))
-			    (PUSH remove i)))
+			    (push! remove i)))
 		    (if (null? remove)
 			node
 			(let ((new-names '())
@@ -814,8 +814,8 @@
 			  (for-range
 			      i n
 			      (cond ((not (member-eq? i remove))
-				     (PUSH new-names (nth names i))
-				     (PUSH new-inits (nth inits i)))))
+				     (push! new-names (nth names i))
+				     (push! new-inits (nth inits i)))))
 			  (node/fix (reverse new-names)
 				    (reverse new-inits)
 				    (last inits))

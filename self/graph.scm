@@ -120,7 +120,7 @@
 			   (lambda (v)
 			     (if (not (visited::in v))
 				 (visit0 v)))))
-      (PUSH s u))
+      (push! s u))
     ;; walk the graph forward, pushing finished nodes onto <s>
     (g::iterate
      (lambda (u v)
@@ -142,12 +142,12 @@
       ;; walk backward, popping strongly connected components off <s>
       (while
        (not (null? s))
-       (let ((u (pop s)))
+       (let ((u (pop! s)))
 	 (if (not (visited::in u))
 	     (begin
 	       (set! r1 (symbol-set-maker '()))
 	       (visit1 u)
-	       (PUSH r0 (r1::get))))))
+	       (push! r0 (r1::get))))))
       ;; the subcomponents are in topological order
       r0)))
 
@@ -164,7 +164,7 @@
     (for-each
      (lambda (component)
        (cond ((> (length part) 0)
-	      (PUSH parts part)
+	      (push! parts part)
 	      (set! part '())))
        (for-each
 	(lambda (name)
@@ -172,17 +172,17 @@
 	    (maybe:no) -> #u
 	    (maybe:yes val) -> (if (not val.done)
 				   (begin
-				     (PUSH part val.index)
+				     (push! part val.index)
 				     (set! val.done #t)
                                      (remove! val.index leftover)
                                      ))))
 	component))
      scc-graph)
     (if (> (length part) 0)
-	(PUSH parts part))
+	(push! parts part))
     ;; the leftovers should all be non-functions
     (if (> (length leftover) 0)
-	(PUSH parts leftover))
+	(push! parts leftover))
     ;; partitioned!
     (reverse parts)
     ))
@@ -200,12 +200,12 @@
        (let ((r0 '()))
 	 (for-each
 	  (lambda (j)
-	    (PUSH names0 (nth names j))
-	    (PUSH inits0 (nth inits j))
-	    (PUSH r0 i)
+	    (push! names0 (nth names j))
+	    (push! inits0 (nth inits j))
+	    (push! r0 i)
 	    (set! i (+ i 1)))
 	  part)
-	 (PUSH r (reverse r0))
+	 (push! r (reverse r0))
 	 ))
      partition)
     (:reordered (reverse names0) (reverse inits0) (nth inits n) (reverse r))))

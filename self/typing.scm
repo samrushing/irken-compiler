@@ -352,7 +352,7 @@
     (let ((arg-types '()))
       (for-list formal formals
         (let ((type (optional-type formal tenv)))
-          (PUSH arg-types type)
+          (push! arg-types type)
           (tenv/extend! tenv formal (:scheme '() type))))
       (let ((btype (type-of body tenv))
             (ftype (arrow btype (reverse arg-types))))
@@ -850,9 +850,9 @@
         (node:function name formals)
         -> (begin
              (if (> depth (car funstack))
-                 (PUSH funstack depth)
+                 (push! funstack depth)
                  (while (< depth (car funstack))
-                   (pop funstack)))
+                   (pop! funstack)))
              (printf (rpad 20 (format (repeat (length funstack) "  ") (strip-alpha name)))
                      " : " (type-repr* (noderec->type node) #t) "\n"))
         _ -> #u

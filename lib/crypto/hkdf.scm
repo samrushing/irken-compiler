@@ -25,7 +25,7 @@
           (hmac1.update info)
           (hmac1.update (list->string (LIST (int->char (+ 1 i)))))
           (set! Tn (hmac1.final))
-          (PUSH T Tn)))
+          (push! T Tn)))
       ;; OKM
       (substring (string-concat (reverse T)) 0 L)
       ))

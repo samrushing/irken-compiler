@@ -383,7 +383,7 @@
   (let ((v0 v)
         (i31 (list:nil)))
     (while (> (vector-length v0) 0)
-      (PUSH i31 (logand v0[(- (vector-length v0) 1)] #x7fffffff))
+      (push! i31 (logand v0[(- (vector-length v0) 1)] #x7fffffff))
       (set! v0 (digits-rshift v0 31)))
     (let ((nwords (length i31))
           (ri31 (reverse i31))

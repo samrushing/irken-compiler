@@ -65,7 +65,7 @@
     (define (list)
       (let ((r '()))
         (for-range i ob.len0
-          (PUSH r ob.v[i]))
+          (push! r ob.v[i]))
         (reverse r)))
     (define (append item)
       (if (= ob.len0 ob.len1)

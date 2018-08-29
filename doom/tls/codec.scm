@@ -21,7 +21,7 @@
 
     (define (assure n)
       (when (> n (- blen pos))
-        (PUSH current buf)
+        (push! current buf)
         (let (((fkind frag) (get-fragment))
               (flen (string-length frag)))
           (when (not (or (= kind -1) (= fkind kind)))
@@ -215,7 +215,7 @@
               (last (substring buf 0 pos))
               (pkt (string-concat (reverse (list:cons last current))))
               (plen (string-length pkt)))
-          (PUSH records {raw=pkt record=record kind=kind version=#x303 length=plen})))
+          (push! records {raw=pkt record=record kind=kind version=#x303 length=plen})))
       (reverse records))
     ))
 

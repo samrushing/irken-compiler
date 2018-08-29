@@ -523,7 +523,7 @@
           (result '()))
       (for-list names components
         (for-list name names
-          (PUSH result name)))
+          (push! result name)))
       (reverse result)))
   )
 

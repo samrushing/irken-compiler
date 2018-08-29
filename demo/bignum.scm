@@ -30,7 +30,7 @@
   (let ((r '()))
     ;; iterate in reverse to accumulate
     (for-range-rev i (vlen digs)
-      (PUSH r (format (zpad big/repr-width (hex digs[i])))))
+      (push! r (format (zpad big/repr-width (hex digs[i])))))
     (format (join "." r))))
 
 ;; eventually we'll add support to the reader for big literals
@@ -987,11 +987,11 @@
     (while (> nbits 0)
       ;; make sure we have some bits
       (when (= bbits 0)
-        (set! byte (pop bytes))
+        (set! byte (pop! bytes))
         (set! bbits 8))
       ;; start a new digit if we need to
       (when (= dbits 0)
-        (PUSH digits digit)
+        (push! digits digit)
         (set! digit 0)
         (set! dbits big/bits))
       ;; roll some bits in
@@ -1002,7 +1002,7 @@
         (dec! nbits bits)
         (set! byte (logand byte (- (<< 1 bits) 1)))
         ))
-    (PUSH digits digit)
+    (push! digits digit)
     (reverse digits)
     ))
 
@@ -1034,11 +1034,11 @@
     (while (> nbits 0)
       ;; make sure we have some bits
       (when (= dbits 0)
-        (set! digit (pop digits))
+        (set! digit (pop! digits))
         (set! dbits big/bits))
       ;; start a new byte if we need to
       (when (= bbits 0)
-        (PUSH bytes byte)
+        (push! bytes byte)
         (set! byte 0)
         (set! bbits 8))
       ;; roll some bits in
@@ -1052,7 +1052,7 @@
         (dec! bbits bits)
         (dec! nbits bits)
       ))
-    (PUSH bytes byte)
+    (push! bytes byte)
     (remove-zeros bytes)
     ))
 

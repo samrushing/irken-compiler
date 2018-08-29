@@ -47,7 +47,7 @@
             (when (not (bit-set? walls i))
               (let ((node0 (move node (<< 1 i))))
                 (when (not visited[node0])
-                  (PUSH r node0)))))
+                  (push! r node0)))))
           r))
 
       (define (search node dx path)

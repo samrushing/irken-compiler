@@ -17,7 +17,7 @@
     )
   (let ((r '()))
     (for-range i 5
-      (PUSH r (c-get-int (c-aref int5* i))))
+      (push! r (c-get-int (c-aref int5* i))))
     (assert (eq? (cmp:=) (list-cmp int-cmp r '(16 9 4 1 0))))
     )
   )

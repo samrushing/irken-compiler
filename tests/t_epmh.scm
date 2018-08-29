@@ -75,7 +75,7 @@
                     (set! item 0)
                     (set! slots (list:nil)))
                   (begin
-                    (PUSH slots slot)
+                    (push! slots slot)
                     (set! item (+ item 1))))))
           (set! slots (reverse slots))
           (set! G[(hash-item #x01000193 (nth bucket 0) size)] d)
@@ -88,12 +88,12 @@
     (let ((freelist '()))
       (for-range i size
         (if (= V[i] not-there)
-            (PUSH freelist i)))
+            (push! freelist i)))
       (for-range i size
         (let ((bucket buckets[i])
               (blen (length bucket)))
           (when (= blen 1)
-            (let ((slot (pop freelist))
+            (let ((slot (pop! freelist))
                   (item (nth bucket 0)))
               ;; we subtract one to ensure it's negative even if the zeroeth slot was
               ;; used.

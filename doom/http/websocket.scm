@@ -60,7 +60,7 @@
     (define (pack-uint c n)
       (let ((r (list:nil)))
         (for-range i c
-          (PUSH r (int->char (logand #xff n)))
+          (push! r (int->char (logand #xff n)))
           (set! n (>> n 8)))
         (list->string r)))
 

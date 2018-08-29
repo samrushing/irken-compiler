@@ -201,7 +201,7 @@
     (format (rpad 10 (oid-repr pair.oid)) ":" (ber-repr pair.value)))
   (let ((result '()))
     (for-list parts names
-      (PUSH result (format (join pair-repr ", " parts))))
+      (push! result (format (join pair-repr ", " parts))))
     (format "\n  : " (join "\n  : " (reverse result)))))
 
 ;; we actually need a whole mess of parsers/printers for

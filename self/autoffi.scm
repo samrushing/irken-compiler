@@ -105,7 +105,7 @@
       (match the-context.options.backend with
         ;; bytecode needs a runtime call to ``require-ffi``
         (backend:bytecode)
-        -> (PUSH forms (sexp (sexp:symbol 'require-ffi) (sexp (sexp:symbol 'quote) (sexp:symbol interface))))
+        -> (push! forms (sexp (sexp:symbol 'require-ffi) (sexp (sexp:symbol 'quote) (sexp:symbol interface))))
         (backend:c)
         -> (set! forms (append (iface-includes) forms))
         (backend:llvm)
@@ -115,7 +115,7 @@
       ;; constant definitions
       (info.cons::iterate
        (lambda (k v)
-         (PUSH forms
+         (push! forms
                ;; XXX consider using a zero placeholder for all constants when emitting
                ;;  bytecode, to avoid needless differences in bytecode compiled on different
                ;;  platforms.
@@ -127,7 +127,7 @@
         (backend:bytecode)
         -> (info.cons::iterate
             (lambda (k v)
-              (PUSH forms
+              (push! forms
                     (sexp (sexp:symbol 'set!)
                           (sexp:symbol k)
                           (sexp (sexp:symbol 'fetch-ffi-constant) (sexp:symbol k) (sexp:int v))))))
@@ -140,7 +140,7 @@
          (match v with
            (csig:fun name rtype argtypes)
            -> (let ((ztname (zero-terminate (symbol->string name))))
-                (PUSH forms
+                (push! forms
                       (sexp (sexp:symbol 'define)
                             (sexp:symbol (iface-prefix visible-name))
                             (sexp (sexp:symbol 'build-ffi-fun)
@@ -155,7 +155,7 @@
                             )))
            (csig:obj name obtype)
            -> (let ((ztname (zero-terminate (symbol->string name))))
-                (PUSH forms
+                (push! forms
                       (sexp (sexp:symbol 'define)
                             (sexp:symbol (iface-prefix visible-name))
                             (sexp (sexp:symbol 'build-ffi-ob)

@@ -64,7 +64,7 @@
         ))
 
     (define (add-tscript-packet pkt)
-      (PUSH tscript pkt))
+      (push! tscript pkt))
 
     (define (get-tscript-hash)
       (let ((h (hash.make)))
@@ -101,9 +101,9 @@
             (chunk (rope:leaf zeros))
             (padding '()))
         (when (> r 0)
-          (PUSH padding (rope:leaf (substring zeros 0 r))))
+          (push! padding (rope:leaf (substring zeros 0 r))))
         (for-range i q
-          (PUSH padding chunk))
+          (push! padding chunk))
         (rope/cat padding)))
 
     ;; how to encrypt pkt[s]:

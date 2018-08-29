@@ -92,7 +92,7 @@
               (let ((recvd (loop-nb-read sock.fd (sock/recv sock ibuf))))
                 (when (= recvd 0)
                   (raise (:Doom/EOF sock)))
-                (PUSH parts (buffer/get! ibuf (min left recvd)))
+                (push! parts (buffer/get! ibuf (min left recvd)))
                 (dec! left (min left recvd))
                 ))
             (string-concat (reverse parts)))))

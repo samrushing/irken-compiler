@@ -330,7 +330,7 @@
                  (when (not (= (length subs) arity))
                    (printf "arity mismatch in constructor pattern:\n\t" (rule-repr (rule:t pats code)))
                    (error "arity mismatch in constructor pattern"))
-                 (PUSH rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
+                 (push! rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
                  (for-range i arity
                    (match (nth subs i) with
                      (pattern:variable '_) -> #u
@@ -340,7 +340,7 @@
           ;; if every pattern has a wildcard for this arg of the constructor,
           ;;  then use '_' rather than the symbol we generated.
           (let ((vars1 (map-range i arity (if wild[i] '_ (nth vars0 i)))))
-            (PUSH cases
+            (push! cases
                   ;; ((:tag var0 var1 ...) (match ...))
                   (sexp
                    (sexp:list
@@ -351,12 +351,12 @@
 	     (match mdt with
 	       (maybe:yes dt)
 	       -> (begin (if (< nalts (dt.get-nalts))
-			     (PUSH cases (sexp (sexp:symbol 'else) default0)))
+			     (push! cases (sexp (sexp:symbol 'else) default0)))
 			 (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol dt.name) (sexp:symbol (car vars)))
 					    (reverse cases))))
 	       (maybe:no)
 	       -> (begin (if (not (eq? default match-error))
-			     (PUSH cases (sexp (sexp:symbol 'else) match-fail)))
+			     (push! cases (sexp (sexp:symbol 'else) match-fail)))
 			 (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol (car vars)))
 					    (reverse cases)))))
 	     ))

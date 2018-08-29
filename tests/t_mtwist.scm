@@ -39,15 +39,15 @@
     (let ((gen32 (generate-random-bits 32 3141)))
       (for-range i 225
         (when-maybe x (gen32)
-          (PUSH s0 (format (zpad 8 (hex x)))))))
+          (push! s0 (format (zpad 8 (hex x)))))))
     (let ((gen36 (generate-random-bits 36 3141)))
       (for-range i 200
         (when-maybe x (gen36)
-          (PUSH s1 (format (zpad 9 (hex x)))))))
+          (push! s1 (format (zpad 9 (hex x)))))))
     (let ((gen24 (generate-random-bits 24 3141)))
       (for-range i 300
         (when-maybe x (gen24)
-          (PUSH s2 (format (zpad 6 (hex x)))))))
+          (push! s2 (format (zpad 6 (hex x)))))))
     (let ((j0 (string-concat (reverse s0)))
           (j1 (string-concat (reverse s1)))
           (j2 (string-concat (reverse s2))))

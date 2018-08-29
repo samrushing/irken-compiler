@@ -175,7 +175,7 @@
         (left 8)
         (byte 0))
     (define (emit-byte)
-      (PUSH data (int->char byte))
+      (push! data (int->char byte))
       (set! left 8)
       (set! byte 0))
     (define (emit n bits)
@@ -225,7 +225,7 @@
     (while (>= bits 5) ;; shortest code is 5 bits.
       (let loop ((t huffman-table))
         (match t with
-          (hufftree:leaf val) -> (PUSH r (int->char val))
+          (hufftree:leaf val) -> (push! r (int->char val))
           (hufftree:node L R) -> (if (> bits 0) (loop (if (get-bit) R L)))
           )))
     (list->string (reverse r))
@@ -320,7 +320,7 @@
         (tree/range
          map magic-cmp
          (:tuple name "") (:tuple name "\xff")
-         (lambda (k v) (PUSH range (:tuple k v))))
+         (lambda (k v) (push! range (:tuple k v))))
         (reverse range)))
 
     (define (lookup-name-only map name)
@@ -471,7 +471,7 @@
                  (table.set-size (get-integer 5)))
                 (else
                  (let ((r0 (get-header)))
-                   (PUSH r r0)))))
+                   (push! r r0)))))
         (reverse r)))
 
     unpack
@@ -486,11 +486,11 @@
         (never (set/empty)))
 
     (define (emit byte)
-      (PUSH data (int->char byte)))
+      (push! data (int->char byte)))
 
     (define (emit-string s)
       (for-string ch s
-        (PUSH data ch)))
+        (push! data ch)))
 
     (define (emit-integer n0 bits n1)
       (let ((mask masks[bits]))
@@ -564,8 +564,8 @@
           (match header with
             (:tuple name val)
             -> (if (eq? (string-ref name 0) #\:)
-                   (PUSH pseudo header)
-                   (PUSH normal header))))
+                   (push! pseudo header)
+                   (push! normal header))))
         (for-list header (append (reverse pseudo) (reverse normal))
           (match header with
             (:tuple name val)

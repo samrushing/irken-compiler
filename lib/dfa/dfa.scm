@@ -54,7 +54,7 @@
     ;; walk the rx with derivatives, finding new states.
     (define (explore fs rx depth)
       ;;(printf "explore " (pp-rx rx) "\n")
-      (PUSH states rx)
+      (push! states rx)
       (let ((moves (C rx)))
         (for-set move moves
           (if (not (charset/empty? move))
@@ -80,6 +80,6 @@
     ;; convert to vector form.
     (let ((map (make-vector urx.count '())))
       (for-set tran trans
-        (PUSH map[tran.fs] {ts=tran.ts sym=tran.sym}))
+        (push! map[tran.fs] {ts=tran.ts sym=tran.sym}))
       {map=map size=urx.count finals=finals states=(reverse states)}
       )))

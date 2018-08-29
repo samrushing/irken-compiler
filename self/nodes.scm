@@ -330,7 +330,7 @@
       (let ((r (list:nil)))
 	(for-range
 	    j count
-	    (PUSH r context[(remainder (+ i j) count)]))
+	    (push! r context[(remainder (+ i j) count)]))
 	(reverse r)))
     (let loop ((i 0))
       (match (ng) with
@@ -355,7 +355,7 @@
       (let ((id0 (noderec->id node)))
         (match (noderec->t node) with
           (node:function name formals)
-          -> (PUSH funpath name)
+          -> (push! funpath name)
           _ -> #u)
         (if (= id0 id)
             (return (reverse funpath))
@@ -467,8 +467,8 @@
 	(let ((name (nth names i))
 	      (init (nth inits i)))
 	  (match (noderec->t init) with
-	    (node:function _ _) -> (begin (PUSH names0 name) (PUSH inits0 init))
-	    _			-> (begin (PUSH names1 name) (PUSH inits1 init)))))
+	    (node:function _ _) -> (begin (push! names0 name) (push! inits0 init))
+	    _			-> (begin (push! names1 name) (push! inits1 init)))))
       (:sorted-fix (append (reverse names0) (reverse names1))
                    (append (reverse inits0) (reverse inits1)))))
 

@@ -35,7 +35,7 @@
         (for-set v vl
           (if (not (set/member? visited cmp v))
               (visit0 v))))
-      (PUSH s u))
+      (push! s u))
     ;; walk the graph forward, pushing finished nodes onto <s>
     (for-map u v g
       (if (not (set/member? visited cmp u))
@@ -53,9 +53,9 @@
       (set/add! r1 cmp u))
     ;; walk backward, popping strongly connected components off <s>
     (while (not (null? s))
-      (let ((u (pop s)))
+      (let ((u (pop! s)))
         (when (not (set/member? visited cmp u))
           (set! r1 (set/empty))
           (visit1 u)
-          (PUSH r0 (set->list r1)))))
+          (push! r0 (set->list r1)))))
     r0)))

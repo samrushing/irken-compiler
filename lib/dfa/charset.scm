@@ -63,12 +63,12 @@
   (let ((ranges '()))
     (for-list r s
       (cond ((= r.hi (+ 1 r.lo))
-	     (PUSH ranges (char-repr r.lo)))
+	     (push! ranges (char-repr r.lo)))
 	    ((= r.hi (+ 2 r.lo))
-	     (PUSH ranges (char-repr (+ 1 r.lo)))
-	     (PUSH ranges (char-repr r.lo)))
+	     (push! ranges (char-repr (+ 1 r.lo)))
+	     (push! ranges (char-repr r.lo)))
 	    (else
-	     (PUSH ranges (format (char-repr r.lo) "-" (char-repr (- r.hi 1)))))))
+	     (push! ranges (format (char-repr r.lo) "-" (char-repr (- r.hi 1)))))))
     (string-concat (reverse ranges))
     ))
 
@@ -84,18 +84,18 @@
 (define (charset-repr-raw s)
   (let ((r '()))
     (for-list x s
-      (PUSH r (format (zpad 2 (hex x.lo)) "-" (zpad 2 (hex x.hi)))))
+      (push! r (format (zpad 2 (hex x.lo)) "-" (zpad 2 (hex x.hi)))))
     (format "{" (join "," (reverse r)) "}")))
 
 (define (charset->sexp* s)
   (let ((r '()))
     (for-list x s
       (cond ((= x.lo (- x.hi 1)) ;; single char
-             (PUSH r (sexp:char (int->char x.lo))))
+             (push! r (sexp:char (int->char x.lo))))
             ((and (printable? (int->char x.lo)) (printable? (int->char (- x.hi 1))))
-             (PUSH r (sexp (char (int->char x.lo)) (char (int->char (- x.hi 1))))))
+             (push! r (sexp (char (int->char x.lo)) (char (int->char (- x.hi 1))))))
             (else
-             (PUSH r (sexp (int x.lo) (int x.hi))))))
+             (push! r (sexp (int x.lo) (int x.hi))))))
     (sexp1 'set (reverse r))
     ))
 

@@ -56,7 +56,7 @@
         (let ((n (how-many (* 8 (logand 3 val)) 6))
               (v (>> val 2)))
           (for-range i 4
-            (PUSH vals (string-ref *base64-digits* (logand #x3f v)))
+            (push! vals (string-ref *base64-digits* (logand #x3f v)))
             (set! v (>> v 6)))
           (for-each emit (take vals n))
           (set! vals (list:nil))

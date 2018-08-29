@@ -86,9 +86,9 @@
           (let ((walls G[(+ x (* y m))]))
             (match (bit-set? walls 3) (bit-set? walls 1) with
               ;; U L
-              #t #f -> (PUSH u y)
-              #f #t -> (PUSH l y)
-              #t #t -> (PUSH ul y)
+              #t #f -> (push! u y)
+              #f #t -> (push! l y)
+              #t #t -> (push! ul y)
               _ _   -> #u
               )))
         ;; draw a column of each of the markers placed.

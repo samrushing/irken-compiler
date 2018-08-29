@@ -391,7 +391,7 @@
 (define (collector)
   (let ((val '()))
     (define (push x)
-      (PUSH val x)
+      (push! val x)
       (string-length x))
     (define (get-val)
       (string-concat val))
