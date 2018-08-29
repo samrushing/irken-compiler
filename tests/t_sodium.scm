@@ -1,15 +1,14 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/codecs/hex.scm")
+(require "lib/basis.scm")
+(require "lib/codecs/hex.scm")
 
 ;; to prepare:
 ;;    $ ffi/gen/genffi -gen ffi/sodium.ffi
 ;;    $ sudo cp ffi/sodium_ffi.scm /usr/local/lib/irken/ffi/
 ;;
 ;; to build:
-;;    $ self/compile tests/t_sodium.scm -l sodium
+;;    $ self/compile tests/t_sodium.scm
 
 (require-ffi 'sodium)
 
@@ -44,10 +43,8 @@
     (c-set-int slen* slen)
     (let ((r (sodium/crypto_sign_ed25519_detached s* slen* m* mlen sk*))
           (rlen (c-get-int slen*)))
-      (printf "r    = " (int r) "\n")
-      (printf "rlen = " (int rlen) "\n")
       (%cref->string #f (%c-cast char s*) rlen))))
-  
+
 ;; (sig crypto_sign_ed25519_verify_detached ((* uchar) (* uchar) ulonglong (* uchar) -> int))
 ;; sig, m, mlen, pk
 
@@ -67,15 +64,15 @@
         (pklen (sodium/crypto_sign_ed25519_publickeybytes))
         (sk (halloc uchar sklen))
         (pk (halloc uchar pklen))
-        (r (sodium/crypto_sign_ed25519_seed_keypair 
+        (r (sodium/crypto_sign_ed25519_seed_keypair
             (c-aref pk 0) (c-aref sk 0)
             (%c-cast uchar (%string->cref #f seed)))))
     (if (= 0 r)
-        (:tuple 
+        (:tuple
          (%cref->string #f (%c-cast char (c-aref sk 0)) sklen)
          (%cref->string #f (%c-cast char (c-aref pk 0)) pklen))
         (raise (:Sodium/APIFail "crypto_sign_ed25519_seed_keypair")))))
-        
+
 (define ed25519-skey (hex->string "b84ffaaf6fd47d62113b61df1fbb994d61848168a7dece5e151140c6bdfb4073"))
 
 (define msg "testing, testing!\n")
@@ -86,7 +83,6 @@
 (printf "|sig|  " (int (sodium/crypto_sign_ed25519_bytes)) "\n")
 (printf "|pkey| " (int (sodium/crypto_sign_ed25519_publickeybytes)) "\n")
 (printf "|skey| " (int (sodium/crypto_sign_ed25519_secretkeybytes)) "\n")
-;;(printf "pub " (string->hex (ed25519-sk-to-pk ed25519-skey)) "\n")
 (let (((sk pk) (ed25519-seed-to-keypair ed25519-skey))
       (sig (ed25519-sign msg sk)))
   (printf "seed " (string->hex ed25519-skey) "\n")
