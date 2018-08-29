@@ -2,15 +2,19 @@
 
 (s2n
   (includes "s2n.h")
+  (lflags "-L/usr/local/lib" "-ls2n")
+  (cflags "-I/usr/local/include")
   ;; these are opaque structures, we don't need to know anything about them.
   ;(structs s2n_config s2n_connection)
-  (constants S2N_ERR_T_OK S2N_ERR_T_IO S2N_ERR_T_CLOSED S2N_ERR_T_BLOCKED
-             S2N_ERR_T_ALERT S2N_ERR_T_PROTO S2N_ERR_T_INTERNAL S2N_ERR_T_USAGE
-             S2N_EXTENSION_OCSP_STAPLING S2N_EXTENSION_CERTIFICATE_TRANSPARENCY
-             S2N_BUILT_IN_BLINDING S2N_SELF_SERVICE_BLINDING
-             S2N_NOT_BLOCKED S2N_BLOCKED_ON_READ S2N_BLOCKED_ON_WRITE
-             S2N_SERVER S2N_CLIENT
-             )
+  (constants
+   ;; XXX these are actually all enums, and we should really load them up as such.
+   S2N_ERR_T_OK S2N_ERR_T_IO S2N_ERR_T_CLOSED S2N_ERR_T_BLOCKED
+   S2N_ERR_T_ALERT S2N_ERR_T_PROTO S2N_ERR_T_INTERNAL S2N_ERR_T_USAGE
+   S2N_EXTENSION_OCSP_STAPLING S2N_EXTENSION_CERTIFICATE_TRANSPARENCY
+   S2N_BUILT_IN_BLINDING S2N_SELF_SERVICE_BLINDING
+   S2N_NOT_BLOCKED S2N_BLOCKED_ON_READ S2N_BLOCKED_ON_WRITE
+   S2N_SERVER S2N_CLIENT
+   )
   (sigs
    s2n_errno
    s2n_error_get_type
