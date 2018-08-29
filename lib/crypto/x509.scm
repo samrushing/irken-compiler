@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/crypto/sig.scm")
+
 ;; rather than using pattern matching directly, think
 ;;  about using haskell-style 'monadic' parsing.  this might
 ;;  be better for 'regular-language' style stuff like optional

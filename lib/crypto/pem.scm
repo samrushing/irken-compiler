@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/codecs/base64.scm")
+
 ;; XXX figure out how to combine push/pull with
 ;;  generators so we can feed the base64 decoder
 ;;  as a stream.

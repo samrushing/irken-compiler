@@ -1,6 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/enum.scm")
+(require "lib/enum.scm")
 
 ;; This is a start on an ASN.1 BER/DER encoder.
 

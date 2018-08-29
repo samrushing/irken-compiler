@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/crypto/hmac.scm")
+
 ;; RFC 5869
 
 (define (hkdf/make hash)

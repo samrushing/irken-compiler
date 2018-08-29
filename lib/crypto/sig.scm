@@ -1,5 +1,10 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/crypto/sodium.scm")
+(require "lib/crypto/ctbig.scm")
+(require "lib/crypto/pem.scm")
+(require "lib/asn1/ber.scm")
+
 ;; PKCS #1 v2.2 (RFC 8017)
 
 (define (read-pem-asn1 path)
