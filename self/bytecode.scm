@@ -630,8 +630,10 @@
 
     (define (emit-alloc tag size target)
       (let ((v (if (= size 0) (UITAG tag) (UOTAG tag))))
-        (LINSN 'alloc target v size)
-        ))
+        (if (= size 0)
+            (LINSN 'imm target v)
+            (LINSN 'alloc target v size)
+            )))
 
     ;; --------------------------------------------------------------------------------
 
