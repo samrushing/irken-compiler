@@ -138,7 +138,7 @@
 
   (for-list struct structs
     (when-maybe type0 (tree/member types.structs magic-cmp (:tuple struct #t))
-      (let ((type1 (map-type-path M (LIST struct) type0)))
+      (let ((type1 (map-type-path M (list struct) type0)))
         ;; replace the entry
         (tree/delete! types.structs magic-cmp (:tuple struct #t))
         (tree/insert! types.structs magic-cmp (:tuple struct #t) type1)
@@ -462,8 +462,8 @@
     (stdio/close ofile)
     (let ((cpp-path (format base "_iface1.cpp"))
           (dm-path (format base "_iface1.dm")))
-      (compile (append iface.cflags (LIST "-E" opath ">" cpp-path)))
-      (compile (append iface.cflags (LIST "-dM" "-E" opath ">" dm-path)))
+      (compile (append iface.cflags (list "-E" opath ">" cpp-path)))
+      (compile (append iface.cflags (list "-dM" "-E" opath ">" dm-path)))
       (genc2 iface base cpp-path dm-path))
     (%exit #f 0)
     ))
@@ -655,11 +655,11 @@
           (write-sigs iface types renames (lambda (s) (stdio/write iface-file s)))
           (stdio/close iface-file)
           ;; compile iface2
-          (compile (append iface.lflags (append iface.cflags (LIST opath "-o" iface2))))
+          (compile (append iface.lflags (append iface.cflags (list opath "-o" iface2))))
           ;; append to interface
           (system (format iface2 " >> " iface-path))
           ;; compile iface1
-          (compile (append iface.cflags (LIST (format iface1 ".c") "-o" iface1)))
+          (compile (append iface.cflags (list (format iface1 ".c") "-o" iface1)))
           ;; append to interface
           (system (format iface1 " >> " iface-path))
           (cleanup base)
@@ -693,7 +693,7 @@
     (printf "base = " base "\n")
     (stdio/write ofile (format "#include <" path ">\n"))
     (stdio/close ofile)
-    (compile (LIST "-E" opath ">" cpp))
+    (compile (list "-E" opath ">" cpp))
     (set! *verbose-flag* #t)
     (let ((types (process-cpp-file cpp)))
       (if *typedefs-flag*

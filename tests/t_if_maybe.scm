@@ -3,7 +3,7 @@
 (include "lib/basis.scm")
 (include "lib/map.scm")
 
-(define thing0 (LIST (maybe:yes 1) (maybe:no) (maybe:yes 3)))
+(define thing0 (list (maybe:yes 1) (maybe:no) (maybe:yes 3)))
 
 (define (t0)
   (for-list item thing0

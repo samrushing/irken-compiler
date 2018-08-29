@@ -5,7 +5,7 @@
 (include "lib/codecs/base85.scm")
 
 (defmacro CAT
-  (CAT a ...) -> (string-concat (LIST a ...))
+  (CAT a ...) -> (string-concat (list a ...))
   )
 
 ;; sample from https://en.wikipedia.org/wiki/Ascii85

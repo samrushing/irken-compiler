@@ -521,7 +521,7 @@
 
 (define opcode-info
   (list->vector
-   (LIST
+   (list
     (opcode:t "lit"     2 insn-lit)
     (opcode:t "ret"     1 insn-ret)
     (opcode:t "add"     3 insn-add)

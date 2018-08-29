@@ -273,7 +273,7 @@
       (match (length types) (last types) with
         1 type -> type
         n (ctype2:pointer sub)
-        -> (ctype2:pointer (collapse (append (butlast types) (LIST sub))))
+        -> (ctype2:pointer (collapse (append (butlast types) (list sub))))
         n type -> (collapse types)
         ))
 
@@ -298,7 +298,7 @@
     (define p-decl
       (parse:nt 'declaration (declSpecs Semi))
       -> (let (((_ base-type) (p-declarationSpecifiers declSpecs)))
-           (:tuple #f (LIST (:tuple base-type '%anonymous))))
+           (:tuple #f (list (:tuple base-type '%anonymous))))
       (parse:nt 'declaration (declSpecs initDeclaratorList Semi))
       -> (let (((typedef? base-type) (p-declarationSpecifiers declSpecs)))
            (:tuple typedef? (p-initDeclaratorList base-type '() initDeclaratorList)))
@@ -574,7 +574,7 @@
     ;; parse -> (list declarator)
     (define p-structDeclaration
       (parse:nt 'structDeclaration (sQL Semi))
-      -> (LIST (declarator:t (p-specifierQualifierList sQL) (maybe:no)))
+      -> (list (declarator:t (p-specifierQualifierList sQL) (maybe:no)))
       (parse:nt 'structDeclaration (sQL sDL Semi))
       -> (let ((base-type (p-specifierQualifierList sQL)))
            (p-structDeclaratorList base-type '() sDL))

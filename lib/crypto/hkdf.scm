@@ -23,7 +23,7 @@
               (hmac1 (hmac0.make PRK)))
           (hmac1.update Tn)
           (hmac1.update info)
-          (hmac1.update (list->string (LIST (int->char (+ 1 i)))))
+          (hmac1.update (list->string (list (int->char (+ 1 i)))))
           (set! Tn (hmac1.final))
           (push! T Tn)))
       ;; OKM

@@ -44,7 +44,7 @@
   (parse:nt kind subs)
   -> (sexp1 kind (map parse->sexp subs))
   (parse:t tok)
-  -> (sexp:list (LIST (sexp:symbol tok.kind) (sexp:string tok.val)))
+  -> (sexp:list (list (sexp:symbol tok.kind) (sexp:string tok.val)))
   )
 
 (define (token-repr tok)
@@ -94,7 +94,7 @@
 
 (define (earley grammar nt0 tokgen)
   (let ((top-prod (prod:nt 'top))
-        (S (make-gvec 1 (make-gvec 1 {nt=top-prod dot=0 prod=(LIST nt0 EOF) start=0})))
+        (S (make-gvec 1 (make-gvec 1 {nt=top-prod dot=0 prod=(list nt0 EOF) start=0})))
         (M (make-gvec 1 (cmap/make magic-cmp)))
         (k 0)
         (toks (make-gvec 0 NULTOK))
@@ -356,7 +356,7 @@
 
   (define p-alt
     (sexp:list terms)  -> (map p-term terms)
-    (sexp:symbol term) -> (LIST (p-term (sexp:symbol term)))
+    (sexp:symbol term) -> (list (p-term (sexp:symbol term)))
     exp                -> (raise (:Parser/Error "p-alt" exp))
     )
 

@@ -36,7 +36,7 @@
   (test:blue) -> 'blue
   )
 
-(let ((l (LIST R G B B R R G G B)))
+(let ((l (list R G B B R R G G B)))
   (alist/iterate
    (lambda (k v)
      (printn (v.get)))

@@ -873,32 +873,32 @@
 
 ;; what registers are directly referenced by this insn?
 (define insn->refs
-  (insn:return result)             -> (LIST result)
-  (insn:tail _ c a)                -> (LIST c a)
+  (insn:return result)             -> (list result)
+  (insn:tail _ c a)                -> (list c a)
   (insn:trcall _ _ args)           -> args
   (insn:cexp _ _ _ args _)         -> args
   (insn:ffi _ _ _ args _)          -> args
-  (insn:test reg _ _ _ _)          -> (LIST reg)
-  (insn:jump reg trg _ _)          -> (LIST reg trg)
-  (insn:varset _ _ v _)            -> (LIST v)
-  (insn:store _ a t _ _)           -> (LIST a t)
-  (insn:invoke _ c a _)            -> (LIST c a)
-  (insn:push r _)                  -> (LIST r)
-  (insn:pop r _)                   -> (LIST r)
+  (insn:test reg _ _ _ _)          -> (list reg)
+  (insn:jump reg trg _ _)          -> (list reg trg)
+  (insn:varset _ _ v _)            -> (list v)
+  (insn:store _ a t _ _)           -> (list a t)
+  (insn:invoke _ c a _)            -> (list c a)
+  (insn:push r _)                  -> (list r)
+  (insn:pop r _)                   -> (list r)
   (insn:primop _ _ _ args _)       -> args
-  (insn:move var src _)            -> (LIST var src)
+  (insn:move var src _)            -> (list var src)
   (insn:testcexp args _ _ _ _ _ _) -> args
-  (insn:nvcase tr _ _ _ _ _ _)     -> (LIST tr)
-  (insn:pvcase tr _ _ _ _ _ _)     -> (LIST tr)
+  (insn:nvcase tr _ _ _ _ _ _)     -> (list tr)
+  (insn:pvcase tr _ _ _ _ _ _)     -> (list tr)
   _                                -> (list:nil)
   )
 
 ;; sub-expressions of this insn. these only occur in branching insns (and `close`).
 (define insn->subexps
-  (insn:test reg jn then else k)                 -> (LIST then else)
-  (insn:testcexp r s t jn k0 k1 k)               -> (LIST k0 k1)
-  (insn:close name nreg body k)                  -> (LIST body)
-  (insn:fatbar lab jn k0 k1 k)                   -> (LIST k0 k1)
+  (insn:test reg jn then else k)                 -> (list then else)
+  (insn:testcexp r s t jn k0 k1 k)               -> (list k0 k1)
+  (insn:close name nreg body k)                  -> (list body)
+  (insn:fatbar lab jn k0 k1 k)                   -> (list k0 k1)
   (insn:nvcase tr dt labels jn alts ealt k)      -> (if-maybe alt ealt (list:cons alt alts) alts)
   (insn:pvcase tr labels arities jn alts ealt k) -> (if-maybe alt ealt (list:cons alt alts) alts)
   _                                              -> (list:nil)

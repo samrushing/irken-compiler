@@ -9,7 +9,7 @@
 (include "lib/codecs/hex.scm")
 
 (defmacro hexcat
-  (hexcat a ...) -> (hex->string (string-concat (LIST a ...)))
+  (hexcat a ...) -> (hex->string (string-concat (list a ...)))
   )
 
 (define (do-encrypt-test t)
@@ -33,7 +33,7 @@
     ))
 
 (define encrypt-tests
-  (LIST
+  (list
    {Key = "83688deb4af8007f9b713b47cfa6c73e35ea7a3aa4ecdb414dded03bf7a0fd3a"
         IV = "0b459724904e010a46901cf3"
         PT = "33d893a2114ce06fc15d55e454cf90c3"
@@ -61,7 +61,7 @@
    ))
 
 (define decrypt-tests
-  (LIST
+  (list
    {Key = "aef220035cbb9e47ce605698aa28e3b0ba50b4ffcd473bb8da2017889b38055f"
         IV = "cde7af095360ea827778761d"
         CT = "bb1cdf25717445e5a77444d488387aee"

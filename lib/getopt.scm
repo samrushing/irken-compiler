@@ -118,7 +118,7 @@
   (optval (<int> default))    -> (optval:int default)
   (optval (<string>))         -> (optval:string "")
   (optval (<string> default)) -> (optval:string default)
-  (optval (<list> default))   -> (optval:list (LIST (optval default)))
+  (optval (<list> default))   -> (optval:list (list (optval default)))
   (optval (<bool>)        )   -> (optval:bool #f)
   (optval (<bool> default))   -> (optval:bool default)
   )

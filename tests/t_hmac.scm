@@ -7,7 +7,7 @@
 (include "lib/crypto/hmac.scm")
 
 (defmacro hexcat
-  (hexcat a ...) -> (hex->string (string-concat (LIST a ...)))
+  (hexcat a ...) -> (hex->string (string-concat (list a ...)))
   )
 
 (define (t0)
@@ -38,8 +38,8 @@
     ))
 
 (define tests
-  (LIST {k=(format (repeat 20 "\x0b"))
-           d=(LIST "Hi There")
+  (list {k=(format (repeat 20 "\x0b"))
+           d=(list "Hi There")
            exp256=(hexcat "b0344c61d8db38535ca8afceaf0bf12b"
                           "881dc200c9833da726e9376c2e32cff7")
            exp512=(hexcat "87aa7cdea5ef619d4ff0b4241a1d6cb0"
@@ -47,7 +47,7 @@
                           "daa833b7d6b8a702038b274eaea3f4e4"
                           "be9d914eeb61f1702e696c203a126854")}
         {k="Jefe"
-           d=(LIST "what do ya want " "for nothing?")
+           d=(list "what do ya want " "for nothing?")
            exp256=(hexcat "5bdcc146bf60754e6a042426089575c7"
                           "5a003f089d2739839dec58b964ec3843")
            exp512=(hexcat "164b7a7bfcf819e2e395fbe73b56e0a3"
@@ -55,7 +55,7 @@
                           "9758bf75c05a994a6d034f65f8f0e6fd"
                           "caeab1a34d4a6b4b636e070a38bce737")}
         {k=(format (repeat 20 "\xaa"))
-           d=(LIST (format (repeat 50 "\xdd")))
+           d=(list (format (repeat 50 "\xdd")))
            exp256=(hexcat "773ea91e36800e46854db8ebd09181a7"
                           "2959098b3ef8c122d9635514ced565fe")
            exp512=(hexcat "fa73b0089d56a284efb0f0756c890be9"
@@ -64,7 +64,7 @@
                           "b946a337bee8942674278859e13292fb")}
         {k=(hexcat "0102030405060708090a0b0c0d0e0f10"
                    "111213141516171819")
-           d=(LIST (format (repeat 50 "\xcd")))
+           d=(list (format (repeat 50 "\xcd")))
            exp256=(hexcat "82558a389a443c0ea4cc819899f2083a"
                           "85f0faa3e578f8077a2e3ff46729665b")
            exp512=(hexcat "b0ba465637458c6990e5a8c5f61d4af7"
@@ -72,7 +72,7 @@
                           "a91ca5c11aa25eb4d679275cc5788063"
                           "a5f19741120c4f2de2adebeb10a298dd")}
         {k=(format (repeat 131 "\xaa"))
-           d=(LIST "Test Using Large" "r Than Block-Siz" "e Key - Hash Key" " First")
+           d=(list "Test Using Large" "r Than Block-Siz" "e Key - Hash Key" " First")
            exp256=(hexcat "60e431591ee0b67f0d8a26aacbf5b77f"
                           "8e0bc6213728c5140546040f0ee37f54")
            exp512=(hexcat "80b24263c7c1a3ebb71493c1dd7be8b4"
@@ -80,7 +80,7 @@
                           "6b56d037e05f2598bd0fd2215d6a1e52"
                           "95e64f73f63f0aec8b915a985d786598")}
         {k=(format (repeat 131 "\xaa"))
-           d=(LIST (hexcat "54686973206973206120746573742075"
+           d=(list (hexcat "54686973206973206120746573742075"
                            "73696e672061206c6172676572207468"
                            "616e20626c6f636b2d73697a65206b65"
                            "7920616e642061206c61726765722074"

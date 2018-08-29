@@ -153,7 +153,7 @@
     (for-map index tsvec utsvec.rev
       (printf "      (t" (int index) " " (vector-as-rle tsvec) ")\n"))
     (printf "        )\n")
-    (printf "     (list->vector (LIST "
+    (printf "     (list->vector (list "
             (join (lambda (x) (format "t" (int x)))
                   " "
                   (vector->list tsvecs))
@@ -201,7 +201,7 @@
     acc ()
     -> acc
     acc ((sexp:list ((sexp:int lo) (sexp:int hi))) . tl)
-    -> (sexp->charset (charset/merge (LIST {lo=lo hi=hi}) acc) tl) ;; note: range is [lo,hi)
+    -> (sexp->charset (charset/merge (list {lo=lo hi=hi}) acc) tl) ;; note: range is [lo,hi)
     acc ((sexp:list ((sexp:char lo) (sexp:char hi))) . tl)
     -> (sexp->charset (charset/merge (charset/range (char->int lo) (+ 1 (char->int hi))) acc) tl)
     acc ((sexp:char ch) . tl)

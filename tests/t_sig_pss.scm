@@ -5,7 +5,7 @@
 (require "lib/crypto/sig.scm")
 
 (defmacro hexcat
-  (hexcat a ...) -> (hex->string (string-concat (LIST a ...)))
+  (hexcat a ...) -> (hex->string (string-concat (list a ...)))
   )
 
 ;; verified with:

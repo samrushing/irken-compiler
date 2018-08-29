@@ -33,12 +33,12 @@
 
 (defmacro INSN
   (INSN name arg0 ...)
-  -> (stream:insn name (LIST arg0 ...))
+  -> (stream:insn name (list arg0 ...))
   )
 
 (defmacro LINSN
   (LINSN arg0 ...)
-  -> (LIST (INSN arg0 ...))
+  -> (list (INSN arg0 ...))
   )
 
 (define (compile-to-bytecode base cps)
@@ -162,7 +162,7 @@
       ;; Note: is it bad that you can use this to call any insn?
       (let ((opcode (string->symbol template))
             (info (name->info opcode)))
-        (LIST (stream:insn
+        (list (stream:insn
                (string->symbol template)
                (if info.target
                    (cons target args)
@@ -202,7 +202,7 @@
          (LINSN 'tst val l0)
          (emit k0)
          (LINSN 'jmp l0)
-         (LIST (stream:label l0))
+         (list (stream:label l0))
          (emit k1)
          jcont
          )))
@@ -221,10 +221,10 @@
         (fun-label-map::add name lfun)
         (append
          (LINSN 'fun target l0)
-         (LIST (stream:label lfun))
+         (list (stream:label lfun))
          gc
          (emit body)
-         (LIST (stream:label l0))
+         (list (stream:label l0))
          )))
 
     (define (emit-new-env size top? types target)
@@ -267,7 +267,7 @@
             (nargs (length args)))
         (if (= 0 nargs)
             (LINSN 'trcall0 label (+ 1 npop))
-            (LIST (stream:insn
+            (list (stream:insn
                    'trcall
                    (prepend label npop (length args) args)
                    )))))
@@ -327,7 +327,7 @@
                                (LINSN 'imm target (get-uitag dtname altname alt.index))))
                           (else
                            (if (>= target 0)
-                               (LIST (stream:insn
+                               (list (stream:insn
                                       'make
                                       (prepend
                                        target
@@ -538,7 +538,7 @@
         (fatbar-map::add label lfail)
         (append
          (emit k0)
-         (LIST (stream:label lfail))
+         (list (stream:label lfail))
          (emit k1)
          (emit-jump-continuation jn k.insn)
          )))
@@ -586,13 +586,13 @@
                        (tag (if (= alt.arity 0) ;; immediate/unit constructor
                                 (get-uitag dtname label alt.index)
                                 (get-uotag dtname label alt.index))))
-                   (set! pairs (append pairs (LIST tag labs[i])))
+                   (set! pairs (append pairs (list tag labs[i])))
                    (set! result (append
                                  result
-                                 (LIST (stream:label labs[i]))
+                                 (list (stream:label labs[i]))
                                  (emit (nth subs i))))))
                (append
-                (LIST (stream:insn 'nvcase (prepend test lelse ntags pairs)))
+                (list (stream:insn 'nvcase (prepend test lelse ntags pairs)))
                 result
                 (emit-jump-continuation jump-num k.insn))
                ))))
@@ -610,13 +610,13 @@
                         (maybe:yes v) -> v
                         (maybe:no) -> (error1 "variant constructor never called" label)))
                 (tag1 (if (= (nth arities i) 0) (UITAG tag0) (UOTAG tag0))))
-            (set! pairs (append pairs (LIST tag1 labs[i])))
+            (set! pairs (append pairs (list tag1 labs[i])))
             (set! result (append
                           result
-                          (LIST (stream:label labs[i]))
+                          (list (stream:label labs[i]))
                           (emit (nth subs i))))))
         (append
-         (LIST (stream:insn 'nvcase (prepend test lelse ntags pairs)))
+         (list (stream:insn 'nvcase (prepend test lelse ntags pairs)))
          result
          (emit-jump-continuation jump-num k.insn)
          )))
@@ -653,7 +653,7 @@
         ;; Note: this is built as a literal, which at runtime will
         ;;  have the type `(vector (vector int))`
         (let (((G V) (create-minimal-perfect-hash table)))
-          (literal:vector (LIST (literal:vector (map literal:int (vector->list G)))
+          (literal:vector (list (literal:vector (map literal:int (vector->list G)))
                                 (literal:vector (map literal:int (vector->list V))))))))
 
     ;; XXX why did I do this with a quasi-readable encoding?  seems like it would
@@ -908,7 +908,7 @@
            _ -> 0))))
 
     (define sizeoff-sentinel
-      (literal:vector (LIST (literal:cons 'sexp 'symbol (LIST (literal:symbol '&&sizeoff-sentinel&&))))))
+      (literal:vector (list (literal:cons 'sexp 'symbol (list (literal:symbol '&&sizeoff-sentinel&&))))))
 
     (define (get-sizeoff-sentinel-index)
       (if (cmap/present? the-context.literals sizeoff-sentinel)

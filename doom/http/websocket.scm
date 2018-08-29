@@ -106,11 +106,11 @@
       (let ((head (logior (<< opcode 8) (if fin? #x8000 #x0000)))
             (dlen (string-length data))
             (pkt (cond ((< dlen 126)
-                        (LIST (pack-uint 2 (logior head dlen)) data))
+                        (list (pack-uint 2 (logior head dlen)) data))
                        ((< dlen (<< 1 16))
-                        (LIST (pack-uint 2 (logior head 126)) (pack-uint 2 dlen) data))
+                        (list (pack-uint 2 (logior head 126)) (pack-uint 2 dlen) data))
                        ((< dlen (<< 1 32))
-                        (LIST (pack-uint 2 (logior head 127)) (pack-uint 8 dlen) data))
+                        (list (pack-uint 2 (logior head 127)) (pack-uint 8 dlen) data))
                        (else
                         (raise (:Websocket/TooMuchData dlen))))))
         ;; XXX rope interface someday.
@@ -131,7 +131,7 @@
 
     (let (((uri hmap) (parse-header (header-generator)))
           (key (tree/get hmap string-compare "sec-websocket-key"))
-          (khash (b64-encode (sha1 (list-generator (LIST (first key) magic)))))
+          (khash (b64-encode (sha1 (list-generator (list (first key) magic)))))
           (reply (format
                   "HTTP/1.1 101 Switching Protocols\r\n"
                   "Upgrade: websocket\r\n"

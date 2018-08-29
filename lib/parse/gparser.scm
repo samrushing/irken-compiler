@@ -31,11 +31,11 @@
         (SEMICOLON (prod:t 'SEMICOLON))
         (STRING    (prod:t 'STRING))
         (g (alist/make
-            ('syntax (LIST (LIST syntax rule) (LIST rule)))
-            ('rule   (LIST (LIST NAME COLON exp SEMICOLON)))
-            ('exp    (LIST (LIST seq VBAR exp) (LIST seq)))
-            ('seq    (LIST (LIST seq term) (LIST term)))
-            ('term   (LIST (LIST STRING) (LIST NAME))))))
+            ('syntax (list (list syntax rule) (list rule)))
+            ('rule   (list (list NAME COLON exp SEMICOLON)))
+            ('exp    (list (list seq VBAR exp) (list seq)))
+            ('seq    (list (list seq term) (list term)))
+            ('term   (list (list STRING) (list NAME))))))
     (earley g syntax lexgen)))
 
 (define (parse-error kind val)
@@ -58,12 +58,12 @@
   x -> (parse-error 'rule x))
 
 (define parse-exp
-  (parse:nt 'exp (seq))          -> (LIST (reverse (parse-seq seq)))
+  (parse:nt 'exp (seq))          -> (list (reverse (parse-seq seq)))
   (parse:nt 'exp (seq VBAR exp)) -> (list:cons (reverse (parse-seq seq)) (parse-exp exp))
   x -> (parse-error 'exp x))
 
 (define parse-seq
-  (parse:nt 'seq (term))     -> (LIST (parse-term term))
+  (parse:nt 'seq (term))     -> (list (parse-term term))
   (parse:nt 'seq (seq term)) -> (list:cons (parse-term term) (parse-seq seq))
   x -> (parse-error 'seq x))
 

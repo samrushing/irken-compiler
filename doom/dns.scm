@@ -29,7 +29,7 @@
 (define (DNST t name val) {name=name t=t val=val})
 
 (define dnstype-table
-  (LIST
+  (list
    (DNST  (dnstype:a)      "a"      1)
    (DNST  (dnstype:ns)     "ns"     2)
    (DNST  (dnstype:cname)  "cname"  5)
@@ -356,7 +356,7 @@
 
 (define (tcp-enc-size-prefix len)
   (list->string
-   (LIST (ascii->char (>> len 8))
+   (list (ascii->char (>> len 8))
          (ascii->char (logand #xff len)))))
 
 (define (tcp-dec-size-prefix s)

@@ -186,9 +186,9 @@
 	   ;; (ob.o.method args0 ...) => (ob.o.method ob args0 ...)
 	   ;; XXX use something like __methods__ rather than 'o', duh.
 	   (sexp:list ((sexp:symbol '%method) (sexp:symbol name) ob))
-	   -> (sexp:list (append (LIST (sexp:attr (sexp:attr ob 'o) name) (sexp:attr ob 'self)) (map expand rands)))
+	   -> (sexp:list (append (list (sexp:attr (sexp:attr ob 'o) name) (sexp:attr ob 'self)) (map expand rands)))
 	   (sexp:list ((sexp:symbol '%%obref) ob (sexp:symbol name)))
-           -> (sexp:list (append (LIST (sexp:attr (sexp:attr ob 'o) name)
+           -> (sexp:list (append (list (sexp:attr (sexp:attr ob 'o) name)
                                        (sexp (sexp:attr (sexp:attr ob 'o) 'un)
                                              (sexp:attr ob 'self)))
                                  (map expand rands)))
@@ -267,7 +267,7 @@
     (match formals with
       (sexp:list ((sexp:cons 'nil pvar) . _))
       -> (expand-pvar-lambda type pvar formals body)
-      ;;_ -> (sexp1 'function (LIST name formals type body))
+      ;;_ -> (sexp1 'function (list name formals type body))
       _ -> (sexp (sym 'function) name formals type body)
       ))
 
@@ -342,8 +342,8 @@
 		   ;;   body)
 		   (push! alts0
 			 (sexp:list
-			  (append (LIST (sexp:symbol 'let) (sexp:list binds))
-				  (LIST (nth alts i)))))
+			  (append (list (sexp:symbol 'let) (sexp:list binds))
+				  (list (nth alts i)))))
 		   ;; body
 		   (push! alts0 (nth alts i)))))
          (sexp (sym '%nvcase) (sym dt) (sym value)
@@ -454,7 +454,7 @@
             (list args)
             (bool #f)
             ;; could use some kind of splice formatter here...
-            (sexp:list (append (LIST (sexp:symbol '%dtcon) (sexp:cons dt tag)) args))
+            (sexp:list (append (list (sexp:symbol '%dtcon) (sexp:cons dt tag)) args))
             )))
 
   (define (make-alt tvars tag types)
@@ -600,13 +600,13 @@
 
   (define expand-%%cexp
     (sig template . args)
-    -> (sexp:list (append (LIST (sexp:symbol '%%cexp) sig (expand template))
+    -> (sexp:list (append (list (sexp:symbol '%%cexp) sig (expand template))
 			  (map expand args)))
     x -> (error1 "malformed %%cexp" x))
 
   (define expand-%%ffi
     (name sig . args)
-    -> (sexp:list (append (LIST (sexp:symbol '%%ffi) name sig)
+    -> (sexp:list (append (list (sexp:symbol '%%ffi) name sig)
 			  (map expand args)))
     x -> (error1 "malformed %%ffi" x))
 

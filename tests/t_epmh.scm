@@ -34,7 +34,7 @@
 ;;           (zpad 10 (hex (hash2 #x01000193 item[0] item[1])))
 ;;           "\n")
 ;;   (printf "  " (int item[0]) "." (int item[1]) " = "
-;;           (zpad 10 (hex (hash (LIST item[0] item[1]) #x01000193)))
+;;           (zpad 10 (hex (hash (list item[0] item[1]) #x01000193)))
 ;;           "\n")
 ;;   )
 
@@ -103,7 +103,7 @@
     (:tuple G V)))
 
 (define (lookup G V k0 k1)
-  (let ((key (list->vector (LIST k0 k1 -1)))
+  (let ((key (list->vector (list k0 k1 -1)))
         (size (vector-length G)))
     (let ((d G[(hash-item #x01000193 key size)]))
       (if (< d 0)

@@ -92,7 +92,7 @@
 
 ;; (define sexp-css
 ;;   (string-join
-;;    (LIST
+;;    (list
 ;;     "pre { line-height: 125%; }"
 ;;     "body  { background: #f8f8f8; }"
 ;;     "body .c { color: #408080; font-style: italic }"

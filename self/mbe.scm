@@ -82,12 +82,12 @@
 
 (define (get-ellipsis-nestings p) ;; (sexp) -> (list sexp)
   (define dolist ;; (list sexp) -> (list sexp)
-    (p0 (sexp:symbol '...)) -> (LIST (sexp:list (get-ellipsis-nestings p0)))
+    (p0 (sexp:symbol '...)) -> (list (sexp:list (get-ellipsis-nestings p0)))
     (hd . tl)		    -> (append (get-ellipsis-nestings hd) (dolist tl))
     _			    -> '())
   (match p with
     (sexp:list pl)    -> (dolist pl)
-    (sexp:symbol sym) -> (LIST p)
+    (sexp:symbol sym) -> (list p)
     _		      -> '()))
 
 (define intersect?
@@ -122,7 +122,7 @@
 (define (get-bindings p e) ;; -> (list sexp)
   (define dolist
     (p (sexp:symbol '...)) e
-    -> (LIST (sexp (sexp:list (get-ellipsis-nestings p))
+    -> (list (sexp (sexp:list (get-ellipsis-nestings p))
 		   (sexp:list (map (lambda (ei)
 				      (sexp:list (get-bindings p ei)))
 				    e))))
@@ -132,7 +132,7 @@
     _ _ -> '()
     )
   (match p e with
-     (sexp:symbol k) e           -> (LIST (sexp p e))
+     (sexp:symbol k) e           -> (list (sexp p e))
      (sexp:list p) (sexp:list e) -> (dolist p e)
      _ _ -> '()
      )

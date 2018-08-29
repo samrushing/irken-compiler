@@ -82,7 +82,7 @@
        (for-each
 	(lambda (v)
 	  (match (gt::get v) with
-	    (maybe:no) -> (gt::add v (symbol-set-maker (LIST k)))
+	    (maybe:no) -> (gt::add v (symbol-set-maker (list k)))
 	    (maybe:yes s) -> (s::add k)))
 	(vl::get))))
     gt))

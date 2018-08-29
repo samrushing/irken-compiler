@@ -14,11 +14,11 @@
     (makegen emit
       (match n al with
         2 (a b)
-        -> (begin (emit (LIST a b)) (emit (LIST b a)))
+        -> (begin (emit (list a b)) (emit (list b a)))
         n (hd . tl)
         -> (for sub (perm (- n 1) tl)
              (for-range i n ;; 0 (1 2) => (0 1 2) (1 0 2) (1 2 0)
-               (emit (append (slice sub 0 i) (LIST hd) (slice sub i (- n 1))))))
+               (emit (append (slice sub 0 i) (list hd) (slice sub i (- n 1))))))
         n l
         -> #u
         )))
@@ -38,7 +38,7 @@
 
 (define (combinations xs k)
   (if (<= k 0)
-      (LIST (list:nil))
+      (list (list:nil))
       (match xs with
         () -> (list:nil)
         (hd . tl)

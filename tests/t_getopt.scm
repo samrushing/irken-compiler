@@ -7,7 +7,7 @@
 ;; -v -x 23 -name "test" config.scm file0.txt file1.txt ...
 
 (define options0
-  (LIST
+  (list
    (option:flag 'v (optval:bool #f))             ;; -v
    (option:arg 'x (optval:int 0))                ;; -x 23
    (option:arg 'name (optval:string "test"))     ;; -name "test"
@@ -25,11 +25,11 @@
    (pos* 'inputs (string ""))
    ))
 
-(define sample-args (LIST "-v" "-x" "23" "-name" "test" "config.scm" "file0.txt" "file1.txt"))
-(define flags-at-end (LIST "config.scm" "file0.txt" "file1.txt" "-v" "-x" "23" "-name" "test"))
-(define extra-args (LIST "-v" "-x" "23" "-z" "zzzz" "config.scm"))
-(define missing-args (LIST "-v" "-x" "23" "-name" "test"))
-(define default-args (LIST "-v" "-name" "test" "config.scm"))
+(define sample-args (list "-v" "-x" "23" "-name" "test" "config.scm" "file0.txt" "file1.txt"))
+(define flags-at-end (list "config.scm" "file0.txt" "file1.txt" "-v" "-x" "23" "-name" "test"))
+(define extra-args (list "-v" "-x" "23" "-z" "zzzz" "config.scm"))
+(define missing-args (list "-v" "-x" "23" "-name" "test"))
+(define default-args (list "-v" "-name" "test" "config.scm"))
 
 (printn (process-options options0 sample-args))
 (printn (process-options options1 sample-args))

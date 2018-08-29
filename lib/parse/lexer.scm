@@ -19,7 +19,7 @@
 
 (defmacro rle*
   (rle* (acc ...) ())
-  -> (rle->vector (reverse (LIST acc ...)))
+  -> (rle->vector (reverse (list acc ...)))
   (rle* (acc ...) ((n v) rest ...))
   -> (rle* ((rle:run n v) acc ...) (rest ...))
   (rle* (acc ...) (v rest ...))

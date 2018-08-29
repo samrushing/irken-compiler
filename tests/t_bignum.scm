@@ -306,8 +306,8 @@
     (printf "x*x " (big-repr (big-mul x x)) "\n")))
 
 (define (test-add)
-  (let ((a (big:pos (LIST 58656410045163520 144115187987555)))
-        (b (big:pos (LIST 1038459371))))
+  (let ((a (big:pos (list 58656410045163520 144115187987555)))
+        (b (big:pos (list 1038459371))))
     (printf "a:  " (big-repr a) "\n")
     (printf "b:  " (big-repr b) "\n")
     (printf "a+b " (big-repr (big-add a b)) "\n")
@@ -319,7 +319,7 @@
     (define (DO bits)
       (printf "<< " (lpad 2 (int bits)) " "
               (big-repr (big:pos (digits-lshift digs0 bits))) "\n"))
-    (for-list bits (LIST 8 9 10 48 52 64 84)
+    (for-list bits (list 8 9 10 48 52 64 84)
       (DO bits))))
 
 (define (test-digits-rshift)
@@ -329,7 +329,7 @@
       (printf ">> " (lpad 2 (int bits)) " "
               (big-repr (big:pos (digits-rshift digs0 bits))) "\n"))
     (printf "      " (big-repr n0) "\n")
-    (for-list bits (LIST 8 9 10 48 52 64 84)
+    (for-list bits (list 8 9 10 48 52 64 84)
       (DO bits))))
 
 (define (test-rshift)
@@ -351,7 +351,7 @@
   )
 
 (define (test-take-drop)
-  (let ((x (LIST 0 1 2 3 4 5 6 7 8)))
+  (let ((x (list 0 1 2 3 4 5 6 7 8)))
     (printn (take x 4))
     (printn (drop x 4))
     ))

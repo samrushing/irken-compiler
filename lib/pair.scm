@@ -28,9 +28,9 @@
 ;; I'm planning on downcasing these two eventually.  I was thinking of
 ;;  such macros in C-like terms - i.e., warn the user that they're macros,
 ;;  but it just annoyingly sticks out.
-(defmacro LIST
-  (LIST)         -> (list:nil)
-  (LIST x y ...) -> (list:cons x (LIST y ...)))
+(defmacro list
+  (list)         -> (list:nil)
+  (list x y ...) -> (list:cons x (list y ...)))
 
 (defmacro push!
   (push! l v) -> (set! l (list:cons v l))
@@ -315,13 +315,13 @@
 (define (pack l =)
   (define (pack2 l s e)
     (match l with
-      ()      -> (LIST (reverse s))
+      ()      -> (list (reverse s))
       (h . t) -> (if (= h e)
 		     (pack2 t (list:cons h s) e)
-		     (list:cons (reverse s) (pack2 t (LIST h) h)))))
+		     (list:cons (reverse s) (pack2 t (list h) h)))))
   (match l with
     ()	    -> '()
-    (h . t) -> (pack2 t (LIST h) h)))
+    (h . t) -> (pack2 t (list h) h)))
 
 (define (vector->list v)
   (let loop ((n (- (vector-length v) 1)) (acc (list:nil)))

@@ -203,7 +203,7 @@
           (buffer/get! ibuf n)
           (let ((have (- ibuf.end ibuf.pos))
                 (left (- n have))
-                (parts (LIST (buffer/get! ibuf have))))
+                (parts (list (buffer/get! ibuf have))))
             (while (> left 0)
               (let ((recvd (recv0)))
                 (when (= recvd 0)

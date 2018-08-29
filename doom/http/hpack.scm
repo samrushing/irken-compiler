@@ -365,7 +365,7 @@
         (:tuple probe0 #f)
         -> (let (((probe1 both1) (get-dynamic-index name val)))
              ;;(printf "get-index both1=" (bool both1) " ")
-             ;;(printn (LIST probe0 probe1))
+             ;;(printn (list probe0 probe1))
              (cond (both1
                     ;; both present in dynamic
                     (:tuple (adjust probe1) #t))

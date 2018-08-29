@@ -30,6 +30,6 @@
   (:three int)
   )
 
-(printn (sort magic<? (LIST (thing:two) (thing:three 7) (thing:one) (thing:two) (thing:three 12))))
+(printn (sort magic<? (list (thing:two) (thing:three 7) (thing:one) (thing:two) (thing:three 12))))
 
     

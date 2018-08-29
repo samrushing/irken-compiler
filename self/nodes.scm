@@ -139,7 +139,7 @@
   (make-node (node:varref name) '()))
 
 (define (node/varset name val)
-  (make-node (node:varset name) (LIST val)))
+  (make-node (node:varset name) (list val)))
 
 (define varref->name
   (node:varref name) -> name
@@ -158,11 +158,11 @@
   (make-node (node:sequence) subs))
 
 (define (node/if test then else)
-  (let ((nodes (LIST test then else)))
+  (let ((nodes (list test then else)))
     (make-node (node:if) nodes)))
 
 (define (node/function name formals type body)
-  (let ((node (make-node (node:function name formals) (LIST body))))
+  (let ((node (make-node (node:function name formals) (list body))))
     (match type with
       (sexp:bool #f) -> node
       _ -> (begin (set-node-type! node (parse-type type))
@@ -185,11 +185,11 @@
     (make-node (node:call) subs)))
 
 (define (node/fix names inits body)
-  (let ((subs (append inits (LIST body))))
+  (let ((subs (append inits (list body))))
     (make-node (node:fix names) subs)))
 
 (define (node/let names inits body)
-  (let ((subs (append inits (LIST body))))
+  (let ((subs (append inits (list body))))
     (make-node (node:let names) subs)))
 
 (define (node/nvcase dt tags arities value alts else)
@@ -197,7 +197,7 @@
     (make-node (node:nvcase dt tags arities) subs)))
 
 (define (node/subst from to body)
-  (make-node (node:subst from to) (LIST body)))
+  (make-node (node:subst from to) (list body)))
 
 (define (node/primapp name params args)
   (make-node (node:primapp name params) args))
@@ -396,7 +396,7 @@
   (define build-list-literal
     ((sexp:cons dt alt) . args) -> (literal:cons dt alt (map build-literal args))
     ((sexp:symbol 'quote) arg)  -> (build-literal arg)
-    (hd . tl)                   -> (literal:cons 'list 'cons (LIST (build-literal hd) (build-list-literal tl)))
+    (hd . tl)                   -> (literal:cons 'list 'cons (list (build-literal hd) (build-list-literal tl)))
     ()                          -> (literal:cons 'list 'nil '())
     )
 
@@ -428,12 +428,12 @@
     )
 
   (define ctype->literal
-    (ctype:name name)    -> (literal:cons 'ctype 'name (LIST (literal:symbol name)))
-    (ctype:int size s?)  -> (literal:cons 'ctype 'int (LIST (literal:int (cint-size size)) (literal:bool s?)))
-    (ctype:array size t) -> (literal:cons 'ctype 'array (LIST (literal:int size) (ctype->literal t)))
-    (ctype:pointer t)    -> (literal:cons 'ctype 'pointer (LIST (ctype->literal t)))
-    (ctype:struct name)  -> (literal:cons 'ctype 'struct (LIST (literal:symbol name)))
-    (ctype:union name)   -> (literal:cons 'ctype 'union (LIST (literal:symbol name)))
+    (ctype:name name)    -> (literal:cons 'ctype 'name (list (literal:symbol name)))
+    (ctype:int size s?)  -> (literal:cons 'ctype 'int (list (literal:int (cint-size size)) (literal:bool s?)))
+    (ctype:array size t) -> (literal:cons 'ctype 'array (list (literal:int size) (ctype->literal t)))
+    (ctype:pointer t)    -> (literal:cons 'ctype 'pointer (list (ctype->literal t)))
+    (ctype:struct name)  -> (literal:cons 'ctype 'struct (list (literal:symbol name)))
+    (ctype:union name)   -> (literal:cons 'ctype 'union (list (literal:symbol name)))
     )
 
   ;; purpose: when we need compile time metadata at runtime.
@@ -507,7 +507,7 @@
                    (field:t name value)
                    -> (node/primapp '%rextend
                                     (sexp:symbol name)
-                                    (LIST rest (walk value)))))
+                                    (list rest (walk value)))))
                (node/primapp '%rmake (sexp:bool #f) '())
                fields)))
 
@@ -535,7 +535,7 @@
     (sexp:undef)        -> (node/literal (literal:undef))
     (sexp:record fl)    -> (build-record fl)
     (sexp:vector l)     -> (build-vector l)
-    (sexp:attr exp sym) -> (node/primapp '%raccess (sexp:symbol sym) (LIST (walk exp)))
+    (sexp:attr exp sym) -> (node/primapp '%raccess (sexp:symbol sym) (list (walk exp)))
     (sexp:cons dt alt)  -> (node/varref (string->symbol (format (sym dt) ":" (sym alt))))
     (sexp:list l)
     -> (match l with
@@ -627,20 +627,20 @@
 
 (define unsexp-list
   ()        -> (literal:cons 'list 'nil '())
-  (hd . tl) -> (literal:cons 'list 'cons (LIST (unsexp hd) (unsexp-list tl)))
+  (hd . tl) -> (literal:cons 'list 'cons (list (unsexp hd) (unsexp-list tl)))
   )
 
 (define unsexp
-  (sexp:string s)  -> (literal:cons 'sexp 'string (LIST (literal:string s)))
-  (sexp:int n)     -> (literal:cons 'sexp 'int (LIST (literal:int n)))
-  (sexp:char c)    -> (literal:cons 'sexp 'char (LIST (literal:char c)))
-  (sexp:bool b)    -> (literal:cons 'sexp 'bool (LIST (literal:bool b)))
+  (sexp:string s)  -> (literal:cons 'sexp 'string (list (literal:string s)))
+  (sexp:int n)     -> (literal:cons 'sexp 'int (list (literal:int n)))
+  (sexp:char c)    -> (literal:cons 'sexp 'char (list (literal:char c)))
+  (sexp:bool b)    -> (literal:cons 'sexp 'bool (list (literal:bool b)))
   (sexp:undef)     -> (literal:cons 'sexp 'undef '())
-  (sexp:symbol s)  -> (literal:cons 'sexp 'symbol (LIST (literal:symbol s)))
-  (sexp:list l)    -> (literal:cons 'sexp 'list (LIST (unsexp-list l)))
+  (sexp:symbol s)  -> (literal:cons 'sexp 'symbol (list (literal:symbol s)))
+  (sexp:list l)    -> (literal:cons 'sexp 'list (list (unsexp-list l)))
   (sexp:vector l)  -> (literal:cons 'sexp 'vector (map unsexp l))
-  (sexp:attr b n)  -> (literal:cons 'sexp 'attr (LIST (unsexp b) (literal:symbol n)))
-  (sexp:cons d a)  -> (literal:cons 'sexp 'cons (LIST (literal:symbol d) (literal:symbol a)))
+  (sexp:attr b n)  -> (literal:cons 'sexp 'attr (list (unsexp b) (literal:symbol n)))
+  (sexp:cons d a)  -> (literal:cons 'sexp 'cons (list (literal:symbol d) (literal:symbol a)))
   exp -> (error1 "unsexp: unhandled literal type" exp)
   )
 

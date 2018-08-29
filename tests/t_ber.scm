@@ -29,12 +29,12 @@
 (define (test0)
   (let ((c (collector))
         (ber (ber:SEQUENCE
-              (LIST
+              (list
                (ber:INTEGER -314159)
                (ber:NULL)
                (ber:STRING (asn1string:OCTET) "testing")
-               (ber:OID (LIST 1 2 840 113549 1))
-               (ber:SET (LIST (ber:INTEGER 3) (ber:INTEGER 5) (ber:INTEGER 7)))
+               (ber:OID (list 1 2 840 113549 1))
+               (ber:SET (list (ber:INTEGER 3) (ber:INTEGER 5) (ber:INTEGER 7)))
                ))))
     (for-list x '(0 127 128 256 -128 -129 314159 -314159)
       (c.reset)
@@ -46,8 +46,8 @@
     (printf (ber-repr (ber->asn1 (asn1->ber (ber:INTEGER 314159265)))) "\n")
     (printf (ber-repr (ber->asn1 (asn1->ber (ber:NULL)))) "\n")
     (printf (ber-repr (ber->asn1 (asn1->ber (ber:STRING (asn1string:OCTET) "testing, testing")))) "\n")
-    (printf (ber-repr (ber->asn1 (asn1->ber (ber:OID (LIST 1 2 840 113549 1))))) "\n")
-    (printf (ber-repr (ber->asn1 (asn1->ber (ber:SEQUENCE (LIST (ber:INTEGER 1) (ber:INTEGER 2) (ber:INTEGER 3)))))) "\n")
+    (printf (ber-repr (ber->asn1 (asn1->ber (ber:OID (list 1 2 840 113549 1))))) "\n")
+    (printf (ber-repr (ber->asn1 (asn1->ber (ber:SEQUENCE (list (ber:INTEGER 1) (ber:INTEGER 2) (ber:INTEGER 3)))))) "\n")
     (printf (ber-repr (ber->asn1 (asn1->ber (ber:BOOLEAN #f)))) "\n")
     (printf (ber-repr (ber->asn1 (asn1->ber (ber:BOOLEAN #t)))) "\n")
     (printf "ber = " (string (asn1->ber ber)) "\n")
@@ -59,7 +59,7 @@
 
 (define der0-b64
   (string-concat
-   (LIST "MIIMMzCCC5ygAwIBAgIRAM4hg/ZYuy6A41W4G43gQtYwDQYJKoZIhvcNAQEFBQAwggKoMQswCQYDVQQG"
+   (list "MIIMMzCCC5ygAwIBAgIRAM4hg/ZYuy6A41W4G43gQtYwDQYJKoZIhvcNAQEFBQAwggKoMQswCQYDVQQG"
          "EwJERTEVMBMGA1UEChMMVmlhVGhpbmtTb2Z0MREwDwYDVQQLEwhSZXNlYXJjaDEzMDEGA1UEAxMqVmlh"
          "VGhpbmtTb2Z0IE9JRC1PdmVyZmxvdyBUZXN0IENlcnRpZmljYXRlMRswGQYDVQQDExJiYWRndXkuZXhh"
          "bXBsZS5jb20xLzAtBgkqhkiG9w0BCQEWIGRhbmllbC1tYXJzY2hhbGxAdmlhdGhpbmtzb2Z0LmRlMTMw"

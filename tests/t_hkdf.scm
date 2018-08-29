@@ -8,7 +8,7 @@
 (include "lib/crypto/hkdf.scm")
 
 (defmacro hexcat
-  (hexcat a ...) -> (hex->string (string-concat (LIST a ...)))
+  (hexcat a ...) -> (hex->string (string-concat (list a ...)))
   )
 
 ;; test vectors from rfc 5869
@@ -19,7 +19,7 @@
     (assert (string=? hkdf0 test.exp256))))
 
 (define tests
-  (LIST
+  (list
    ;; test 1
    {IKM=(hexcat "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
     salt=(hexcat "000102030405060708090a0b0c")

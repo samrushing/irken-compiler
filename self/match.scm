@@ -82,7 +82,7 @@
 	   ((sexp:symbol 'quote) (sexp:symbol s)) -> (pattern:literal (sexp:symbol s))
 	   ((sexp:cons dt alt) . args) -> (pattern:constructor dt alt (map kind args))
 	   ((sexp:symbol '.) last) -> (kind last)
-	   (hd . tl) -> (pattern:constructor 'list 'cons (LIST (kind hd) (kind (sexp:list tl))))
+	   (hd . tl) -> (pattern:constructor 'list 'cons (list (kind hd) (kind (sexp:list tl))))
 	   ;;_ -> (error1 "malformed pattern" (format (join repr " " l)))
            )
       x -> (pattern:literal x))
@@ -157,7 +157,7 @@
     (cond ((eq? e1 match-fail) e2)
 	  ((eq? e2 match-fail) e1)
 	  (else
-	   (sexp1 '%fatbar (LIST (sexp:bool #f) e1 e2)))))
+	   (sexp1 '%fatbar (list (sexp:bool #f) e1 e2)))))
 
   (define (subst var0 pat code)
     (match pat with
@@ -258,7 +258,7 @@
 		    _ -> (sexp:symbol 'eq?))))
 	     (loop groups
 		   (fatbar (sexp (sexp:symbol 'if)
-				 (sexp comp-fun (sexp:symbol (car vars)) (sexp1 'quote (LIST lit)))
+				 (sexp comp-fun (sexp:symbol (car vars)) (sexp1 'quote (list lit)))
 				 (compile-match (cdr vars) (map remove-first-pat rules0) match-fail)
 				 match-fail)
 			   default))))))
@@ -352,12 +352,12 @@
 	       (maybe:yes dt)
 	       -> (begin (if (< nalts (dt.get-nalts))
 			     (push! cases (sexp (sexp:symbol 'else) default0)))
-			 (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol dt.name) (sexp:symbol (car vars)))
+			 (sexp:list (append (list (sexp:symbol 'vcase) (sexp:symbol dt.name) (sexp:symbol (car vars)))
 					    (reverse cases))))
 	       (maybe:no)
 	       -> (begin (if (not (eq? default match-error))
 			     (push! cases (sexp (sexp:symbol 'else) match-fail)))
-			 (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol (car vars)))
+			 (sexp:list (append (list (sexp:symbol 'vcase) (sexp:symbol (car vars)))
 					    (reverse cases)))))
 	     ))
 	(if (not (eq? default match-error))

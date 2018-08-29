@@ -99,7 +99,7 @@
 (defmacro string-append
   (string-append)           -> ""
   (string-append s0)        -> s0
-  (string-append s0 s1 ...) -> (string-concat (LIST s0 s1 ...))
+  (string-append s0 s1 ...) -> (string-concat (list s0 s1 ...))
   )
 
 (define (string-join l sep)

@@ -429,7 +429,7 @@
 ;; opcodes
 (define OPS
   (list->vector
-   (LIST
+   (list
     insn-lit
     insn-ret
     insn-add

@@ -48,7 +48,7 @@
 	(nums3 '(9 8 7))
 	(s2 (list->set nums2 int-cmp (set/empty)))
 	(s3 (list->set nums3 int-cmp (set/empty)))
-	(ss0 (list->set (LIST s0 s1 s2 s3) int-set-cmp (set/empty))))
+	(ss0 (list->set (list s0 s1 s2 s3) int-set-cmp (set/empty))))
     (printf "set of sets {\n")
     (for-set x ss0
       (printf "  {")

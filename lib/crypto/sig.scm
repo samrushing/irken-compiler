@@ -87,9 +87,9 @@
 (define (pad-and-annotate digest mlen)
   (let ((diglen (string-length digest))
         (asn1 (ber:SEQUENCE
-               (LIST
+               (list
                 (ber:SEQUENCE
-                 (LIST (ber:OID '(2 16 840 1 101 3 4 2 1))
+                 (list (ber:OID '(2 16 840 1 101 3 4 2 1))
                        (ber:NULL)))
                 (ber:STRING (asn1string:OCTET) digest))))
         (T (asn1->ber asn1))

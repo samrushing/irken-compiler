@@ -88,7 +88,7 @@
 ;; substitute <values> into <template>, e.g. "%0 + %1" ("unbox(r3)" "unbox(r5)") => "r3
 (define (cexp-subst template values)
   (let ((split (string-split template #\%)))
-    (let loop ((r (LIST (car split)))
+    (let loop ((r (list (car split)))
 	       (l (cdr split)))
       (match l with
 	;; wouldn't it be cool to generalize pattern matching to strings somehow?
@@ -1040,4 +1040,4 @@
     (o.close)
     (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
     (unlink tmp-path)
-    (LIST opath)))
+    (list opath)))

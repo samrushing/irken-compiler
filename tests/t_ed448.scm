@@ -8,7 +8,7 @@
 (include "lib/crypto/decaf.scm")
 
 (defmacro hexcat
-  (hexcat a ...) -> (hex->string (string-concat (LIST a ...)))
+  (hexcat a ...) -> (hex->string (string-concat (list a ...)))
   )
 
 (let ((sk (hexcat

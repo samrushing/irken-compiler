@@ -515,11 +515,11 @@ void prof_dump (void)
                          (lambda (name dt) (dt.to-sexp))
                          the-context.datatypes)))
          (let ((lit (unsexp (sexp1 'metadata r))))
-           (scan-literals (LIST lit))
+           (scan-literals (list lit))
            (cmap/add the-context.literals lit))
          )
     ;; if the program doesn't even include lib/sexp, then it cannot make
     ;;   use of metadata regardless. skip it.
     (maybe:no)
-    -> (cmap/add the-context.literals (literal:vector (LIST (literal:int 0))))
+    -> (cmap/add the-context.literals (literal:vector (list (literal:int 0))))
     ))

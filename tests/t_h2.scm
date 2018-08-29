@@ -1,6 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(require "lib/basis2.scm")
+(require "lib/basis.scm")
 
 (require "doom/doom.scm")
 (require "doom/http/h2.scm")
@@ -30,7 +30,7 @@
 
 (define sexp-css
   (string-join
-   (LIST
+   (list
     "pre { line-height: 125%; }"
     "body  { background: #f8f8f8; }"
     "body .z { color: #408080; font-style: italic }"
@@ -48,7 +48,7 @@
     (if (match path with (maybe:yes path) -> (string=? path "/") (maybe:no) -> #f)
         (begin
           (request.send-headers
-           (LIST (hack ":status" "200")
+           (list (hack ":status" "200")
                  (hack "content-type" "text/html")) #t)
           (request.send-data
            (rope->string
@@ -64,7 +64,7 @@
            #t)
           (inc! thing-counter)
           )
-        (request.send-headers (LIST (hack ":status" "404")) #f)
+        (request.send-headers (list (hack ":status" "404")) #f)
         )))
 
 (define (fun-h2-conn sock h2-handler)

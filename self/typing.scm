@@ -287,7 +287,7 @@
       -> (let ((tv (new-tvar)))
            (for-list x l
              (unify exp tv (type-of-literal x exp tenv)))
-           (pred 'vector (LIST tv)))
+           (pred 'vector (list tv)))
       (literal:record tag fl)
       -> (let loop ((t (rdefault (rabs)))
                     (fl fl))
@@ -535,38 +535,38 @@
 
   (define (lookup-primapp name params)
     (match name with
-      '%fatbar	    -> (:scheme (LIST T0) (arrow T0 (LIST T0 T0)))
-      '%fail	    -> (:scheme (LIST T0) (arrow T0 '()))
-      '%match-error -> (:scheme (LIST T0) (arrow T0 '()))
-      '%make-vector -> (:scheme (LIST T0) (arrow (pred 'vector (LIST T0)) (LIST int-type T0)))
-      '%array-ref   -> (:scheme (LIST T0) (arrow T0 (LIST (pred 'vector (LIST T0)) int-type)))
-      '%array-set   -> (:scheme (LIST T0) (arrow undefined-type (LIST (pred 'vector (LIST T0)) int-type T0)))
+      '%fatbar	    -> (:scheme (list T0) (arrow T0 (list T0 T0)))
+      '%fail	    -> (:scheme (list T0) (arrow T0 '()))
+      '%match-error -> (:scheme (list T0) (arrow T0 '()))
+      '%make-vector -> (:scheme (list T0) (arrow (pred 'vector (list T0)) (list int-type T0)))
+      '%array-ref   -> (:scheme (list T0) (arrow T0 (list (pred 'vector (list T0)) int-type)))
+      '%array-set   -> (:scheme (list T0) (arrow undefined-type (list (pred 'vector (list T0)) int-type T0)))
       '%rmake       -> (:scheme '() (arrow (rproduct (rdefault (rabs))) '()))
-      '%ensure-heap -> (:scheme '() (arrow undefined-type (LIST int-type)))
+      '%ensure-heap -> (:scheme '() (arrow undefined-type (list int-type)))
       '%rextend     -> (match params with
                          (sexp:symbol label)
                          -> (let ((plabel (make-label label)))
                               ;; forall('a,'b).({lab=(abs) 'a} 'b -> {lab=(pre 'b) 'a})
-                              (:scheme (LIST T0 T1)
+                              (:scheme (list T0 T1)
                                        (arrow (rproduct (rlabel plabel (rpre T1) T0))
-                                              (LIST
+                                              (list
                                                (rproduct (rlabel plabel (rabs) T0))
                                                T1)))
                               )
                          _ -> (prim-error name))
       '%raccess     -> (match params with
 			 (sexp:symbol label)
-			 -> (:scheme (LIST T0 T1)
+			 -> (:scheme (list T0 T1)
 				     (arrow T0
-					    (LIST (rproduct (rlabel (make-label label)
+					    (list (rproduct (rlabel (make-label label)
 								    (rpre T0)
 								    T1)))))
 			 _ -> (prim-error name))
       '%rset        -> (match params with
 			 (sexp:symbol label)
-			 -> (:scheme (LIST T0 T1)
+			 -> (:scheme (list T0 T1)
 				     (arrow undefined-type
-					    (LIST (rproduct (rlabel (make-label label)
+					    (list (rproduct (rlabel (make-label label)
 								    (rpre T0)
 								    T1))
 						  T0)))
@@ -585,9 +585,9 @@
 			      (remember-variant-label label)
 			      (match arity with
 				;; ∀X.() → Σ(l:pre (Π());X)
-				0 -> (:scheme (LIST T0) (arrow (rsum (rlabel plabel (rpre (pred 'product '())) T0)) '()))
+				0 -> (:scheme (list T0) (arrow (rsum (rlabel plabel (rpre (pred 'product '())) T0)) '()))
 				;; ∀XY.X → Σ(l:pre X;Y)
-				1 -> (:scheme (LIST T0 T1) (arrow (rsum (rlabel plabel (rpre T0) T1)) (LIST T0)))
+				1 -> (:scheme (list T0 T1) (arrow (rsum (rlabel plabel (rpre T0) T1)) (list T0)))
 				;; ∀ABCD.Π(A,B,C) → Σ(l:pre (Π(A,B,C));D)
 				_ -> (let ((tdflt (new-tvar))
 					   (targs (n-tvars arity)))
@@ -610,7 +610,7 @@
 				  (:scheme (list:cons tdflt argvars)
 					   ;; e.g., to pick the second arg:
 					   ;; ∀0123. Σ(l:pre (0,1,2);3) → 1
-					   (arrow (nth argvars index) (LIST vtype))))
+					   (arrow (nth argvars index) (list vtype))))
 				;; normal variant
 				(match (alist/lookup the-context.datatypes dtname) with
 				  (maybe:no) -> (error1 "lookup-primapp: no such datatype" dtname)
@@ -618,54 +618,54 @@
 				  -> (let ((alt (dt.get altname))
 					   (tvars (dt.get-tvars))
 					   (dtscheme (pred dtname tvars)))
-				       (:scheme tvars (arrow (nth alt.types index) (LIST dtscheme))))))
+				       (:scheme tvars (arrow (nth alt.types index) (list dtscheme))))))
 			 _ -> (prim-error name))
       '%callocate  -> (let ((type (parse-type params)))
 			;; int -> (buffer <type>)
-			(:scheme '() (arrow (pred 'buffer (LIST type)) (LIST int-type))))
-      '%exit       -> (:scheme (LIST T0 T1) (arrow T0 (LIST T1)))
+			(:scheme '() (arrow (pred 'buffer (list type)) (list int-type))))
+      '%exit       -> (:scheme (list T0 T1) (arrow T0 (list T1)))
       ;; these both can be done with %%cexp, but we need to be able to detect their usage in order to
       ;;   disable inlining of functions that use them.
-      '%getcc      -> (:scheme (LIST T0) (arrow (pred 'continuation (LIST T0)) (LIST)))
-      '%putcc      -> (:scheme (LIST T0 T1) (arrow T1 (LIST (pred 'continuation (LIST T0)) T0)))
+      '%getcc      -> (:scheme (list T0) (arrow (pred 'continuation (list T0)) (list)))
+      '%putcc      -> (:scheme (list T0 T1) (arrow T1 (list (pred 'continuation (list T0)) T0)))
       ;; used in an nvcase else clause when the compiler knows the match is complete
       ;;  [i.e., no else clause is needed]
-      '%complete-match -> (:scheme (LIST T0) (arrow T0 '()))
+      '%complete-match -> (:scheme (list T0) (arrow T0 '()))
       ;; llvm prims
-      '%llarith    -> (:scheme '() (arrow int-type (LIST int-type int-type)))
-      '%llicmp     -> (:scheme '() (arrow bool-type (LIST int-type int-type)))
-      '%lleq       -> (:scheme (LIST T0) (arrow bool-type (LIST T0 T0)))
+      '%llarith    -> (:scheme '() (arrow int-type (list int-type int-type)))
+      '%llicmp     -> (:scheme '() (arrow bool-type (list int-type int-type)))
+      '%lleq       -> (:scheme (list T0) (arrow bool-type (list T0 T0)))
       ;; -------------------- FFI --------------------
       '%ffi2  -> (lookup-ffi-scheme params)
       '%malloc -> (:scheme '() (arrow (pred 'cref
-                                            (LIST (pred 'array (LIST (parse-type params)))))
-                                      (LIST int-type)))
+                                            (list (pred 'array (list (parse-type params)))))
+                                      (list int-type)))
       '%halloc -> (:scheme '() (arrow (pred 'cref
-                                            (LIST (pred 'array (LIST (parse-type params)))))
-                                      (LIST int-type)))
-      '%free   -> (:scheme (LIST T0) (arrow undefined-type (LIST (pred 'cref (LIST T0)))))
-      '%c-aref -> (:scheme (LIST T0) (arrow (pred 'cref (LIST T0))
-                                            (LIST (pred 'cref (LIST (pred 'array (LIST T0)))) int-type)))
+                                            (list (pred 'array (list (parse-type params)))))
+                                      (list int-type)))
+      '%free   -> (:scheme (list T0) (arrow undefined-type (list (pred 'cref (list T0)))))
+      '%c-aref -> (:scheme (list T0) (arrow (pred 'cref (list T0))
+                                            (list (pred 'cref (list (pred 'array (list T0)))) int-type)))
       ;; forall(t0).cref(*(t0)) -> cref(t0)
-      '%c-get-ptr -> (:scheme (LIST T0)
-                              (arrow (pred 'cref (LIST T0))
-                                     (LIST (pred 'cref (LIST (pred '* (LIST T0)))))))
+      '%c-get-ptr -> (:scheme (list T0)
+                              (arrow (pred 'cref (list T0))
+                                     (list (pred 'cref (list (pred '* (list T0)))))))
       ;; forall(t0).cref(*(t0)),cref(t0) -> undefined
-      '%c-set-ptr -> (:scheme (LIST T0)
+      '%c-set-ptr -> (:scheme (list T0)
                               (arrow undefined-type
-                                     (LIST (pred 'cref (LIST (pred '* (LIST T0))))
-                                           (pred 'cref (LIST T0)))))
-      '%c-get-int -> (:scheme (LIST T0) (arrow int-type (LIST (pred 'cref (LIST T0)))))
-      '%c-set-int -> (:scheme (LIST T0) (arrow undefined-type (LIST (pred 'cref (LIST T0)) int-type)))
+                                     (list (pred 'cref (list (pred '* (list T0))))
+                                           (pred 'cref (list T0)))))
+      '%c-get-int -> (:scheme (list T0) (arrow int-type (list (pred 'cref (list T0)))))
+      '%c-set-int -> (:scheme (list T0) (arrow undefined-type (list (pred 'cref (list T0)) int-type)))
       '%c-sref    -> (get-sref-scheme params)
-      '%cref->string -> (:scheme '() (arrow string-type (LIST (pred 'cref (LIST (pred 'char '()))) int-type)))
-      '%string->cref -> (:scheme '() (arrow (pred 'cref (LIST (pred 'char '()))) (LIST string-type)))
-      '%c-cast       -> (:scheme (LIST T0)
-                                 (arrow (pred 'cref (LIST (parse-type params)))
-                                        (LIST (pred 'cref (LIST T0)))))
+      '%cref->string -> (:scheme '() (arrow string-type (list (pred 'cref (list (pred 'char '()))) int-type)))
+      '%string->cref -> (:scheme '() (arrow (pred 'cref (list (pred 'char '()))) (list string-type)))
+      '%c-cast       -> (:scheme (list T0)
+                                 (arrow (pred 'cref (list (parse-type params)))
+                                        (list (pred 'cref (list T0)))))
       '%c-sizeof     -> (:scheme '() (arrow int-type '()))
-      '%cref->int    -> (:scheme (LIST T0) (arrow int-type (LIST (pred 'cref (LIST T0)))))
-      '%int->cref    -> (:scheme (LIST T0) (arrow (pred 'cref (LIST T0)) (LIST int-type)))
+      '%cref->int    -> (:scheme (list T0) (arrow int-type (list (pred 'cref (list T0)))))
+      '%int->cref    -> (:scheme (list T0) (arrow (pred 'cref (list T0)) (list int-type)))
       ;; for calling internal functions of the form `(object, object, ...) -> object`
       '%llvm-call    -> (make-llvm-scheme params)
       ;; for fetching irken objects in external symbols
@@ -695,10 +695,10 @@
   (define (get-sref-scheme refexp)
     (let (((ref sname) (get-sref refexp))
           (ftype (ctype->irken-type* ref.ctype)))
-      (:scheme (LIST T0) (arrow (pred 'cref (LIST ftype))
-                                (LIST (pred 'cref
-                                            (LIST (pred 'struct
-                                                        (LIST (pred sname '()))))))))
+      (:scheme (list T0) (arrow (pred 'cref (list ftype))
+                                (list (pred 'cref
+                                            (list (pred 'struct
+                                                        (list (pred sname '()))))))))
       ))
 
   ;; for typing purposes, all int-like args (and results) become 'int'.
@@ -716,7 +716,7 @@
          -> (:scheme '() (arrow (ffi-type-frob-int (ctype->irken-type rtype))
                                 (map ctype->irken-type (map frob-int-arg argtypes))))
          (maybe:yes (csig:obj _ obtype))
-         -> (:scheme '() (arrow (pred 'cref (LIST (ffi-type-frob-int (ctype->irken-type obtype)))) '()))
+         -> (:scheme '() (arrow (pred 'cref (list (ffi-type-frob-int (ctype->irken-type obtype)))) '()))
          (maybe:no)
          -> (error1 "lookup-ffi-scheme: unknown name" name))
     x -> (error1 "lookup-ffi-scheme: malformed" (repr x))
@@ -843,7 +843,7 @@
             (loop (cdr parts))
             (format (join "_" (reverse parts)))))))
 
-  (let ((funstack (LIST 0)))
+  (let ((funstack (list 0)))
     (for (node depth) (make-node-generator n)
       ;; normalize indent
       (match (noderec->t node) with

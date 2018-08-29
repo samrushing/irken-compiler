@@ -158,7 +158,7 @@
 
 (define p-rules
   (parse:nt 'rules (rules rule))
-  -> (append (p-rules rules) (LIST (p-rule rule)))
+  -> (append (p-rules rules) (list (p-rule rule)))
   (parse:nt 'rules (rule))
   -> (list:cons (p-rule rule) (list:nil))
   x -> (p-error x)
@@ -191,9 +191,9 @@
 
 (define p-seq
   (parse:nt 'seq (seq ebn0))
-  -> (append (p-seq seq) (LIST (p-ebn0 ebn0)))
+  -> (append (p-seq seq) (list (p-ebn0 ebn0)))
   (parse:nt 'seq (ebn0))
-  -> (LIST (p-ebn0 ebn0))
+  -> (list (p-ebn0 ebn0))
   x -> (p-error x)
   )
 
@@ -281,9 +281,9 @@
       (rule:parse
        name
        (exp:or
-        (LIST
+        (list
          (exp:cat
-          (LIST (exp:name name) exp))
+          (list (exp:name name) exp))
          exp)
         )))
 
@@ -328,11 +328,11 @@
 
     (define (expand-nullables exps)
       (define maybe-exp
-        (exp:? e) -> (LIST (maybe:no) (maybe:yes e))
-        exp       -> (LIST (maybe:yes exp))
+        (exp:? e) -> (list (maybe:no) (maybe:yes e))
+        exp       -> (list (maybe:yes exp))
         )
       (define recur
-        ()        -> (LIST '())
+        ()        -> (list '())
         (hd . tl) -> (let ((hd0 (maybe-exp hd)) ;; (list (maybe exp))
                            (tl0 (recur tl))     ;; (list (list exp))
                            (r '()))
@@ -356,7 +356,7 @@
     ;; replace exp with a list of exp (implied cat)
     (define remove-outer-cat
       (exp:cat es) -> es
-      exp          -> (LIST exp)
+      exp          -> (list exp)
       )
 
     (define (process-alt exp)
@@ -376,7 +376,7 @@
 (define (convert-rules rules)
   (define exp->alts
     (exp:or alts) -> alts
-    exp           -> (LIST exp)
+    exp           -> (list exp)
     )
   (let ((fifo (queue/make))
         (result '()))

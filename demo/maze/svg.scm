@@ -69,7 +69,7 @@
     (for-map k v (pj.get)
       (polyline v.path)))
   ;; draw the boundary
-  (polyline* (LIST {x=0 y=0} {x=m y=0} {x=m y=n} {x=0 y=n} {x=0 y=0}))
+  (polyline* (list {x=0 y=0} {x=m y=0} {x=m y=n} {x=0 y=n} {x=0 y=0}))
   (printf "<text x=\"40\" y=\"" (int (+ 20 (T n))) "\" class=\"small\">"
           (int m) "x" (int n)
           " seed " (int *random-seed*) "</text>\n")
@@ -86,7 +86,7 @@
 
 (define alternating-color
   (let ((i -1)
-        (colors (LIST "red" "orange" "yellow" "green" "blue" "indigo" "violet")))
+        (colors (list "red" "orange" "yellow" "green" "blue" "indigo" "violet")))
     (lambda ()
       (set! i (mod (+ i 1) 7))
       (nth colors i)
@@ -127,7 +127,7 @@
         (revmap (tree/empty)))
 
     (define (add-line p0 p1)
-      (add-path {s=p0 e=p1 path=(LIST p0 p1)}))
+      (add-path {s=p0 e=p1 path=(list p0 p1)}))
 
     (define (add-path path0)
       (match (tree/member fwdmap magic-cmp path0.e) with

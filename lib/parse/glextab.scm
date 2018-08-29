@@ -13,7 +13,7 @@
       (t5 (rle (10 5) 6 (245 5)))
       (t6 (rle (48 1) (10 9) (7 1) (26 9) (4 1) 9 1 (26 9) (133 1)))
         )
-     (list->vector (LIST t0 t1 t2 t3 t4 t5 t1 t1 t1 t6 t1))))
+     (list->vector (list t0 t1 t2 t3 t4 t5 t1 t1 t1 t6 t1))))
 
 (define finals-g #(
   'not-final

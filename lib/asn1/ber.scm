@@ -129,7 +129,7 @@
       n acc -> (l256 (>> n 8) (list:cons (logand #xff n) acc))
       )
     (if (< n 128)
-        (LIST n)
+        (list n)
         (let ((n0 (l256 n '())))
           (list:cons (logior #x80 (length n0)) n0))))
 
@@ -190,7 +190,7 @@
 
   (define (encode-oid emit vals)
     (let ((b0 (match vals with
-                (v0 v1 . tl) -> (make-oid tl (LIST (+ (* 40 v0) v1)))
+                (v0 v1 . tl) -> (make-oid tl (list (+ (* 40 v0) v1)))
                 _            -> (raise (:BER/BadOID vals))))
           (r0 (ints->string b0))
           (l0 (string-length r0)))
@@ -316,7 +316,7 @@
 
   (define (decode-oid in len)
     (let ((b0 (in.byte)))
-      (let loop ((vals (LIST (mod b0 40) (/ b0 40)))
+      (let loop ((vals (list (mod b0 40) (/ b0 40)))
                  (lensum 1))
         (if (>= lensum len)
             (ber:OID (reverse vals))

@@ -36,11 +36,11 @@
 
 ;; [the remaining three are aes-128 gcm & ccm]
 (define suite-priority-list
-  (LIST (cipher-suite:chacha20-poly1305-sha256)
+  (list (cipher-suite:chacha20-poly1305-sha256)
         (cipher-suite:aes-256-gcm-sha384)))
 
 (define kex-priority-list
-  (LIST (named-group:x25519)
+  (list (named-group:x25519)
         (named-group:x448)))
 
 ;; XXX maybe need a record to hold all these params (and include socket buffer sizes)
@@ -134,7 +134,7 @@
                () -> (raise (:TLS/Alert (tls-alert-desc:no-application-protocol) "no matching ALPN"))
                (alpn . rest)
                -> (if (member? alpn client-alpns string=?)
-                      (push! extensions-to-push (tlsext:alpn (LIST alpn)))
+                      (push! extensions-to-push (tlsext:alpn (list alpn)))
                       (loop rest))))
         ;; XXX should this be a policy decision?
         _ -> (raise (:TLS/Alert (tls-alert-desc:no-application-protocol) "no ALPN extension present"))
@@ -165,7 +165,7 @@
             (sh {random = hrr-magic
                  sessid = ch.sessid
                  suite = suite
-                 exts = (LIST (tlsext:supported-versions (LIST version)) ;; only one
+                 exts = (list (tlsext:supported-versions (list version)) ;; only one
                               (tlsext:hrr-key-share (named-group->int group)))})
             ;; note: hello-retry-request is just a magic server-hello
             (hrr (pack-hsk (tls-hsk-type:server-hello) (pack-server-hello sh))))
@@ -227,7 +227,7 @@
             (sh {random = (RNG 32)
                  sessid = ch.sessid
                  suite = suite
-                 exts = (LIST (tlsext:supported-versions (LIST version)) ;; only one
+                 exts = (list (tlsext:supported-versions (list version)) ;; only one
                               (tlsext:key-share {group=(named-group->int kex.group) kex=(kex.get-pub)}))})
             (shared-key (kex.gen-shared client-share))
             (server-hello (pack-hsk (tls-hsk-type:server-hello) (pack-server-hello sh)))

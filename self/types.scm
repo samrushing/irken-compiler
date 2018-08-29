@@ -76,12 +76,12 @@
    ))
 
 ;; row types
-(define (rproduct row)          (pred 'rproduct (LIST row)))
-(define (rsum row)              (pred 'rsum (LIST row)))
-(define (rdefault arg)          (pred 'rdefault (LIST arg)))
-(define (rlabel name type rest) (pred 'rlabel (LIST name type rest)))
+(define (rproduct row)          (pred 'rproduct (list row)))
+(define (rsum row)              (pred 'rsum (list row)))
+(define (rdefault arg)          (pred 'rdefault (list arg)))
+(define (rlabel name type rest) (pred 'rlabel (list name type rest)))
 (define (rabs)                  (pred 'abs '()))
-(define (rpre t)                (pred 'pre (LIST t)))
+(define (rpre t)                (pred 'pre (list t)))
 (define (make-label sym)        (pred sym '()))
 
 
@@ -108,7 +108,7 @@
 	     ))
       ))
 
-  (type:pred kind (LIST (collect row '())) rt)
+  (type:pred kind (list (collect row '())) rt)
   )
 
 (define (row-canon t)
@@ -144,7 +144,7 @@
       (type:pred label () _) (type:pred 'pre (t) _) -> (format (sym label) "=" (trep t))
       (type:pred label () _) (type:pred 'abs () _)  -> (format (sym label) "=#f")
       (type:pred label () _) x                      -> (format (sym label) "=" (trep x))
-      x y -> (error1 "bad row type" (LIST x y))
+      x y -> (error1 "bad row type" (list x y))
       )
 
     (define row-repr
@@ -396,17 +396,17 @@
 (define ctype->irken-type*
   (ctype:name name)  -> (pred name '())
   (ctype:int cint s) -> (int-ctype->itype cint s)
-  (ctype:array _ t)  -> (pred 'array (LIST (ctype->irken-type* t)))
-  (ctype:pointer t)  -> (pred '* (LIST (ctype->irken-type* t)))
-  (ctype:struct n)   -> (pred 'struct (LIST (pred n '())))
-  (ctype:union n)    -> (pred 'union (LIST (pred n '())))
+  (ctype:array _ t)  -> (pred 'array (list (ctype->irken-type* t)))
+  (ctype:pointer t)  -> (pred '* (list (ctype->irken-type* t)))
+  (ctype:struct n)   -> (pred 'struct (list (pred n '())))
+  (ctype:union n)    -> (pred 'union (list (pred n '())))
   )
 
 ;; we want only the outermost layer of 'pointer' converted to cref,
 ;;  leave the internal types alone.
 (define ctype->irken-type
-  (ctype:pointer t)  -> (pred 'cref (LIST (ctype->irken-type* t)))
-  (ctype:array _ t)  -> (pred 'cref (LIST (ctype->irken-type* t)))
+  (ctype:pointer t)  -> (pred 'cref (list (ctype->irken-type* t)))
+  (ctype:array _ t)  -> (pred 'cref (list (ctype->irken-type* t)))
   t                  -> (ctype->irken-type* t)
   )
 

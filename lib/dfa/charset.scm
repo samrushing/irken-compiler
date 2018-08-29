@@ -121,11 +121,11 @@
   )
 
 (define (charset/single n)
-  (LIST {lo=n hi=(+ n 1)}))
+  (list {lo=n hi=(+ n 1)}))
 
 (define (charset/range lo hi)
   (assert (< lo hi))
-  (LIST {lo=lo hi=hi}))
+  (list {lo=lo hi=hi}))
 
 (define charset/dot (charset/range 0 256))
 
@@ -232,7 +232,7 @@
 ;; XXX rewrite this so 256 doesn't show up on the left
 ;;   side of a match? [so we can make it a global constant]
 (define charset/invert
-  ()              -> (LIST {lo=0 hi=256})
+  ()              -> (list {lo=0 hi=256})
   ({lo=0 hi=256}) -> (list:nil)
   s -> (let loop ((end 0)
 		  (r (list:nil))

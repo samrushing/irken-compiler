@@ -66,7 +66,7 @@
       ;; (printf "adding boundary walls...\n")
       (set! G (add-boundary-walls))
       ;; (printf "done.\n")
-      (search 0 0 (LIST 0))
+      (search 0 0 (list 0))
       '() ;; failure
       )))
 
