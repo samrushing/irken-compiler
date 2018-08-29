@@ -1,21 +1,21 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/mtwist.scm")
-(include "lib/getopt.scm")
-(include "lib/codecs/base85.scm")
+(require "lib/basis.scm")
+(require "lib/map.scm")
+(require "lib/mtwist.scm")
+(require "lib/getopt.scm")
+(require "lib/codecs/base85.scm")
 
-(include "demo/maze/gen.scm")
-(include "demo/maze/ascii.scm")
-(include "demo/maze/js.scm")
-(include "demo/maze/solve.scm")
+(require "demo/maze/gen.scm")
+(require "demo/maze/ascii.scm")
+(require "demo/maze/js.scm")
+(require "demo/maze/solve.scm")
 
 ;; use the standard svg renderer.
-;;(include "demo/maze/svg.scm")
+;;(require "demo/maze/svg.scm")
 
 ;; use the 'marker-based' svg renderer.
-(include "demo/maze/svg2.scm")
+(require "demo/maze/svg2.scm")
 
 (define program-options
   (makeopt
