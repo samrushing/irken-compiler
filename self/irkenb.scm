@@ -105,7 +105,7 @@ Usage: compile <irken-src-file> [options]
  -types : dump all type signatures (do not compile)
  -ni    : no inlining
  -n     : disable letreg optimization
- -O     : rounds of optimization (default: 3)
+ -O     : rounds of optimization (default: 5)
  -q     : quiet the compiler
  -h     : display this usage
 

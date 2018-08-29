@@ -166,7 +166,7 @@ Usage: compile <irken-src-file> [options]
  -ni    : no inlining
  -p     : generate profile-printing code (C backend only)
  -n     : disable letreg optimization
- -O     : rounds of optimization (default: 3)
+ -O     : rounds of optimization (default: 5)
  -i <n> : set inline threshold (10-20)
  -q     : quiet the compiler
  -nr    : no range check (e.g. vector access)
