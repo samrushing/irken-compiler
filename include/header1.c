@@ -124,7 +124,7 @@ dump_object (object * ob, int depth)
   // indent (depth);
   if (depth > 100) {
     fprintf (stdout , "...");
-    return (object *) PXLL_UNDEFINED;
+    return (object *) IRK_UNDEFINED;
   }
   if (!ob) {
     fprintf (stdout, "<null>");
@@ -256,7 +256,7 @@ dump_object (object * ob, int depth)
       break;
     }
   }
-  return (object *) PXLL_UNDEFINED;
+  return (object *) IRK_UNDEFINED;
 }
 
 // 'magic' comparison function.
@@ -404,7 +404,7 @@ object *
 irk_putc (object * ch)
 {
   fputc (GET_CHAR (ch), stdout);
-  return PXLL_UNDEFINED;
+  return IRK_UNDEFINED;
 }
 
 object *
@@ -460,7 +460,7 @@ print_list (pxll_pair * l)
     object * car = l->car;
     object * cdr = l->cdr;
     dump_object (car, 0);
-    if (cdr == PXLL_NIL) {
+    if (cdr == IRK_NIL) {
       fprintf (stdout, ")");
       break;
     } else if (!is_immediate (cdr) && GET_TYPECODE (*cdr) == TC_PAIR) {
@@ -560,20 +560,20 @@ void
 clear_space (object * p, pxll_int n)
 {
   while (n--) {
-    *p++ = PXLL_NIL;
+    *p++ = IRK_NIL;
   }
 }
 #else
 void
 clear_space (object * p, pxll_int n)
 {
-  memset (p, (int) PXLL_NIL, sizeof(object) * n);
+  memset (p, (int) IRK_NIL, sizeof(object) * n);
 }
 #endif
 
-object * lenv = PXLL_NIL;
-object * k = PXLL_NIL;
-object * top = PXLL_NIL; // top-level (i.e. 'global') environment
+object * lenv = IRK_NIL;
+object * k = IRK_NIL;
+object * top = IRK_NIL; // top-level (i.e. 'global') environment
 object * limit; // = heap0 + (heap_size - head_room);
 object * freep; // = heap0;
 static object * t = 0; // temp - for swaps & building tuples
@@ -596,7 +596,7 @@ get_stack_depth()
 {
   int result = 0;
   object * k0 = k;
-  while (k0 != PXLL_NIL) {
+  while (k0 != IRK_NIL) {
     result++;
     k0 = (object*) k0[1];
   }
@@ -644,7 +644,7 @@ allocate (pxll_int tc, pxll_int size)
   //   in gc_flip() to 'pre-clear' the heap... probably a cache effect...
   while (size--) {
     // this keeps gc from being confused by partially-filled objects.
-    *(++freep) = PXLL_NIL;
+    *(++freep) = IRK_NIL;
   }
   ++freep;
 #else
@@ -751,7 +751,7 @@ free_foreign (object * foreign)
   if (GET_TUPLE_LENGTH (*foreign) == 1) {
     free (foreign[1]);
   }
-  return (object*) PXLL_UNDEFINED;
+  return (object*) IRK_UNDEFINED;
 }
 
 object *
@@ -849,7 +849,7 @@ DENV0 (object * env)
 {
   pxll_tuple * t = (pxll_tuple *) env;
   fprintf (stdout, "ENV@%p: [", env);
-  while (t != (pxll_tuple*)PXLL_NIL) {
+  while (t != (pxll_tuple*)IRK_NIL) {
     pxll_int n = get_tuple_size ((object *) t);
     fprintf (stdout, "%" PRIdPTR " ", n);
     t = t->next;
@@ -901,7 +901,7 @@ void exit_continuation (object * result)
 #if USE_CYCLECOUNTER
   program_end_time = rdtsc();
 #endif
-  if ((result != (object*) PXLL_UNDEFINED) && !IS_INTEGER(result)) {
+  if ((result != (object*) IRK_UNDEFINED) && !IS_INTEGER(result)) {
     // only print the result object if it's "interesting".
     dump_object ((object *) result, 0);
     fprintf (stdout, "\n");
@@ -992,10 +992,10 @@ invoke_closure (object * closure, object * args)
 void invoke_closure_1 (void)
 {
   lenv = (object*) k[2]; k = (object *)k[1];
-  // Note: no PXLL_RETURN here. that's because we want to return (in the C sense)
+  // Note: no IRK_RETURN here. that's because we want to return (in the C sense)
   //  to invoke_closure so the result can be returned to the original C caller,
   //  e.g. vm_go().
-  // if there *was* a PXLL_RETURN here, it would actually call exit_continuation(),
+  // if there *was* a IRK_RETURN here, it would actually call exit_continuation(),
   //  and exit the entire program.
 }
 #endif
@@ -1045,7 +1045,7 @@ object *
 irk_set_verbose_gc (object * data)
 {
   pxll_int r = verbose_gc;
-  verbose_gc = PXLL_IS_TRUE (data);
+  verbose_gc = IRK_IS_TRUE (data);
   return (object*) r;
 }
 
@@ -1085,7 +1085,7 @@ irk_mul2 (pxll_int a, pxll_int b, object * rvo)
   r = ((__int128_t) a) * ((__int128_t) b);
   rv->val[0] = box ((int64_t) (r >> 60));
   rv->val[1] = box ((int64_t) (r & mask));
-  return (object*) PXLL_UNDEFINED;
+  return (object*) IRK_UNDEFINED;
 }
 
 // divide two digits by one digit.
@@ -1100,7 +1100,7 @@ irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
   __int128_t r = a % b;
   rv->val[0] = box ((int64_t) (q & mask));
   rv->val[1] = box ((int64_t) (r & mask));
-  return (object*) PXLL_UNDEFINED;
+  return (object*) IRK_UNDEFINED;
 }
 
 #else
@@ -1115,7 +1115,7 @@ irk_mul2 (pxll_int a, pxll_int b, object * rvo)
   r = ((int64_t) a) * ((int64_t) b);
   rv->val[0] = box ((int32_t) (r >> 28));
   rv->val[1] = box ((int32_t) (r & mask));
-  return (object*) PXLL_UNDEFINED;
+  return (object*) IRK_UNDEFINED;
 }
 
 // divide two digits by one digit.
@@ -1130,7 +1130,7 @@ irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
   int64_t r = a % b;
   rv->val[0] = box ((int32_t) (q & mask));
   rv->val[1] = box ((int32_t) (r & mask));
-  return (object*) PXLL_UNDEFINED;
+  return (object*) IRK_UNDEFINED;
 }
 
 #endif
@@ -1181,8 +1181,8 @@ main (int argc, char * argv[])
     limit = heap0 + (heap_size - head_room);
     freep = heap0;
     k = allocate (TC_SAVE, 3);
-    k[1] = (object *) PXLL_NIL; // top of stack
-    k[2] = (object *) PXLL_NIL; // null environment
+    k[1] = (object *) IRK_NIL; // top of stack
+    k[2] = (object *) IRK_NIL; // null environment
     k[3] = (object *) exit_continuation;
 #if USE_CYCLECOUNTER
     program_start_time = rdtsc();
@@ -1192,7 +1192,7 @@ main (int argc, char * argv[])
   }
 }
 
-#define PXLL_RETURN(d) ((kfun)(k[3]))(r##d);
+#define IRK_RETURN(d) ((kfun)(k[3]))(r##d);
 #define O object *
 
 // With the C backend, generated code follow this point.

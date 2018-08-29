@@ -110,8 +110,8 @@ set_nonblocking (int fd)
 
 (define (make-in-addr ip port)
   (let ((ss (%callocate (struct sockaddr_in) 1)))
-    (%%cexp ((buffer (struct sockaddr_in)) -> undefined) "(%0->sin_family = PF_INET, PXLL_UNDEFINED)" ss)
-    (%%cexp ((buffer (struct sockaddr_in)) int -> undefined) "(%0->sin_port = htons(%1), PXLL_UNDEFINED)" ss port)
+    (%%cexp ((buffer (struct sockaddr_in)) -> undefined) "(%0->sin_family = PF_INET, IRK_UNDEFINED)" ss)
+    (%%cexp ((buffer (struct sockaddr_in)) int -> undefined) "(%0->sin_port = htons(%1), IRK_UNDEFINED)" ss port)
     (trysys (inet_pton AF_INET ip ss))
     ss))
 

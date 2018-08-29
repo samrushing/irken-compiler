@@ -33,8 +33,8 @@
 
 (define (make-in-addr ip port)
   (let ((ss (%callocate (struct sockaddr_in) 1)))
-    (%%cexp ((buffer (struct sockaddr_in)) -> undefined) "(%0->sin_family = PF_INET, PXLL_UNDEFINED)" ss)
-    (%%cexp ((buffer (struct sockaddr_in)) int -> undefined) "(%0->sin_port = htons(%1), PXLL_UNDEFINED)" ss port)
+    (%%cexp ((buffer (struct sockaddr_in)) -> undefined) "(%0->sin_family = PF_INET, IRK_UNDEFINED)" ss)
+    (%%cexp ((buffer (struct sockaddr_in)) int -> undefined) "(%0->sin_port = htons(%1), IRK_UNDEFINED)" ss port)
     (trysys (inet_pton AF_INET ip ss))
     ss))
 
@@ -49,7 +49,7 @@
 (define (accept fd)
   (let ((sockaddr (%callocate (struct sockaddr_in) 1))
 	(address-len (%callocate socklen_t 1)))
-    (%%cexp ((buffer socklen_t) -> undefined) "(*%0 = sizeof(struct sockaddr_in), PXLL_UNDEFINED)" address-len)
+    (%%cexp ((buffer socklen_t) -> undefined) "(*%0 = sizeof(struct sockaddr_in), IRK_UNDEFINED)" address-len)
     (%%cexp (int (buffer (struct sockaddr_in)) (buffer socklen_t) -> int)
 	    "accept (%0, (struct sockaddr *) %1, %2)"
 	    fd sockaddr address-len)))

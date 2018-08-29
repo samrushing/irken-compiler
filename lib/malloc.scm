@@ -20,7 +20,7 @@
 
 (define free 
   (malloc:t r)
-  -> (%%cexp (int -> undefined) "(free((void*)%0), PXLL_UNDEFINED)" r)
+  -> (%%cexp (int -> undefined) "(free((void*)%0), IRK_UNDEFINED)" r)
   )
 
 (define malloc/addr

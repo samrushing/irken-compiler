@@ -4,7 +4,7 @@
 
 (define (error x)
   (%%cexp (-> 'a) "goto Lreturn")
-  (%%cexp (-> 'a) "PXLL_UNDEFINED")
+  (%%cexp (-> 'a) "IRK_UNDEFINED")
   )
 
 ;; without a default case this should raise a match error

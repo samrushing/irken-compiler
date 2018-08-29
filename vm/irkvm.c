@@ -116,7 +116,7 @@ object * vm_field_lookup_table; // note: this is a GC root.
 // size/offset table for ffi ctypes (e.g. 'int', 'struct in6_addr', ...)
 pxll_int vm_sizeoff_table[100] = {sizeof (void *), sizeof(short), sizeof(int), sizeof(long), sizeof(long long), 0};
 pxll_int vm_internal_symbol_counter = 0;
-object * vm_internal_symbol_list = PXLL_NIL;
+object * vm_internal_symbol_list = IRK_NIL;
 pxll_int vm_metadata_index = 0;
 
 pxll_int
@@ -145,13 +145,13 @@ read_literal (FILE * f, object * ob)
     *ob =  BOX_INTEGER(-n);
     break;
   case 'T':
-    *ob =  PXLL_TRUE;
+    *ob =  IRK_TRUE;
     break;
   case 'F':
-    *ob =  PXLL_FALSE;
+    *ob =  IRK_FALSE;
     break;
   case 'u':
-    *ob =  PXLL_UNDEFINED;
+    *ob =  IRK_UNDEFINED;
     break;
   case 'c':
     CHECK (read_int (f, &n));
@@ -379,10 +379,10 @@ read_bytecode_file (char * path)
 }
 
 // XXX can we make these register variables in vm_go?
-object * vm_lenv = PXLL_NIL;
-object * vm_k = PXLL_NIL;
-object * vm_top = PXLL_NIL;
-object * vm_result = PXLL_NIL;
+object * vm_lenv = IRK_NIL;
+object * vm_k = IRK_NIL;
+object * vm_top = IRK_NIL;
+object * vm_result = IRK_NIL;
 
 // Use the higher, (likely) unused user tags for these.
 // XXX consider instead using TC_CLOSURE/etc with
@@ -414,7 +414,7 @@ print_stack (object * k)
 {
   // VMCONT := stack lenv pc reg0 reg1 ...
   fprintf (stderr, "{");
-  while (k != PXLL_NIL) {
+  while (k != IRK_NIL) {
     pxll_int n = GET_TUPLE_LENGTH(k[0]) - 3;
     fprintf (stderr, "%" PRIdPTR ".%" PRIdPTR "(", UNBOX_INTEGER(k[3]), n);
     for (int i=0; i < n; i++) {
@@ -489,7 +489,7 @@ vm_get_field_offset (pxll_int index, pxll_int label_code)
   }
 }
 
-object * vm_the_closure = PXLL_NIL;
+object * vm_the_closure = IRK_NIL;
 
 static
 pxll_int
@@ -544,7 +544,7 @@ vm_read_file (pxll_string * path, object ** result)
   path0[path->len] = '\x00';
   FILE * f = fopen (path0, "rb");
   if (f) {
-    *result = PXLL_NIL;
+    *result = IRK_NIL;
     char data[16384];
     while (1) {
       size_t nbytes = fread (data, 1, sizeof(data), f);
@@ -588,7 +588,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
       break;
     case TC_BOOL:
       args[i] = &ffi_type_sint;
-      vals[i] = (void*) (pxll_int) (ob == PXLL_TRUE);
+      vals[i] = (void*) (pxll_int) (ob == IRK_TRUE);
       pvals[i] = vals + i;
       break;
     case TC_CHAR:
@@ -663,7 +663,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
           *result = make_foreign ((void *) rc);
           break;
         case 'u':
-          *result = (object *) PXLL_UNDEFINED;
+          *result = (object *) IRK_UNDEFINED;
           break;
         case 'c':
           *result = TO_CHAR ((uint8_t)rc);
@@ -839,7 +839,7 @@ vm_go (void)
   register object * vm_regs[NREGS];
   register bytecode_t * code = bytecode;
   for (int i=0; i < NREGS; i++) {
-    vm_regs[i] = PXLL_NIL;
+    vm_regs[i] = IRK_NIL;
   }
 
   // using direct threading results in a 37% speedup over switch-based dispatch.
@@ -899,7 +899,7 @@ vm_go (void)
   DISPATCH();
  l_ret:
   vm_result = REG1;
-  if (vm_k == PXLL_NIL) {
+  if (vm_k == IRK_NIL) {
     pc += 1;
     return vm_result;
   } else {
@@ -929,7 +929,7 @@ vm_go (void)
 
 #define CMPOP(op)                                       \
   do {                                                  \
-    REG1 = PXLL_TEST (unbox(REG2) op unbox(REG3));      \
+    REG1 = IRK_TEST (unbox(REG2) op unbox(REG3));      \
     pc += 4;                                            \
     DISPATCH();                                         \
   } while (0)
@@ -949,7 +949,7 @@ vm_go (void)
   pc += 4;
   DISPATCH();
  l_tst:
-  if (REG1 == PXLL_TRUE) {
+  if (REG1 == IRK_TRUE) {
     pc += 3;
   } else {
     pc += BC2;
@@ -965,8 +965,8 @@ vm_go (void)
     // fprintf (stderr, "fun target=%d pc=%d\n", BC1, BC2);
     object * closure = allocate (TC_VM_CLOSURE, 4);
     // temp: lits and code are ignored
-    closure[1] = PXLL_NIL;
-    closure[2] = PXLL_NIL;
+    closure[1] = IRK_NIL;
+    closure[2] = IRK_NIL;
     closure[3] = BOX_INTEGER (pc + 3);
     closure[4] = vm_lenv;
     REG1 = closure;
@@ -1403,7 +1403,7 @@ vm_go (void)
   DISPATCH();
  l_quiet:
   // QUIET yesno
-  verbose_gc = (REG1 == PXLL_TRUE);
+  verbose_gc = (REG1 == IRK_TRUE);
   pc += 2;
   DISPATCH();
  l_heap: {
@@ -1424,7 +1424,7 @@ vm_go (void)
   DISPATCH();
  l_readf: {
     // READF target path
-    object * slist = (object *) PXLL_NIL;
+    object * slist = (object *) IRK_NIL;
     pxll_int r = vm_read_file ((pxll_string *) REG2, &slist);
     REG1 = slist;
     pc += 3;

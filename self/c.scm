@@ -9,7 +9,7 @@
     (type:pred name predargs _)
     -> (match name with
 	 'int	       -> (format "UNBOX_INTEGER(" arg ")")
-	 'bool         -> (format "PXLL_IS_TRUE(" arg ")")
+	 'bool         -> (format "IRK_IS_TRUE(" arg ")")
 	 'string       -> (format "((pxll_string*)(" arg "))->data")
 	 'cstring      -> (format "(char*)" arg)
 	 'buffer       -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
@@ -74,11 +74,11 @@
 (define (wrap-out type exp)
   (match type with
     (type:pred 'int _ _)     -> (format "BOX_INTEGER((pxll_int)" exp ")")
-    (type:pred 'bool _ _)    -> (format "PXLL_TEST(" exp ")")
+    (type:pred 'bool _ _)    -> (format "IRK_TEST(" exp ")")
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
     (type:pred 'cref _ _)    -> (format "(make_foreign((void*)" exp "))")
     (type:pred '* _ _)       -> (format "(make_foreign((void*)" exp "))")
-    (type:pred 'void _ _)    -> (format "((" exp "), PXLL_UNDEFINED)")
+    (type:pred 'void _ _)    -> (format "((" exp "), IRK_UNDEFINED)")
     (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
 				    (format "box((pxll_int)" exp ")")
 				    exp)
@@ -147,7 +147,7 @@
 	(declared (set2-maker string-compare)))
 
     (define emit
-      (insn:return target)                         -> (o.write (format "PXLL_RETURN(" (int target) ");"))
+      (insn:return target)                         -> (o.write (format "IRK_RETURN(" (int target) ");"))
       (insn:literal lit k)                         -> (begin (emit-literal lit k.target) (emit k.insn))
       (insn:litcon i kind k)                       -> (begin (emit-litcon i kind k.target) (emit k.insn))
       (insn:test reg jn k0 k1 k)                   -> (emit-test reg jn k0 k1 k)
@@ -205,7 +205,7 @@
 
     (define (emit-test reg jn k0 k1 k)
       (push-jump-continuation k jn)
-      (o.write (format "if PXLL_IS_TRUE(r" (int reg)") {"))
+      (o.write (format "if IRK_IS_TRUE(r" (int reg)") {"))
       (o.indent)
       (emit k0)
       (o.dedent)
@@ -224,7 +224,7 @@
 		 (args1 (map2 wrap-in arg-types args0))
 		 (exp (wrap-out result-type (cexp-subst template args1))))
 	     (push-jump-continuation k jn)
-	     (o.write (format "if PXLL_IS_TRUE(" exp ") {"))
+	     (o.write (format "if IRK_IS_TRUE(" exp ") {"))
 	     (o.indent)
 	     (emit k0)
 	     (o.dedent)
@@ -495,8 +495,8 @@
     (define (get-uitag dtname altname index)
       (match dtname altname with
 	'list 'nil -> "TC_NIL"
-	'bool 'true -> "(pxll_int)PXLL_TRUE"
-	'bool 'false -> "(pxll_int)PXLL_FALSE"
+	'bool 'true -> "(pxll_int)IRK_TRUE"
+	'bool 'false -> "(pxll_int)IRK_FALSE"
 	_ _ -> (format "UITAG(" (int index) ")")))
 
     (define (emit-primop name parm type args k)
@@ -638,7 +638,7 @@
         (define (prim-free args)
           (o.write (format "free_foreign (r" (int (car args)) ");"))
           (when (>= k.target 0)
-            (o.write (format "O r" (int k.target) " = PXLL_UNDEFINED;"))))
+            (o.write (format "O r" (int k.target) " = IRK_UNDEFINED;"))))
 
         (define (prim-exit args)
           (o.write (format "exit_continuation(r" (int (car args)) ");"))

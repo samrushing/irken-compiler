@@ -12,7 +12,7 @@
 (define (error x)
   (printn x)
   (%%cexp (-> 'a) "exit_continuation();")
-  (%%cexp (-> 'a) "PXLL_UNDEFINED")
+  (%%cexp (-> 'a) "IRK_UNDEFINED")
   )
 
 (define (thing x)

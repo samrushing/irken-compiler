@@ -1,5 +1,5 @@
-#ifndef PXLL_H
-#define PXLL_H
+#ifndef IRK_H
+#define IRK_H
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -50,11 +50,11 @@ object * heap1 = NULL;
 //   leaving a max of 59 variants in any one type.
 
 // immediate constants
-#define PXLL_FALSE		(object *) (0x000 | TC_BOOL)
-#define PXLL_TRUE		(object *) (0x100 | TC_BOOL)
-#define PXLL_MAYBE		(object *) (0x200 | TC_BOOL)  // just kidding
-#define PXLL_NIL		(object *) (0x000 | TC_NIL)
-#define PXLL_UNDEFINED		(object *) (0x000 | TC_UNDEFINED)
+#define IRK_FALSE		(object *) (0x000 | TC_BOOL)
+#define IRK_TRUE		(object *) (0x100 | TC_BOOL)
+#define IRK_MAYBE		(object *) (0x200 | TC_BOOL)  // just kidding
+#define IRK_NIL		  	(object *) (0x000 | TC_NIL)
+#define IRK_UNDEFINED		(object *) (0x000 | TC_UNDEFINED)
 
 // XXX make these inline functions rather than macros
 
@@ -86,8 +86,8 @@ object * heap1 = NULL;
 #define CONS_HEADER             ((2<<8)|TC_PAIR)
 
 // these make the C output more compact & readable
-#define PXLL_TEST(x)		((x) ? PXLL_TRUE : PXLL_FALSE)
-#define PXLL_IS_TRUE(x)		((x) != PXLL_FALSE)
+#define IRK_TEST(x)		((x) ? IRK_TRUE : IRK_FALSE)
+#define IRK_IS_TRUE(x)		((x) != IRK_FALSE)
 
 #define UOBJ_GET(o,i)           (((pxll_vector*)(o))->val[i])
 #define UOBJ_SET(o,i,v)         (((pxll_vector*)(o))->val[i] = v)
@@ -213,5 +213,5 @@ get_safe_typecode (object * ob)
   }
 }
 
-#endif // PXLL_H
+#endif // IRK_H
 
