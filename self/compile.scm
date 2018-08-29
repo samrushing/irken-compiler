@@ -55,7 +55,7 @@
       (let ((name0 (join-paths dir name)))
         (when the-context.options.verbose
           (printf "trying " name0 "\n"))
-        (file/open-read name0))
+        (:tuple name0 (file/open-read name0)))
       except
       (:OSError _) -> (find-file dirs name)
       ))
@@ -67,8 +67,8 @@
 
 (define (find-and-read-file path)
   ;;(printf "reading file '" path "'\n")
-  (let ((file (find-file the-context.options.include-dirs path)))
-    (reader path (lambda () (file/read-char file)))))
+  (let (((path0 file) (find-file the-context.options.include-dirs path)))
+    (reader path0 (lambda () (file/read-char file)))))
 
 (define (parse-dump-spec spec)
   (map string->symbol (string-split spec #\,)))

@@ -482,8 +482,8 @@ void prof_dump (void)
        (o.write (format "//  (:" (sym tag) " " (join type-repr " " alt.types) ")"))))))
 
 (define (get-file-contents path)
-  (read-file-contents
-   (find-file the-context.options.include-dirs path)))
+  (let (((path0 file) (find-file the-context.options.include-dirs path)))
+    (read-file-contents file)))
 
 (define (copy-file-contents ofile path)
   (let ((ifile (file/open-read path)))
