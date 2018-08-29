@@ -1,8 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "demo/bignum.scm")
+(require "lib/basis.scm")
+(require "demo/bignum.scm")
 
 (define (big-init bits)
   (define biggest-power-of-ten
@@ -47,17 +46,14 @@
   (assert (string=? "B+b.e.f.0" (big-repr (big-add (int->big #xbeef) (int->big #x1)))))
   (assert (string=? "B+1.0.0.0.0" (big-repr (big-add (int->big #xffff) (int->big #x1)))))
 
-  (printf "big-<?\n")
-  (assert (not (big-<? (int->big 0) (int->big 0))))
-  (assert (big-<? (int->big 0) (int->big 1)))
-  (assert (not (big-<? (int->big 1) (int->big 0))))
-  (assert (not (big-<? (int->big 1) (int->big 1))))
-  (assert (not (big-<? (int->big #x1000) (int->big #x300))))
-  (assert (eq? #f (big-<? (int->big #x1000) (int->big #x300))))
-  (assert (eq? #t (big-<? (int->big #x300) (int->big #x1000))))
-
-  (printf "digits-sub1\n")
-  (assert (string=? "15 15 15" (format (join int->string " " (digits-sub1 '(0 0 0 1))))))
+  (printf "big<\n")
+  (assert (not (big< (int->big 0) (int->big 0))))
+  (assert (big< (int->big 0) (int->big 1)))
+  (assert (not (big< (int->big 1) (int->big 0))))
+  (assert (not (big< (int->big 1) (int->big 1))))
+  (assert (not (big< (int->big #x1000) (int->big #x300))))
+  (assert (eq? #f (big< (int->big #x1000) (int->big #x300))))
+  (assert (eq? #t (big< (int->big #x300) (int->big #x1000))))
 
   ;; subtraction
   (printf "subtraction\n")
@@ -92,11 +88,11 @@
   (let ((counter 0))
     (for-range
 	i stop
-	(printf "\ni= " (int i) " : ")
+	;; (printf "\ni= " (int i) " : ")
 	(for-range
 	    j stop
-	    (printf (int j) " ")
-	    (flush)
+	    ;; (printf (int j) " ")
+	    ;; (flush)
 	    (let ((a (int->big (+ i j)))
 		  (b (big-add (int->big i) (int->big j)))
 		  (c (int->big (+ (- 0 i) j)))
@@ -273,6 +269,9 @@
       _ _ -> (impossible)
       )))
 
+(define (F n)
+  (format (zpad big/repr-width (hex n))))
+
 (define (test-mul2n1)
   (let ((a1 #x1234567)
         (a0 #x89abcde)
@@ -295,6 +294,8 @@
 (define (test-mul)
   (let ((a (int->big #x174876e800))
         (b (int->big #x3de5a1eb)))
+    (printf "a: " (big-repr a) "\n")
+    (printf "b: " (big-repr b) "\n")
     (printf "c: " (big-repr (big-mul b a)) "\n")
     (assert (big= (big-mul b a) (big-mul a b)))
     ))
@@ -404,7 +405,7 @@
 ;      (test1))
 
 ;; 65536 tests
-;(exhaustive #x100)
+(exhaustive #x100)
 ;(test0)
 ;(test2)
 ;(test3)
@@ -428,14 +429,14 @@
     (printf "= " (big-repr (big-exp-mod b e m)) "\n")
     ))
 
-(test-expmod-1)
+;(test-expmod-1)
 
 (define (test-div-0)
   (let ((xx (big:pos
-             (reverse '(#x6 #xdaaf3e78ce9b06 #x601452d3bfbab6 #xd919633990c300 #x39d680a4a4c97c
+             #(#x6 #xdaaf3e78ce9b06 #x601452d3bfbab6 #xd919633990c300 #x39d680a4a4c97c
                    #x3f3e6f53141949 #x76d81951e69332 #x39be6597777794 #x5487f21094366a
-                   #xaae13040000000))))
-        (m (big:pos (reverse '(#x7fffffff #xffffffffffffff #xffffffffffffff #xffffffffffffff #xffffffffffffed))))
+                   #xaae13040000000)))
+        (m (big:pos #(#x7fffffff #xffffffffffffff #xffffffffffffff #xffffffffffffff #xffffffffffffed)))
         ((q r) (big-div xx m)))
     (printf "xx " (big-repr xx) "\n"
             " m " (big-repr m) "\n"
