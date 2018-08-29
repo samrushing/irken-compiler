@@ -231,7 +231,7 @@ dump_object (object * ob, int depth)
         case 2:
           fprintf (stdout, "<foreign ");
           dump_object (ob[1], depth+1);
-          fprintf (stdout, " off=%" PRIuPTR ">", UNBOX_INTEGER(ob[2]));
+          fprintf (stdout, " off=%" PRIuPTR ">", UNTAG_INTEGER(ob[2]));
           break;
         }
         break;
@@ -718,7 +718,7 @@ get_foreign (object * ob)
     // TC_FOREIGN <buffer> <offset>
     object * buffer = (object*) ob[1];
     uint8_t * base = (uint8_t *) (buffer + 1);
-    pxll_int offset = UNBOX_INTEGER (ob[2]);
+    pxll_int offset = UNTAG_INTEGER (ob[2]);
     return (void *) (base + offset);
   }
 }
@@ -739,7 +739,7 @@ offset_foreign (object * foreign, pxll_int offset)
       // TC_FOREIGN <buffer> <offset>
       object * r = allocate (TC_FOREIGN, 2);
       r[1] = foreign[1];
-      r[2] = (object*) BOX_INTEGER ((UNBOX_INTEGER (foreign[2]) + offset));
+      r[2] = (object*) TAG_INTEGER ((UNTAG_INTEGER (foreign[2]) + offset));
       return r;
     }
   }
@@ -757,7 +757,7 @@ free_foreign (object * foreign)
 object *
 irk_cref_2_string (object * src, object * len)
 {
-  pxll_int len0 = UNBOX_INTEGER (len);
+  pxll_int len0 = UNTAG_INTEGER (len);
   object * result = make_string (len0);
   uint8_t * src0 = (uint8_t * ) get_foreign (src);
   void * dst = GET_STRING_POINTER (result);
@@ -774,13 +774,13 @@ irk_string_2_cref (object * src)
 object *
 irk_cref_2_int (object * src)
 {
-  return BOX_INTEGER (((pxll_int *) src)[1]);
+  return TAG_INTEGER (((pxll_int *) src)[1]);
 }
 
 object *
 irk_int_2_cref (object * src)
 {
-  return make_foreign ((void*)UNBOX_INTEGER(src));
+  return make_foreign ((void*)UNTAG_INTEGER(src));
 }
 
 // XXX this needs more thought
@@ -791,7 +791,7 @@ irk_int_2_cref (object * src)
 object *
 irk_get_errno (void)
 {
-  return BOX_INTEGER ((pxll_int) errno);
+  return TAG_INTEGER ((pxll_int) errno);
 }
 
 
@@ -917,7 +917,7 @@ void exit_continuation (object * result)
 #endif
   prof_dump();
   if (is_int (result)) {
-    exit ((int)(intptr_t)UNBOX_INTEGER(result));
+    exit ((int)(intptr_t)UNTAG_INTEGER(result));
   } else {
     exit (0);
   }
@@ -933,7 +933,7 @@ mem2ptr (object * ob)
     break;
   case TC_USEROBJ + 1:
     // pointer
-    return (object*) UNBOX_INTEGER (*((pxll_int*)(ob+1)));
+    return (object*) UNTAG_INTEGER (*((pxll_int*)(ob+1)));
     break;
   default:
     fprintf (stderr, "bad cmem object\n");
@@ -945,7 +945,7 @@ object *
 ptr2mem (void * ptr)
 {
   object * result = allocate (TC_USEROBJ + 1, 1);
-  result[1] = (object*) BOX_INTEGER ((pxll_int)ptr);
+  result[1] = (object*) TAG_INTEGER ((pxll_int)ptr);
   return result;
 }
 

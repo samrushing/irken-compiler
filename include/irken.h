@@ -66,8 +66,8 @@ object * heap1 = NULL;
 #define GET_STRING_POINTER(s)   (((pxll_string *)(s))->data)
 
 #define IS_INTEGER(p)		(((pxll_int)(p)) & 1)
-#define BOX_INTEGER(p)		((object)(((p)<<1)|1))
-#define UNBOX_INTEGER(p)	(((pxll_int)(p))>>1)
+#define TAG_INTEGER(p)		((object)(((p)<<1)|1))
+#define UNTAG_INTEGER(p)	(((pxll_int)(p))>>1)
 
 #define IMMEDIATE(p)		(((pxll_int)(p)) & 3)
 #define IS_TYPE(t, p)		(((pxll_int)(p)&0xff)==t)
@@ -98,7 +98,7 @@ object * heap1 = NULL;
 #define UPTR(n,o)               ((pxll_int)(constructed_##n+o))
 #define UPTR0(n)                ((pxll_int)(&constructed_##n))
 #define UOHEAD(l,n)             ((l<<8)|UOTAG(n))
-#define INTCON(p)		((pxll_int)BOX_INTEGER(p))
+#define INTCON(p)		((pxll_int)TAG_INTEGER(p))
 
 // here we want something that looks like a pointer, but is unlikely,
 // i.e. ...111111100

@@ -8,7 +8,7 @@
     (type:tvar id _) -> arg
     (type:pred name predargs _)
     -> (match name with
-	 'int	       -> (format "UNBOX_INTEGER(" arg ")")
+	 'int	       -> (format "UNTAG_INTEGER(" arg ")")
 	 'bool         -> (format "IRK_IS_TRUE(" arg ")")
 	 'string       -> (format "((pxll_string*)(" arg "))->data")
 	 'cstring      -> (format "(char*)" arg)
@@ -73,7 +73,7 @@
 
 (define (wrap-out type exp)
   (match type with
-    (type:pred 'int _ _)     -> (format "BOX_INTEGER((pxll_int)" exp ")")
+    (type:pred 'int _ _)     -> (format "TAG_INTEGER((pxll_int)" exp ")")
     (type:pred 'bool _ _)    -> (format "IRK_TEST(" exp ")")
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
     (type:pred 'cref _ _)    -> (format "(make_foreign((void*)" exp "))")
@@ -681,7 +681,7 @@
                  (o.write (format "// ctype = " ctype))
                  (o.write (format "O r" (int k.target)
                                   " = offset_foreign (r" (int src)", sizeof(" ctype
-                                  ") * UNBOX_INTEGER(r" (int index)"));")))
+                                  ") * UNTAG_INTEGER(r" (int index)"));")))
             _ _ -> (primop-error)))
 
         (define prim-c-get-ptr
@@ -705,7 +705,7 @@
         (define (prim-c-sizeof ctexp)
           (let ((t0 (parse-type ctexp))
                 (t1 (irken-type->c-type t0)))
-            (o.write (format "O r" (int k.target) " = BOX_INTEGER (sizeof (" t1 "));"))))
+            (o.write (format "O r" (int k.target) " = TAG_INTEGER (sizeof (" t1 "));"))))
 
         ;; generic version, hopefully we can make this work.
         ;; things we can do:
@@ -724,7 +724,7 @@
                (type:pred '* _ _)
                -> (o.write (format "O r" (int k.target) " = make_foreign (*(void**)get_foreign (r" (int src) "));"))
                int-type
-               -> (o.write (format "O r" (int k.target) " = BOX_INTEGER((pxll_int)*(("
+               -> (o.write (format "O r" (int k.target) " = TAG_INTEGER((pxll_int)*(("
                                    (irken-type->c-type int-type) "*)get_foreign(r" (int src) ")));"))
                )
           _ -> (primop-error))
@@ -740,7 +740,7 @@
                ;; XXX here's the trick - getting the C type.
                -> (let ((ctype (irken-type->c-type type)))
                     (printf "prim-c-set ctype = " ctype " type = " (type-repr type) "\n")
-                    (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNBOX_INTEGER(r" (int src) ");"))
+                    (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNTAG_INTEGER(r" (int src) ");"))
                     (when (> k.target 0)
                       (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;")))
                     )
@@ -750,7 +750,7 @@
         (define prim-c-get-int
           (src)
           -> (o.write
-              (format "O r" (int k.target) " = BOX_INTEGER((pxll_int)*(("
+              (format "O r" (int k.target) " = TAG_INTEGER((pxll_int)*(("
                       (irken-type->c-type type) "*)get_foreign(r" (int src) ")));"))
           _ -> (primop-error))
 
@@ -760,7 +760,7 @@
           -> (let ((ctype (irken-type->c-type type)))
                ;; XXX check against word size
                (printf "c-set-int " ctype "\n")
-               (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNBOX_INTEGER(r" (int src) ");"))
+               (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNTAG_INTEGER(r" (int src) ");"))
                (when (> k.target 0)
                  (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error))
@@ -784,10 +784,10 @@
         (define prim-c-sfromc
           (src len)
           -> (begin
-               (o.write (format "O r" (int k.target) " = make_string (UNBOX_INTEGER (r" (int len) "));"))
+               (o.write (format "O r" (int k.target) " = make_string (UNTAG_INTEGER (r" (int len) "));"))
                (o.write (format "memcpy (GET_STRING_POINTER (r"
                                 (int k.target) "), get_foreign (r" (int src)
-                                "), UNBOX_INTEGER (r" (int len) "));")))
+                                "), UNTAG_INTEGER (r" (int len) "));")))
           _ -> (primop-error))
 
         (define prim-string->cref
@@ -800,11 +800,11 @@
           _ -> (primop-error))
 
         (define prim-cref->int
-          (src) -> (o.write (format "O r" (int k.target) " = BOX_INTEGER (((pxll_int) get_foreign (r" (int src) ")));"))
+          (src) -> (o.write (format "O r" (int k.target) " = TAG_INTEGER (((pxll_int) get_foreign (r" (int src) ")));"))
           _ -> (primop-error))
 
         (define prim-int->cref
-          (addr) -> (o.write (format "O r" (int k.target) " = make_foreign ((void*)UNBOX_INTEGER (r" (int addr) "));"))
+          (addr) -> (o.write (format "O r" (int k.target) " = make_foreign ((void*)UNTAG_INTEGER (r" (int addr) "));"))
           _ -> (primop-error))
 
         (match name with

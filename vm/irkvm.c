@@ -138,11 +138,11 @@ read_literal (FILE * f, object * ob)
   switch (code) {
   case '+':
     CHECK (read_int (f, &n));
-    *ob = BOX_INTEGER(n);
+    *ob = TAG_INTEGER(n);
     break;
   case '-':
     CHECK (read_int (f, &n));
-    *ob =  BOX_INTEGER(-n);
+    *ob =  TAG_INTEGER(-n);
     break;
   case 'T':
     *ob =  IRK_TRUE;
@@ -175,7 +175,7 @@ read_literal (FILE * f, object * ob)
     // now wrap as a symbol
     object * sym = allocate (TC_SYMBOL, 2);
     sym[1] = t;
-    sym[2] = BOX_INTEGER (vm_internal_symbol_counter++);
+    sym[2] = TAG_INTEGER (vm_internal_symbol_counter++);
     // push onto the global list (for lib/symbol.scm)
     vm_internal_symbol_list = vm_list_cons (sym, vm_internal_symbol_list);
     *ob = sym;
@@ -246,7 +246,7 @@ read_literals (FILE * f)
     // sizeoff literal index
     object * sizeoff_index_ob;
     CHECK (read_literal (f, (object *) &sizeoff_index_ob));
-    pxll_int sizeoff_index = 1 + UNBOX_INTEGER (sizeoff_index_ob);
+    pxll_int sizeoff_index = 1 + UNTAG_INTEGER (sizeoff_index_ob);
     object * sizeoff_literal;
     CHECK (read_literal (f, (object *) &sizeoff_literal));
     if (sizeoff_index > 0) {
@@ -255,7 +255,7 @@ read_literals (FILE * f)
     // read the metadata index
     object * metadata_index_ob;
     CHECK (read_literal (f, (object *) &metadata_index_ob));
-    vm_metadata_index = UNBOX_INTEGER (metadata_index_ob);
+    vm_metadata_index = UNTAG_INTEGER (metadata_index_ob);
     return 0;
   } else {
     fprintf (stderr, "bytecode file does not start with vector.\n");
@@ -416,7 +416,7 @@ print_stack (object * k)
   fprintf (stderr, "{");
   while (k != IRK_NIL) {
     pxll_int n = GET_TUPLE_LENGTH(k[0]) - 3;
-    fprintf (stderr, "%" PRIdPTR ".%" PRIdPTR "(", UNBOX_INTEGER(k[3]), n);
+    fprintf (stderr, "%" PRIdPTR ".%" PRIdPTR "(", UNTAG_INTEGER(k[3]), n);
     for (int i=0; i < n; i++) {
       fprintf (stderr, "%d:", i);
       print_object (k[4+i]);
@@ -583,7 +583,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
       //  which is what irken uses for its integer representation.  Specifically,
       //  on LP64 'int' is only 32 bits.
       args[i] = &ffi_type_pointer;
-      vals[i] = (void*) UNBOX_INTEGER (ob);
+      vals[i] = (void*) UNTAG_INTEGER (ob);
       pvals[i] = vals + i;
       break;
     case TC_BOOL:
@@ -649,7 +649,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
         ffi_call (&cif, pfun, &rc, pvals);
         switch (rcode) {
         case 'i':
-          *result = BOX_INTEGER ((pxll_int)(int)rc);
+          *result = TAG_INTEGER ((pxll_int)(int)rc);
           break;
         case 's':
           if ((char*)rc == NULL) {
@@ -691,46 +691,46 @@ vm_cget (object ** result, object * src, pxll_int code)
   uint8_t * p = (uint8_t *) get_foreign (src);
   switch (code) {
   case 'B':
-    *result = BOX_INTEGER ((pxll_int)(*((uint8_t *)p)));
+    *result = TAG_INTEGER ((pxll_int)(*((uint8_t *)p)));
     break;
   case 'H':
-    *result = BOX_INTEGER ((pxll_int)*((uint16_t *)p));
+    *result = TAG_INTEGER ((pxll_int)*((uint16_t *)p));
     break;
   case 'M':
-    *result = BOX_INTEGER ((pxll_int)*((uint32_t *)p));
+    *result = TAG_INTEGER ((pxll_int)*((uint32_t *)p));
     break;
   case 'Q':
-    *result = BOX_INTEGER ((pxll_int)*((uint64_t *)p));
+    *result = TAG_INTEGER ((pxll_int)*((uint64_t *)p));
     break;
   case 'b':
-    *result = BOX_INTEGER ((pxll_int)*((int8_t *)p));
+    *result = TAG_INTEGER ((pxll_int)*((int8_t *)p));
     break;
   case 'h':
-    *result = BOX_INTEGER ((pxll_int)*((int16_t *)p));
+    *result = TAG_INTEGER ((pxll_int)*((int16_t *)p));
     break;
   case 'm':
-    *result = BOX_INTEGER ((pxll_int)*((int32_t *)p));
+    *result = TAG_INTEGER ((pxll_int)*((int32_t *)p));
     break;
   case 'q':
-    *result = BOX_INTEGER ((pxll_int)*((int64_t *)p));
+    *result = TAG_INTEGER ((pxll_int)*((int64_t *)p));
     break;
   case 'i':
-    *result = BOX_INTEGER ((pxll_int)*((int *)p));
+    *result = TAG_INTEGER ((pxll_int)*((int *)p));
     break;
   case 'I':
-    *result = BOX_INTEGER ((pxll_int)*((unsigned int *)p));
+    *result = TAG_INTEGER ((pxll_int)*((unsigned int *)p));
     break;
   case 'l':
-    *result = BOX_INTEGER ((pxll_int)*((long *)p));
+    *result = TAG_INTEGER ((pxll_int)*((long *)p));
     break;
   case 'L':
-    *result = BOX_INTEGER ((pxll_int)*((unsigned long *)p));
+    *result = TAG_INTEGER ((pxll_int)*((unsigned long *)p));
     break;
   case 'n':
-    *result = BOX_INTEGER ((pxll_int)*((long long *)p));
+    *result = TAG_INTEGER ((pxll_int)*((long long *)p));
     break;
   case 'N':
-    *result = BOX_INTEGER ((pxll_int)*((unsigned long long *)p));
+    *result = TAG_INTEGER ((pxll_int)*((unsigned long long *)p));
     break;
   case 'p':
     *result = make_foreign (*((void**)p));
@@ -759,46 +759,46 @@ vm_cset (object * dst, pxll_int code, object * val)
   }
     break;
   case 'B':
-    * ((uint8_t*)p) = (uint8_t) UNBOX_INTEGER (val);
+    * ((uint8_t*)p) = (uint8_t) UNTAG_INTEGER (val);
     break;
   case 'H':
-    * ((uint16_t*)p) = (uint16_t) UNBOX_INTEGER (val);
+    * ((uint16_t*)p) = (uint16_t) UNTAG_INTEGER (val);
     break;
   case 'M':
-    * ((uint32_t*)p) = (uint32_t) UNBOX_INTEGER (val);
+    * ((uint32_t*)p) = (uint32_t) UNTAG_INTEGER (val);
     break;
   case 'Q':
-    * ((uint64_t*)p) = (uint64_t) UNBOX_INTEGER (val);
+    * ((uint64_t*)p) = (uint64_t) UNTAG_INTEGER (val);
     break;
   case 'b':
-    * ((int8_t*)p) = (int8_t) UNBOX_INTEGER (val);
+    * ((int8_t*)p) = (int8_t) UNTAG_INTEGER (val);
     break;
   case 'h':
-    * ((int16_t*)p) = (int16_t) UNBOX_INTEGER (val);
+    * ((int16_t*)p) = (int16_t) UNTAG_INTEGER (val);
     break;
   case 'm':
-    * ((int32_t*)p) = (int32_t) UNBOX_INTEGER (val);
+    * ((int32_t*)p) = (int32_t) UNTAG_INTEGER (val);
     break;
   case 'q':
-    * ((int64_t*)p) = (int64_t) UNBOX_INTEGER (val);
+    * ((int64_t*)p) = (int64_t) UNTAG_INTEGER (val);
     break;
   case 'i':
-    * ((int *)p) = (int) UNBOX_INTEGER (val);
+    * ((int *)p) = (int) UNTAG_INTEGER (val);
     break;
   case 'I':
-    * ((unsigned int *)p) = (unsigned int) UNBOX_INTEGER (val);
+    * ((unsigned int *)p) = (unsigned int) UNTAG_INTEGER (val);
     break;
   case 'l':
-    * ((long *)p) = (long) UNBOX_INTEGER (val);
+    * ((long *)p) = (long) UNTAG_INTEGER (val);
     break;
   case 'L':
-    * ((unsigned long *)p) = (unsigned long) UNBOX_INTEGER (val);
+    * ((unsigned long *)p) = (unsigned long) UNTAG_INTEGER (val);
     break;
   case 'n':
-    * ((long long *)p) = (long long) UNBOX_INTEGER (val);
+    * ((long long *)p) = (long long) UNTAG_INTEGER (val);
     break;
   case 'N':
-    * ((unsigned long long *)p) = (unsigned long long) UNBOX_INTEGER (val);
+    * ((unsigned long long *)p) = (unsigned long long) UNTAG_INTEGER (val);
     break;
   case 'p':
     * ((object*)p) = get_foreign (val);
@@ -904,7 +904,7 @@ vm_go (void)
     return vm_result;
   } else {
     // VMCONT := stack lenv pc reg0 reg1 ...
-    pc = UNBOX_INTEGER (vm_k[3]);
+    pc = UNTAG_INTEGER (vm_k[3]);
   }
   DISPATCH();
 
@@ -967,7 +967,7 @@ vm_go (void)
     // temp: lits and code are ignored
     closure[1] = IRK_NIL;
     closure[2] = IRK_NIL;
-    closure[3] = BOX_INTEGER (pc + 3);
+    closure[3] = TAG_INTEGER (pc + 3);
     closure[4] = vm_lenv;
     REG1 = closure;
     pc += BC2;
@@ -980,13 +980,13 @@ vm_go (void)
     object * rib = REG2;
     rib[1] = REG1[4];
     vm_lenv = rib;
-    pc = UNBOX_INTEGER (REG1[3]);
+    pc = UNTAG_INTEGER (REG1[3]);
   }
   DISPATCH();
  l_tail0:
   // TAIL0 closure
   vm_lenv = REG1[4];
-  pc = UNBOX_INTEGER (REG1[3]);
+  pc = UNTAG_INTEGER (REG1[3]);
   DISPATCH();
  l_env:
   // ENV <target> <size>
@@ -1052,7 +1052,7 @@ vm_go (void)
     object * k = allocate (TC_VM_CONT, 3 + nregs);
     k[1] = vm_k;
     k[2] = vm_lenv;
-    k[3] = BOX_INTEGER (pc + 4);
+    k[3] = TAG_INTEGER (pc + 4);
     for (int i=0; i < nregs; i++) {
       k[4+i] = vm_regs[i];
     }
@@ -1064,7 +1064,7 @@ vm_go (void)
     vm_lenv = rib;
     // vm_lits = closure[1];
     // vm_code = closure[2];
-    pc = UNBOX_INTEGER (closure[3]);
+    pc = UNTAG_INTEGER (closure[3]);
   }
   DISPATCH();
  l_call0: {
@@ -1074,7 +1074,7 @@ vm_go (void)
     object * k = allocate (TC_VM_CONT, 3 + nregs);
     k[1] = vm_k;
     k[2] = vm_lenv;
-    k[3] = BOX_INTEGER (pc + 3);
+    k[3] = TAG_INTEGER (pc + 3);
     for (int i=0; i < nregs; i++) {
       k[4+i] = vm_regs[i];
     }
@@ -1084,7 +1084,7 @@ vm_go (void)
     vm_lenv = closure[4];
     // vm_lits = closure[1];
     // vm_code = closure[2];
-    pc = UNBOX_INTEGER (closure[3]);
+    pc = UNTAG_INTEGER (closure[3]);
   }
   DISPATCH();
  l_pop: {
@@ -1185,7 +1185,7 @@ vm_go (void)
   DISPATCH();
  l_makei:
   // MAKEI target tag payload
-  REG1 = (object*)((UNBOX_INTEGER(REG3)<<8) | (UNBOX_INTEGER(REG2) & 0xff));
+  REG1 = (object*)((UNTAG_INTEGER(REG3)<<8) | (UNTAG_INTEGER(REG2) & 0xff));
   pc += 4;
   DISPATCH();
  l_exit:
@@ -1215,28 +1215,28 @@ vm_go (void)
  l_vlen:
   // VLEN target vec
   if (REG2 == (object*) TC_EMPTY_VECTOR) {
-    REG1 = BOX_INTEGER (0);
+    REG1 = TAG_INTEGER (0);
   } else {
-    REG1 = BOX_INTEGER (GET_TUPLE_LENGTH (*REG2));
+    REG1 = TAG_INTEGER (GET_TUPLE_LENGTH (*REG2));
   }
   pc += 3;
   DISPATCH();
  l_vref:
   // VREF target vec index-reg
-  vector_range_check (REG2, UNBOX_INTEGER(REG3));
-  REG1 = REG2[UNBOX_INTEGER(REG3)+1];
+  vector_range_check (REG2, UNTAG_INTEGER(REG3));
+  REG1 = REG2[UNTAG_INTEGER(REG3)+1];
   pc += 4;
   DISPATCH();
  l_vset:
   // VSET vec index-reg val
-  vector_range_check (REG1, UNBOX_INTEGER(REG2));
-  REG1[UNBOX_INTEGER(REG2)+1] = REG3;
+  vector_range_check (REG1, UNTAG_INTEGER(REG2));
+  REG1[UNTAG_INTEGER(REG2)+1] = REG3;
   pc += 4;
   DISPATCH();
  l_vmake: {
     // VMAKE target size val
     // XXX heap check.
-    pxll_int nelems = UNBOX_INTEGER(REG2);
+    pxll_int nelems = UNTAG_INTEGER(REG2);
     if (nelems == 0) {
       REG1 = (object *) TC_EMPTY_VECTOR;
     } else {
@@ -1283,7 +1283,7 @@ vm_go (void)
   DISPATCH();
  // l_irk: {
  //    // IRK target closure nargs arg0 ...
- //    pxll_int nargs = UNBOX_INTEGER (REG3);
+ //    pxll_int nargs = UNTAG_INTEGER (REG3);
  //    object * rib = allocate (TC_ENV, nargs + 1);
  //    object * closure = REG2;
  //    for (int i=0; i < nargs; i++) {
@@ -1296,7 +1296,7 @@ vm_go (void)
  //  DISPATCH();
  l_ffi: {
     // FFI target pfun rtype nargs arg0 ...
-    pxll_int nargs = UNBOX_INTEGER (REG4);
+    pxll_int nargs = UNTAG_INTEGER (REG4);
     // XXX concerned that passing vm_regs defeats the register decl above.
     object result;
     pxll_int success = vm_do_ffi ((object *) vm_regs, pc, nargs, &result);
@@ -1304,7 +1304,7 @@ vm_go (void)
       REG1 = result;
     } else {
       fprintf (stderr, "op_ffi failed\n");
-      return BOX_INTEGER ((unsigned)-1);
+      return TAG_INTEGER ((unsigned)-1);
     }
     pc += nargs + 5;
   }
@@ -1312,7 +1312,7 @@ vm_go (void)
  l_smake: {
     // SMAKE target size
     // XXX heap check.
-    pxll_int slen = UNBOX_INTEGER (REG2);
+    pxll_int slen = UNTAG_INTEGER (REG2);
     pxll_string * s = (pxll_string*)alloc_no_clear (TC_STRING, string_tuple_length (slen));
     s->len = slen;
     REG1 = (object*)s;
@@ -1321,7 +1321,7 @@ vm_go (void)
   DISPATCH();
  l_sfromc: {
     // SFROMC target src len
-    pxll_int slen = UNBOX_INTEGER (REG3);
+    pxll_int slen = UNTAG_INTEGER (REG3);
     char * src = (char *) get_foreign (REG2);
     pxll_string * dst = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
     dst->len = slen;
@@ -1332,19 +1332,19 @@ vm_go (void)
   }
  l_slen:
   // SLEN target string
-  REG1 = BOX_INTEGER ((pxll_int)((pxll_string *) REG2)->len);
+  REG1 = TAG_INTEGER ((pxll_int)((pxll_string *) REG2)->len);
   pc += 3;
   DISPATCH();
  l_sref: {
     // SREF target string index
     pxll_string * s = (pxll_string *)REG2;
-    pxll_int index = UNBOX_INTEGER (REG3);
+    pxll_int index = UNTAG_INTEGER (REG3);
     if ((index >= 0) && (index < s->len)) {
       REG1 = TO_CHAR ((uint8_t)(s->data[index]));
     } else {
       // XXX error handler
       fprintf (stderr, "string ref out of range: %" PRIdPTR " %d\n", index, s->len);
-      return BOX_INTEGER ((unsigned)-1);
+      return TAG_INTEGER ((unsigned)-1);
     }
     pc += 4;
   }
@@ -1352,17 +1352,17 @@ vm_go (void)
  l_sset: {
     // SSET string index char
     pxll_string * s = (pxll_string *)REG1;
-    pxll_int index = UNBOX_INTEGER (REG2);
+    pxll_int index = UNTAG_INTEGER (REG2);
     pxll_int ch = GET_CHAR (REG3);
     if (ch > 255) {
       fprintf (stderr, "char out of range: %" PRIdPTR "\n", ch);
-      return BOX_INTEGER ((unsigned)-1);
+      return TAG_INTEGER ((unsigned)-1);
     } else if ((index >= 0) && (index < s->len)) {
       s->data[index] = (char) ch;
     } else {
       // XXX error handler
       fprintf (stderr, "string set out of range: %" PRIdPTR " %d\n", index, s->len);
-      return BOX_INTEGER ((unsigned)-1);
+      return TAG_INTEGER ((unsigned)-1);
     }
     pc += 4;
   }
@@ -1371,9 +1371,9 @@ vm_go (void)
     // SCOPY src sstart n dst dstart
     pxll_string * src = (pxll_string *) REG1;
     pxll_string * dst = (pxll_string *) REG4;
-    pxll_int sstart = UNBOX_INTEGER (REG2);
-    pxll_int dstart = UNBOX_INTEGER (REG5);
-    pxll_int n = UNBOX_INTEGER (REG3);
+    pxll_int sstart = UNTAG_INTEGER (REG2);
+    pxll_int dstart = UNTAG_INTEGER (REG5);
+    pxll_int n = UNTAG_INTEGER (REG3);
     // range check
     if ((sstart >= 0) && (sstart + n <= src->len) &&
         (dstart >= 0) && (dstart + n <= dst->len)) {
@@ -1381,14 +1381,14 @@ vm_go (void)
     } else {
       // XXX error handling
       fprintf (stderr, "scopy out of range\n");
-      return BOX_INTEGER ((unsigned)-1);
+      return TAG_INTEGER ((unsigned)-1);
     }
     pc += 6;
   }
   DISPATCH();
  l_unchar:
   // UNCHAR target char
-  REG1 = (object*) BOX_INTEGER ((uintptr_t)GET_CHAR (REG2));
+  REG1 = (object*) TAG_INTEGER ((uintptr_t)GET_CHAR (REG2));
   pc += 3;
   DISPATCH();
  l_gist:
@@ -1408,7 +1408,7 @@ vm_go (void)
   DISPATCH();
  l_heap: {
     // HEAP size nreg
-    pxll_int size = UNBOX_INTEGER (REG1);
+    pxll_int size = UNTAG_INTEGER (REG1);
     if (freep + size >= limit) {
       pxll_int nreg = BC2;
       for (int i=0; i < nreg; i++) {
@@ -1434,12 +1434,12 @@ vm_go (void)
     // MALLOC target sindex nelem
     object * result;
     pxll_int sindex = BC2;
-    pxll_int nelem = UNBOX_INTEGER (REG3);
+    pxll_int nelem = UNTAG_INTEGER (REG3);
     pxll_int sizeoff = get_sizeoff_entry (sindex);
     result = (object*) malloc (sizeoff * nelem);
     if (!result) {
       fprintf (stderr, "malloc failed.\n");
-      return BOX_INTEGER ((unsigned)-1);
+      return TAG_INTEGER ((unsigned)-1);
     } else {
       REG1 = make_foreign (result);
       pc += 4;
@@ -1449,7 +1449,7 @@ vm_go (void)
  l_halloc: {
     // HALLOC target sindex nelem
     pxll_int sindex = BC2;
-    pxll_int nelem = UNBOX_INTEGER (REG3);
+    pxll_int nelem = UNTAG_INTEGER (REG3);
     pxll_int sizeoff = get_sizeoff_entry (sindex);
     REG1 = make_halloc (sizeoff, nelem);
     pc += 4;
@@ -1465,7 +1465,7 @@ vm_go (void)
       DISPATCH();
     } else {
       fprintf (stderr, "vm_cget failed.\n");
-      return BOX_INTEGER ((unsigned)-1);
+      return TAG_INTEGER ((unsigned)-1);
     }
   }
  l_cset: {
@@ -1476,7 +1476,7 @@ vm_go (void)
       DISPATCH();
     } else {
       fprintf (stderr, "vm_cset failed.\n");
-      return BOX_INTEGER ((unsigned)-1);
+      return TAG_INTEGER ((unsigned)-1);
     }
   }
  l_free: {
@@ -1487,8 +1487,8 @@ vm_go (void)
   }
  l_sizeoff: {
     // SIZEOFF index val
-    pxll_int index = UNBOX_INTEGER (REG1);
-    pxll_int val   = UNBOX_INTEGER (REG2);
+    pxll_int index = UNTAG_INTEGER (REG1);
+    pxll_int val   = UNTAG_INTEGER (REG2);
     vm_sizeoff_table[index] = val;
     pc += 3;
     DISPATCH();
@@ -1504,7 +1504,7 @@ vm_go (void)
     // CAREF dst src sindex num
     pxll_int sizeoff = get_sizeoff_entry (BC3);
     char * src = (char *) get_foreign (REG2);
-    char * dst = src + (sizeoff * UNBOX_INTEGER (REG4));
+    char * dst = src + (sizeoff * UNTAG_INTEGER (REG4));
     REG1 = make_foreign (dst);
     pc += 5;
     DISPATCH();
@@ -1538,12 +1538,12 @@ vm_go (void)
   DISPATCH();
  l_csize:
   // CSIZE target sindex
-  REG1 = BOX_INTEGER (get_sizeoff_entry (BC2));
+  REG1 = TAG_INTEGER (get_sizeoff_entry (BC2));
   pc += 3;
   DISPATCH();
  l_cref2int:
   // CREF2INT target src
-  REG1 = BOX_INTEGER ((pxll_int) get_foreign (REG2));
+  REG1 = TAG_INTEGER ((pxll_int) get_foreign (REG2));
   pc += 3;
   DISPATCH();
  l_int2cref:
@@ -1553,17 +1553,17 @@ vm_go (void)
   DISPATCH();
  l_ob2int:
   // OB2INT target src
-  REG1 = BOX_INTEGER ((pxll_int)REG2);
+  REG1 = TAG_INTEGER ((pxll_int)REG2);
   pc += 3;
   DISPATCH();
  l_obptr2int:
   // OBPTR2INT target src
-  REG1 = BOX_INTEGER ((pxll_int)(*REG2));
+  REG1 = TAG_INTEGER ((pxll_int)(*REG2));
   pc += 3;
   DISPATCH();
  l_errno:
   // ERRNO target
-  REG1 = BOX_INTEGER ((pxll_int) errno);
+  REG1 = TAG_INTEGER ((pxll_int) errno);
   pc += 2;
   DISPATCH();
  l_meta:
@@ -1584,7 +1584,7 @@ toplevel (void) {
     //print_object (result);
     //fprintf (stdout, "\n");
     if (is_int (result)) {
-      exit ((int)(intptr_t)UNBOX_INTEGER(result));
+      exit ((int)(intptr_t)UNTAG_INTEGER(result));
     } else {
       exit (0);
     }
