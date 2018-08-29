@@ -8,11 +8,11 @@
 (include "lib/string.scm")
 (include "lib/format.scm")
 (include "lib/symbol.scm")
-(include "lib/enum.scm")
+(%backend bytecode (include "lib/vmffi.scm"))
 (include "lib/sexp.scm")
-(include "lib/stdio.scm")
 (include "lib/io.scm")
 (include "lib/os.scm")
+(include "lib/stdio.scm")
 (include "lib/alist.scm")
 (include "lib/frb.scm")
 (include "lib/lisp_reader.scm")
@@ -20,9 +20,15 @@
 (include "lib/counter.scm")
 (include "lib/stack.scm")
 (include "lib/set.scm")
+(include "lib/enum.scm")
+
+(include "lib/metadata.scm")
+(include "lib/reflection.scm")
+(include "lib/exception.scm")
 
 (include "self/backend.scm")
 (include "self/autoffi.scm")
+
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
