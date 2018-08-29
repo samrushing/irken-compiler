@@ -507,10 +507,10 @@
   (makegen emit body ...)
   -> (make-generator
       (lambda ($consumer)
-        (let ((emit (lambda ($x) ($consumer (maybe:yes $x)))))
-          body ...
-          (forever ($consumer (maybe:no)))
-          ))))
+        (define (emit $x) ($consumer (maybe:yes $x)))
+        body ...
+        (forever ($consumer (maybe:no)))
+        )))
 
 ;; We use polymorphic variants for exceptions.
 ;; Since we're a whole-program compiler there's no need to declare
@@ -540,6 +540,9 @@
 ;; * have the compiler keep a map of the names of exceptions so that uncaught
 ;;   ones are reported in a useful way.  [another approach might be to auto-generate
 ;;   the base exception handler to catch and print the names of all known exceptions]
+
+;; XXX consider how save/restore of *the-exception-handler*  might want to be done
+;;  by `callcc` [or at the very least a variant that does].
 
 (defmacro try
   ;; done accumulating body parts, finish up.
