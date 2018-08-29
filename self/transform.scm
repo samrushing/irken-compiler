@@ -105,6 +105,15 @@
 	   _ -> (recur tl (list:cons hd acc))))
     (recur exps '()))
 
+  (define (require-file path)
+    (let (((path0 file) (find-file the-context.options.include-dirs path))
+          (result '()))
+      (when (not (set/member? the-context.required string-compare path0))
+        (set/add! the-context.required string-compare path0)
+        (set! result (reader path0 (lambda () (file/read-char file)))))
+      (file/close file)
+      result))
+
   ;; scan for forms that make compile-time decisions about how/what code to include.
   (define (scan-for-meta forms)
     (define loop
@@ -119,6 +128,8 @@
              (loop acc tl))
       acc ((sexp:list ((sexp:symbol 'include) (sexp:string path))) . tl)
       -> (loop (foldr cons acc (reverse (scan-for-meta (find-and-read-file path)))) tl)
+      acc ((sexp:list ((sexp:symbol 'require) (sexp:string path))) . tl)
+      -> (loop (foldr cons acc (reverse (scan-for-meta (require-file path)))) tl)
       acc ((sexp:list ((sexp:symbol 'require-ffi) (sexp:list ((sexp:symbol 'quote) (sexp:symbol interface))))) . tl)
       -> (loop (foldr cons acc (reverse (autoffi interface))) tl)
       acc (hd . tl)

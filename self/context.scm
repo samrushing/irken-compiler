@@ -32,6 +32,7 @@
   {datatypes            = (alist/make)
     aliases             = (alist/make)
     macros              = (tree/empty)
+    required            = (set/empty) ;; set of already-required modules
     dep-graph           = (map-maker symbol-index-cmp)
     scc-graph           = '()
     vars                = (tree/empty)
