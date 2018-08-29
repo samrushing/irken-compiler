@@ -1,15 +1,9 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/codecs/hex.scm")
-(include "lib/codecs/base64.scm")
-(include "lib/crypto/pem.scm")
-(include "lib/crypto/sodium.scm")
-(include "lib/asn1/ber.scm")
-(include "demo/bignum.scm")
-(include "lib/crypto/sig.scm")
-(include "lib/crypto/ctbig.scm")
+(require "lib/basis.scm")
+(require "lib/codecs/hex.scm")
+(require "lib/crypto/sig.scm")
+(require "lib/crypto/ctbig.scm")
 
 (defmacro hexcat
   (hexcat a ...) -> (hex->string (string-concat (LIST a ...)))
