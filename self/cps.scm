@@ -1,6 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "self/nodes.scm")
+(require "self/nodes.scm")
 
 ;; continuation
 (typealias cont {target=int free=(list int) insn=insn})

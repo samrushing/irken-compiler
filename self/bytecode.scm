@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(include "self/byteops.scm")
+(require "self/backend.scm")
+(require "self/byteops.scm")
 
 (define opmap
   (let ((m (map-maker symbol-index-cmp)))

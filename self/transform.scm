@@ -1,8 +1,9 @@
 ;; -*- Mode: Irken -*-
 
-(include "self/mbe.scm")
-(include "self/types.scm")
-(include "self/match.scm")
+(require "self/autoffi.scm")
+(require "self/types.scm")
+(require "self/mbe.scm")
+(require "self/match.scm")
 
 ;; scan for datatypes, definitions, etc..
 ;; and do source-level transformations that can't be handled by the macro system.

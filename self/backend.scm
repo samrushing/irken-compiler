@@ -1,9 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "self/cps.scm")
-(include "self/typing.scm")
-(include "self/graph.scm")
-(include "self/analyze.scm")
+(require "self/cps.scm")
 
 (define (make-writer file)
   (let ((level 0)

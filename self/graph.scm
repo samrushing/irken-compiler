@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/map.scm")
+;; XXX get rid of this
+(require "lib/map.scm")
 
 (datatype symbol-set-ob
   (:t {t=(tree 'a 'b)})

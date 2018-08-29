@@ -1,31 +1,15 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/core.scm")
-(include "lib/pair.scm")
-(include "lib/string.scm")
-(include "lib/format.scm")
-(include "lib/symbol.scm")
-(%backend bytecode (include "lib/vmffi.scm"))
-(include "lib/sexp.scm")
-(include "lib/io.scm")
-(include "lib/os.scm")
-(include "lib/stdio.scm")
-(include "lib/alist.scm")
-(include "lib/frb.scm")
-(include "lib/lisp_reader.scm")
-(include "lib/cmap.scm")
-(include "lib/counter.scm")
-(include "lib/stack.scm")
-(include "lib/set.scm")
-(include "lib/enum.scm")
+(require "lib/basis.scm")
 
-(include "lib/metadata.scm")
-(include "lib/reflection.scm")
-(include "lib/exception.scm")
+(require "self/flags.scm")
+(require "self/context.scm")
+(require "self/transform.scm")
+(require "self/analyze.scm")
 
-(include "self/backend.scm")
-(include "self/autoffi.scm")
-
+(require "self/c.scm")
+(require "self/llvm.scm")
+(require "self/bytecode.scm")
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
@@ -82,8 +66,6 @@
        (printf "}\n")
        #u
        ))
-
-(include "self/flags.scm")
 
 (define (get-ffi-cflags)
   (let ((r '()))
@@ -287,10 +269,6 @@ default flags:
     (generate-metadata)
     (compile-with-backend base cps)
     ))
-
-(include "self/c.scm")
-(include "self/llvm.scm")
-(include "self/bytecode.scm")
 
 (define (compile-with-backend base cps)
   (let ((sources

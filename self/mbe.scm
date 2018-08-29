@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/counter.scm")
+
 ;; based on my python translation of Dorai Sitaram's common lisp implementation
 ;;   of scheme's <syntax-rules>.
 ;;

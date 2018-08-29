@@ -1,5 +1,9 @@
 ;; -*- Mode: Irken -*-
 
+;; XXX get rid of this
+(require "lib/stack.scm")
+
+(require "lib/counter.scm")
 
 ;; See "The Implementation of Functional Programming Languages",
 ;; Chapter 5: "Efficient Compilation of Pattern-Matching".

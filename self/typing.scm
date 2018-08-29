@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "self/graph.scm")
+(require "self/types.scm")
+
 ;; This uses a relatively inexpensive form of an 'occurs check'.
 ;;   Since apply-subst is used all over the place (including in the
 ;;   printing of errors), this gets better coverage than an explicit

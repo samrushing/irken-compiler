@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "self/backend.scm")
+
 ;; LLVM backend: targets *only* LP64.  Note that this covers most operating systems
 ;;   that anyone cares about, *except* for Win64, which is LLP64.
 

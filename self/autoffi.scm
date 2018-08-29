@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/cmap.scm")
+
 ;; AutoFFI - when the compiler comes across a 'require-ffi' form, it needs
 ;;   to emit code that will Do the Right Thing depending on which backend
 ;;   is being used.  We do this by inserting macro calls with enough information

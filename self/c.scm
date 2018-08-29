@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "self/backend.scm")
+
 ;; provide automatic conversions of base types for inputs to %%cexp
 (define (wrap-in type arg)
   (match type with

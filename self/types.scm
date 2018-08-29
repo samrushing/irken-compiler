@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken; coding: utf-8 -*-
 
+(require "lib/counter.scm")
+
 (typealias typerec {parent=(maybe type) pending=bool})
 
 (datatype type

@@ -1,8 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(include "self/context.scm")
-(include "self/transform.scm")
-(include "lib/ctype.scm")
+(require "self/transform.scm")
+(require "self/typing.scm")
 
 (datatype literal
   (:string string)
