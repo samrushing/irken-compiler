@@ -25,6 +25,13 @@
 ;;  * client side
 ;;  * DTLS?
 
+(require "lib/urandom.scm")
+(require "lib/net/socket.scm")
+
+(require "doom/tls/kex.scm")
+(require "doom/tls/signer.scm")
+(require "doom/tls/keysched.scm")
+
 (define RNG (urandom-make))
 
 ;; [the remaining three are aes-128 gcm & ccm]

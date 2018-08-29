@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/net/socket.scm")
+(require "doom/scheduler.scm")
+
 ;; we have two different styles of wait/retry:
 ;; 1) normal: try the syscall, if EWOULDBLOCK then wait & retry it.
 ;; 2) connect: try the syscall, if EWOULDBLOCK then wait-for-write.

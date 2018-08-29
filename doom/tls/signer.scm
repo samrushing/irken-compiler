@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/crypto/decaf.scm")
+(require "lib/crypto/sig.scm")
+
 ;; these objects are responsible for signing with the cert's private key.
 
 (define (make-rsassa-pss-rsae-sha256-signer skey)

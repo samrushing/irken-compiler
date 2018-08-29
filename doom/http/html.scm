@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/sexp.scm")
+(require "lib/rope.scm")
+
 ;; DSL for generating HTML
 
 (define (rope-bracket left middle right)

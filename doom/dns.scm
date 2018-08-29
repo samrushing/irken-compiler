@@ -1,10 +1,9 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/pack.scm")
-(include "lib/codecs/base64.scm")
-(include "doom/doom.scm")
+(require "lib/basis.scm")
+(require "lib/pack.scm")
+(require "lib/codecs/base64.scm")
+(require "doom/doom.scm")
 
 ;; for now, we are only including types, opcodes, and rcodes
 ;;  that are actually used.

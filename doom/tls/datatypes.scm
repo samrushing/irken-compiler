@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/enum.scm")
+
 ;; --- record layer ---
 
 (make-enum tls-ctype

@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/crypto/hkdf.scm")
+(require "doom/tls/codec.scm")
+
 (define (keysched/make hash cipher draft-version)
 
   (let ((tscript '())

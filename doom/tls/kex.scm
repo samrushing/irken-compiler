@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/crypto/dh.scm")
+(require "lib/crypto/decaf.scm")
+
 (define (make-x25519-kex)
   (let ((key {sk="" pk=""}))
     (define (gen)

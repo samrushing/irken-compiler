@@ -1,5 +1,9 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/codecs/hex.scm")
+(require "doom/tls/datatypes.scm")
+(require "lib/rope.scm")
+
 ;; XXX choose either 'get/put' or 'pack/unpack', let's not use both.
 ;;     [unless 'unpack' means we were given a length?]
 

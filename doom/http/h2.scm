@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "doom/scheduler.scm")
+(require "doom/http/hpack.scm")
+
 ;; RFC7540
 
 ;; see [https://www.iana.org/assignments/http2-parameters/http2-parameters.xhtml]

@@ -1,8 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "doom/doom.scm")
+(require "lib/basis.scm")
+(require "doom/doom.scm")
 
 (require-ffi 'kqueue)
 

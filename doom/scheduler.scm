@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "doom/kqueue.scm")
+
 ;; XXX we will need a priority queue.
 
 ;; for each EVFILT, we have separate map of ident=>continuation
