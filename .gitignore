@@ -18,3 +18,4 @@ ffi/*_iface.c
 *~
 .tramp_history
 .DS_Store
+irken.elc
