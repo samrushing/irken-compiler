@@ -1,32 +1,11 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/rope.scm")
-(include "lib/urandom.scm")
-(include "lib/asn1/ber.scm")
-(include "lib/codecs/base64.scm")
-(include "lib/codecs/hex.scm")
-(include "lib/crypto/ctbig.scm")
-(include "lib/crypto/decaf.scm")
-(include "lib/crypto/dh.scm")
-(include "lib/crypto/hkdf.scm")
-(include "lib/crypto/hmac.scm")
-(include "lib/crypto/pem.scm")
-(include "lib/crypto/sig.scm")
-(include "lib/crypto/sodium.scm")
-(include "lib/crypto/x509.scm")
-(include "demo/bignum.scm")
-(include "doom/doom.scm")
-(include "doom/http/hpack.scm")
-(include "doom/http/html.scm")
-(include "doom/http/h2.scm")
-(include "doom/tls/codec.scm")
-(include "doom/tls/datatypes.scm")
-(include "doom/tls/kex.scm")
-(include "doom/tls/keysched.scm")
-(include "doom/tls/signer.scm")
-(include "doom/tls/tls13.scm")
+(require "lib/basis2.scm")
+
+(require "doom/doom.scm")
+(require "doom/http/h2.scm")
+(require "doom/http/html.scm")
+(require "doom/tls/tls13.scm")
 
 (define thing-counter 0)
 
@@ -131,7 +110,7 @@
           (result '()))
       (for pem pgen
         (match pem with
-          (:tuple "CERTIFICATE" asn1) -> (PUSH result asn1)
+          (:tuple "CERTIFICATE" asn1) -> (push! result asn1)
           _ -> (raise (:TLS/ExpectedCertificate path))
           ))
       (reverse result))))
