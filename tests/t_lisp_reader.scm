@@ -1,8 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/os.scm")
-(include "lib/lisp_reader.scm")
+(require "lib/basis.scm")
 
 (define (read-file path)
   (let ((file (file/open-read path))
