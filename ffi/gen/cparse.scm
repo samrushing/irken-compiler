@@ -4,10 +4,10 @@
 ;; pre-processed C (i.e. "cc -E file.c") and scans for typedef,
 ;; struct, union, enum, and function declarations.
 
-(include "lib/parse/lexer.scm")
-(include "lib/parse/earley.scm")
-(include "ffi/gen/clextab.scm")
-(include "ffi/gen/cgram.scm")
+(require "lib/parse/lexer.scm")
+(require "lib/parse/earley.scm")
+(require "ffi/gen/clextab.scm")
+(require "ffi/gen/cgram.scm")
 
 ;; partition a file into a series of top-level objects.  this is done
 ;;   by reading declarations that are terminated by semicolons.  In

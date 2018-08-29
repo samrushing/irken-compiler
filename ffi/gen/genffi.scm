@@ -13,29 +13,30 @@
 ;; Why?  Because we need to run this program in order to bootstrap
 ;;  the compiler/runtime during initial build/install.
 
-(include "lib/core.scm")
-(include "lib/pair.scm")
-(include "lib/string.scm")
-(include "lib/format.scm")
-(include "lib/symbol.scm")
-(%backend bytecode (include "lib/vmffi.scm"))
-(include "lib/queue.scm")
-(include "lib/set.scm")
-(include "lib/alist.scm")
-(include "lib/ctype.scm") ;; needed by os & io.
-(include "lib/sexp.scm")
-(include "lib/lisp_reader.scm") ;; needed by ctype
-(include "lib/stdio.scm")
-(include "lib/frb.scm")
-(include "lib/getopt.scm")
-(include "lib/map.scm")
-(include "lib/cmap.scm")
-(include "lib/graph.scm") ;; for `strongly`.
+(require "lib/core.scm")
+(require "lib/pair.scm")
+(require "lib/string.scm")
+(require "lib/format.scm")
+(require "lib/symbol.scm")
+(%backend bytecode (require "lib/vmffi.scm"))
+(require "lib/queue.scm")
+(require "lib/set.scm")
+(require "lib/alist.scm")
+(require "lib/ctype.scm") ;; needed by os & io.
+(require "lib/sexp.scm")
+(require "lib/lisp_reader.scm") ;; needed by ctype
+(require "lib/stdio.scm")
+(require "lib/frb.scm")
+(require "lib/getopt.scm")
+(require "lib/map.scm")
+(require "lib/cmap.scm")
+
+(require "lib/graph.scm") ;; for `strongly`.
 
 (require-ffi 'libc)
 
-(include "ffi/gen/cparse.scm")
-(include "ffi/gen/ctype.scm")
+(require "ffi/gen/cparse.scm")
+(require "ffi/gen/ctype.scm")
 
 (define *verbose-flag* #f)
 (define *keep-temps* #f)
