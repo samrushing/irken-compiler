@@ -110,8 +110,8 @@ set_nonblocking (int fd)
 
 (define (make-in-addr ip port)
   (let ((ss (%callocate (struct sockaddr_in) 1)))
-    (%%cexp ((buffer (struct sockaddr_in)) -> undefined) "(%0->sin_family = PF_INET, IRK_UNDEFINED)" ss)
-    (%%cexp ((buffer (struct sockaddr_in)) int -> undefined) "(%0->sin_port = htons(%1), IRK_UNDEFINED)" ss port)
+    (%%cexp ((buffer (struct sockaddr_in)) -> undefined) "(%0)->sin_family = PF_INET" ss)
+    (%%cexp ((buffer (struct sockaddr_in)) int -> undefined) "((%0)->sin_port = htons(%1), IRK_UNDEFINED)" ss port)
     (trysys (inet_pton AF_INET ip ss))
     ss))
 
@@ -148,10 +148,10 @@ set_nonblocking (int fd)
 (define run-queue (queue/make))
 
 (define (enqueue k)
-  (queue/add run-queue k))
+  (queue/add! run-queue k))
 
 (define (dispatch)
-  (match (queue/pop run-queue) with
+  (match (queue/pop! run-queue) with
     (maybe:yes k) -> (putcc k #u)
     (maybe:no) -> #u))
 
@@ -165,7 +165,7 @@ set_nonblocking (int fd)
   (dispatch))
 
 (define (dispatch-kevent p)
-  (match (queue/pop run-queue) with
+  (match (queue/pop! run-queue) with
     (maybe:yes k) -> (putcc k #u)
     (maybe:no)	  -> (poller/wait-and-schedule p)))
 
@@ -236,13 +236,13 @@ set_nonblocking (int fd)
 	  (dispatch-kevent p)
 	  ))))
 
-(define (fetch-head p ip)
+(define (fetch-url p ip)
   (let ((sfd (socket AF_INET SOCK_STREAM 0))
 	(addr (make-in-addr ip 80)))
     (set-nonblocking sfd)
     (connect sfd addr)
     (poller/wait-for-write p sfd)
-    (printn (write sfd "HEAD / HTTP/1.0\r\n\r\n"))
+    (printn (write sfd "GET /irk.txt HTTP/1.0\r\nhost: nightmare.com\r\n\r\n"))
     (print-string "sent request, waiting for read...\n")
     (poller/wait-for-read p sfd)
     (print-string (read sfd 1024))
@@ -252,8 +252,8 @@ set_nonblocking (int fd)
 
 (let ((p (make-poller))
       (ip "72.52.84.226"))
-  (fork (lambda () (fetch-head p ip)))
-  (fork (lambda () (fetch-head p ip)))
-  (fork (lambda () (fetch-head p ip)))
-  (fetch-head p ip)
+  (fork (lambda () (fetch-url p ip)))
+  (fork (lambda () (fetch-url p ip)))
+  (fork (lambda () (fetch-url p ip)))
+  (poller/wait-and-schedule p)
   )
