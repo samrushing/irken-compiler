@@ -1,16 +1,8 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/cmap.scm")
-(include "lib/counter.scm")
-(include "lib/parse/lexer.scm")
-(include "lib/dfa/charset.scm")
-(include "lib/dfa/rx.scm")
-(include "lib/dfa/deriv.scm")
-(include "lib/dfa/dfa.scm")
-(include "lib/dfa/emit.scm")
-(include "lib/dfa/lexicon.scm")
+(require "lib/basis.scm")
+(require "lib/dfa/lexicon.scm")
+(require "lib/dfa/emit.scm")
 
 (if (< sys.argc 2)
     (begin (printf "\nGenerate a lexer dfa (in dot format) to stdout.\n\n")

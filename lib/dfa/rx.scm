@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/dfa/charset.scm")
+(require "lib/counter.scm")
+
 ;; Note: this code includes support for an aborted (but not abandoned)
 ;;  attempt to implement submatching (similar to TDFAs).
 

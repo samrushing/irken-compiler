@@ -2,9 +2,8 @@
 
 ;; https://rosettacode.org/wiki/RSA_code
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "demo/bignum.scm")
+(require "lib/basis.scm")
+(require "demo/bignum.scm")
 
 (define (encrypt msg e n)
   (big (expmod msg e n)))

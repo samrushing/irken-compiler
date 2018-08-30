@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/dfa/dfa.scm")
+
 ;; build a lexer by converting a set of rxs to a DFA.
 ;;
 ;; to do this we need a submatch for each lexeme/category/kind of

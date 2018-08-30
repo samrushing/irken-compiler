@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/dfa/lexicon.scm")
+(require "lib/parse/earley.scm")
+
 ;; This file supports putting an entire parser spec in a single file,
 ;;  in s-expression form.  The parser spec includes three components:
 ;;  The lexicon, the filter list, and the grammar.  It uses sexp->lexicon

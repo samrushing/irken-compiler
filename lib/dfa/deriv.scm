@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/dfa/rx.scm")
+
 ;; "Regular-expression derivatives reexamined"
 ;; https://www.mpi-sws.org/~turon/re-deriv.pdf
 

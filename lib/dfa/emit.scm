@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/dfa/rx.scm")
+
 (define (print-dfa dfa)
   (printf "dfa {\n")
   (for-range i dfa.size

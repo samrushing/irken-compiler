@@ -1,18 +1,8 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/cmap.scm")
-(include "lib/counter.scm")
-(include "lib/parse/lexer.scm")
-(include "lib/dfa/charset.scm")
-(include "lib/dfa/rx.scm")
-(include "lib/dfa/deriv.scm")
-(include "lib/dfa/dfa.scm")
-(include "lib/dfa/emit.scm")
-(include "lib/dfa/lexicon.scm")
-(include "lib/parse/earley.scm")
-(include "lib/parse/parser.scm")
+(require "lib/basis.scm")
+(require "lib/parse/lexer.scm")
+(require "lib/parse/parser.scm")
 
 (if (< sys.argc 3)
     (begin (printf "\nParse a file with a given grammar.\n")

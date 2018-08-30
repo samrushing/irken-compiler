@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/dfa/deriv.scm")
+(require "lib/cmap.scm")
+
 ;; consider: modifying rx to carry along with it a value for C.
 ;;   use the constructors to populate this value.
 

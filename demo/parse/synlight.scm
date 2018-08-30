@@ -13,15 +13,7 @@
 
 (require "lib/basis.scm")
 (require "lib/getopt.scm")
-(require "lib/map.scm")
-(require "lib/cmap.scm")
-(require "lib/counter.scm")
 (require "lib/parse/lexer.scm")
-(require "lib/dfa/charset.scm")
-(require "lib/dfa/rx.scm")
-(require "lib/dfa/deriv.scm")
-(require "lib/dfa/dfa.scm")
-(require "lib/dfa/emit.scm")
 (require "lib/dfa/lexicon.scm")
 
 ;; ---------- ANSI terminal output ------------
