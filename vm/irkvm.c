@@ -16,14 +16,14 @@
 
 #include "irkvm.h"
 
-static object * allocate (pxll_int tc, pxll_int size);
-static object * alloc_no_clear (pxll_int tc, pxll_int size);
+static object * allocate (irk_int tc, irk_int size);
+static object * alloc_no_clear (irk_int tc, irk_int size);
 static object * dump_object (object * ob, int depth);
 static void print_object (object * ob);
 static object do_gc (int nroots);
-static pxll_int get_case (object * ob);
+static irk_int get_case (object * ob);
 object invoke_closure (object * closure, object * args);
-pxll_int magic_cmp (object * a, object * b);
+irk_int magic_cmp (object * a, object * b);
 
 typedef void(*kfun0)(void);
 
@@ -47,9 +47,9 @@ void DO (object * x);
   } while (0)
 
 int
-next (FILE * f, pxll_int * n)
+next (FILE * f, irk_int * n)
 {
-  pxll_int b = fgetc (f);
+  irk_int b = fgetc (f);
   if (b == -1) {
     return -1;
   } else {
@@ -59,17 +59,17 @@ next (FILE * f, pxll_int * n)
 }
 
 int
-read_int (FILE * f, pxll_int * r)
+read_int (FILE * f, irk_int * r)
 {
-  pxll_int n = 0;
+  irk_int n = 0;
   CHECK (next (f, &n));
   if (n == 254) {
-    pxll_int r0;
+    irk_int r0;
     CHECK (read_int (f, &r0));
     *r = -r0;
     return 0;
   } else if (n == 255) {
-    pxll_int bytes;
+    irk_int bytes;
     n = 0;
     CHECK (next (f, &bytes));
     for (int i=0; i < bytes; i++) {
@@ -85,7 +85,7 @@ read_int (FILE * f, pxll_int * r)
 }
 
 int
-read_string (FILE * f, void * b, pxll_int n)
+read_string (FILE * f, void * b, irk_int n)
 {
   size_t r = fread (b, 1, n, f);
   if (r == n) {
@@ -114,13 +114,13 @@ uint32_t irk_ambig_size = 0;
 object * bytecode_literals;
 object * vm_field_lookup_table; // note: this is a GC root.
 // size/offset table for ffi ctypes (e.g. 'int', 'struct in6_addr', ...)
-pxll_int vm_sizeoff_table[100] = {sizeof (void *), sizeof(short), sizeof(int), sizeof(long), sizeof(long long), 0};
-pxll_int vm_internal_symbol_counter = 0;
+irk_int vm_sizeoff_table[100] = {sizeof (void *), sizeof(short), sizeof(int), sizeof(long), sizeof(long long), 0};
+irk_int vm_internal_symbol_counter = 0;
 object * vm_internal_symbol_list = IRK_NIL;
-pxll_int vm_metadata_index = 0;
+irk_int vm_metadata_index = 0;
 
-pxll_int
-get_sizeoff_entry (pxll_int sindex)
+irk_int
+get_sizeoff_entry (irk_int sindex)
 {
   if (sindex < 50) {
     return sindex;
@@ -129,11 +129,11 @@ get_sizeoff_entry (pxll_int sindex)
   }
 }
 
-pxll_int
+irk_int
 read_literal (FILE * f, object * ob)
 {
-  pxll_int code = 0;
-  pxll_int n = 0;
+  irk_int code = 0;
+  irk_int n = 0;
   CHECK (next (f, &code));
   switch (code) {
   case '+':
@@ -159,7 +159,7 @@ read_literal (FILE * f, object * ob)
     break;
   case 'S': {
     CHECK (read_int (f, &n));
-    pxll_string * t = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (n));
+    irk_string * t = (irk_string *) alloc_no_clear (TC_STRING, string_tuple_length (n));
     t->len = n;
     CHECK (read_string (f, t->data, n));
     *ob = (object *) t;
@@ -168,7 +168,7 @@ read_literal (FILE * f, object * ob)
   case 'Y': { // symbol
     // first create the string
     CHECK (read_int (f, &n));
-    pxll_string * t = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (n));
+    irk_string * t = (irk_string *) alloc_no_clear (TC_STRING, string_tuple_length (n));
     t->len = n;
     CHECK (read_string (f, t->data, n));
     // fprintf (stderr, "sym "); fwrite (t->data, 1, n, stderr); fprintf (stderr, "\n");
@@ -186,8 +186,8 @@ read_literal (FILE * f, object * ob)
     *ob = (object) n;
     break;
   case 'C': { // tuple (e.g., (list:cons ...))
-    pxll_int tag;
-    pxll_int nargs;
+    irk_int tag;
+    irk_int nargs;
     CHECK (read_int (f, &tag));
     CHECK (read_int (f, &nargs));
     object * ob0 = allocate (tag, nargs);
@@ -198,7 +198,7 @@ read_literal (FILE * f, object * ob)
   }
     break;
   case 'V': { // vector
-    pxll_int nargs;
+    irk_int nargs;
     CHECK (read_int (f, &nargs));
     if (nargs > 0) {
       object * ob0 = allocate (TC_VECTOR, nargs);
@@ -212,7 +212,7 @@ read_literal (FILE * f, object * ob)
   }
     break;
   case 'P': { // reference to previous literal
-    pxll_int index;
+    irk_int index;
     CHECK (read_int (f, &index));
     *ob = bytecode_literals[index+1];
   }
@@ -225,15 +225,15 @@ read_literal (FILE * f, object * ob)
 }
 
 static
-pxll_int
+irk_int
 read_literals (FILE * f)
 {
   // read the outer vector specially so we can resolve
   //   internal pointer references.
-  pxll_int code = 0;
+  irk_int code = 0;
   CHECK (next (f, &code));
   if (code == 'V') {
-    pxll_int nlits = 0;
+    irk_int nlits = 0;
     CHECK (read_int (f, &nlits));
     object * lits0 = allocate (TC_VECTOR, nlits);
     bytecode_literals = lits0;
@@ -246,7 +246,7 @@ read_literals (FILE * f)
     // sizeoff literal index
     object * sizeoff_index_ob;
     CHECK (read_literal (f, (object *) &sizeoff_index_ob));
-    pxll_int sizeoff_index = 1 + UNTAG_INTEGER (sizeoff_index_ob);
+    irk_int sizeoff_index = 1 + UNTAG_INTEGER (sizeoff_index_ob);
     object * sizeoff_literal;
     CHECK (read_literal (f, (object *) &sizeoff_literal));
     if (sizeoff_index > 0) {
@@ -269,7 +269,7 @@ read_literals (FILE * f)
 typedef int32_t bytecode_t;
 #define BYTECODE_MAX INT32_MAX
 
-static pxll_int bytecode_len;
+static irk_int bytecode_len;
 static bytecode_t * bytecode;
 
 // NOTE: because we are using computed gotos in the main VM loop,
@@ -278,10 +278,10 @@ static bytecode_t * bytecode;
 //  execution.
 
 static
-pxll_int
+irk_int
 scan_bytecode()
 {
-  pxll_int i = 0;
+  irk_int i = 0;
   while (i < bytecode_len) {
     int32_t op = bytecode[i];
     if (!((op >= 0) && (op < IRK_NUM_OPCODES))) {
@@ -322,10 +322,10 @@ scan_bytecode()
 }
 
 static
-pxll_int
+irk_int
 read_bytecode (FILE * f)
 {
-  pxll_int codelen = 0;
+  irk_int codelen = 0;
   CHECK (read_int (f, &codelen));
   bytecode = (bytecode_t *) malloc (sizeof(bytecode_t) * codelen);
   if (!bytecode) {
@@ -333,7 +333,7 @@ read_bytecode (FILE * f)
     return -1;
   } else {
     for (int i=0; i < codelen; i++) {
-      pxll_int code = 0;
+      irk_int code = 0;
       CHECK (read_int (f, &code));
       if (code > BYTECODE_MAX) {
         return -1;
@@ -347,7 +347,7 @@ read_bytecode (FILE * f)
 }
 
 static
-pxll_int
+irk_int
 read_magic (FILE * f)
 {
   char magic0[] = "IRKVM0";
@@ -362,7 +362,7 @@ read_magic (FILE * f)
 }
 
 static
-pxll_int
+irk_int
 read_bytecode_file (char * path)
 {
   FILE * f = fopen (path, "rb");
@@ -415,7 +415,7 @@ print_stack (object * k)
   // VMCONT := stack lenv pc reg0 reg1 ...
   fprintf (stderr, "{");
   while (k != IRK_NIL) {
-    pxll_int n = GET_TUPLE_LENGTH(k[0]) - 3;
+    irk_int n = GET_TUPLE_LENGTH(k[0]) - 3;
     fprintf (stderr, "%" PRIdPTR ".%" PRIdPTR "(", UNTAG_INTEGER(k[3]), n);
     for (int i=0; i < n; i++) {
       fprintf (stderr, "%d:", i);
@@ -442,7 +442,7 @@ print_regs (object * vm_regs, int nregs)
 
 static
 object *
-vm_varref (pxll_int depth, pxll_int index)
+vm_varref (irk_int depth, irk_int index)
 {
   object * lenv = vm_lenv;
   for (int i=0; i < depth; i++) {
@@ -453,7 +453,7 @@ vm_varref (pxll_int depth, pxll_int index)
 
 static
 void
-vm_varset (pxll_int depth, pxll_int index, object * val)
+vm_varset (irk_int depth, irk_int index, object * val)
 {
   object * lenv = vm_lenv;
   for (int i=0; i < depth; i++) {
@@ -473,18 +473,18 @@ vm_push_lenv (object * rib)
 // this differs from the one in header1.c because G
 //   and V are irken vectors.
 static
-pxll_int
-vm_get_field_offset (pxll_int index, pxll_int label_code)
+irk_int
+vm_get_field_offset (irk_int index, irk_int label_code)
 {
   // vm_field_lookup_table: (vector (vector (int)))
   object * G0 = vm_field_lookup_table[1];
   object * V0 = vm_field_lookup_table[2];
   uint32_t hash0 = p_hash (0x01000193, index, label_code);
-  pxll_int d = unbox(G0[hash0 + 1]);
+  irk_int d = unbox(G0[hash0 + 1]);
   if (d < 0) {
     return unbox(V0[(-d-1) + 1]);
   } else {
-    pxll_int hash1 = p_hash (d, index, label_code);
+    irk_int hash1 = p_hash (d, index, label_code);
     return unbox(V0[hash1 + 1]);
   }
 }
@@ -492,7 +492,7 @@ vm_get_field_offset (pxll_int index, pxll_int label_code)
 object * vm_the_closure = IRK_NIL;
 
 static
-pxll_int
+irk_int
 vm_set_closure (object * closure)
 {
   vm_the_closure = closure;
@@ -535,8 +535,8 @@ vm_gc (int nreg)
 }
 
 static
-pxll_int
-vm_read_file (pxll_string * path, object ** result)
+irk_int
+vm_read_file (irk_string * path, object ** result)
 {
   // zero-terminate path
   char path0[path->len + 1];
@@ -551,7 +551,7 @@ vm_read_file (pxll_string * path, object ** result)
       if (nbytes == 0) {
         break;
       } else {
-        pxll_string * part = (pxll_string *) allocate (TC_STRING, string_tuple_length (nbytes));
+        irk_string * part = (irk_string *) allocate (TC_STRING, string_tuple_length (nbytes));
         memcpy (part->data, data, nbytes);
         part->len = nbytes;
         *result = vm_list_cons ((object*)part, *result);
@@ -564,8 +564,8 @@ vm_read_file (pxll_string * path, object ** result)
   }
 }
 
-pxll_int
-vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
+irk_int
+vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
 {
   // FFI target pfun rtype nargs arg0 ...
   ffi_cif cif;
@@ -588,7 +588,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
       break;
     case TC_BOOL:
       args[i] = &ffi_type_sint;
-      vals[i] = (void*) (pxll_int) (ob == IRK_TRUE);
+      vals[i] = (void*) (irk_int) (ob == IRK_TRUE);
       pvals[i] = vals + i;
       break;
     case TC_CHAR:
@@ -649,7 +649,7 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
         ffi_call (&cif, pfun, &rc, pvals);
         switch (rcode) {
         case 'i':
-          *result = TAG_INTEGER ((pxll_int)(int)rc);
+          *result = TAG_INTEGER ((irk_int)(int)rc);
           break;
         case 's':
           if ((char*)rc == NULL) {
@@ -685,52 +685,52 @@ vm_do_ffi (object * vm_regs, pxll_int pc, pxll_int nargs, object * result)
 
 #include <sys/errno.h>
 
-pxll_int
-vm_cget (object ** result, object * src, pxll_int code)
+irk_int
+vm_cget (object ** result, object * src, irk_int code)
 {
   uint8_t * p = (uint8_t *) get_foreign (src);
   switch (code) {
   case 'B':
-    *result = TAG_INTEGER ((pxll_int)(*((uint8_t *)p)));
+    *result = TAG_INTEGER ((irk_int)(*((uint8_t *)p)));
     break;
   case 'H':
-    *result = TAG_INTEGER ((pxll_int)*((uint16_t *)p));
+    *result = TAG_INTEGER ((irk_int)*((uint16_t *)p));
     break;
   case 'M':
-    *result = TAG_INTEGER ((pxll_int)*((uint32_t *)p));
+    *result = TAG_INTEGER ((irk_int)*((uint32_t *)p));
     break;
   case 'Q':
-    *result = TAG_INTEGER ((pxll_int)*((uint64_t *)p));
+    *result = TAG_INTEGER ((irk_int)*((uint64_t *)p));
     break;
   case 'b':
-    *result = TAG_INTEGER ((pxll_int)*((int8_t *)p));
+    *result = TAG_INTEGER ((irk_int)*((int8_t *)p));
     break;
   case 'h':
-    *result = TAG_INTEGER ((pxll_int)*((int16_t *)p));
+    *result = TAG_INTEGER ((irk_int)*((int16_t *)p));
     break;
   case 'm':
-    *result = TAG_INTEGER ((pxll_int)*((int32_t *)p));
+    *result = TAG_INTEGER ((irk_int)*((int32_t *)p));
     break;
   case 'q':
-    *result = TAG_INTEGER ((pxll_int)*((int64_t *)p));
+    *result = TAG_INTEGER ((irk_int)*((int64_t *)p));
     break;
   case 'i':
-    *result = TAG_INTEGER ((pxll_int)*((int *)p));
+    *result = TAG_INTEGER ((irk_int)*((int *)p));
     break;
   case 'I':
-    *result = TAG_INTEGER ((pxll_int)*((unsigned int *)p));
+    *result = TAG_INTEGER ((irk_int)*((unsigned int *)p));
     break;
   case 'l':
-    *result = TAG_INTEGER ((pxll_int)*((long *)p));
+    *result = TAG_INTEGER ((irk_int)*((long *)p));
     break;
   case 'L':
-    *result = TAG_INTEGER ((pxll_int)*((unsigned long *)p));
+    *result = TAG_INTEGER ((irk_int)*((unsigned long *)p));
     break;
   case 'n':
-    *result = TAG_INTEGER ((pxll_int)*((long long *)p));
+    *result = TAG_INTEGER ((irk_int)*((long long *)p));
     break;
   case 'N':
-    *result = TAG_INTEGER ((pxll_int)*((unsigned long long *)p));
+    *result = TAG_INTEGER ((irk_int)*((unsigned long long *)p));
     break;
   case 'p':
     *result = make_foreign (*((void**)p));
@@ -748,13 +748,13 @@ vm_cget (object ** result, object * src, pxll_int code)
   return 0;
 }
 
-pxll_int
-vm_cset (object * dst, pxll_int code, object * val)
+irk_int
+vm_cset (object * dst, irk_int code, object * val)
 {
   uint8_t * p = (uint8_t *) get_foreign (dst);
   switch (code) {
   case 's': {
-    pxll_string * s = (pxll_string *) val;
+    irk_string * s = (irk_string *) val;
     memcpy (p, s->data, s->len);
   }
     break;
@@ -835,7 +835,7 @@ vm_cset (object * dst, pxll_int code, object * val)
 object
 vm_go (void)
 {
-  register pxll_int pc = 0;
+  register irk_int pc = 0;
   register object * vm_regs[NREGS];
   register bytecode_t * code = bytecode;
   for (int i=0; i < NREGS; i++) {
@@ -1018,11 +1018,11 @@ vm_go (void)
   DISPATCH();
  l_trcall: {
     // TRCALL pc depth nregs reg0 ...
-    pxll_int depth = BC2;
+    irk_int depth = BC2;
     for (int i=0; i < depth; i++) {
       vm_lenv = (object *) vm_lenv[1];
     }
-    pxll_int nregs = BC3;
+    irk_int nregs = BC3;
     object * rib = (object *) vm_lenv;
     // lenv := next arg0 arg1 ...
     for (int i=0; i < nregs; i++) {
@@ -1033,7 +1033,7 @@ vm_go (void)
   DISPATCH();
  l_trcall0: {
     // TRCALL0 pc depth
-    pxll_int depth = BC2;
+    irk_int depth = BC2;
     for (int i=0; i < depth; i++) {
       vm_lenv = (object *) vm_lenv[1];
     }
@@ -1048,7 +1048,7 @@ vm_go (void)
  l_call: {
     // CALL closure args nregs
     // VMCONT := stack lenv pc reg0 reg1 ...
-    pxll_int nregs = BC3;
+    irk_int nregs = BC3;
     object * k = allocate (TC_VM_CONT, 3 + nregs);
     k[1] = vm_k;
     k[2] = vm_lenv;
@@ -1070,7 +1070,7 @@ vm_go (void)
  l_call0: {
     // CALL0 closure nregs
     // VMCONT := stack lenv pc reg0 reg1 ...
-    pxll_int nregs = BC2;
+    irk_int nregs = BC2;
     object * k = allocate (TC_VM_CONT, 3 + nregs);
     k[1] = vm_k;
     k[2] = vm_lenv;
@@ -1090,7 +1090,7 @@ vm_go (void)
  l_pop: {
     // POP target
     // VMCONT := stack lenv pc reg0 reg1 ...
-    pxll_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
+    irk_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
     for (int i=0; i < nregs; i++) {
       vm_regs[i] = vm_k[4+i];
     }
@@ -1101,7 +1101,7 @@ vm_go (void)
   }
   DISPATCH();
  l_pop0: {
-    pxll_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
+    irk_int nregs = GET_TUPLE_LENGTH (vm_k[0]) - 3;
     for (int i=0; i < nregs; i++) {
       vm_regs[i] = vm_k[4+i];
     }
@@ -1117,7 +1117,7 @@ vm_go (void)
   DISPATCH();
  l_prints: {
     // PRINTS arg
-    pxll_string * s = (pxll_string *) REG1;
+    irk_string * s = (irk_string *) REG1;
     fwrite (s->data, 1, s->len, stdout);
     pc += 2;
   }
@@ -1169,12 +1169,12 @@ vm_go (void)
   DISPATCH();
  l_imm:
   // IMM target tag
-  REG1 = (object *) (pxll_int) BC2;
+  REG1 = (object *) (irk_int) BC2;
   pc += 3;
   DISPATCH();
  l_make: {
     // MAKE target tag nelem elem0 ...
-    pxll_int nelem = BC3;
+    irk_int nelem = BC3;
     object * ob = allocate (BC2, nelem);
     for (int i=0; i < nelem; i++) {
       ob[i+1] = vm_regs[code[pc+4+i]];
@@ -1193,9 +1193,9 @@ vm_go (void)
   return vm_result;
  l_nvcase: {
     // NVCASE ob elabel nalts tag0 label0 tag1 label1 ...
-    pxll_int tag = get_case (REG1);
-    pxll_int nalts = BC3;
-    pxll_int pc0 = BC2;
+    irk_int tag = get_case (REG1);
+    irk_int nalts = BC3;
+    irk_int pc0 = BC2;
     //fprintf (stderr, " tag=%d nalts=%d pc=%d\n", tag, nalts, pc);
     for (int i=0; i < nalts; i++) {
       //fprintf (stderr, "  testing %d\n", code[pc+4+(i*2)]);
@@ -1236,7 +1236,7 @@ vm_go (void)
  l_vmake: {
     // VMAKE target size val
     // XXX heap check.
-    pxll_int nelems = UNTAG_INTEGER(REG2);
+    irk_int nelems = UNTAG_INTEGER(REG2);
     if (nelems == 0) {
       REG1 = (object *) TC_EMPTY_VECTOR;
     } else {
@@ -1256,16 +1256,16 @@ vm_go (void)
   DISPATCH();
  l_rref: {
     // RREF target rec label-code
-    pxll_int tag = (GET_TYPECODE (REG2[0]) - TC_USEROBJ) >> 2;
-    pxll_int index = vm_get_field_offset (tag, BC3);
+    irk_int tag = (GET_TYPECODE (REG2[0]) - TC_USEROBJ) >> 2;
+    irk_int index = vm_get_field_offset (tag, BC3);
     REG1 = REG2[index+1];
     pc += 4;
   }
   DISPATCH();
  l_rset: {
     // RSET rec label-code val
-    pxll_int tag = (GET_TYPECODE (REG1[0]) - TC_USEROBJ) >> 2;
-    pxll_int index = vm_get_field_offset (tag, BC2);
+    irk_int tag = (GET_TYPECODE (REG1[0]) - TC_USEROBJ) >> 2;
+    irk_int index = vm_get_field_offset (tag, BC2);
     REG1[index+1] = REG3;
     pc += 4;
   }
@@ -1283,7 +1283,7 @@ vm_go (void)
   DISPATCH();
  // l_irk: {
  //    // IRK target closure nargs arg0 ...
- //    pxll_int nargs = UNTAG_INTEGER (REG3);
+ //    irk_int nargs = UNTAG_INTEGER (REG3);
  //    object * rib = allocate (TC_ENV, nargs + 1);
  //    object * closure = REG2;
  //    for (int i=0; i < nargs; i++) {
@@ -1296,10 +1296,10 @@ vm_go (void)
  //  DISPATCH();
  l_ffi: {
     // FFI target pfun rtype nargs arg0 ...
-    pxll_int nargs = UNTAG_INTEGER (REG4);
+    irk_int nargs = UNTAG_INTEGER (REG4);
     // XXX concerned that passing vm_regs defeats the register decl above.
     object result;
-    pxll_int success = vm_do_ffi ((object *) vm_regs, pc, nargs, &result);
+    irk_int success = vm_do_ffi ((object *) vm_regs, pc, nargs, &result);
     if (success == 0) {
       REG1 = result;
     } else {
@@ -1312,8 +1312,8 @@ vm_go (void)
  l_smake: {
     // SMAKE target size
     // XXX heap check.
-    pxll_int slen = UNTAG_INTEGER (REG2);
-    pxll_string * s = (pxll_string*)alloc_no_clear (TC_STRING, string_tuple_length (slen));
+    irk_int slen = UNTAG_INTEGER (REG2);
+    irk_string * s = (irk_string*)alloc_no_clear (TC_STRING, string_tuple_length (slen));
     s->len = slen;
     REG1 = (object*)s;
   }
@@ -1321,9 +1321,9 @@ vm_go (void)
   DISPATCH();
  l_sfromc: {
     // SFROMC target src len
-    pxll_int slen = UNTAG_INTEGER (REG3);
+    irk_int slen = UNTAG_INTEGER (REG3);
     char * src = (char *) get_foreign (REG2);
-    pxll_string * dst = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
+    irk_string * dst = (irk_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
     dst->len = slen;
     memcpy (GET_STRING_POINTER (dst), src, slen);
     REG1 = (object *) dst;
@@ -1332,13 +1332,13 @@ vm_go (void)
   }
  l_slen:
   // SLEN target string
-  REG1 = TAG_INTEGER ((pxll_int)((pxll_string *) REG2)->len);
+  REG1 = TAG_INTEGER ((irk_int)((irk_string *) REG2)->len);
   pc += 3;
   DISPATCH();
  l_sref: {
     // SREF target string index
-    pxll_string * s = (pxll_string *)REG2;
-    pxll_int index = UNTAG_INTEGER (REG3);
+    irk_string * s = (irk_string *)REG2;
+    irk_int index = UNTAG_INTEGER (REG3);
     if ((index >= 0) && (index < s->len)) {
       REG1 = TO_CHAR ((uint8_t)(s->data[index]));
     } else {
@@ -1351,9 +1351,9 @@ vm_go (void)
   DISPATCH();
  l_sset: {
     // SSET string index char
-    pxll_string * s = (pxll_string *)REG1;
-    pxll_int index = UNTAG_INTEGER (REG2);
-    pxll_int ch = GET_CHAR (REG3);
+    irk_string * s = (irk_string *)REG1;
+    irk_int index = UNTAG_INTEGER (REG2);
+    irk_int ch = GET_CHAR (REG3);
     if (ch > 255) {
       fprintf (stderr, "char out of range: %" PRIdPTR "\n", ch);
       return TAG_INTEGER ((unsigned)-1);
@@ -1369,11 +1369,11 @@ vm_go (void)
   DISPATCH();
  l_scopy: {
     // SCOPY src sstart n dst dstart
-    pxll_string * src = (pxll_string *) REG1;
-    pxll_string * dst = (pxll_string *) REG4;
-    pxll_int sstart = UNTAG_INTEGER (REG2);
-    pxll_int dstart = UNTAG_INTEGER (REG5);
-    pxll_int n = UNTAG_INTEGER (REG3);
+    irk_string * src = (irk_string *) REG1;
+    irk_string * dst = (irk_string *) REG4;
+    irk_int sstart = UNTAG_INTEGER (REG2);
+    irk_int dstart = UNTAG_INTEGER (REG5);
+    irk_int n = UNTAG_INTEGER (REG3);
     // range check
     if ((sstart >= 0) && (sstart + n <= src->len) &&
         (dstart >= 0) && (dstart + n <= dst->len)) {
@@ -1408,9 +1408,9 @@ vm_go (void)
   DISPATCH();
  l_heap: {
     // HEAP size nreg
-    pxll_int size = UNTAG_INTEGER (REG1);
+    irk_int size = UNTAG_INTEGER (REG1);
     if (freep + size >= limit) {
-      pxll_int nreg = BC2;
+      irk_int nreg = BC2;
       for (int i=0; i < nreg; i++) {
         heap1[N_VM_ROOTS + i] = vm_regs[i];
       }
@@ -1425,7 +1425,7 @@ vm_go (void)
  l_readf: {
     // READF target path
     object * slist = (object *) IRK_NIL;
-    pxll_int r = vm_read_file ((pxll_string *) REG2, &slist);
+    irk_int r = vm_read_file ((irk_string *) REG2, &slist);
     REG1 = slist;
     pc += 3;
     DISPATCH();
@@ -1433,9 +1433,9 @@ vm_go (void)
  l_malloc: {
     // MALLOC target sindex nelem
     object * result;
-    pxll_int sindex = BC2;
-    pxll_int nelem = UNTAG_INTEGER (REG3);
-    pxll_int sizeoff = get_sizeoff_entry (sindex);
+    irk_int sindex = BC2;
+    irk_int nelem = UNTAG_INTEGER (REG3);
+    irk_int sizeoff = get_sizeoff_entry (sindex);
     result = (object*) malloc (sizeoff * nelem);
     if (!result) {
       fprintf (stderr, "malloc failed.\n");
@@ -1448,9 +1448,9 @@ vm_go (void)
   }
  l_halloc: {
     // HALLOC target sindex nelem
-    pxll_int sindex = BC2;
-    pxll_int nelem = UNTAG_INTEGER (REG3);
-    pxll_int sizeoff = get_sizeoff_entry (sindex);
+    irk_int sindex = BC2;
+    irk_int nelem = UNTAG_INTEGER (REG3);
+    irk_int sizeoff = get_sizeoff_entry (sindex);
     REG1 = make_halloc (sizeoff, nelem);
     pc += 4;
     DISPATCH();
@@ -1458,7 +1458,7 @@ vm_go (void)
  l_cget: {
     // CGET target src code
     object * result;
-    pxll_int r = vm_cget (&result, REG2, (pxll_int) BC3);
+    irk_int r = vm_cget (&result, REG2, (irk_int) BC3);
     if (r == 0) {
       REG1 = result;
       pc += 4;
@@ -1470,7 +1470,7 @@ vm_go (void)
   }
  l_cset: {
     // CSET dst code val
-    pxll_int r = vm_cset (REG1, (pxll_int) BC2, REG3);
+    irk_int r = vm_cset (REG1, (irk_int) BC2, REG3);
     if (r == 0) {
       pc += 4;
       DISPATCH();
@@ -1487,22 +1487,22 @@ vm_go (void)
   }
  l_sizeoff: {
     // SIZEOFF index val
-    pxll_int index = UNTAG_INTEGER (REG1);
-    pxll_int val   = UNTAG_INTEGER (REG2);
+    irk_int index = UNTAG_INTEGER (REG1);
+    irk_int val   = UNTAG_INTEGER (REG2);
     vm_sizeoff_table[index] = val;
     pc += 3;
     DISPATCH();
   }
  l_sgetp: {
     // SGETP dst src
-    pxll_string * s = (pxll_string *) REG1;
+    irk_string * s = (irk_string *) REG1;
     REG2 = make_foreign (s->data);
     pc += 3;
     DISPATCH();
   }
  l_caref: {
     // CAREF dst src sindex num
-    pxll_int sizeoff = get_sizeoff_entry (BC3);
+    irk_int sizeoff = get_sizeoff_entry (BC3);
     char * src = (char *) get_foreign (REG2);
     char * dst = src + (sizeoff * UNTAG_INTEGER (REG4));
     REG1 = make_foreign (dst);
@@ -1511,7 +1511,7 @@ vm_go (void)
   }
  l_csref: {
     // CSREF dst src sindex
-    pxll_int sizeoff = get_sizeoff_entry (BC3);
+    irk_int sizeoff = get_sizeoff_entry (BC3);
     // fprintf (stderr, "csref: sizeoff=%ld\n", sizeoff);
     char * src = (char *) get_foreign (REG2);
     // fprintf (stderr, "csref: src=%p\n", src);
@@ -1543,7 +1543,7 @@ vm_go (void)
   DISPATCH();
  l_cref2int:
   // CREF2INT target src
-  REG1 = TAG_INTEGER ((pxll_int) get_foreign (REG2));
+  REG1 = TAG_INTEGER ((irk_int) get_foreign (REG2));
   pc += 3;
   DISPATCH();
  l_int2cref:
@@ -1553,17 +1553,17 @@ vm_go (void)
   DISPATCH();
  l_ob2int:
   // OB2INT target src
-  REG1 = TAG_INTEGER ((pxll_int)REG2);
+  REG1 = TAG_INTEGER ((irk_int)REG2);
   pc += 3;
   DISPATCH();
  l_obptr2int:
   // OBPTR2INT target src
-  REG1 = TAG_INTEGER ((pxll_int)(*REG2));
+  REG1 = TAG_INTEGER ((irk_int)(*REG2));
   pc += 3;
   DISPATCH();
  l_errno:
   // ERRNO target
-  REG1 = TAG_INTEGER ((pxll_int) errno);
+  REG1 = TAG_INTEGER ((irk_int) errno);
   pc += 2;
   DISPATCH();
  l_meta:
