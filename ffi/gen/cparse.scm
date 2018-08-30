@@ -411,7 +411,12 @@
       type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftParen val=_}) pTL (parse:t {kind='RightParen val=_}))
       -> (let (((type0 name0) (p-directDeclarator type dD))
                (params (p-parameterTypeList pTL)))
-           (:tuple (ctype2:function type0 params) name0))
+           (match type0 with
+             (ctype2:pointer sub)
+             -> (:tuple (ctype2:pointer (ctype2:function sub params)) name0)
+             _
+             -> (:tuple (ctype2:function type0 params) name0)
+             ))
       type x -> (begin
                   (printf "unhandled directDeclarator " (repr (parse->sexp (parse:nt 'directDeclarator x))) "\n")
                   (raise (:Hell)))
