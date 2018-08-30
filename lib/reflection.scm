@@ -21,7 +21,7 @@
              (:tuple 0 (>> raw1 8) (logand #xff raw1))))
           )))
 
-;; note: these match the defines in `include/pxll.h`
+;; note: these match the defines in `include/irken.h`
 
 (define ~~imm-tags #('char 'bool 'nil 'undefined 'empty-vector))
 (define ~~ptr-tags #('none 'save 'closure 'env 'string 'vector 'pair 'symbol 'buffer 'foreign))

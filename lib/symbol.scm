@@ -40,7 +40,7 @@
 
 (define (get-internal-symbols)
   (%backend c
-    (%%cexp (vector symbol) "(object *) pxll_internal_symbols"))
+    (%%cexp (vector symbol) "(object *) irk_internal_symbols"))
   (%backend llvm
     (%llvm-get ("@irk_internal_symbols_p" (-> (vector symbol)) #f)))
   (%backend bytecode

@@ -174,7 +174,7 @@ void prof_dump (void)
 "))
 
 (define (emit-profile-1 o)
-  (o.write "static pxll_prof prof_funs[] = \n  {{0, 0, 0, 0, \"top\"},")
+  (o.write "static irk_prof prof_funs[] = \n  {{0, 0, 0, 0, \"top\"},")
   (for-map k v the-context.profile-funs
     (let ((name (cdr (reverse v.names)))) ;; strip 'top' off
       (o.write (format "   {0, 0, 0, 0, \"" (join symbol->string "." name) "\"},"))))
@@ -277,7 +277,7 @@ void prof_dump (void)
         (literal:string s)
         -> (let ((slen (string-length s)))
              ;; this works because we want strings compared for eq? identity...
-             (o.write (format "pxll_string constructed_" (int i)
+             (o.write (format "irk_string constructed_" (int i)
                               " = {STRING_HEADER(" (int slen)
                               "), " (int slen)
                               ", \"" (c-string s) "\" };")))
@@ -286,7 +286,7 @@ void prof_dump (void)
         (literal:symbol s)
         -> (begin
              (o.write (format "// symbol " (sym s)))
-             (o.write (format "pxll_int constructed_" (int i)
+             (o.write (format "irk_int constructed_" (int i)
                               "[] = {UPTR(" (int i)
                               ",1), SYMBOL_HEADER, UPTR0("
                               (int (cmap->index lits (literal:string (symbol->string s))))
@@ -295,7 +295,7 @@ void prof_dump (void)
              )
         _ -> (let ((val (walk lit i))
                    (rout (list:cons val (sprinkle-newlines (reverse output)))))
-               (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
+               (o.write (format "irk_int constructed_" (int i) "[] = {" (join "," rout) "};")))
         ))
     (let ((symptrs '()))
       (tree/inorder
@@ -303,9 +303,9 @@ void prof_dump (void)
 	 (push! symptrs (format "UPTR(" (int index) ",1)")))
        the-context.symbols)
       ;; XXX NOTE: this does not properly use TC_EMPTY_VECTOR
-      (o.write (format "pxll_int pxll_internal_symbols[] = {("
+      (o.write (format "irk_int irk_internal_symbols[] = {("
                        (int (length symptrs)) "<<8)|TC_VECTOR,\n\t" (join "," (sprinkle-newlines symptrs)) "};"))
-      (o.write (format "object * irk_internal_symbols_p = (object*) &pxll_internal_symbols;"))
+      (o.write (format "object * irk_internal_symbols_p = (object*) &irk_internal_symbols;"))
       )
     (o.indent)
     ))

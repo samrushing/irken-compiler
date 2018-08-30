@@ -10,9 +10,9 @@
     -> (match name with
 	 'int	       -> (format "UNTAG_INTEGER(" arg ")")
 	 'bool         -> (format "IRK_IS_TRUE(" arg ")")
-	 'string       -> (format "((pxll_string*)(" arg "))->data")
+	 'string       -> (format "((irk_string*)(" arg "))->data")
 	 'cstring      -> (format "(char*)" arg)
-	 'buffer       -> (format "(" (irken-type->c-type type) "(((pxll_vector*)" arg ")+1))")
+	 'buffer       -> (format "(" (irken-type->c-type type) "(((irk_vector*)" arg ")+1))")
          'cref         -> (format "(" (irken-type->c-type type) ") get_foreign(" arg ")")
 	 'arrow	       -> arg
 	 'vector       -> arg
@@ -20,7 +20,7 @@
 	 'char	       -> arg
 	 'continuation -> arg
 	 'raw	       -> (match predargs with
-			    ((type:pred 'string _ _)) -> (format "((pxll_string*)(" arg "))")
+			    ((type:pred 'string _ _)) -> (format "((irk_string*)(" arg "))")
 			    _ -> (error1 "unknown raw type in %cexp" type))
 	 kind          -> (if (member-eq? kind c-int-types)
 			      (format "unbox(" arg ")")
@@ -73,14 +73,14 @@
 
 (define (wrap-out type exp)
   (match type with
-    (type:pred 'int _ _)     -> (format "TAG_INTEGER((pxll_int)" exp ")")
+    (type:pred 'int _ _)     -> (format "TAG_INTEGER((irk_int)" exp ")")
     (type:pred 'bool _ _)    -> (format "IRK_TEST(" exp ")")
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
     (type:pred 'cref _ _)    -> (format "(make_foreign((void*)" exp "))")
     (type:pred '* _ _)       -> (format "(make_foreign((void*)" exp "))")
     (type:pred 'void _ _)    -> (format "((" exp "), IRK_UNDEFINED)")
     (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
-				    (format "box((pxll_int)" exp ")")
+				    (format "box((irk_int)" exp ")")
 				    exp)
     _                        -> exp
     ))
@@ -495,8 +495,8 @@
     (define (get-uitag dtname altname index)
       (match dtname altname with
 	'list 'nil -> "TC_NIL"
-	'bool 'true -> "(pxll_int)IRK_TRUE"
-	'bool 'false -> "(pxll_int)IRK_FALSE"
+	'bool 'true -> "(irk_int)IRK_TRUE"
+	'bool 'false -> "(irk_int)IRK_FALSE"
 	_ _ -> (format "UITAG(" (int index) ")")))
 
     (define (emit-primop name parm type args k)
@@ -553,14 +553,14 @@
           (vec index)
           -> (when (not (= -1 k.target))
                (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-               (o.write (format "O r" (int k.target) " = ((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
+               (o.write (format "O r" (int k.target) " = ((irk_vector*)r" (int vec) ")->val[unbox(r" (int index) ")];")))
           _ -> (primop-error))
 
         (define prim-array-set
           (vec index val)
           -> (begin
                (o.write (format "range_check (GET_TUPLE_LENGTH(*(object*)r" (int vec) "), unbox(r" (int index)"));"))
-               (o.write (format "((pxll_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";"))
+               (o.write (format "((irk_vector*)r" (int vec) ")->val[unbox(r" (int index) ")] = r" (int val) ";"))
                (when (>= k.target 0)
                  (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error))
@@ -574,13 +574,13 @@
                (match (guess-record-type sig) with
                  (maybe:yes sig0)
                  -> (o.write (format "O r" (int k.target) ;; compile-time lookup
-                                     " = ((pxll_vector*)r" (int rec-reg)
+                                     " = ((irk_vector*)r" (int rec-reg)
                                      ")->val[" (int (index-eq label sig0))
                                      "];"))
                  (maybe:no)
                  -> (begin
                       (o.write (format "O r" (int k.target) ;; run-time lookup
-                                       " = ((pxll_vector*)r" (int rec-reg)
+                                       " = ((irk_vector*)r" (int rec-reg)
                                        ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
                                        ")-TC_USEROBJ)>>2," (int label-code)
                                        ")]; // label=" (sym label)))
@@ -594,12 +594,12 @@
           -> (let ((label-code (lookup-label-code label)))
                (match (guess-record-type sig) with
                  (maybe:yes sig0)
-                 -> (o.write (format "((pxll_vector*)r" (int rec-reg) ;; compile-time lookup
+                 -> (o.write (format "((irk_vector*)r" (int rec-reg) ;; compile-time lookup
                                      ")->val[" (int (index-eq label sig0))
                                      "] = r" (int arg-reg) ";"))
                  (maybe:no)
                  -> (begin
-                      (o.write (format "((pxll_vector*)r" (int rec-reg) ;; run-time lookup
+                      (o.write (format "((irk_vector*)r" (int rec-reg) ;; run-time lookup
                                        ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
                                        ")-TC_USEROBJ)>>2," (int label-code)
                                        ")] = r" (int arg-reg) ";"))
@@ -724,7 +724,7 @@
                (type:pred '* _ _)
                -> (o.write (format "O r" (int k.target) " = make_foreign (*(void**)get_foreign (r" (int src) "));"))
                int-type
-               -> (o.write (format "O r" (int k.target) " = TAG_INTEGER((pxll_int)*(("
+               -> (o.write (format "O r" (int k.target) " = TAG_INTEGER((irk_int)*(("
                                    (irken-type->c-type int-type) "*)get_foreign(r" (int src) ")));"))
                )
           _ -> (primop-error))
@@ -750,7 +750,7 @@
         (define prim-c-get-int
           (src)
           -> (o.write
-              (format "O r" (int k.target) " = TAG_INTEGER((pxll_int)*(("
+              (format "O r" (int k.target) " = TAG_INTEGER((irk_int)*(("
                       (irken-type->c-type type) "*)get_foreign(r" (int src) ")));"))
           _ -> (primop-error))
 
@@ -800,7 +800,7 @@
           _ -> (primop-error))
 
         (define prim-cref->int
-          (src) -> (o.write (format "O r" (int k.target) " = TAG_INTEGER (((pxll_int) get_foreign (r" (int src) ")));"))
+          (src) -> (o.write (format "O r" (int k.target) " = TAG_INTEGER (((irk_int) get_foreign (r" (int src) ")));"))
           _ -> (primop-error))
 
         (define prim-int->cref

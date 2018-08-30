@@ -10,8 +10,8 @@ typedef struct {
   int64_t allocs;
   int64_t alloc_words;
   char * name;
-} pxll_prof;
-static pxll_prof prof_funs[];
+} irk_prof;
+static irk_prof prof_funs[];
 static int prof_current_fun;
 static int prof_num_funs;
 #endif
@@ -21,69 +21,69 @@ object * irk_get_metadata();
 
 static
 inline
-pxll_int
+irk_int
 get_typecode (object * ob)
 {
   if (IMMEDIATE(ob)) {
     if (IS_INTEGER(ob)) {
       return TC_INT;
     } else {
-      return (pxll_int)ob & 0xff;
+      return (irk_int)ob & 0xff;
     }
   } else {
-    return (pxll_int)*((pxll_int *)ob) & 0xff;
+    return (irk_int)*((irk_int *)ob) & 0xff;
   }
 }
 
 // for pvcase/nvcase
 static
 inline
-pxll_int
+irk_int
 get_case (object * ob)
 {
   if (is_immediate (ob)) {
     if (is_int (ob)) {
       return TC_INT;
     } else {
-      return (pxll_int) ob;
+      return (irk_int) ob;
     }
   } else {
-    return (pxll_int)*((pxll_int *)ob) & 0xff;
+    return (irk_int)*((irk_int *)ob) & 0xff;
   }
 }
 
 // for pvcase/nvcase
 static
 inline
-pxll_int
+irk_int
 get_case_noint (object * ob)
 {
   if (is_immediate (ob)) {
-    return (pxll_int) ob;
+    return (irk_int) ob;
   } else {
-    return (pxll_int) * ((pxll_int*) ob) & 0xff;
+    return (irk_int) * ((irk_int*) ob) & 0xff;
   }
 }
 
 // for pvcase/nvcase
 static
 inline
-pxll_int
+irk_int
 get_case_imm (object * ob)
 {
-  return (pxll_int)ob;
+  return (irk_int)ob;
 }
 
 static
 inline
-pxll_int
+irk_int
 get_case_tup (object * ob)
 {
-  return (pxll_int)*((pxll_int *)ob) & 0xff;
+  return (irk_int)*((irk_int *)ob) & 0xff;
 }
 
 static
-pxll_int
+irk_int
 get_tuple_size (object * ob)
 {
   header * h = (header *) ob;
@@ -94,14 +94,14 @@ get_tuple_size (object * ob)
 object *
 irk_objectptr2int (object * ob)
 {
-  return box((pxll_int)(*ob));
+  return box((irk_int)(*ob));
 }
 
 // for runtime reflection.
 object *
 irk_object2int (object * ob)
 {
-  return box((pxll_int)ob);
+  return box((irk_int)ob);
 }
 
 static
@@ -114,7 +114,7 @@ indent (int n)
 }
 
 static void print_string (object * ob, int quoted);
-static void print_list (pxll_pair * l);
+static void print_list (irk_pair * l);
 
 // this is kinda lame, it's part pretty-printer, part not.
 static
@@ -135,11 +135,11 @@ dump_object (object * ob, int depth)
     int tc = is_immediate (ob);
     switch (tc) {
     case TC_CHAR:
-      if ((pxll_int)ob>>8 == 257) {
+      if ((irk_int)ob>>8 == 257) {
 	// deliberately out-of-range character
 	fprintf (stdout, "#\\eof");
       } else {
-	char ch = ((char)((pxll_int)ob>>8));
+	char ch = ((char)((irk_int)ob>>8));
 	switch (ch) {
 	case '\000': fprintf (stdout, "#\\nul"); break;
 	case ' '   : fprintf (stdout, "#\\space"); break;
@@ -151,7 +151,7 @@ dump_object (object * ob, int depth)
       }
       break;
     case TC_BOOL:
-      fprintf (stdout, ((pxll_int)ob >> 8) & 0xff ? "#t" : "#f");
+      fprintf (stdout, ((irk_int)ob >> 8) & 0xff ? "#t" : "#f");
       break;
     case TC_NIL:
       fprintf (stdout, "()");
@@ -164,7 +164,7 @@ dump_object (object * ob, int depth)
       break;
     case TC_USERIMM:
       // a user immediate unit-type...
-      fprintf (stdout, "<u%" PRIuPTR ">", (((pxll_int)ob)>>8));
+      fprintf (stdout, "<u%" PRIuPTR ">", (((irk_int)ob)>>8));
       break;
     case 0: {
       // structure
@@ -173,22 +173,22 @@ dump_object (object * ob, int depth)
       switch (tc) {
       case TC_SAVE: {
 	// XXX fix me - now holds saved registers
-        pxll_save * s = (pxll_save* ) ob;
+        irk_save * s = (irk_save* ) ob;
         fprintf (stdout, "<save pc=%p\n", s->pc);
         dump_object ((object *) s->lenv, depth+1); fprintf (stdout, "\n");
         dump_object ((object *) s->next, depth+1); fprintf (stdout, ">");
       }
         break;
       case TC_CLOSURE: {
-        pxll_closure * c = (pxll_closure *) ob;
+        irk_closure * c = (irk_closure *) ob;
         //fprintf (stdout, "<closure pc=%p\n", c->pc);
         //dump_object ((object *) c->lenv, depth+1); fprintf (stdout, ">\n");
 	fprintf (stdout, "<closure pc=%p lenv=%p>", c->pc, c->lenv);
       }
         break;
       case TC_ENV: {
-        pxll_tuple * t = (pxll_tuple *) ob;
-        pxll_int n = get_tuple_size (ob);
+        irk_tuple * t = (irk_tuple *) ob;
+        irk_int n = get_tuple_size (ob);
         int i;
 	fprintf (stdout, "<tuple\n");
         for (i=0; i < n-1; i++) {
@@ -199,8 +199,8 @@ dump_object (object * ob, int depth)
       }
 	break;
       case TC_VECTOR: {
-        pxll_vector * t = (pxll_vector *) ob;
-        pxll_int n = get_tuple_size (ob);
+        irk_vector * t = (irk_vector *) ob;
+        irk_int n = get_tuple_size (ob);
         int i;
 	fprintf (stdout, "#(");
         for (i=0; i < n; i++) {
@@ -213,14 +213,14 @@ dump_object (object * ob, int depth)
       }
 	break;
       case TC_PAIR:
-	print_list ((pxll_pair *) ob);
+	print_list ((irk_pair *) ob);
         break;
       case TC_STRING:
 	print_string (ob, 1);
 	break;
       case TC_BUFFER: {
-	pxll_int n = get_tuple_size (ob);
-	fprintf (stdout, "<buffer %" PRIuPTR " words %" PRIuPTR " bytes>", n, n * (sizeof(pxll_int)));
+	irk_int n = get_tuple_size (ob);
+	fprintf (stdout, "<buffer %" PRIuPTR " words %" PRIuPTR " bytes>", n, n * (sizeof(irk_int)));
 	break;
       }
       case TC_FOREIGN:
@@ -239,8 +239,8 @@ dump_object (object * ob, int depth)
 	print_string ((object*)ob[1], 0);
 	break;
       default: {
-        pxll_vector * t = (pxll_vector *) ob;
-        pxll_int n = get_tuple_size (ob);
+        irk_vector * t = (irk_vector *) ob;
+        irk_int n = get_tuple_size (ob);
         int i;
 	fprintf (stdout, "{u%d ", (tc - TC_USEROBJ)>>2);
         for (i=0; i < n; i++) {
@@ -269,7 +269,7 @@ dump_object (object * ob, int depth)
 
 static
 inline
-pxll_int min_int (pxll_int a, pxll_int b)
+irk_int min_int (irk_int a, irk_int b)
 {
   if (a < b) {
     return a;
@@ -279,8 +279,8 @@ pxll_int min_int (pxll_int a, pxll_int b)
 }
 
 static
-pxll_int
-magic_cmp_int (pxll_int a, pxll_int b)
+irk_int
+magic_cmp_int (irk_int a, irk_int b)
 {
   if (a == b) {
     return 0;
@@ -292,8 +292,8 @@ magic_cmp_int (pxll_int a, pxll_int b)
 }
 
 static
-pxll_int
-magic_cmp_string (pxll_string * sa, pxll_string * sb)
+irk_int
+magic_cmp_string (irk_string * sa, irk_string * sb)
 {
   int cmp = memcmp (sa->data, sb->data, min_int (sa->len, sb->len));
   if (cmp == 0) {
@@ -305,35 +305,35 @@ magic_cmp_string (pxll_string * sa, pxll_string * sb)
   }
 }
 
-pxll_int
+irk_int
 magic_cmp (object * a, object * b)
 {
   if (a == b) {
     return 0;
   } else if (is_immediate (a) && is_immediate (b)) {
-    return magic_cmp_int ((pxll_int)a, (pxll_int)b);
+    return magic_cmp_int ((irk_int)a, (irk_int)b);
   } else if (is_immediate (a)) {
     return -1; // immediates < tuples.
   } else if (is_immediate (b)) {
     return +1; // tuples > immediates.
   } else {
-    pxll_int tca = GET_TYPECODE (*a);
-    pxll_int tcb = GET_TYPECODE (*b);
+    irk_int tca = GET_TYPECODE (*a);
+    irk_int tcb = GET_TYPECODE (*b);
     if (tca < tcb) {
       return -1;
     } else if (tcb < tca) {
       return +1;
     } else if (tca == TC_STRING) {
-      return magic_cmp_string ((pxll_string *) a, (pxll_string *) b);
+      return magic_cmp_string ((irk_string *) a, (irk_string *) b);
     } else if (tca == TC_SYMBOL) {
-      return magic_cmp_int ((pxll_int)a[2],(pxll_int)b[2]);
+      return magic_cmp_int ((irk_int)a[2],(irk_int)b[2]);
     } else {
       // tags are the same: do per-element comparison.
       // XXX check special internal types like TC_CLOSURE!
-      pxll_int len_a = GET_TUPLE_LENGTH (*a);
-      pxll_int len_b = GET_TUPLE_LENGTH (*b);
+      irk_int len_a = GET_TUPLE_LENGTH (*a);
+      irk_int len_b = GET_TUPLE_LENGTH (*b);
       for (int i=0; i < min_int (len_a, len_b); i++) {
-        pxll_int cmp = magic_cmp ((object*)a[i+1], (object*)b[i+1]);
+        irk_int cmp = magic_cmp ((object*)a[i+1], (object*)b[i+1]);
         if (cmp != 0) {
           return cmp;
         }
@@ -355,14 +355,14 @@ static
 void
 relocate_llvm_walk (object * ob)
 {
-  pxll_int tc = GET_TYPECODE (*ob);
+  irk_int tc = GET_TYPECODE (*ob);
   if (tc == TC_STRING) {
     return;
   } else {
-    pxll_int len = GET_TUPLE_LENGTH(*ob);
+    irk_int len = GET_TUPLE_LENGTH(*ob);
     for (int i=0; i < len; i++) {
       object item = ob[i+1];
-      pxll_int item0 = (pxll_int) item;
+      irk_int item0 = (irk_int) item;
       if (item0 < 0) {
         // negative values indicate an external relocation
         ob[i+1] = llvm_all_lits[(-item0)];
@@ -382,7 +382,7 @@ void
 relocate_llvm_literals (object * vec, uint32_t * offsets)
 {
   llvm_all_lits = vec;
-  pxll_int n = GET_TUPLE_LENGTH (*vec);
+  irk_int n = GET_TUPLE_LENGTH (*vec);
   for (int i=0; i < n; i++) {
     llvm_this_lit = vec[i+1];
     object * offset_object = (object*)(vec[i+1]) + offsets[i];
@@ -423,7 +423,7 @@ static
 void
 print_string (object * ob, int quoted)
 {
-  pxll_string * s = (pxll_string *) ob;
+  irk_string * s = (irk_string *) ob;
   char * ps = s->data;
   int i;
   //fprintf (stderr, "<printing string of len=%d (tuple-len=%d)>\n", s->len, get_tuple_size (ob));
@@ -453,7 +453,7 @@ print_string (object * ob, int quoted)
 
 static
 void
-print_list (pxll_pair * l)
+print_list (irk_pair * l)
 {
   fprintf (stdout, "(");
   while (1) {
@@ -465,7 +465,7 @@ print_list (pxll_pair * l)
       break;
     } else if (!is_immediate (cdr) && GET_TYPECODE (*cdr) == TC_PAIR) {
       fprintf (stdout, " ");
-      l = (pxll_pair *) cdr;
+      l = (irk_pair *) cdr;
     } else {
       fprintf (stdout, " . ");
       dump_object (cdr, 0);
@@ -476,7 +476,7 @@ print_list (pxll_pair * l)
 }
 
 static
-pxll_int
+irk_int
 irk_get_vector_length (object * vec)
 {
   if (vec == (object *) TC_EMPTY_VECTOR) {
@@ -537,11 +537,11 @@ range_check (unsigned int length, unsigned int index)
 }
 #endif
 
-pxll_int verbose_gc = 1;
-pxll_int clear_fromspace = 0;
-pxll_int clear_tospace = 1;
+irk_int verbose_gc = 1;
+irk_int clear_fromspace = 0;
+irk_int clear_tospace = 1;
 
-pxll_int vm (int argc, char * argv[]);
+irk_int vm (int argc, char * argv[]);
 
 #include "rdtsc.h"
 
@@ -557,7 +557,7 @@ uint64_t gc_ticks = 0;
 #if 1
 static
 void
-clear_space (object * p, pxll_int n)
+clear_space (object * p, irk_int n)
 {
   while (n--) {
     *p++ = IRK_NIL;
@@ -565,7 +565,7 @@ clear_space (object * p, pxll_int n)
 }
 #else
 void
-clear_space (object * p, pxll_int n)
+clear_space (object * p, irk_int n)
 {
   memset (p, (int) IRK_NIL, sizeof(object) * n);
 }
@@ -614,7 +614,7 @@ stack_depth_indent()
 
 static
 object *
-varref (pxll_int depth, pxll_int index) {
+varref (irk_int depth, irk_int index) {
   object * lenv0 = lenv;
   while (depth--) {
     lenv0 = (object*)lenv0[1];
@@ -624,7 +624,7 @@ varref (pxll_int depth, pxll_int index) {
 
 static
 void
-varset (pxll_int depth, pxll_int index, object * val) {
+varset (irk_int depth, irk_int index, object * val) {
   object * lenv0 = lenv;
   while (depth--) {
     lenv0 = (object*)lenv0[1];
@@ -635,7 +635,7 @@ varset (pxll_int depth, pxll_int index, object * val) {
 #include "gc1.c"
 
 static object *
-allocate (pxll_int tc, pxll_int size)
+allocate (irk_int tc, irk_int size)
 {
   object * save = freep;
   *freep = (object*) (size<<8 | (tc & 0xff));
@@ -660,7 +660,7 @@ allocate (pxll_int tc, pxll_int size)
 
   // this is emitted by the backend for %make-tuple
 static object *
-alloc_no_clear (pxll_int tc, pxll_int size)
+alloc_no_clear (irk_int tc, irk_int size)
 {
   object * save = freep;
   *freep = (object*) (size<<8 | (tc & 0xff));
@@ -669,7 +669,7 @@ alloc_no_clear (pxll_int tc, pxll_int size)
 }
 
 object *
-make_vector (pxll_int size, object * val)
+make_vector (irk_int size, object * val)
 {
   if (size == 0) {
     return (object *) TC_EMPTY_VECTOR;
@@ -691,7 +691,7 @@ make_foreign (void * ptr)
 }
 
 object *
-make_malloc (pxll_int size, pxll_int count)
+make_malloc (irk_int size, irk_int count)
 {
   object * r = allocate (TC_FOREIGN, 1);
   r[1] = (object *) malloc (size * count);
@@ -699,7 +699,7 @@ make_malloc (pxll_int size, pxll_int count)
 }
 
 object *
-make_halloc (pxll_int size, pxll_int count)
+make_halloc (irk_int size, irk_int count)
 {
   object * buffer = alloc_no_clear (TC_BUFFER, HOW_MANY (size * count, sizeof(object)));
   object * result = allocate (TC_FOREIGN, 2);
@@ -718,13 +718,13 @@ get_foreign (object * ob)
     // TC_FOREIGN <buffer> <offset>
     object * buffer = (object*) ob[1];
     uint8_t * base = (uint8_t *) (buffer + 1);
-    pxll_int offset = UNTAG_INTEGER (ob[2]);
+    irk_int offset = UNTAG_INTEGER (ob[2]);
     return (void *) (base + offset);
   }
 }
 
 object *
-offset_foreign (object * foreign, pxll_int offset)
+offset_foreign (object * foreign, irk_int offset)
 {
   if (offset == 0) {
     return foreign;
@@ -757,7 +757,7 @@ free_foreign (object * foreign)
 object *
 irk_cref_2_string (object * src, object * len)
 {
-  pxll_int len0 = UNTAG_INTEGER (len);
+  irk_int len0 = UNTAG_INTEGER (len);
   object * result = make_string (len0);
   uint8_t * src0 = (uint8_t * ) get_foreign (src);
   void * dst = GET_STRING_POINTER (result);
@@ -774,7 +774,7 @@ irk_string_2_cref (object * src)
 object *
 irk_cref_2_int (object * src)
 {
-  return TAG_INTEGER (((pxll_int *) src)[1]);
+  return TAG_INTEGER (((irk_int *) src)[1]);
 }
 
 object *
@@ -791,16 +791,16 @@ irk_int_2_cref (object * src)
 object *
 irk_get_errno (void)
 {
-  return TAG_INTEGER ((pxll_int) errno);
+  return TAG_INTEGER ((irk_int) errno);
 }
 
 
 // used to lookup record elements when the index
 //  cannot be computed at compile-time.
 object *
-record_fetch (object * rec, pxll_int label)
+record_fetch (object * rec, irk_int label)
 {
-  return ((pxll_vector*)rec)->val[
+  return ((irk_vector*)rec)->val[
     lookup_field (
       (GET_TYPECODE(*rec)-TC_USEROBJ)>>2,
       label
@@ -809,9 +809,9 @@ record_fetch (object * rec, pxll_int label)
 }
 
 void
-record_store (object * rec, pxll_int label, object * val)
+record_store (object * rec, irk_int label, object * val)
 {
-  ((pxll_vector*)rec)->val[
+  ((irk_vector*)rec)->val[
     lookup_field (
       (GET_TYPECODE(*rec)-TC_USEROBJ)>>2,
       label
@@ -820,7 +820,7 @@ record_store (object * rec, pxll_int label, object * val)
 }
 
 void
-vector_range_check (object * v, pxll_int index)
+vector_range_check (object * v, irk_int index)
 {
   if (v == (object*) TC_EMPTY_VECTOR) {
     range_check (0, index);
@@ -840,17 +840,17 @@ check_heap()
 object *
 irk_print_string (object * s)
 {
-  pxll_string * s0 = (pxll_string *) s;
+  irk_string * s0 = (irk_string *) s;
   return box (fwrite (s0->data, 1, s0->len, stdout));
 }
 
 void
 DENV0 (object * env)
 {
-  pxll_tuple * t = (pxll_tuple *) env;
+  irk_tuple * t = (irk_tuple *) env;
   fprintf (stdout, "ENV@%p: [", env);
-  while (t != (pxll_tuple*)IRK_NIL) {
-    pxll_int n = get_tuple_size ((object *) t);
+  while (t != (irk_tuple*)IRK_NIL) {
+    irk_int n = get_tuple_size ((object *) t);
     fprintf (stdout, "%" PRIdPTR " ", n);
     t = t->next;
   }
@@ -862,8 +862,8 @@ void DENV() { DENV0 (lenv); }
 void
 RIB0 (object * env)
 {
-  pxll_tuple * t = (pxll_tuple *) env;
-  pxll_int n = get_tuple_size ((object *) t);
+  irk_tuple * t = (irk_tuple *) env;
+  irk_int n = get_tuple_size ((object *) t);
   fprintf (stdout, " rib: ");
   for (int i = 0; i < n-1; i++) {
     dump_object (t->val[i], 0);
@@ -885,7 +885,7 @@ void TRACE (const char * name)
   }
 }
 
-void T (pxll_int n)
+void T (irk_int n)
 {
   fprintf (stderr, "[%" PRIdPTR "]", n);
 }
@@ -933,7 +933,7 @@ mem2ptr (object * ob)
     break;
   case TC_USEROBJ + 1:
     // pointer
-    return (object*) UNTAG_INTEGER (*((pxll_int*)(ob+1)));
+    return (object*) UNTAG_INTEGER (*((irk_int*)(ob+1)));
     break;
   default:
     fprintf (stderr, "bad cmem object\n");
@@ -945,7 +945,7 @@ object *
 ptr2mem (void * ptr)
 {
   object * result = allocate (TC_USEROBJ + 1, 1);
-  result[1] = (object*) TAG_INTEGER ((pxll_int)ptr);
+  result[1] = (object*) TAG_INTEGER ((irk_int)ptr);
   return result;
 }
 
@@ -959,9 +959,9 @@ buf2mem (object * buf)
 
 static
 object *
-make_string (pxll_int len)
+make_string (irk_int len)
 {
-  pxll_string * result = (pxll_string *) allocate (TC_STRING, STRING_TUPLE_LENGTH (len));
+  irk_string * result = (irk_string *) allocate (TC_STRING, STRING_TUPLE_LENGTH (len));
   result->len = len;
   return (object *) result;
 }
@@ -1005,7 +1005,7 @@ object *
 irk_copy_string (char * s)
 {
   int slen = strlen (s);
-  pxll_string * r = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
+  irk_string * r = (irk_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
   r->len = slen;
   memcpy (GET_STRING_POINTER (r), s, slen);
   return (object *) r;
@@ -1019,7 +1019,7 @@ irk_copy_tuple (object * ob)
   } else {
     header h = (header) (ob[0]);
     int tag  = h & 0xff;
-    pxll_int len = GET_TUPLE_LENGTH (ob[0]);
+    irk_int len = GET_TUPLE_LENGTH (ob[0]);
     //DO(ob);
     object * r = allocate (tag, len);
     for (int i=0; i < len; i++) {
@@ -1044,7 +1044,7 @@ irk_make_argv()
 object *
 irk_set_verbose_gc (object * data)
 {
-  pxll_int r = verbose_gc;
+  irk_int r = verbose_gc;
   verbose_gc = IRK_IS_TRUE (data);
   return (object*) r;
 }
@@ -1052,14 +1052,14 @@ irk_set_verbose_gc (object * data)
 object *
 irk_make_string (object * len)
 {
-  pxll_int len0 = unbox(len);
-  pxll_string * r = (pxll_string*) alloc_no_clear (TC_STRING, string_tuple_length (len0));
+  irk_int len0 = unbox(len);
+  irk_string * r = (irk_string*) alloc_no_clear (TC_STRING, string_tuple_length (len0));
   r->len = len0;
   return (object *) r;
 }
 
 object *
-irk_string_cmp (pxll_string * a, pxll_string * b)
+irk_string_cmp (irk_string * a, irk_string * b)
 {
   return (object*) UITAG (1 + magic_cmp_string (a, b));
 }
@@ -1077,11 +1077,11 @@ irk_string_cmp (pxll_string * a, pxll_string * b)
 
 // 60-bit limbs
 object *
-irk_mul2 (pxll_int a, pxll_int b, object * rvo)
+irk_mul2 (irk_int a, irk_int b, object * rvo)
 {
   __int128_t r;
   __int128_t mask = (__int128_t)((((int64_t)1)<<60)-1);
-  pxll_vector * rv = (pxll_vector *) rvo;
+  irk_vector * rv = (irk_vector *) rvo;
   r = ((__int128_t) a) * ((__int128_t) b);
   rv->val[0] = box ((int64_t) (r >> 60));
   rv->val[1] = box ((int64_t) (r & mask));
@@ -1091,9 +1091,9 @@ irk_mul2 (pxll_int a, pxll_int b, object * rvo)
 // divide two digits by one digit.
 // assumptions: b >= big/halfmask (i.e. base/2)
 object *
-irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
+irk_div2b1 (irk_int ah, irk_int al, irk_int b, object * rvo)
 {
-  pxll_vector * rv = (pxll_vector *) rvo;
+  irk_vector * rv = (irk_vector *) rvo;
   __int128_t mask = (__int128_t)((((int64_t)1)<<60)-1);
   __int128_t a = (((__int128_t)ah)<<60) | ((__int128_t)al);
   __int128_t q = a / b;
@@ -1107,11 +1107,11 @@ irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
 
 // 28-bit limbs
 object *
-irk_mul2 (pxll_int a, pxll_int b, object * rvo)
+irk_mul2 (irk_int a, irk_int b, object * rvo)
 {
   int64_t r;
   int64_t mask = (int64_t)((((int32_t)1)<<28)-1);
-  pxll_vector * rv = (pxll_vector *) rvo;
+  irk_vector * rv = (irk_vector *) rvo;
   r = ((int64_t) a) * ((int64_t) b);
   rv->val[0] = box ((int32_t) (r >> 28));
   rv->val[1] = box ((int32_t) (r & mask));
@@ -1121,9 +1121,9 @@ irk_mul2 (pxll_int a, pxll_int b, object * rvo)
 // divide two digits by one digit.
 // assumptions: b >= big/halfmask (i.e. base/2)
 object *
-irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
+irk_div2b1 (irk_int ah, irk_int al, irk_int b, object * rvo)
 {
-  pxll_vector * rv = (pxll_vector *) rvo;
+  irk_vector * rv = (irk_vector *) rvo;
   int64_t mask = (int64_t)((((int32_t)1)<<28)-1);
   int64_t a = (((int64_t)ah)<<28) | ((int64_t)al);
   int64_t q = a / b;

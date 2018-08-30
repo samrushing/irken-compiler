@@ -26,8 +26,8 @@ copy (object * p)
     } else {
       // p points at an object in from_space, copy it
       object * addr = freep;
-      pxll_int length = GET_TUPLE_LENGTH (*pp);
-      pxll_int k;
+      irk_int length = GET_TUPLE_LENGTH (*pp);
+      irk_int k;
       // copy tag, children
       for (k=0; k < length+1; k++) {
 	*freep++ = *pp++;
@@ -74,8 +74,8 @@ do_gc (int nroots)
     } else {
       object * p = scan + 1;
       unsigned char tc = GET_TYPECODE (*scan);
-      pxll_int length = GET_TUPLE_LENGTH (*scan);
-      pxll_int i;
+      irk_int length = GET_TUPLE_LENGTH (*scan);
+      irk_int i;
 
       switch (tc) {
 
@@ -196,7 +196,7 @@ gc_dump (object * thunk)
 
 
 static
-void adjust (object * q, pxll_int delta)
+void adjust (object * q, irk_int delta)
 {
   if ((*q) && (!IMMEDIATE(*(q)))) {
     // get the pointer arith right
@@ -207,7 +207,7 @@ void adjust (object * q, pxll_int delta)
 
 static
 void
-gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
+gc_relocate (int nroots, object * start, object * finish, irk_int delta)
 {
   object * scan = start;
   int i;
@@ -222,7 +222,7 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
   while (scan < finish) {
     // There must be a tuple here
     int tc = GET_TYPECODE (*scan);
-    pxll_int length = GET_TUPLE_LENGTH (*scan);
+    irk_int length = GET_TUPLE_LENGTH (*scan);
     object * p = scan + 1;
     int i;
 
@@ -260,23 +260,23 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
 }
 
 // these could probably be written in irken...
-static pxll_int
+static irk_int
 dump_image (char * filename, object * closure) {
   FILE * dump_file = fopen (filename, "wb");
-  pxll_int offset;
-  pxll_int size;
+  irk_int offset;
+  irk_int size;
   object * start;
   // do a gc for a compact dump
   closure = gc_dump (closure);
   // for now, start at the front of the heap
   start = heap0;
   size = freep - start;
-  offset = (pxll_int) heap0;
+  offset = (irk_int) heap0;
   // XXX add endian indicator...
-  fprintf (dump_file, "(irken image %" PRIuPTR " %p)\n", sizeof (pxll_int), start);
-  fwrite (&offset, sizeof(pxll_int), 1, dump_file);
-  fwrite (&size, sizeof(pxll_int), 1, dump_file);
-  fwrite (start, sizeof(pxll_int), size, dump_file);
+  fprintf (dump_file, "(irken image %" PRIuPTR " %p)\n", sizeof (irk_int), start);
+  fwrite (&offset, sizeof(irk_int), 1, dump_file);
+  fwrite (&size, sizeof(irk_int), 1, dump_file);
+  fwrite (start, sizeof(irk_int), size, dump_file);
   fclose (dump_file);
   return size;
 }
@@ -289,11 +289,11 @@ load_image (char * filename) {
     abort();
   } else {
     object * start, * thunk;
-    pxll_int size;
+    irk_int size;
     read_header (load_file);	// XXX verify header...
-    fread (&start, sizeof(pxll_int), 1, load_file);
-    fread (&size, sizeof(pxll_int), 1, load_file);
-    fread (heap1, sizeof(pxll_int), size, load_file);
+    fread (&start, sizeof(irk_int), 1, load_file);
+    fread (&size, sizeof(irk_int), 1, load_file);
+    fread (heap1, sizeof(irk_int), size, load_file);
     fprintf (stderr, "size=%d\n", (int) size);
     // relocate heap0
     gc_relocate (4, heap1, heap1 + size, start - heap1);

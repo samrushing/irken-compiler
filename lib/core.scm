@@ -244,7 +244,7 @@
 ;; int-cmp is important enough to be a primitive.
 (%backend c
   (define (int-cmp a b) : (int int -> cmp)
-    (%%cexp (int int -> cmp) "(object*)(pxll_int)UITAG((%0 < %1) ? 0 : ((%1 < %0) ? 2 : 1))" a b)))
+    (%%cexp (int int -> cmp) "(object*)(irk_int)UITAG((%0 < %1) ? 0 : ((%1 < %0) ? 2 : 1))" a b)))
 (%backend llvm
   (define (int-cmp a b)
     (%llvm-call ("@irk_int_cmp" (int int -> cmp)) a b)))
@@ -352,7 +352,7 @@
            (n-of n 0))))
 
 (define (address-of ob)
-  (%%cexp ('a -> int) "(pxll_int)%0" ob))
+  (%%cexp ('a -> int) "(irk_int)%0" ob))
 
 ;; this is a little harsh. 8^)
 ;; think of it as a placeholder for something better to come.
@@ -572,7 +572,7 @@
   (define (set-verbose-gc b)
     (%%cexp (bool -> bool) "verbose_gc = %0" b))
   (define (get-word-size)
-    (%%cexp (-> int) "sizeof(pxll_int)"))
+    (%%cexp (-> int) "sizeof(irk_int)"))
   (define (get-int-size)
     (%%cexp (-> int) "sizeof(int)"))
   )
@@ -632,7 +632,7 @@
 
 (define (read-cycle-counter)
   (%backend c
-    (%%cexp (-> int) "(pxll_int)rdtsc()"))
+    (%%cexp (-> int) "(irk_int)rdtsc()"))
   (%backend llvm
     (%llvm-call ("@irk_readcyclecounter" (-> int))))
   (%backend bytecode

@@ -9,7 +9,7 @@
 #include <assert.h>
 #include <inttypes.h>
 
-typedef intptr_t pxll_int;
+typedef intptr_t irk_int;
 typedef void * object;
 
 const size_t heap_size = 50000000; // about 400MB on 64-bit machine
@@ -58,26 +58,26 @@ object * heap1 = NULL;
 
 // XXX make these inline functions rather than macros
 
-#define GET_TYPECODE(p)		(((pxll_int)(p))&0xff)
-#define GET_PAYLOAD(p)		(((pxll_int)(p))>>8)
-#define GET_TUPLE_LENGTH(p)	(((pxll_int)(p))>>8)
-#define GET_ENV_LENGTH(p)	(((pxll_int)(p))>>8)
+#define GET_TYPECODE(p)		(((irk_int)(p))&0xff)
+#define GET_PAYLOAD(p)		(((irk_int)(p))>>8)
+#define GET_TUPLE_LENGTH(p)	(((irk_int)(p))>>8)
+#define GET_ENV_LENGTH(p)	(((irk_int)(p))>>8)
 #define TAG_VALUE(tag,value)	((object)((tag&0xff)|(value<<8)))
-#define GET_STRING_POINTER(s)   (((pxll_string *)(s))->data)
+#define GET_STRING_POINTER(s)   (((irk_string *)(s))->data)
 
-#define IS_INTEGER(p)		(((pxll_int)(p)) & 1)
+#define IS_INTEGER(p)		(((irk_int)(p)) & 1)
 #define TAG_INTEGER(p)		((object)(((p)<<1)|1))
-#define UNTAG_INTEGER(p)	(((pxll_int)(p))>>1)
+#define UNTAG_INTEGER(p)	(((irk_int)(p))>>1)
 
-#define IMMEDIATE(p)		(((pxll_int)(p)) & 3)
-#define IS_TYPE(t, p)		(((pxll_int)(p)&0xff)==t)
+#define IMMEDIATE(p)		(((irk_int)(p)) & 3)
+#define IS_TYPE(t, p)		(((irk_int)(p)&0xff)==t)
 #define IS_CHAR(p)		IS_TYPE (TC_CHAR, p)
 #define IS_BOOL(p)		IS_TYPE (TC_BOOL, p)
 #define IS_NIL(p)		IS_TYPE (TC_NIL, p)
 #define IS_UNDEFINED(p)		IS_TYPE (TC_UNDEFINED, p)
 
-#define GET_CHAR(p)		(((pxll_int)(p)>>8))
-#define TO_CHAR(ch)		((object)(pxll_int)(((ch)<<8)|TC_CHAR))
+#define GET_CHAR(p)		(((irk_int)(p)>>8))
+#define TO_CHAR(ch)		((object)(irk_int)(((ch)<<8)|TC_CHAR))
 
 #define HOW_MANY(x,n)		(((x)+(n)-1)/(n))
 #define STRING_TUPLE_LENGTH(n)  HOW_MANY (n + sizeof(int32_t), sizeof(object))
@@ -89,24 +89,24 @@ object * heap1 = NULL;
 #define IRK_TEST(x)		((x) ? IRK_TRUE : IRK_FALSE)
 #define IRK_IS_TRUE(x)		((x) != IRK_FALSE)
 
-#define UOBJ_GET(o,i)           (((pxll_vector*)(o))->val[i])
-#define UOBJ_SET(o,i,v)         (((pxll_vector*)(o))->val[i] = v)
+#define UOBJ_GET(o,i)           (((irk_vector*)(o))->val[i])
+#define UOBJ_SET(o,i,v)         (((irk_vector*)(o))->val[i] = v)
 
 // code output for literals
 #define UOTAG(n)                (TC_USEROBJ+((n)<<2))
 #define UITAG(n)                (TC_USERIMM+((n)<<8))
-#define UPTR(n,o)               ((pxll_int)(constructed_##n+o))
-#define UPTR0(n)                ((pxll_int)(&constructed_##n))
+#define UPTR(n,o)               ((irk_int)(constructed_##n+o))
+#define UPTR0(n)                ((irk_int)(&constructed_##n))
 #define UOHEAD(l,n)             ((l<<8)|UOTAG(n))
-#define INTCON(p)		((pxll_int)TAG_INTEGER(p))
+#define INTCON(p)		((irk_int)TAG_INTEGER(p))
 
 // here we want something that looks like a pointer, but is unlikely,
 // i.e. ...111111100
 #define GC_SENTINEL		(-4)
 
 // XXX technically this is 'tagging' rather than boxing.  think about renaming them.
-static pxll_int unbox (object * n) {return (pxll_int)n >> 1;}
-static object *   box (pxll_int n) {return (object *) ((n << 1) | 1);}
+static irk_int unbox (object * n) {return (irk_int)n >> 1;}
+static object *   box (irk_int n) {return (object *) ((n << 1) | 1);}
 
 // Here's an interesting idea.  Can we store the first item of a multi-item tuple
 //   in with the typecode?  Can we avoid storing lengths?  Maybe if the most important
@@ -126,27 +126,27 @@ typedef struct _tuple
   header tc;
   struct _tuple * next;
   object * val[0];
-} pxll_tuple;
+} irk_tuple;
 
 // full continuation
 typedef struct _save {
   header tc;
   struct _save * next;
-  pxll_tuple * lenv;
+  irk_tuple * lenv;
   void * pc;
   object *regs[0];
-} pxll_save;
+} irk_save;
 
 typedef struct _vector {
   header tc;
   object * val[0];
-} pxll_vector;
+} irk_vector;
 
 typedef struct _closure {
   header tc;
   void * pc;
-  pxll_tuple * lenv;
-} pxll_closure;
+  irk_tuple * lenv;
+} irk_closure;
 
 // The layout of strings is actually an endless source of
 // hand-wringing.  I can't bring myself to waste an entire 64 bits for
@@ -165,26 +165,26 @@ typedef struct _string {
   uint32_t len;
   // hopefully we get 32-bit alignment here
   char data[];
-} pxll_string;
+} irk_string;
 
 typedef struct _pair {
   header tc;
   object * car;
   object * cdr;
-} pxll_pair;
+} irk_pair;
 
-#define GET_TYPECODE(p) (((pxll_int)(p))&0xff)
+#define GET_TYPECODE(p) (((irk_int)(p))&0xff)
 
 static int
 is_int (object * ob)
 {
-  return (pxll_int) ob & 1;
+  return (irk_int) ob & 1;
 }
 
-static pxll_int
+static irk_int
 is_immediate (object * ob)
 {
-  pxll_int tc = ((pxll_int) ob) & 0xff;
+  irk_int tc = ((irk_int) ob) & 0xff;
   if (tc & 3) {
     return tc;
   } else {
@@ -192,18 +192,18 @@ is_immediate (object * ob)
   }
 }
 
-static pxll_int
-string_tuple_length (pxll_int n)
+static irk_int
+string_tuple_length (irk_int n)
 {
-  pxll_int word_size = sizeof (object);
-  pxll_int len_size = sizeof (int32_t);
-  pxll_int nwords = HOW_MANY (n + len_size, word_size);
+  irk_int word_size = sizeof (object);
+  irk_int len_size = sizeof (int32_t);
+  irk_int nwords = HOW_MANY (n + len_size, word_size);
   return nwords;
 }
 
-static object * make_string (pxll_int len);
+static object * make_string (irk_int len);
 
-static pxll_int
+static irk_int
 get_safe_typecode (object * ob)
 {
   if (is_immediate (ob)) {

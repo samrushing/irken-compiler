@@ -12,7 +12,7 @@
   (%backend c
     (%%cexp
      (int -> string)
-     "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((pxll_string*)(t))->len = %0, t)"
+     "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((irk_string*)(t))->len = %0, t)"
      n))
   (%backend llvm
     (%llvm-call ("@irk_make_string" (int -> string) ccc) n))
