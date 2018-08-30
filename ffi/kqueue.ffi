@@ -1,0 +1,35 @@
+;; -*- Mode: Irken -*-
+
+(kqueue
+   (includes "sys/types.h" "sys/event.h")
+   (structs kevent)
+   (constants
+    ;; ------------ filters ------------------
+    EVFILT_READ EVFILT_WRITE EVFILT_AIO EVFILT_VNODE EVFILT_PROC
+    EVFILT_SIGNAL
+    ;; Darwin only
+    EVFILT_MACHPORT
+    EVFILT_TIMER EVFILT_SYSCOUNT
+    ;; ------------- flags -------------------
+    EV_ADD EV_ENABLE EV_DISABLE EV_DELETE
+    EV_RECEIPT EV_ONESHOT EV_CLEAR EV_EOF EV_ERROR
+    ;; +FreeBSD/-Darwin
+    EV_DISPATCH
+    ;; ----- facility-specific constants -----
+    ;; for EVFILT_VNODE
+    NOTE_DELETE NOTE_WRITE NOTE_EXTEND NOTE_ATTRIB NOTE_LINK
+    NOTE_RENAME NOTE_REVOKE NOTE_FUNLOCK
+    ;; for EVFILT_PROC
+    NOTE_EXIT NOTE_EXITSTATUS NOTE_FORK NOTE_EXEC NOTE_SIGNAL
+    ;; marked deprecated: NOTE_REAP
+    ;; for EVFILT_TIMER
+    NOTE_SECONDS NOTE_USECONDS NOTE_NSECONDS
+    ;; +Darwin
+    NOTE_MACHTIME
+    ;; +FreeBSD
+    NOTE_MSECONDS
+    ;; +Darwin
+    NOTE_CRITICAL NOTE_BACKGROUND NOTE_LEEWAY
+    )
+   (sigs kqueue kevent)
+   )

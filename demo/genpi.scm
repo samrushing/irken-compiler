@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(include "lib/basis.scm")
+(include "lib/map.scm")
 (include "demo/bignum.scm")
 
 ;; This demo shows off the bignum library, but also irken's ability to do
@@ -8,18 +10,18 @@
 
 ;; Note: to use dump/load, you need to link with -no_pie to disable ASLR
 ;;
-;; on OS X: add -Wl,-no_pie to the clang compilation args.
+;; on macOS: add -Wl,-no_pie to the clang compilation args.
 ;;
 (define (pi-digit-emitter)
   (let ((n 1))
     (printf (lpad 6 (int 0)) ":  ")
     (define (emit dig)
       (when (= 0 (mod n 100))
-	    (callcc (lambda (k) (dump "pi.image" k)))
-	    (printf "\n" (lpad 6 (int n)) ": ")
-	    (flush)
-	    #u
-	    )
+        (callcc (lambda (k) (dump "pi.image" k)))
+        (printf "\n" (lpad 6 (int n)) ": ")
+        (flush)
+        #u
+        )
       (set! n (+ n 1))
       (printf (big->dec dig))
       (flush)
@@ -30,43 +32,31 @@
 ;; http://damien-guichard.developpez.com/tutoriels/ocaml/?page=page_6
 ;; http://www.pi314.net/eng/schrogosper.php
 
+;; avoid pointless consing.
+(define big/27 (big (I 27)))
+(define big/12 (big (I 12)))
+
 (define (pi)
-  (define B1 (int->big 1))
-  (define B2 (int->big 2))
-  (define B3 (int->big 3))
-  (define B* big-mul)
-  (define B+ big-add)
-  (define B- big-sub)
-  (define B/ big-div)
-  (define IB int->big)
   (define emit (pi-digit-emitter))
-
-  (define (B/ a b)
-    (match (big-div a b) with
-      (:tuple quo rem)
-      -> quo))
-
   (define (g q r t i)
-    (let ((i3 (B* i B3))
-	  (u (B* B3 (B* (B+ i3 B1) (B+ B2 i3))))
-	  (y (B/
-	      (B+ (B* q (B- (B* (IB 27) i) (IB 12)))
-		  (B* (IB 5) r))
-	      (B* (IB 5) t)))
-	  )
+    (let ((i3 (big (* i big/3)))
+	  (u (big (* big/3 (+ i3 big/1)
+                     (+ big/2 i3))))
+	  (y (big (/
+                   (+ (* q (- (* big/27 i) big/12))
+                      (* big/5 r))
+                   (* big/5 t)))))
       (emit y)
-      (g (B* (IB 10) (B* q (B* i (B- (B* B2 i) B1))))
-	 (B* (IB 10)
-	     (B* u
-		 (B- (B+ (B* q (B- (B* (IB 5) i) B2)) r)
-		     (B* y t))))
-	 (B* t u)
-	 (B+ i B1)
-	 )
-      )
-    )
+      (big
+       (g (* big/10 q i (- (* big/2 i) big/1))
+          (* big/10 u
+             (- (+ (* q (- (* big/5 i) big/2)) r)
+                (* y t)))
+          (* t u)
+          (+ i big/1)
+          ))))
   (set-verbose-gc #f)
-  (g B1 (IB 180) (IB 60) B2)
+  (big (g big/1 (I 180) (I 60) big/2))
   )
 
 (printf "Note: if this crashes upon restart you probably need to disable ASLR.\n")

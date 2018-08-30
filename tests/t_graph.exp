@@ -1,0 +1,22 @@
+graph = {
+  foo : baz
+  baz : bar
+  bar : foo
+  biff : barf
+  barf : snoo, snee
+  snoo : biff
+  snee : 
+  top : foo, biff
+}
+graph = {
+  foo : bar, top
+  baz : foo
+  bar : baz
+  biff : snoo, top
+  barf : biff
+  snoo : barf
+  snee : barf
+  top : 
+}
+((foo baz bar) (snee) (biff barf snoo) (top))
+10

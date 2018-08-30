@@ -1,6 +1,9 @@
+;; -*- Mode: Irken -*-
+
+(require-ffi 'posix)
 
 (define (random)
-  (%%cexp (-> int) "random()"))
+  (posix/random))
 
 (define (srandom n)
-  (%%cexp (int -> undefined) "srandom (%0)" n))
+  (posix/srandom n))

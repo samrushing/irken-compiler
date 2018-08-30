@@ -13,3 +13,9 @@ tests/*.byc
 /.tramp_history
 /self/.tramp_history
 /vm/irkvm
+/vm/irkc
+ffi/*_iface.c
+*~
+.tramp_history
+.DS_Store
+irken.elc

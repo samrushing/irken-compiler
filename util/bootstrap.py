@@ -14,15 +14,9 @@ def getenv_or (name, default):
 
 gcc = getenv_or ('CC', 'clang')
 cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -I./include')
-# NOTE: if you are tempted to put "-g" in there and your compiler is gcc,
-#   you *must* add -fno-var-tracking as well or your compiles will never finish.
-#   See: http://gcc.gnu.org/bugzilla/show_bug.cgi?id=56510
 
 class CommandFailed (Exception):
     pass
-
-# NOTE: to make the bootstrap self/compile.c, make sure self/flags is untouched,
-#  then self-compile.  The result should be sent to github.
 
 windows = platform.uname()[0] == 'Windows'
 
@@ -59,6 +53,18 @@ def unlink (p):
     except OSError:
         pass
 
+class WorkInDir(object):
+    def __init__ (self, path):
+        self.orig = os.getcwd()
+        self.path = path
+    def __enter__ (self):
+        os.chdir (self.path)
+    def __exit__ (self, *args):
+        os.chdir (self.orig)
+
+def sys_in_dir (where, what):
+    with WorkInDir (where):
+        system (what)
 
 open ('self/flags.scm', 'wb').write (
 """
@@ -69,18 +75,22 @@ open ('self/flags.scm', 'wb').write (
 print 'copying the bootstrap compiler'
 copy ('self/bootstrap.byc', 'self/compile.byc')
 
-print 'compiling with vm...'
-system ('vm/irkvm self/compile.byc self/compile.scm -q')
+print 'building VM'
+# system ('make vm')
+execfile ('util/build_vm.py')
 
-print 'compiling stage0 binary:'
-system ('%s %s self/compile.c -o self/compile' % (gcc, cflags))
+print 'generating posix FFI...'
+system ('IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/posix.ffi')
 
-print 'compiling stage1 binary:'
-system ('self/compile self/compile.scm -q')
+print 'compiling stage0 binary (with vm)...'
+system ('IRKENLIB=. vm/irkvm self/compile.byc self/compile.scm -q')
+
+print 'compiling stage1 binary (with stage0):'
+system ('IRKENLIB=. self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.1.c')
 
-print 'compiling stage2 binary:'
-system ('self/compile self/compile.scm -q')
+print 'compiling stage2 binary (with stage1):'
+system ('IRKENLIB=. self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.2.c')
 
 def diff (p0, p1):
@@ -97,7 +107,7 @@ def diff (p0, p1):
             if not b0:
                 break
         return True
-            
+
 # file comparison on windows?  duh, should just do it in python.
 samesame = diff ('self/compile.1.c', 'self/compile.2.c')
 if samesame:

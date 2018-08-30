@@ -1,7 +1,9 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/counter.scm")
-(include "lib/stack.scm")
+;; XXX get rid of this
+(require "lib/stack.scm")
+
+(require "lib/counter.scm")
 
 ;; See "The Implementation of Functional Programming Languages",
 ;; Chapter 5: "Efficient Compilation of Pattern-Matching".
@@ -26,6 +28,7 @@
   (:variable symbol)
   (:constructor symbol symbol (list pattern))
   (:record (list fieldpair) bool) ;; fields open-record?
+  ;;(:vector (list pattern))
   )
 
 (define pattern-repr
@@ -35,6 +38,8 @@
   -> (format "(" (sym dt) ":" (sym alt) " " (join pattern-repr " " subs) ")")
   (pattern:record pairs open?)
   -> (format "{" (join fieldpair-repr " " pairs) (if open? "..." "") "}")
+  ;; (pattern:vector subs)
+  ;; -> (format "#(" (join pattern-repr " " subs) ")")
   )
 
 (datatype rule
@@ -69,6 +74,7 @@
     (define kind
       (sexp:symbol s)	   -> (pattern:variable s)
       (sexp:record fields) -> (parse-record-fields '() fields)
+      ;;(sexp:vector subs)   -> (pattern:vector (map kind subs))
       (sexp:bool b)	   -> (pattern:constructor 'bool (if b 'true 'false) '())
       (sexp:list l)
       -> (match l with
@@ -76,8 +82,9 @@
 	   ((sexp:symbol 'quote) (sexp:symbol s)) -> (pattern:literal (sexp:symbol s))
 	   ((sexp:cons dt alt) . args) -> (pattern:constructor dt alt (map kind args))
 	   ((sexp:symbol '.) last) -> (kind last)
-	   (hd . tl) -> (pattern:constructor 'list 'cons (LIST (kind hd) (kind (sexp:list tl))))
-	   _ -> (error1 "malformed pattern" (format (join repr " " l))))
+	   (hd . tl) -> (pattern:constructor 'list 'cons (list (kind hd) (kind (sexp:list tl))))
+	   ;;_ -> (error1 "malformed pattern" (format (join repr " " l)))
+           )
       x -> (pattern:literal x))
     (kind exp))
 
@@ -98,6 +105,7 @@
     (pattern:variable _)	 -> 'variable
     (pattern:constructor _ _ _ ) -> 'constructor
     (pattern:record _ _)         -> 'record
+    ;;(pattern:vector _)           -> 'vector
     )
 
   ;; pull the first pattern out of each rule
@@ -141,6 +149,7 @@
       'variable    -> (variable-rule vars rules default)
       'constructor -> (constructor-rule vars rules default)
       'record      -> (record-rule vars rules default)
+      ;;'vector      -> (vector-rule vars rules default)
       _            -> (impossible)
       ))
 
@@ -148,7 +157,7 @@
     (cond ((eq? e1 match-fail) e2)
 	  ((eq? e2 match-fail) e1)
 	  (else
-	   (sexp1 '%fatbar (LIST (sexp:bool #f) e1 e2)))))
+	   (sexp1 '%fatbar (list (sexp:bool #f) e1 e2)))))
 
   (define (subst var0 pat code)
     (match pat with
@@ -216,16 +225,25 @@
 			     rules0
 			     default)))))
 
+  ;; assuming we only support exact-arity matches, then we'll need
+  ;;   to gate each match with an arity match, then recurse to the sub-matches.
+  ;; theoretically we could group matches of the same arity?  [no, because they
+  ;;   must be ordered as in the match]
+  ;; so I think the next step is to figure out how to use fatbar to implement the
+  ;;   arity check.
+  ;; (define (vector-rule vars rules default)
+  ;;   )
+
   (define pattern->literal
     (pattern:literal exp) -> exp
     _ -> (error "not a literal pattern"))
-  
+
   (define (first-literal=? r0 r1)
     (match r0 r1 with
       (rule:t pats0 _) (rule:t pats1 _)
       -> (sexp=? (pattern->literal (car pats0))
 		 (pattern->literal (car pats1)))))
-  
+
   (define (constant-rule vars rules default0)
     ;; group runs of the same literal together
     (let loop ((groups (pack rules first-literal=?))
@@ -240,7 +258,7 @@
 		    _ -> (sexp:symbol 'eq?))))
 	     (loop groups
 		   (fatbar (sexp (sexp:symbol 'if)
-				 (sexp comp-fun (sexp:symbol (car vars)) (sexp1 'quote (LIST lit)))
+				 (sexp comp-fun (sexp:symbol (car vars)) (sexp1 'quote (list lit)))
 				 (compile-match (cdr vars) (map remove-first-pat rules0) match-fail)
 				 match-fail)
 			   default))))))
@@ -267,7 +285,7 @@
   (define pattern->alt
     (pattern:constructor _ alt _) -> alt
     _ -> (error "not a constructor pattern"))
-  
+
   (define pattern->subs
     (pattern:constructor _ _ subs) -> subs
     _ -> (error "not a constructor pattern"))
@@ -275,7 +293,7 @@
   (define rule->constructor-dt
     (rule:t pats _)
     -> (pattern->dt (car pats)))
-  
+
   (define rule->constructor-alt
     (rule:t pats _)
     -> (pattern->alt (car pats)))
@@ -293,56 +311,53 @@
     (let ((dtname (rule->constructor-dt (car rules)))
 	  (alts (sort-constructor-rules rules))
 	  (nalts 0)
-	  (mdt (alist/lookup the-context.datatypes
-			 (rule->constructor-dt (car rules))))
+	  (mdt (alist/lookup the-context.datatypes (rule->constructor-dt (car rules))))
 	  (default0 (if (sexp=? default match-error) default match-fail))
 	  (cases '())
 	  )
-      (alist/iterate
-       (lambda (tag rules-stack)
-	 (let ((arity (match mdt with
-			(maybe:no) -> (length (pattern->subs (car (rule->pats (rules-stack.top)))))
-			(maybe:yes dt) -> (let ((alt (dt.get tag)))
-					    alt.arity)))
-	       (vars0 (nthunk arity new-match-var))
-	       (wild (make-vector arity #t))
-	       (rules1 '()))
-	   (set! nalts (+ nalts 1))
-	   (define frob-rule
-	     (rule:t pats code)
-	     -> (let ((subs (pattern->subs (car pats))))
-		  (when (not (= (length subs) arity))
-                    (printf "arity mismatch in constructor pattern:\n\t" (rule-repr (rule:t pats code)))
-                    (error "arity mismatch in constructor pattern"))
-		  (PUSH rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
-		  (for-range i arity
-                    (match (nth subs i) with
-                      (pattern:variable '_) -> #u
-                      _ -> (set! wild[i] #f))
-                    )))
-	   (for-each frob-rule (rules-stack.get))
-	   ;; if every pattern has a wildcard for this arg of the constructor,
-	   ;;  then use '_' rather than the symbol we generated.
-	   (let ((vars1 (map-range i arity (if wild[i] '_ (nth vars0 i)))))
-	     (PUSH cases
-		   ;; ((:tag var0 var1 ...) (match ...))
-		   (sexp
-		    (sexp:list
-		     (list:cons (sexp:cons 'nil tag) (map sexp:symbol vars1)))
-		    ;; we don't reverse rules1 because we popped it off a reversed stack already
-		    (compile-match (append vars0 (cdr vars)) rules1 default0))))))
-       alts)
+      (for-alist tag rules-stack alts
+        (let ((arity (match mdt with
+                       (maybe:no) -> (length (pattern->subs (car (rule->pats (rules-stack.top)))))
+                       (maybe:yes dt) -> (let ((alt (dt.get tag)))
+                                           alt.arity)))
+              (vars0 (nthunk arity new-match-var))
+              (wild (make-vector arity #t))
+              (rules1 '()))
+          (set! nalts (+ nalts 1))
+          (define frob-rule
+            (rule:t pats code)
+            -> (let ((subs (pattern->subs (car pats))))
+                 (when (not (= (length subs) arity))
+                   (printf "arity mismatch in constructor pattern:\n\t" (rule-repr (rule:t pats code)))
+                   (error "arity mismatch in constructor pattern"))
+                 (push! rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
+                 (for-range i arity
+                   (match (nth subs i) with
+                     (pattern:variable '_) -> #u
+                     _ -> (set! wild[i] #f))
+                   )))
+          (for-each frob-rule (rules-stack.get))
+          ;; if every pattern has a wildcard for this arg of the constructor,
+          ;;  then use '_' rather than the symbol we generated.
+          (let ((vars1 (map-range i arity (if wild[i] '_ (nth vars0 i)))))
+            (push! cases
+                  ;; ((:tag var0 var1 ...) (match ...))
+                  (sexp
+                   (sexp:list
+                    (list:cons (sexp:cons 'nil tag) (map sexp:symbol vars1)))
+                   ;; we don't reverse rules1 because we popped it off a reversed stack already
+                   (compile-match (append vars0 (cdr vars)) rules1 default0))))))
       (let ((result
 	     (match mdt with
 	       (maybe:yes dt)
 	       -> (begin (if (< nalts (dt.get-nalts))
-			     (PUSH cases (sexp (sexp:symbol 'else) default0)))
-			 (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol dt.name) (sexp:symbol (car vars)))
+			     (push! cases (sexp (sexp:symbol 'else) default0)))
+			 (sexp:list (append (list (sexp:symbol 'vcase) (sexp:symbol dt.name) (sexp:symbol (car vars)))
 					    (reverse cases))))
 	       (maybe:no)
 	       -> (begin (if (not (eq? default match-error))
-			     (PUSH cases (sexp (sexp:symbol 'else) match-fail)))
-			 (sexp:list (append (LIST (sexp:symbol 'vcase) (sexp:symbol (car vars)))
+			     (push! cases (sexp (sexp:symbol 'else) match-fail)))
+			 (sexp:list (append (list (sexp:symbol 'vcase) (sexp:symbol (car vars)))
 					    (reverse cases)))))
 	     ))
 	(if (not (eq? default match-error))
@@ -357,7 +372,7 @@
   (define (arity-check rules)
     (let ((lengths (map (lambda (rule) (length (rule->pats rule))) rules))
           (arity (car lengths)))
-      (when (not (all (lambda (x) (= x arity)) (cdr lengths)))
+      (when (not (all? (lambda (x) (= x arity)) (cdr lengths)))
         (printf "arity mismatch in patterns:\n\t"
                 (join rule-repr "\n\t" rules))
         (error "arity mismatch in patterns"))
@@ -370,5 +385,5 @@
 		    (nthunk npats new-match-var)
 		    vars))
 	  (result (compile-match vars rules match-error)))
-      (:pair vars result)))
+      (:tuple vars result)))
   )

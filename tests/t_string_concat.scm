@@ -11,5 +11,3 @@
 	  "zurg!"
 	  (list:nil))))))
   (print (string-concat sl)))
-       
-	   

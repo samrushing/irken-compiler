@@ -1,0 +1,14 @@
+;; -*- Mode: lisp -*-
+
+(stdio
+  (includes "stdio.h")
+  (structs) ;; note: FILE is an opaque type.
+  (constants)
+  (lflags)
+  (cflags)
+  (sigs
+   fopen fwrite fread fgetc fclose fflush fdopen putchar getchar
+   stdin stdout stderr
+   ))
+
+

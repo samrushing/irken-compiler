@@ -104,6 +104,16 @@ do_gc (int nroots)
 	scan += length + 1;
 	break;
 
+      case TC_FOREIGN:
+        if (length == 1) {
+          scan += 2;
+        } else {
+          *p = copy (p); p++;
+          *p = copy (p); p++;
+          scan += 3;
+        }
+        break;
+
       default:
         // copy everything
         for (i=0; i < length; i++) {
@@ -138,7 +148,9 @@ gc_flip (int nregs)
 {
   uint64_t t0, t1;
   object nwords;
+#if USE_CYCLECOUNTER
   t0 = rdtsc();
+#endif
   // copy roots
   heap1[0] = (object) lenv;
   heap1[1] = (object) k;
@@ -151,8 +163,10 @@ gc_flip (int nregs)
   top  = (object *) heap0[2];
   // set new limit
   limit = heap0 + (heap_size - 4096);
+#if USE_CYCLECOUNTER
   t1 = rdtsc();
   gc_ticks += (t1 - t0);
+#endif
   return nwords;
 }
 
@@ -230,6 +244,7 @@ gc_relocate (int nroots, object * start, object * finish, pxll_int delta)
       break;
     case TC_STRING:
     case TC_BUFFER:
+    case TC_FOREIGN: // XXX should probably squeal in this case.
       // skip it all
       scan += length+1;
       break;

@@ -1,0 +1,22 @@
+;; -*- Mode: Irken -*-
+ (lexicon
+  ;; XXX newlines should be allowed in strings.
+  (STRING     (reg "\"([^\n\"\\\\]|\\\\.)*\""))
+  (WHITESPACE (reg "[ \n\t]+"))
+  (COMMENT    (reg ";[^\n]*\n"))
+  (NUMBER     (reg "[0-9]+"))
+  (BIN        (reg "#b[01]+"))
+  (OCT        (reg "#o[0-7]+"))
+  (DEC        (reg "#d[0-9]+"))
+  (HEX        (reg "#x[0-9A-Fa-f]+"))
+  ;;;(DOTDOTDOT  (lit "...")) ;; YOU ARE HERE
+  (DOT        (lit "."))
+  (LBRACKET   (lit "["))
+  (RBRACKET   (lit "]"))
+  (LPAREN     (lit "("))
+  (RPAREN     (lit ")"))
+  (BOOL       (reg "#[tf]"))
+  (CHAR       (reg "(#\\\\.)|(#\\\\newline)|(#\\\\space)|(#\\\\tab)|(#\\\\return)|(#\\\\eof)|(#\\\\nul)"))
+  ;;(SYMBOL     (reg "[^;()\\[\\] \t\n\"\\.]+"))
+  (SYMBOL     (reg "([^;()\\[\\] \t\n\"\\.]+)|(\\.\\.\\.)"))
+  )

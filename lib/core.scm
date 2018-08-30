@@ -1,43 +1,37 @@
 ;; -*- Mode: Irken -*-
 
-(define (printn x)
-  (%backend (c llvm)
-    (%%cexp ('a -> undefined) "dump_object (%0, 0); fprintf (stdout, \"\\n\")" x))
-  (%backend bytecode
-    (print x)
-    (newline)))
-
 (define (print x)
-  (%backend (c llvm) (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
+  (%backend c (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
+  (%backend llvm (%llvm-call ("@irk_dump_object" ('a -> undefined) ccc) x))
   (%backend bytecode (%%cexp ('a -> undefined) "printo" x))
   )
 
+(define (printn x)
+  (print x)
+  (newline))
+
 ;; note: discards return value.
 (define (print-string s)
-  (%backend (c llvm) (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)) #u)
+  (%backend c (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)) #u)
+  (%backend llvm (%llvm-call ("@irk_write_stdout" (string int -> int) ccc) s (string-length s)) #u)
   (%backend bytecode (%%cexp (string -> int) "prints" s) #u)
   )
 
 (define (flush)
-  (%backend (c llvm) (%%cexp (-> int) "fflush (stdout)"))
+  (%backend c (%%cexp (-> int) "fflush (stdout)"))
+  (%backend llvm (%llvm-call ("@irk_flush" (-> int) ccc)))
   ;; not using stdio
   (%backend bytecode #u))
 
-(define (print-char ch)
-  (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" ch))
-
-(define (terpri)
-  (print-char #\newline))
-
 (define (newline)
-  (%backend (c llvm) (print-char #\newline))
+  (%backend c (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" #\newline))
+  (%backend llvm (%llvm-call ("@irk_putc" (char -> undefined) ccc) #\newline))
   (%backend bytecode (print-string "\n")))
 
 (define (= a b)
   (%backend c (%%cexp (int int -> bool) "%0==%1" a b))
   (%backend llvm (%llicmp eq a b))
-  (%backend bytecode (%%cexp (int int -> bool) "eq" a b))
-  )
+  (%backend bytecode (%%cexp (int int -> bool) "eq" a b)))
 
 (define (zero? a)
   (%backend c (%%cexp (int -> bool) "%0==0" a))
@@ -111,6 +105,11 @@
   (* a b ...) -> (binary* a (* b ...)))
 
 (define (/ a b)
+  (if (= b 0)
+      (raise (:DivideByZero a b))
+      (unsafe-div a b)))
+
+(define (unsafe-div a b)
   (%backend c (%%cexp (int int -> int) "%0/%1" a b))
   (%backend llvm (%llarith sdiv a b))
   (%backend bytecode (%%cexp (int int -> int) "div" a b))
@@ -119,6 +118,9 @@
 ;; Note: this is incorrect! mod and remainder are not the same
 ;;  operation. See http://en.wikipedia.org/wiki/Modulo_operation
 ;;  [specifically, the sign of the result can differ]
+
+;; XXX: implement div/mod (and maybe div0/mod0) per r6rs
+;; http://blog.practical-scheme.net/gauche/20100618-integer-divisions
 (define (mod a b)
   (%backend c (%%cexp (int int -> int) "%0 %% %1" a b))
   (%backend llvm (%llarith srem a b))
@@ -162,10 +164,20 @@
   (%backend bytecode (%%cexp (int int -> int) "or" a b))
   )
 
+(defmacro logior*
+  (logior* x)       -> x
+  (logior* a b ...) -> (logior a (logior* b ...))
+  )
+
 (define (logxor a b)
   (%backend c (%%cexp (int int -> int) "%0^%1" a b))
   (%backend llvm (%llarith xor a b))
   (%backend bytecode (%%cexp (int int -> int) "xor" a b))
+  )
+
+(defmacro logxor*
+  (logxor* x)       -> x
+  (logxor* a b ...) -> (logxor a (logxor* b ...))
   )
 
 (define (logand a b)
@@ -180,6 +192,30 @@
   (%backend bytecode (- -1 a))
   )
 
+(define (popcount n)
+  (%backend c
+    (%%cexp (int -> int) "__builtin_popcount(%0)" n))
+  (%backend llvm
+    (%llvm-call ("@irk_popcount" (int -> int)) n))
+  (%backend bytecode
+    (let loop ((count 0) (n n))
+      (if (zero? n)
+          count
+          (loop (+ 1 count) (logand n (- n 1)))))))
+
+(define (pow x n)
+  (cond ((< n 0) (raise (:NotImplemented "negative exp" n)))
+        ((= n 0) 1)
+        ((= n 1) x)
+        ((= 0 (logand n 1)) (pow (* x x) (>> n 1)))
+        (else (* x (pow (* x x) (>> (- n 1) 1))))))
+
+(define (odd? n)
+  (= 1 (logand 1 n)))
+
+(define (even? n)
+  (= 0 (logand 1 n)))
+
 ;; note: use llvm.minnum
 (define (min x y)
   (if (< x y) x y))
@@ -189,6 +225,9 @@
   (if (> x y) x y))
 
 (define (abs x) (if (< x 0) (- 0 x) x))
+
+(define (how-many x n)
+  (/ (- (+ x n) 1) n))
 
 (datatype cmp
   (:<)
@@ -202,22 +241,37 @@
   (cmp:>) -> ">"
   )
 
-(define (int-cmp a b)
-  (cond ((< a b) (cmp:<))
-	((> a b) (cmp:>))
-	(else (cmp:=))))
+;; int-cmp is important enough to be a primitive.
+(%backend c
+  (define (int-cmp a b) : (int int -> cmp)
+    (%%cexp (int int -> cmp) "(object*)(pxll_int)UITAG((%0 < %1) ? 0 : ((%1 < %0) ? 2 : 1))" a b)))
+(%backend llvm
+  (define (int-cmp a b)
+    (%llvm-call ("@irk_int_cmp" (int int -> cmp)) a b)))
+(%backend bytecode
+  ;; XXX needs an opcode, to be fair.
+  ;; XXX any reason to not use 'cmp'???
+  (define (int-cmp a b)
+    (cond ((< a b) (cmp:<))
+          ((> a b) (cmp:>))
+          (else (cmp:=)))))
 
 (define (magic-cmp a b)
-  ;; note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
-  ;;  to match the 'cmp' datatype.
-  (%backend (c llvm)
+  (%backend c
+    ;; note: magic_cmp returns -1|0|+1, we adjust that to UITAG 0|1|2
+    ;;  to match the 'cmp' datatype.
     (%%cexp ('a 'a -> cmp) "(object*)UITAG(1+magic_cmp(%0, %1))" a b))
+  (%backend llvm
+    (%llvm-call ("@irk_magic_cmp" ('a 'a -> cmp)) a b))
   (%backend bytecode
     (%%cexp ('a 'a -> cmp) "cmp" a b))
   )
 
 (define (magic<? a b)
   (eq? (cmp:<) (magic-cmp a b)))
+
+(define (magic=? a b)
+  (eq? (cmp:=) (magic-cmp a b)))
 
 (define (eq? a b)
   (%backend c (%%cexp ('a 'a -> bool) "%0==%1" a b))
@@ -231,11 +285,34 @@
 (define (char=? a b)
   (eq? a b))
 
+(define (int->char n)
+  (%backend c
+    (%%cexp (int -> char) "TO_CHAR(%0)" n))
+  (%backend llvm
+    (%llvm-call ("@irk_makei" (int int -> char)) #x02 n))
+  (%backend bytecode
+    (%%cexp (int int -> char) "makei" #x02 n))
+  )
+
+(define (char->int c)
+  (%backend c
+    (%%cexp (char -> int) "GET_CHAR(%0)" c))
+  (%backend llvm
+    (%llvm-call ("@irk_get_char" (char -> int)) c))
+  (%backend bytecode
+    (%%cexp (char -> int) "unchar" c))
+  )
+
+;; close enough for now.
+(define char->ascii char->int)
+(define ascii->char int->char)
+
 (define (char< a b)
-  (%%cexp (char char -> bool) "%0<%1" a b))
+  (< (char->int a) (char->int b)))
 
 (define (string-length s)
-  (%backend (c llvm) (%%cexp ((raw string) -> int) "%0->len" s))
+  (%backend c (%%cexp ((raw string) -> int) "%0->len" s))
+  (%backend llvm (%llvm-call ("@irk_string_len" (string -> int)) s))
   (%backend bytecode (%%cexp (string -> int) "slen" s))
   )
 
@@ -246,17 +323,33 @@
   (%backend bytecode
     (%%cexp (int 'a -> (vector 'a))
             "vmake"
-            n val))
-  )
+            n val)))
+
+(define (copy-vector v)
+  (let ((vlen (vector-length v))
+        (r (make-vector vlen v[0])))
+    (for-range i vlen
+      (set! r[i] v[i]))
+    r))
 
 (define (vector-length v)
-  (%backend (c llvm)
+  (%backend c
     (%%cexp
      ((vector 'a) -> int)
      "(%0 == (object*) TC_EMPTY_VECTOR) ? 0 : GET_TUPLE_LENGTH(*%0)" v))
+  (%backend llvm (if (eq? v #()) 0 (%llvm-call ("@irk_tuple_len" ((vector 'a) -> int)) v)))
   (%backend bytecode
     (%%cexp ((vector 'a) -> int) "vlen" v))
   )
+
+;; (make-array (2 3) 0) => #(#(0 0 0) #(0 0 0))
+(defmacro make-array
+  (make-array (n) v)
+  -> (make-vector n v)
+  (make-array (n ns ...) v)
+  -> (list->vector
+      (map (lambda (x) (make-array (ns ...) v))
+           (n-of n 0))))
 
 (define (address-of ob)
   (%%cexp ('a -> int) "(pxll_int)%0" ob))
@@ -344,6 +437,9 @@
   )
 
 ;; ocaml's Obj.magic (i.e., cast to any type)
+;; aside from evil, this can be used to help narrow
+;;  down the source of type errors.
+;; XXX no llvm or bytecode
 (define (magic x)
   (%%cexp ('a -> 'b) "%0" x))
 
@@ -359,6 +455,7 @@
 ;;   *or* link with -no_pie (cc arg '-Wl,-no_pie')
 ;; Linux: setarch `uname -m` -R <binary>
 
+;; XXX: make this work with llvm & bytecode.
 (define (dump filename thunk)
   (%%cexp (string (continuation int) -> int) "dump_image (%0, %1)" filename thunk))
 
@@ -404,6 +501,17 @@
     entry-point
     ))
 
+;; implements the 'generator protocol' for you.
+;; XXX note: makegen & make-generator should have their names swapped.
+(defmacro makegen
+  (makegen emit body ...)
+  -> (make-generator
+      (lambda ($consumer)
+        (define (emit $x) ($consumer (maybe:yes $x)))
+        body ...
+        (forever ($consumer (maybe:no)))
+        )))
+
 ;; We use polymorphic variants for exceptions.
 ;; Since we're a whole-program compiler there's no need to declare
 ;; them - though I might could be convinced it's still a good idea.
@@ -417,6 +525,7 @@
 ;; consider catching OSError here and printing strerror(errno):
 ;; (copy-cstring (%%cexp (-> cstring) "strerror (errno)"))))
 
+;; XXX comment here on replacing/updgrading this function.
 (define (base-exception-handler exn) : ((rsum 'a) -> 'b)
   (error1 "uncaught exception" exn))
 
@@ -431,6 +540,9 @@
 ;; * have the compiler keep a map of the names of exceptions so that uncaught
 ;;   ones are reported in a useful way.  [another approach might be to auto-generate
 ;;   the base exception handler to catch and print the names of all known exceptions]
+
+;; XXX consider how save/restore of *the-exception-handler*  might want to be done
+;;  by `callcc` [or at the very least a variant that does].
 
 (defmacro try
   ;; done accumulating body parts, finish up.
@@ -456,40 +568,94 @@
   (try body0 body1 ...)                   -> (try (begin body0) body1 ...)
   )
 
-(%backend (c llvm)
-  (cinclude "sys/errno.h")
-
-  (define (syscall retval)
-    (if (< retval 0)
-        ;; this requires string.scm.  need to place syscall elsewhere.
-        ;; (raise (:OSError (copy-cstring (%%cexp (-> cstring) "strerror(errno)"))))
-        (raise (:OSError (%%cexp (-> int) "errno")))
-        retval))
-
+(%backend c
   (define (set-verbose-gc b)
-    (%%cexp (bool -> undefined) "(verbose_gc = %0, PXLL_UNDEFINED)" b))
-
+    (%%cexp (bool -> bool) "verbose_gc = %0" b))
   (define (get-word-size)
     (%%cexp (-> int) "sizeof(pxll_int)"))
+  (define (get-int-size)
+    (%%cexp (-> int) "sizeof(int)"))
+  )
+(%backend llvm
+  (define (set-verbose-gc b)
+    (%llvm-call ("@irk_set_verbose_gc" (bool -> bool) ccc) b))
+  ;; these are fixed by the LP64 target
+  (define (get-word-size) 8)
+  (define (get-int-size)  4)
   )
 
 (%backend bytecode
 
-  (define (syscall retval)
-    (if (< retval 0)
-        (raise (:OSError -1)) ;; XXX temp
-        retval))
+  (defmacro make-ffi
+    (make-ffi name rtype nargs (formal0 ...) (ftype0 ...))
+    -> (let (($pfun (%%cexp (string -> int) "dlsym2" name)))
+         (lambda (formal0 ...)
+           (printf "** ffi: " name "\n")
+           (%%cexp (int char int ftype0 ...)
+                   "ffi"
+                   $pfun rtype nargs
+                   formal0 ...))))
 
   (define (set-verbose-gc b)
     (%%cexp (bool -> undefined) "quiet" b))
 
-  ;; could probably calculate this from int math.
+  ;; this is a kludge, but should work for a few more years...
   (define (get-word-size)
-    8 ;; XXX bogus
-    )
+    (match (< (<< 1 30) 0) with
+      #t -> 4
+      #f -> 8
+      ))
 
-  (define (how-many x n)
-    (/ (- (+ x n) 1) n))
+  ;; true for nearly all 32 and 64-bit platforms.
+  ;; [only one I've used: old-school 64-bit OSF/1 on DEC Alpha]
+  (define (get-int-size) 4)
 
   )
-  
+
+(define (get-metadata)
+  (%backend c (%%cexp (-> sexp) "irk_get_metadata()"))
+  (%backend llvm (%llvm-call ("@irk_get_metadata" (-> sexp))))
+  (%backend bytecode (%%cexp (-> sexp) "meta"))
+  )
+
+(define (~~object->int ob)
+  (%backend c (%%cexp ('a -> int) "unbox(irk_object2int(%0))" ob))
+  (%backend llvm (%llvm-call ("@irk_object2int" ('a -> int) ccc) ob))
+  (%backend bytecode (%%cexp ('a -> int) "ob2int" ob))
+  )
+
+(define (~~object*->int ob)
+  (%backend c (%%cexp ('a -> int) "unbox(irk_objectptr2int(%0))" ob))
+  (%backend llvm (%llvm-call ("@irk_objectptr2int" ('a -> int) ccc) ob))
+  (%backend bytecode (%%cexp ('a -> int) "obptr2int" ob))
+  )
+
+(define (read-cycle-counter)
+  (%backend c
+    (%%cexp (-> int) "(pxll_int)rdtsc()"))
+  (%backend llvm
+    (%llvm-call ("@irk_readcyclecounter" (-> int))))
+  (%backend bytecode
+    (raise (:NotImplemented "read-cycle-counter")))
+  )
+
+;; VM needs to shift all argv right by one.
+(define (shrink-argv v)
+  (let ((n (- (vector-length v) 1))
+        (r (make-vector n "")))
+    (for-range i n
+      (set! r[i] v[(+ i 1)]))
+    r))
+
+(define (get-argv)
+  (%backend c (%%cexp (-> (vector string)) "irk_make_argv()"))
+  (%backend llvm (%llvm-call ("@irk_make_argv" (-> (vector string)) ccc)))
+  (%backend bytecode (shrink-argv (%%cexp (-> (vector string)) "argv")))
+  )
+
+;; note: argc is redundant, but convenient.
+(define sys
+  (let ((argv (get-argv))
+        (argc (vector-length argv)))
+    { argc=argc argv=argv }
+    ))

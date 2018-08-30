@@ -1,0 +1,204 @@
+Nov 2017
+
+addressing a long-standing issue with literals.
+
+Previously, there was a 'literal' special form that would force
+  the compiler to treat what followed as a literal.  There are
+  some issues with this approach.
+
+For example:
+
+    (literal #('a 'b 'c))
+=>  #((quote a) (quote b) (quote c)) : (vector (list symbol))
+
+And (literal (a b c)) or (quote (a b c))
+=>  (a b c)
+
+At the center of all the confusion (for me at least) is the notion
+  of run-time vs compile-time evaluation.  Irken, unlike scheme/lisp,
+  does not have compile-time evaluation (or backquote), because it
+  doesn't need it.  defmacro does what people want much more cleanly.
+
+In scheme/lisp - strings, ints, floats, chars, & bools are self-evaluating,
+  so they don't need a QUOTE. [though if one is used it is ignored/removed]
+
+So QUOTE in irken has three main uses (currently):
+
+  'a       => 'a (i.e., the symbol "a")
+  '()      => nil
+  '(a b c) => (list 'a 'b 'c)
+
+But there's also:
+'( complex list structure )
+
+For example:
+
+  '((1 2 3) (4 5) () (1))
+  '(#(1 2) #(3 4 5 6))
+
+It's that last one we might need to make a formal spec for.
+
+literal := immediate | constructed
+immediate = :int | char | bool | string | symbol | (datatype:immediate)
+constructed := (list literal) | (vector literal) | record-of-literals | (datatype:alt literal+)
+record-of-literals: {field0=literal ...}
+
+   --------- Automatic Literals ----------
+
+Now, the Other Issue.  For many cases, we want to build literals
+automatically:
+
+(define things
+  (alist/make
+   ('a "a")
+   ('b "b")
+   ('c "c")
+   ))
+
+Which expands to
+
+(define things
+  (alist:entry 'a "a"
+    (alist:entry 'b "b"
+      (alist:entry 'c "c")
+        (alist:nil))))
+
+We really want this to be a literal.
+
+What I'm thinking is this: whenever we see a constructor, we attempt
+to build a literal from it, and if it fails, raise an exception and
+emit code instead.
+
+We want to support the full grammar for literals, *plus* add support
+for record literals.  [actually, this won't work because records are
+mutable: we can't allow that because gc won't walk into a literal
+stored outside of gc space.  Hmmm... this same argument holds for
+vector literals! PROBLEM!  we should verify the behavior of gc when it
+encounters .data pointers ]
+
+As far as the language definition is concerned, this is an
+implementation detail, and the literals behave identically to what we
+would get from code constructing it.
+
+Here's an example of a 'failed' literal:
+
+(define xxx (list:cons 1 (list:cons 2 (list:cons x (list:nil)))))
+
+In this case 'build-literal' will fail when it sees the `x`.  Note: we
+can't use build-literal as-is, because it will assume `x` is a symbol.
+We either write a new function, or we make build-literal take a
+boolean to indicate whether to allow naked symbols.
+
+
+   --------- Backquote/Quasiquote ----------
+
+The main use of this in lisp/scheme is for writing macros.  It's a relatively
+complicated thing to build, so I'm not sure this is worth adding.
+
+This *could* be useful for stuff like the sexp-to-sexp transformers in
+transform.scm, or maybe in parsers?
+
+   --------- Mutable Literals ----------
+
+As noted above, there's an issue with making literals out of mutable
+objects like records and vectors.  Technically, we cannot allow the
+user to mutate objects that might be literals, because the GC does
+not walk such objects.  I see 3 choices:
+
+1) never make a literal with mutable objects
+2) tell the user not to mutate literals
+3) teach the gc to walk objects outside the heap, just in case.
+
+For the end user, #3 is probably the best option.  For me, #2 is the best,
+I can just say "hey, don't do that".  And if it becomes an issue, fix it
+later.
+
+   --------- Mutable Literals, Take Two ----------
+
+Just realized there's a much bigger problem with mutable literals.
+Basically, we can't have them.  Here's why:
+
+Picture this: we want to initialize a vector of records:
+
+ (for-range i 10
+   (set! vec[i] {a=1 b=2 c=3}))
+
+If we have literal records, then this initial value for each item in
+the vector will refer to a literal - so every value will be the same.
+This is almost certainly not what the user wants.  In fact there's no
+other way to initialize a vector with `make-vector` than to use a
+literalizable record as a 'sample item':
+
+  (make-vector 100 {x=0 y=0})
+
+TL;DR: we cannot make literals of either vectors or records.
+
+Better example:
+
+  (define (add-var name)
+    (match (tree/member the-context.vars symbol-index-cmp name) with
+      (maybe:no) -> (set! the-context.vars
+  			(tree/insert the-context.vars
+  				     symbol-index-cmp name {flags=0 calls=0 refs=0 sets=0 mult=0}))
+      ;; <fix> then <function>, shows up twice, ignore.
+      (maybe:yes _) -> #u))
+
+In this case, every single var will point to the same record.
+
+Ok, compromise?  What if in every spot where we would create a new record,
+  instead we copy a literal version of that record?
+
+
+  --------- what was done -----------
+
+The mutability issue turned out to be a nasty one.  But I ended up
+doing (or trying to do) The Right Thing.  The compiler will attempt to
+build literals for records and vectors.  When code refers to the
+literal, it is shallow-copied before being handed to the user.
+Literal records and vectors are only allowed at the outermost level.
+
+In other words, you can't make a list of records and have it all be
+one literal: instead it will be built as a list of record literals,
+each one copied upon reference).
+
+This whole exercise aggravated the long-standing "chains of primops
+can eat registers voraciously" problem, which required some extra
+tweaking to work around: if using the bytecode backend, constructors
+are *not* inlined, but the other two backends allow it.  This
+significantly shrinks the size of the code.  But *that* optimization
+creates *another* problem: the out-of-order evaluation of primargs
+exposes bugs that are difficult/impossible to locate because of the
+aggressive inlining.  In short, we cannot allow primargs to be
+evaluated out of order, because we can't predict which bits of code
+might involve inlined primitives.
+
+Current state:
+
+  inlining of constructors: enabled (except w/ bytecode)
+  reordering of primargs:   disabled
+
+One last hack: in order to not have to explain to users that this:
+
+  #(0 1 2 3 4 (thing 5))
+
+Is different from
+
+  #(0 1 2 3 4 5)
+
+I made the compiler magically transform the first into:
+
+  (list->vector (LIST 0 1 2 3 4 (thing 5)))
+
+This makes it possible (finally!) to make large tables of vectors,
+records, etc (like `opcode-info` used in self/bytecode.scm) without
+worrying about how large they are or what they are made of.
+
+
+  --------- one last idea! -----------
+
+Staring at the output of t_record_literal0.scm... it's still generating
+*code* to build that damned list.  Again, this is because of the register
+accumulation problem.  How about this instead... if we generate such a list
+in *reverse*, then the register problem goes away.  Something to think about!
+This would also apply with stuff like alist... anything with that pattern
+ of [<simple> [<simple> [<simple> ...]]]

@@ -14,8 +14,8 @@
 		     (list:cons hd (list/insert x > tl)))
     ))
 
-(let ((l0 (LIST 20))
-      (l1 (LIST #f))
+(let ((l0 (list 20))
+      (l1 (list #f))
       )
    (set! l0 (list/insert 1 > l0))
    (printn l0)

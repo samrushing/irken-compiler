@@ -1,96 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(define (OI name nargs varargs target?)
-  {code=0 name=name nargs=nargs varargs=varargs target=target?})
-
-;; XXX some bunches of these opcodes could be collapsed.
-;; e.g. vlen/vref/vset == rlen/rref/rset (and maybe slen/sref/sset with a quick TC_STRING check)
-
-(define opcode-info
-  (list->vector
-   (LIST
-    ;;  name   nargs varargs target? args
-    (OI 'lit     2      #f     #t)   ;; target index
-    (OI 'ret     1      #f     #f)   ;; val
-    (OI 'add     3      #f     #t)   ;; target a b
-    (OI 'sub     3      #f     #t)   ;; target a b
-    (OI 'mul     3      #f     #t)   ;; target a b
-    (OI 'div     3      #f     #t)   ;; target a b
-    (OI 'srem    3      #f     #t)   ;; target a b
-    (OI 'shl     3      #f     #t)   ;; target a b
-    (OI 'ashr    3      #f     #t)   ;; target a b
-    (OI 'or      3      #f     #t)   ;; target a b
-    (OI 'xor     3      #f     #t)   ;; target a b
-    (OI 'and     3      #f     #t)   ;; target a b
-    (OI 'eq      3      #f     #t)   ;; target a b
-    (OI 'lt      3      #f     #t)   ;; target a b
-    (OI 'gt      3      #f     #t)   ;; target a b
-    (OI 'le      3      #f     #t)   ;; target a b
-    (OI 'ge      3      #f     #t)   ;; target a b
-    (OI 'cmp     3      #f     #t)   ;; target a b
-    (OI 'tst     2      #f     #f)   ;; val offset
-    (OI 'jmp     1      #f     #f)   ;; offset
-    (OI 'fun     2      #f     #t)   ;; target offset
-    (OI 'tail    2      #f     #f)   ;; closure args
-    (OI 'tail0   1      #f     #f)   ;; closure
-    (OI 'env     2      #f     #t)   ;; target size
-    (OI 'stor    3      #f     #f)   ;; tuple arg index
-    (OI 'ref     3      #f     #t)   ;; target depth index
-    (OI 'mov     2      #f     #f)   ;; dst src
-    (OI 'epush   1      #f     #f)   ;; args
-    (OI 'trcall  3      #t     #f)   ;; offset depth nregs reg0 ...
-    (OI 'trcall0 2      #f     #f)   ;; offset depth
-    (OI 'ref0    2      #f     #t)   ;; target index
-    (OI 'call    3      #f     #f)   ;; closure args nregs
-    (OI 'call0   2      #f     #f)   ;; closure nregs
-    (OI 'pop     1      #f     #t)   ;; target
-    (OI 'printo  1      #f     #f)   ;; arg
-    (OI 'prints  1      #f     #f)   ;; arg
-    (OI 'topis   1      #f     #f)   ;; env
-    (OI 'topref  2      #f     #t)   ;; target index
-    (OI 'topset  2      #f     #f)   ;; index val
-    (OI 'set     3      #f     #f)   ;; depth index val
-    (OI 'set0    2      #f     #f)   ;; index val
-    (OI 'pop0    0      #f     #f)   ;;
-    (OI 'epop    0      #f     #f)   ;;
-    (OI 'tron    0      #f     #f)   ;;
-    (OI 'troff   0      #f     #f)   ;;
-    (OI 'gc      0      #f     #f)   ;;
-    (OI 'imm     2      #f     #t)   ;; target tag
-    (OI 'make    4      #t     #t)   ;; target tag nelem elem0 ...
-    (OI 'makei   3      #f     #t)   ;; target tag payload
-    (OI 'exit    1      #f     #f)   ;; arg
-    (OI 'nvcase  5      #t     #f)   ;; ob elabel nalts tag0 off0 tag1 off1 ...
-    (OI 'tupref  3      #f     #t)   ;; target ob index
-    (OI 'vlen    2      #f     #t)   ;; target vec
-    (OI 'vref    3      #f     #t)   ;; target vec index-reg
-    (OI 'vset    3      #f     #f)   ;; vec index-reg val
-    (OI 'vmake   3      #f     #t)   ;; target size val
-    (OI 'alloc   3      #f     #t)   ;; target tag size
-    (OI 'rref    3      #f     #t)   ;; target rec label-code
-    (OI 'rset    3      #f     #f)   ;; rec label-code val
-    (OI 'getcc   1      #f     #t)   ;; target
-    (OI 'putcc   3      #f     #t)   ;; target k val
-    (OI 'irk     3      #t     #t)   ;; target closure nargs arg0 ...
-    (OI 'getc    1      #f     #t)   ;; target
-    (OI 'dlsym   2      #f     #t)   ;; target name
-    (OI 'ffi     4      #t     #t)   ;; target fun nargs arg0 ...
-    (OI 'smake   2      #f     #t)   ;; target size
-    (OI 'slen    2      #f     #t)   ;; target string
-    (OI 'sref    3      #f     #t)   ;; target string index
-    (OI 'sset    3      #f     #f)   ;; string index char
-    (OI 'scopy   5      #f     #f)   ;; src src-start n dst dst-start
-    (OI 'unchar  2      #f     #t)   ;; target char
-    (OI 'plat    1      #f     #t)   ;; target
-    (OI 'gist    1      #f     #t)   ;; target
-    (OI 'argv    1      #f     #t)   ;; target
-    (OI 'quiet   1      #f     #f)   ;; bool
-    (OI 'heap    2      #f     #f)   ;; size nreg
-    )))
-
-(for-range i (vector-length opcode-info)
-  (let ((info opcode-info[i]))
-    (set! info.code i)))
+(require "self/backend.scm")
+(require "self/byteops.scm")
 
 (define opmap
   (let ((m (map-maker symbol-index-cmp)))
@@ -122,12 +33,12 @@
 
 (defmacro INSN
   (INSN name arg0 ...)
-  -> (stream:insn name (LIST arg0 ...))
+  -> (stream:insn name (list arg0 ...))
   )
 
 (defmacro LINSN
   (LINSN arg0 ...)
-  -> (LIST (INSN arg0 ...))
+  -> (list (INSN arg0 ...))
   )
 
 (define (compile-to-bytecode base cps)
@@ -140,6 +51,10 @@
         (jump-label-map (map-maker int-cmp))
         (fun-label-map (map-maker symbol-index-cmp))
         (fatbar-map (map-maker int-cmp))
+        (sizeoff-map (cmap/make magic-cmp))
+        (lit-already (map-maker magic-cmp))
+        ;; remember where the metadata is
+        (metadata-index the-context.literals.count)
         )
 
     (define (new-label)
@@ -152,38 +67,40 @@
 	   (set! v[i] (new-label)))
 	v))
 
-    (define emitk
-      acc (cont:k _ _ k) -> (append acc (emit k))
-      acc (cont:nil)     -> acc
-      )
+    ;; XXX this append call is probably expensive, duh.
+    (define (emitk acc k)
+      (if (null-cont? k)
+          acc
+          (append acc (emit k.insn))))
 
     (define (emit insn)
       (match insn with
-        (insn:literal lit k)			      -> (emitk (emit-literal lit (k/target k)) k)
+        (insn:literal lit k)			      -> (emitk (emit-literal lit k.target) k)
         (insn:return target)                          -> (emit-return target)
-        (insn:cexp sig type template args k)          -> (emitk (emit-cexp sig type template args (k/target k)) k)
-        (insn:move dst var k)                         -> (emitk (emit-move dst var (k/target k)) k)
+        (insn:cexp sig type template args k)          -> (emitk (emit-cexp sig type template args k.target) k)
+        (insn:move dst var k)                         -> (emitk (emit-move dst var k.target) k)
         (insn:test reg jn k0 k1 k)                    -> (emit-test reg jn k0 k1 k)
-        (insn:jump reg target jn free)                -> (emit-jump reg target jn free)
-        (insn:close name nreg body k)                 -> (emitk (emit-close name nreg body (k/target k)) k)
-        (insn:new-env size top? types k)              -> (emitk (emit-new-env size top? types (k/target k)) k)
+        (insn:jump reg target jn free)                -> (emit-jump reg target jn free.val)
+        (insn:close name nreg body k)                 -> (emitk (emit-close name nreg body k.target) k)
+        (insn:new-env size top? types k)              -> (emitk (emit-new-env size top? types k.target) k)
         (insn:push r k)                               -> (emitk (emit-push r) k)
         (insn:store off arg tup i k)                  -> (emitk (emit-store off arg tup i) k)
-        (insn:varref d i k)                           -> (emitk (emit-varref d i (k/target k)) k)
+        (insn:varref d i k)                           -> (emitk (emit-varref d i k.target) k)
         (insn:tail name fun args)                     -> (emit-tail name fun args)
-        (insn:varset d i v k)                         -> (emitk (emit-varset d i v (k/target k)) k)
+        (insn:varset d i v k)                         -> (emitk (emit-varset d i v k.target) k)
         (insn:trcall d n args)                        -> (emit-trcall d n args)
         (insn:invoke name fun args k)                 -> (emitk (emit-call name fun args k) k)
-        (insn:pop r k)                                -> (emitk (emit-pop r (k/target k)) k)
+        (insn:pop r k)                                -> (emitk (emit-pop r k.target) k)
         (insn:primop name parm t args k)              -> (emitk (emit-primop name parm t args k) k)
         (insn:fatbar lab jn k0 k1 k)                  -> (emit-fatbar lab jn k0 k1 k)
-        (insn:fail label npop free)                   -> (emit-fail label npop free)
+        (insn:fail label npop free)                   -> (emit-fail label npop free.val)
         (insn:nvcase tr dt tags jn alts ealt k)       -> (emit-nvcase tr dt tags jn alts ealt k)
         (insn:pvcase tr tags arities jn alts ealt k)  -> (emit-pvcase tr tags arities jn alts ealt k)
-        (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind (k/target k)) k)
-        (insn:alloc tag size k)                       -> (emitk (emit-alloc tag size (k/target k)) k)
-        (insn:ffi sig type name args k)               -> (error1 "no FFI in bytecode backend" insn)
+        (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind k.target) k)
+        (insn:alloc tag size k)                       -> (emitk (emit-alloc tag size k.target) k)
         (insn:testcexp regs sig tmpl jn k0 k1 k)      -> (impossible)
+        (insn:ffi sig type name args k)               -> (error1 "ffi being redesigned." insn)
+        (insn:label label next)                       -> (emit next)
         ))
 
     (define (encode-int n)
@@ -229,8 +146,12 @@
     (define (emit-literal lit target)
       (if (= target -1)
           '() ;; pointless dead literal.
-          (LINSN 'lit target
-                 (cmap->index the-context.literals lit))))
+          (let ((enc (encode-immediate lit)))
+            (if (and (> enc 0) (< enc (<< 1 30))) ;; will it fit in a bytecode_t?
+                (LINSN 'imm target enc)
+                (LINSN 'lit
+                       target
+                       (cmap->index the-context.literals lit))))))
 
     (define (emit-return reg)
       (LINSN 'ret reg))
@@ -241,7 +162,7 @@
       ;; Note: is it bad that you can use this to call any insn?
       (let ((opcode (string->symbol template))
             (info (name->info opcode)))
-        (LIST (stream:insn
+        (list (stream:insn
                (string->symbol template)
                (if info.target
                    (cons target args)
@@ -276,12 +197,12 @@
 
     (define (emit-test val jn k0 k1 cont)
       (let ((l0 (new-label))
-            (jcont (emit-jump-continuation jn (k/insn cont))))
+            (jcont (emit-jump-continuation jn cont.insn)))
         (append
          (LINSN 'tst val l0)
          (emit k0)
          (LINSN 'jmp l0)
-         (LIST (stream:label l0))
+         (list (stream:label l0))
          (emit k1)
          jcont
          )))
@@ -300,10 +221,10 @@
         (fun-label-map::add name lfun)
         (append
          (LINSN 'fun target l0)
-         (LIST (stream:label lfun))
+         (list (stream:label lfun))
          gc
          (emit body)
-         (LIST (stream:label l0))
+         (list (stream:label l0))
          )))
 
     (define (emit-new-env size top? types target)
@@ -346,15 +267,15 @@
             (nargs (length args)))
         (if (= 0 nargs)
             (LINSN 'trcall0 label (+ 1 npop))
-            (LIST (stream:insn
+            (list (stream:insn
                    'trcall
                    (prepend label npop (length args) args)
                    )))))
 
     (define (emit-call name fun args k)
-      (let ((free (sort < (k/free k)))
+      (let ((free (sort < k.free))
 	    (nregs (length free))
-	    (target (k/target k)))
+	    (target k.target))
         (append
          (if (= args -1)
              (LINSN 'call0 fun nregs)
@@ -366,12 +287,32 @@
     (define (emit-pop src target)
       (append (move src target) (LINSN 'epop)))
 
+    (define get-sizeoff
+      ;; XXX handle all 'sorta known' sizes like pointer, int, char, etc.
+      (sexp:symbol 'char) -> 1
+      (sexp:symbol 'i8)   -> 1
+      (sexp:symbol 'u8)   -> 1
+      (sexp:symbol 'i16)  -> 2
+      (sexp:symbol 'u16)  -> 2
+      (sexp:symbol 'i32)  -> 4
+      (sexp:symbol 'u32)  -> 4
+      (sexp:symbol 'i64)  -> 8
+      (sexp:symbol 'u64)  -> 8
+      (sexp:list ((sexp:symbol 'cref) _)) -> 50 ;; (cref 'a) == pointer
+      (sexp:symbol 'short)                -> 51
+      (sexp:symbol 'int)                  -> 52
+      (sexp:symbol 'long)                 -> 53
+      (sexp:symbol 'longlong)             -> 54
+      sexp
+      -> (+ 55 (cmap/add sizeoff-map sexp))
+      )
+
     (define (emit-primop name parm type args k)
 
       (define (primop-error)
 	(error1 "primop" name))
 
-      (let ((target (k/target k))
+      (let ((target k.target)
 	    (nargs (length args)))
 
         (define prim-dtcon
@@ -381,10 +322,12 @@
                (maybe:yes dt)
                -> (let ((alt (dt.get altname)))
                     (cond ((= nargs 0)
-                           (LINSN 'imm target (get-uitag dtname altname alt.index)))
+                           (if (= target -1)
+                               '()
+                               (LINSN 'imm target (get-uitag dtname altname alt.index))))
                           (else
                            (if (>= target 0)
-                               (LIST (stream:insn
+                               (list (stream:insn
                                       'make
                                       (prepend
                                        target
@@ -421,6 +364,9 @@
          -> (LINSN 'vset vec index-reg val)
          _ -> (primop-error))
 
+       (define (ambig code)
+         (tree/insert! the-context.ambig-rec int-cmp code #u))
+
        (define prim-record-get
          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
          -> (let ((label-code (lookup-label-code label)))
@@ -428,7 +374,9 @@
                 (maybe:yes sig0)
                 -> (LINSN 'tupref target rec-reg (index-eq label sig0))
                 (maybe:no)
-                -> (LINSN 'rref target rec-reg label-code)
+                -> (begin
+                     (ambig label-code)
+                     (LINSN 'rref target rec-reg label-code))
                 ))
          _ _ -> (primop-error))
 
@@ -439,7 +387,9 @@
                 (maybe:yes sig0)
                 -> (LINSN 'stor rec-reg (index-eq label sig0) arg-reg)
                 (maybe:no)
-                -> (LINSN 'rset rec-reg label-code arg-reg)))
+                -> (begin
+                     (ambig label-code)
+                     (LINSN 'rset rec-reg label-code arg-reg))))
          _ _ -> (primop-error))
 
        (define prim-getcc
@@ -455,6 +405,97 @@
          -> (LINSN 'heap rsize (length free))
          _ _ -> (primop-error))
 
+       (define (prim-malloc parm args)
+         (let ((sindex (get-sizeoff parm)))
+           ;;(printf "adding %malloc call, sindex=" (int sindex) " parm = " (repr parm) "\n")
+           (LINSN 'malloc target sindex (car args))))
+
+       (define (prim-halloc parm args)
+         (let ((sindex (get-sizeoff parm)))
+           ;;(printf "adding %halloc call, sindex=" (int sindex) " parm = " (repr parm) "\n")
+           (LINSN 'halloc target sindex (car args))))
+
+       (define (prim-free args)
+         (LINSN 'free (car args)))
+
+       (define (prim-string->cref args)
+         (LINSN 'sgetp target (car args)))
+
+       ;; this is a limited-remit function needed only to 'fill in' missing
+       ;;   params for a handful of FFI-related primops.
+       (define irken-type->sexp
+         (type:pred sym () _)   -> (sexp:symbol sym)
+         (type:pred sym subs _) -> (sexp1 sym (map irken-type->sexp subs))
+         x                      -> (raise (:Types/IrkenType2Sexp (type-repr x)))
+         )
+
+       (define prim-c-aref
+         ;;parm (src index)
+         _ (src index)
+         -> (let ((tsexp (irken-type->sexp (un-cref type)))
+                  (sindex (get-sizeoff tsexp)))
+              (printf "c-aref parm = " (repr parm) " sizeoff " (int sindex) "\n"
+                      "       type = " (type-repr type) "\n"
+                      "       sexp = " (repr tsexp) "\n"
+                      "     sindex = " (int sindex) "\n"
+                      )
+              (LINSN 'caref target src sindex index))
+         _ _ -> (primop-error))
+
+       (define prim-c-sfromc
+         (src len)
+         -> (LINSN 'sfromc target src len)
+         _ -> (primop-error))
+
+       (define (irken-type->bytecode t)
+         (char->int (ctype->code (irken-type->ctype type))))
+
+       (define prim-cget-int
+         ;;(sexp:symbol itype) (src)
+         _ (src)
+         ;; CGET target src code
+         -> (begin
+              (printf "c-get-int type = " (type-repr type) "\n"
+                      "          code = " (char (int->char (irken-type->bytecode type))) "\n")
+              (LINSN 'cget target src (irken-type->bytecode type)))
+         _ _ -> (primop-error)
+         )
+
+       (define prim-cset-int
+         ;;(sexp:symbol itype) (src dst)
+         _ (dst src)
+         ;; CSET dst code val
+         -> (begin
+              (printf "c-set-int type = " (type-repr type) "\n"
+                      "          code = " (char (int->char (irken-type->bytecode type))) "\n")
+              (LINSN 'cset dst (irken-type->bytecode type) src))
+         _ _ -> (primop-error)
+         )
+
+       (define prim-c-sref
+         srefexp (src)
+         ;; SREF target src sindex
+         -> (let ((sindex (get-sizeoff parm)))
+              ;;(printf "c-sref, sindex=" (int sindex) " parm = " (repr parm) "\n")
+              (LINSN 'csref target src sindex))
+         _ _ -> (primop-error)
+         )
+
+       (define (prim-c-sizeof parm)
+         (LINSN 'csize target (get-sizeoff parm)))
+
+       (define prim-cref->int
+         (src)
+         -> (LINSN 'cref2int target src)
+         _ -> (primop-error)
+         )
+
+       (define prim-int->cref
+         (src)
+         -> (LINSN 'int2cref target src)
+         _ -> (primop-error)
+         )
+
        (match name with
          '%dtcon       -> (prim-dtcon parm)
          '%nvget       -> (prim-nvget parm args)
@@ -466,8 +507,24 @@
          '%exit        -> (prim-exit args)
          '%getcc       -> (prim-getcc args)
          '%putcc       -> (prim-putcc args)
-         '%ensure-heap -> (prim-heap args (k/free k))
-         ;; '%callocate   -> (prim-callocate parm args)
+         '%ensure-heap -> (prim-heap args k.free)
+         ;; -------------------- FFI --------------------
+         ;; currently done with %%cexp (needs to be fixed)
+         ;; '%ffi2         ->
+         '%malloc       -> (prim-malloc parm args)
+         '%halloc       -> (prim-halloc parm args)
+         '%free         -> (prim-free args)
+         '%c-aref       -> (prim-c-aref parm args)
+         '%cref->string -> (prim-c-sfromc args)
+         '%string->cref -> (prim-string->cref args)
+         '%c-get-int    -> (prim-cget-int parm args)
+         '%c-set-int    -> (prim-cset-int parm args)
+         '%c-sref       -> (prim-c-sref parm args)
+         '%c-sizeof     -> (prim-c-sizeof parm)
+         '%cref->int    -> (prim-cref->int args)
+         '%int->cref    -> (prim-int->cref args)
+         ;; -------------------- FFI --------------------
+
          _ -> (primop-error))))
 
     ;; we emit insns for k0, which may or may not jump to fail continuation in k1
@@ -481,9 +538,9 @@
         (fatbar-map::add label lfail)
         (append
          (emit k0)
-         (LIST (stream:label lfail))
+         (list (stream:label lfail))
          (emit k1)
-         (emit-jump-continuation jn (k/insn k))
+         (emit-jump-continuation jn k.insn)
          )))
 
     (define (emit-fail label npop free)
@@ -506,14 +563,14 @@
       (match ealt with
 	(maybe:yes elsek) -> (:tuple tags subs elsek)
 	(maybe:no)
-	-> (let-values (((tags0 tagn) (split-last tags '()))
-			((subs0 subn) (split-last subs '())))
+	-> (let (((tags0 tagn) (split-last tags '()))
+                 ((subs0 subn) (split-last subs '())))
 	     (:tuple tags0 subs0 subn))
 	))
 
     ;; NVCASE ob elabel nalts tag0 label0 tag1 label1 ...
     (define (emit-nvcase test dtname tags jump-num subs ealt k)
-      (let-values (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
+      (let (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
 	(match (alist/lookup the-context.datatypes dtname) with
 	  (maybe:no) -> (error1 "emit-nvcase" dtname)
 	  (maybe:yes dt)
@@ -529,135 +586,148 @@
                        (tag (if (= alt.arity 0) ;; immediate/unit constructor
                                 (get-uitag dtname label alt.index)
                                 (get-uotag dtname label alt.index))))
-                   (set! pairs (append pairs (LIST tag labs[i])))
+                   (set! pairs (append pairs (list tag labs[i])))
                    (set! result (append
                                  result
-                                 (LIST (stream:label labs[i]))
+                                 (list (stream:label labs[i]))
                                  (emit (nth subs i))))))
                (append
-                (LIST (stream:insn 'nvcase (prepend test lelse ntags pairs)))
+                (list (stream:insn 'nvcase (prepend test lelse ntags pairs)))
                 result
-                (emit-jump-continuation jump-num (k/insn k)))
+                (emit-jump-continuation jump-num k.insn))
                ))))
 
     (define (emit-pvcase test tags arities jump-num subs ealt k)
-      (let-values (((tags subs elsek) (nvcase-frob-else tags subs ealt)))
-	(let ((ntags (length tags))
-	      (lelse (new-label))
-	      (labs (make-labels ntags))
-              (result (cons (stream:label lelse) (emit elsek)))
-              (pairs '()))
-          (if (= ntags 0)
-              (printf "zero tags in pvcase\n")
-              #u)
-	  (for-range i ntags
-	     (let ((label (nth tags i))
-		   (tag0 (match (alist/lookup the-context.variant-labels label) with
-			   (maybe:yes v) -> v
-			   (maybe:no) -> (error1 "variant constructor never called" label)))
-		   (tag1 (if (= (nth arities i) 0) (UITAG tag0) (UOTAG tag0))))
-               (set! pairs (append pairs (LIST tag1 labs[i])))
-               (set! result (append
-                             result
-                             (LIST (stream:label labs[i]))
-                             (emit (nth subs i))))))
-          (append
-           (LIST (stream:insn 'nvcase (prepend test lelse ntags pairs)))
-           result
-           (emit-jump-continuation jump-num (k/insn k))
-           ))))
+      (let (((tags subs elsek) (nvcase-frob-else tags subs ealt))
+            (ntags (length tags))
+            (lelse (new-label))
+            (labs (make-labels ntags))
+            (result (cons (stream:label lelse) (emit elsek)))
+            (pairs '()))
+        (for-range i ntags
+          (let ((label (nth tags i))
+                (tag0 (match (alist/lookup the-context.variant-labels label) with
+                        (maybe:yes v) -> v
+                        (maybe:no) -> (error1 "variant constructor never called" label)))
+                (tag1 (if (= (nth arities i) 0) (UITAG tag0) (UOTAG tag0))))
+            (set! pairs (append pairs (list tag1 labs[i])))
+            (set! result (append
+                          result
+                          (list (stream:label labs[i]))
+                          (emit (nth subs i))))))
+        (append
+         (list (stream:insn 'nvcase (prepend test lelse ntags pairs)))
+         result
+         (emit-jump-continuation jump-num k.insn)
+         )))
 
     (define (emit-litcon index kind target)
-      (LINSN 'lit target index))
+      (LINSN
+       (match kind with
+         'vector -> 'litc
+         'record -> 'litc
+         _       -> 'lit)
+       target index))
 
     (define (emit-alloc tag size target)
-      ;; XXX get rid of `tag:bare`
-      (let ((v (match tag with
-                 (tag:bare v) -> v
-                 (tag:uobj v) -> (if (= size 0) (UITAG v) (UOTAG v)))))
-        (LINSN 'alloc target v size)
-        ))
+      (let ((v (if (= size 0) (UITAG tag) (UOTAG tag))))
+        (if (= size 0)
+            (LINSN 'imm target v)
+            (LINSN 'alloc target v size)
+            )))
 
     ;; --------------------------------------------------------------------------------
 
     (define (build-field-lookup-table)
-      ;; Note: this is built as a literal, which at runtime will
-      ;;  have the type `(vector (vector int))`
-      (let ((recs (reverse the-context.records))
-            (nrecs (length recs)))
-        (if (> nrecs 0)
-            (let ((v0 '()))
-              (for-list pair recs
-                (match pair with
-                  (:pair sig index)
-                  -> (let ((v1 '()))
-                       (for-list x sig
-                         (PUSH v1 (literal:int (lookup-label-code x))))
-                       (PUSH v0 (literal:vector (reverse v1))))
-                  ))
-              (literal:vector (reverse v0)))
-            ;; no records used in this program.
-            (literal:vector '())
-            )))
+      (let ((ambig (build-ambig-table))
+            (size (tree/size ambig))
+            (table (make-vector size {k0=0 k1=0 v=0}))
+            (i 0))
+        (tree/inorder
+         (lambda (k v)
+           (match k with
+             (:tuple tag label)
+             -> (set! table[i] {k0= tag k1=label v=v}))
+           (set! i (+ i 1)))
+         ambig)
+        ;; Note: this is built as a literal, which at runtime will
+        ;;  have the type `(vector (vector int))`
+        (let (((G V) (create-minimal-perfect-hash table)))
+          (literal:vector (list (literal:vector (map literal:int (vector->list G)))
+                                (literal:vector (map literal:int (vector->list V))))))))
+
+    ;; XXX why did I do this with a quasi-readable encoding?  seems like it would
+    ;;   have made more sense to just use the runtime encoding?  i.e., instead of
+    ;;   'T'==#t, use #106?
+
+    ;; XXX once we have an 'official' streaming encoding for random datatypes, consider
+    ;;   switching to that encoding for literals/etc.
+
+    (define (emit-one-literal ob)
+      (match (lit-already::get ob) with
+        (maybe:yes index)
+        -> (o.copy (format "P" (encode-int index)))
+        (maybe:no)
+        -> (match ob with
+             (literal:int n)
+             -> (if (< n 0)
+                    (o.copy (format "-" (encode-int (- 0 n))))
+                    (o.copy (format "+" (encode-int n))))
+             (literal:char ch) -> (o.copy (format "c" (encode-int (char->ascii ch))))
+             (literal:undef)   -> (o.copy "u")
+             (literal:string s)
+             -> (begin
+                  (o.copy (format "S" (encode-int (string-length s))))
+                  (o.copy s))
+             (literal:bool #t) -> (o.copy "T")
+             (literal:bool #f) -> (o.copy "F")
+             (literal:cons dt variant args)
+             -> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
+                      (alt (dto.get variant))
+                      (nargs (length args)))
+                  (if (= nargs 0)
+                      ;; immediate constructor
+                      (o.copy (format "I" (encode-int (get-uitag dt variant alt.index))))
+                      ;; constructor with args
+                      (begin
+                        (o.copy (format "C"
+                                        (encode-int (get-uotag dt variant alt.index))
+                                        (encode-int nargs)))
+                        (for-list arg args
+                          (emit-one-literal arg)))))
+             (literal:vector args)
+             -> (begin
+                  (o.copy (format "V" (encode-int (length args))))
+                  (for-list arg args
+                    (emit-one-literal arg)))
+             (literal:record tag fields)
+             -> (begin
+                  (o.copy (format "C"
+                                  (encode-int (+ TC_USEROBJ (<< tag 2)))
+                                  (encode-int (length fields))))
+                  (for-list field fields
+                    (match field with
+                      (litfield:t _ val)
+                      -> (emit-one-literal val))))
+             (literal:symbol s)
+             -> (let ((s0 (symbol->string s)))
+                  (o.copy (format "Y" (encode-int (string-length s0))))
+                  (o.copy s0))
+             ;; Note: sexp is done via literal:cons
+             _ -> (error1 "NYI literal type" (literal->string ob))
+             )
+        ))
 
     (define (emit-literals)
       ;; encode literals into the bytecode stream.
-      (let ((already (map-maker magic-cmp)))
-
-        (define (walk ob)
-          (match (already::get ob) with
-            (maybe:yes index)
-            -> (o.copy (format "P" (encode-int index)))
-            (maybe:no)
-            -> (match ob with
-                 (literal:int n)
-                 -> (if (< n 0)
-                        (o.copy (format "-" (encode-int (- 0 n))))
-                        (o.copy (format "+" (encode-int n))))
-                 (literal:char ch) -> (o.copy (format "c" (encode-int (char->ascii ch))))
-                 (literal:undef)   -> (o.copy "u")
-                 (literal:string s)
-                 -> (begin
-                      (o.copy (format "S" (encode-int (string-length s))))
-                      (o.copy s))
-                 (literal:cons 'bool 'true _) -> (o.copy "T")
-                 (literal:cons 'bool 'false _) -> (o.copy "F")
-                 (literal:cons dt variant args)
-                 -> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
-                          (alt (dto.get variant))
-                          (nargs (length args)))
-                      (if (= nargs 0)
-                          ;; immediate constructor
-                          (o.copy (format "I" (encode-int (get-uitag dt variant alt.index))))
-                          ;; constructor with args
-                          (begin
-                            (o.copy (format "C"
-                                            (encode-int (get-uotag dt variant alt.index))
-                                            (encode-int nargs)))
-                            (for-list arg args
-                              (walk arg)))))
-                 (literal:vector args)
-                 -> (begin
-                      (o.copy (format "V" (encode-int (length args))))
-                      (for-list arg args
-                        (walk arg)))
-                 ;; XXX sexp.
-                 (literal:symbol s)
-                 -> (let ((s0 (symbol->string s)))
-                      (o.copy (format "Y" (encode-int (string-length s0))))
-                      (o.copy s0))
-                 _ -> (error1 "NYI literal type" (literal->string ob))
-                 )))
-
-        ;; emit constructed literals as a vector
-        (let ((lits0 the-context.literals)
-              (nlits lits0.count))
-          (o.copy (format "V" (encode-int nlits)))
-          (for-range i nlits
-            (let ((item (cmap->item lits0 i)))
-              (walk item)
-              (already::add item i))
-            )
+      ;; emit constructed literals as a vector
+      (let ((lits0 the-context.literals)
+            (nlits lits0.count))
+        (o.copy (format "V" (encode-int nlits)))
+        (for-range i nlits
+          (let ((item (cmap->item lits0 i)))
+            (emit-one-literal item)
+            (lit-already::add item i))
           )
         ))
 
@@ -702,19 +772,19 @@
             (stream:label _)
             -> #u
             (stream:insn 'tst (target index))
-            -> (PUSH r (INSN 'tst target (resolve index)))
+            -> (push! r (INSN 'tst target (resolve index)))
             (stream:insn 'jmp (index))
-            -> (PUSH r (INSN 'jmp (resolve index)))
+            -> (push! r (INSN 'jmp (resolve index)))
             (stream:insn 'fun (target index))
-            -> (PUSH r (INSN 'fun target (resolve index)))
+            -> (push! r (INSN 'fun target (resolve index)))
             (stream:insn 'trcall (index depth nregs . args))
-            -> (PUSH r (stream:insn 'trcall (prepend (resolve index) depth nregs args)))
+            -> (push! r (stream:insn 'trcall (prepend (resolve index) depth nregs args)))
             (stream:insn 'trcall0 (index depth))
-            -> (PUSH r (INSN 'trcall0 (resolve index) depth))
+            -> (push! r (INSN 'trcall0 (resolve index) depth))
             (stream:insn 'nvcase (ob elabel nalts . pairs))
             -> (let ((pairs0 (resolve-tag-pairs pairs)))
-                 (PUSH r (stream:insn 'nvcase (prepend ob (resolve elabel) nalts pairs0))))
-            _ -> (PUSH r insn)
+                 (push! r (stream:insn 'nvcase (prepend ob (resolve elabel) nalts pairs0))))
+            _ -> (push! r insn)
             )
           ;; bump pc *after* offsets resolved.
           (match insn with
@@ -731,9 +801,11 @@
 
     (define (encode-insn name args)
       (let ((info (name->info name)))
-        (if (>= (length args) info.nargs)
-            (string-concat (map encode-int (cons info.code args)))
-            (raise (:BadArity name)))))
+        (match (int-cmp (length args) info.nargs) info.varargs with
+          (cmp:<)  _ -> (raise (:BadArity name))
+          (cmp:>) #f -> (raise (:BadArity name))
+          _ _        -> (string-concat (map encode-int (cons info.code args)))
+          )))
 
     (define (emit-stream s)
       ;; first, compute the length (in words) of this stream.
@@ -753,21 +825,20 @@
           _ -> (impossible)
           )))
 
-    (define (peephole s)
-      ;; only one optimization so far...
-      (match s with
-        (a b . tl)
-        -> (match a b with
-             (stream:insn 'jmp (n0)) (stream:label n1)
-             -> (if (= n0 n1)
-                    ;; remove jmp to following label
-                    (list:cons b (peephole tl))
-                    (list:cons a (peephole (list:cons b tl))))
-             _ _ -> (list:cons a (peephole (list:cons b tl))))
-        (hd . tl)
-        -> (list:cons hd (peephole tl))
-        () -> '()
-        ))
+    (define peephole
+      ;; only one optimization so far
+      acc (a b . tl)
+      -> (match a b with
+           (stream:insn 'jmp (n0)) (stream:label n1)
+           -> (if (= n0 n1)
+                  ;; remove jmp to following label
+                  (peephole (list:cons b acc) tl)
+                  (peephole (list:cons a acc) (list:cons b tl)))
+           _ _ -> (peephole (list:cons a acc) (list:cons b tl)))
+      acc (hd . tl)
+      -> (peephole (list:cons hd acc) tl)
+      acc () -> (reverse acc)
+      )
 
     (define (print-stream s)
       (let ((pc 0))
@@ -780,12 +851,11 @@
             )
           )))
 
-    ;; 'immediate' literals are no longer immediate in the bytecode,
-    ;;   since this would require encoding them into a size that would
-    ;;   not be able to hold all their data (i.e., pxll_int != uint16_t)
-    ;;
-    ;; XXX consider supporting 'small' immediate literals.
-    ;;
+    ;; some immediate literals we cannot encode in the bytecode
+    ;;  stream, so we refer to them by index.
+
+    ;; XXX now that we have *most* immediates as immediates again,
+    ;;   we should probably trim this collection.
     (define (find-immediate-literals cps)
       (walk-insns
        (lambda (insn depth)
@@ -795,11 +865,61 @@
            _ -> 0))
        cps))
 
+    (define sizeoff-prims '(%malloc '%halloc %c-aref %c-sref))
+
+    (define (find-sizeoff-prims cps)
+      (walk-insns
+       (lambda (insn depth)
+         (match insn with
+           (insn:primop name parm _ _ _)
+           -> (if (and (member-eq? name sizeoff-prims) (not (eq? parm (sexp:bool #f))))
+                  (let ((sindex (get-sizeoff parm)))
+                    ;;(printf "find-sizeoff-prims parm = " (repr parm) " sindex = " (int sindex) "\n")
+                    (if (not (< sindex 55))
+                        (cmap/add sizeoff-map parm)
+                        0))
+                  0)
+           _ -> 0))
+       cps))
+
+    (define (build-sizeoff-literal)
+      (let ((r '()))
+        (printf "build sizeoff vector...")
+        (for-range i sizeoff-map.count
+          (printf "  " (int i) " " (repr (cmap->item sizeoff-map i)) "\n")
+          (push! r (unsexp (cmap->item sizeoff-map i))))
+        (printf "done...\n")
+        (reverse r)))
+
+    (define (walk-literal lit p)
+      (match lit with
+        (literal:cons _ _ l) -> (begin (p lit) (for-list x l (walk-literal x p)))
+        (literal:vector l)   -> (begin (p lit) (for-list x l (walk-literal x p)))
+        _                    -> (begin (p lit) #u)
+        ))
+
+    (define (find-symbols lit)
+      (walk-literal
+       lit
+       (lambda (x)
+         (match x with
+           (literal:symbol s)
+           -> (cmap/add the-context.literals x)
+           _ -> 0))))
+
+    (define sizeoff-sentinel
+      (literal:vector (list (literal:cons 'sexp 'symbol (list (literal:symbol '&&sizeoff-sentinel&&))))))
+
+    (define (get-sizeoff-sentinel-index)
+      (if (cmap/present? the-context.literals sizeoff-sentinel)
+          (cmap->index the-context.literals sizeoff-sentinel)
+          -1))
+
     ;; --------------------------------------------------------------------------------
 
-    (notquiet (printf "output...\n"))
+    (notquiet (printf "bytecode output...\n"))
 
-    (o.copy "IRKVM0") ;; magic
+    (o.copy "IRKVM0") ;; oh oh it's magic.
 
     ;; assign a label to every used jump.
     (for-list jn (used-jumps::keys)
@@ -808,22 +928,31 @@
     ;; append 'immediate' literals
     (find-immediate-literals cps)
 
-    ;; place the field lookup table as the last literal.
-    (cmap/add the-context.literals (build-field-lookup-table))
+    ;; find prims that generate sizeoff info.
+    (find-sizeoff-prims cps)
 
-    (emit-literals)
-
-    (let ((s (peephole (emit cps))))
+    (let ((s (peephole '() (emit cps)))
+          ;; record the index of the sizeoff sentinel (so it can be replaced)
+          (index (get-sizeoff-sentinel-index))
+          (sizeoff-literal (build-sizeoff-literal)))
+      ;;(printf "sizeoff sentinel index = " (int index) "\n")
+      ;; ensure that all symbols used in sizeoff are singletons
+      (for-list lit sizeoff-literal (find-symbols lit))
+      (verbose (printf "emit literals...\n"))
+      (emit-literals)
+      (verbose (printf "done. (" (int the-context.literals.count) " literals).\n"))
+      (emit-one-literal (build-field-lookup-table))
+      (emit-one-literal (literal:int index))
+      (emit-one-literal (literal:vector sizeoff-literal))
+      (emit-one-literal (literal:int metadata-index))
+      (set! cps (insn:return 0))
       (verbose
        (printf "labels:\n")
        (print-stream s))
-      (let ((resolved (resolve-labels s)))
-        (verbose
-         (printf "resolved:\n")
-         (print-stream resolved))
-        (emit-stream resolved))
+      (emit-stream (resolve-labels s))
+      (set! s '())
       (o.close)
       (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
       )
-    #u
+    (list:nil)
     ))

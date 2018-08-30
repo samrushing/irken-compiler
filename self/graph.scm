@@ -1,8 +1,11 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/set2.scm")
-(include "lib/alist2.scm")
-(include "lib/map.scm")
+;; XXX get rid of this
+(require "lib/map.scm")
+
+(datatype symbol-set-ob
+  (:t {t=(tree 'a 'b)})
+  )
 
 (define (symbol-set-class)
 
@@ -15,11 +18,9 @@
   (define (add self sym)
     (if (in self sym)
 	#u
-	;; bug in mbe for <literal-symbols>?
-	;;(tree/insert! self.t < (symbol->index sym) sym)
-	(set! self.t (tree/insert self.t int-cmp (symbol->index sym) sym))
+        (tree/insert! self.t int-cmp (symbol->index sym) sym)
 	))
-  
+
   (define (get self)
     (tree/values self.t))
 
@@ -28,9 +29,11 @@
      (lambda (k v) (p v))
      self.t))
 
-  (let ((methods {in=in add=add get=get iterate=iterate}))
+  (define un (symbol-set-ob:t self) -> self)
+
+  (let ((methods {in=in add=add get=get iterate=iterate un=un}))
     (define (new)
-      {o=methods self={t=(tree/empty)}})
+      {o=methods self=(symbol-set-ob:t {t=(tree/empty)})})
     new)
   )
 
@@ -43,7 +46,6 @@
     s))
 
 (define (build-dependency-graph root)
-  ;;(let ((g (alist-maker)))
   (let ((g (map-maker symbol-index-cmp)))
     (define (search exp current-fun)
       (match (noderec->t exp) with
@@ -71,8 +73,7 @@
     (set! the-context.dep-graph g)))
 
 (define (transpose g)
-  ;;(let ((gt (alist-maker)))
-  (let ((gt (map-maker symbol-cmp)))
+  (let ((gt (map-maker symbol-index-cmp)))
     (g::iterate
      (lambda (k _)
        (gt::add k (symbol-set-maker '()))))
@@ -81,7 +82,7 @@
        (for-each
 	(lambda (v)
 	  (match (gt::get v) with
-	    (maybe:no) -> (gt::add v (symbol-set-maker (LIST k)))
+	    (maybe:no) -> (gt::add v (symbol-set-maker (list k)))
 	    (maybe:yes s) -> (s::add k)))
 	(vl::get))))
     gt))
@@ -119,7 +120,7 @@
 			   (lambda (v)
 			     (if (not (visited::in v))
 				 (visit0 v)))))
-      (PUSH s u))
+      (push! s u))
     ;; walk the graph forward, pushing finished nodes onto <s>
     (g::iterate
      (lambda (u v)
@@ -141,20 +142,19 @@
       ;; walk backward, popping strongly connected components off <s>
       (while
        (not (null? s))
-       (let ((u (pop s)))
+       (let ((u (pop! s)))
 	 (if (not (visited::in u))
 	     (begin
 	       (set! r1 (symbol-set-maker '()))
 	       (visit1 u)
-	       (PUSH r0 (r1::get))))))
+	       (push! r0 (r1::get))))))
       ;; the subcomponents are in topological order
       r0)))
 
 (define (partition-fix names scc-graph)
   ;; partition the functions of this fix into sets of mutually-recursive functions
   (let ((n (length names))
-	;(name-map (alist-maker))
-	(name-map (map-maker symbol-cmp))
+	(name-map (map-maker symbol-index-cmp))
 	(leftover (range n))
 	(parts '())
 	(part '()))
@@ -164,7 +164,7 @@
     (for-each
      (lambda (component)
        (cond ((> (length part) 0)
-	      (PUSH parts part)
+	      (push! parts part)
 	      (set! part '())))
        (for-each
 	(lambda (name)
@@ -172,16 +172,17 @@
 	    (maybe:no) -> #u
 	    (maybe:yes val) -> (if (not val.done)
 				   (begin
-				     (PUSH part val.index)
+				     (push! part val.index)
 				     (set! val.done #t)
-				     (remove-eq! val.index leftover)))))
+                                     (remove! val.index leftover)
+                                     ))))
 	component))
      scc-graph)
     (if (> (length part) 0)
-	(PUSH parts part))
+	(push! parts part))
     ;; the leftovers should all be non-functions
     (if (> (length leftover) 0)
-	(PUSH parts leftover))
+	(push! parts leftover))
     ;; partitioned!
     (reverse parts)
     ))
@@ -199,12 +200,12 @@
        (let ((r0 '()))
 	 (for-each
 	  (lambda (j)
-	    (PUSH names0 (nth names j))
-	    (PUSH inits0 (nth inits j))
-	    (PUSH r0 i)
+	    (push! names0 (nth names j))
+	    (push! inits0 (nth inits j))
+	    (push! r0 i)
 	    (set! i (+ i 1)))
 	  part)
-	 (PUSH r (reverse r0))
+	 (push! r (reverse r0))
 	 ))
      partition)
     (:reordered (reverse names0) (reverse inits0) (nth inits n) (reverse r))))

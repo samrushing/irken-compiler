@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "self/graph.scm")
+(require "self/types.scm")
+
 ;; This uses a relatively inexpensive form of an 'occurs check'.
 ;;   Since apply-subst is used all over the place (including in the
 ;;   printing of errors), this gets better coverage than an explicit
@@ -27,6 +30,60 @@
 		   r))
 	    ))))
   (p t))
+
+;; --------- tenv API ---------
+
+;; Type Environment: originally a linked list of environments,
+;;  we have added two optimizations:
+;;  1) use a functional map rather than an alist (speeds lookups by name)
+;;  2) we pre-compute the set of all free tvars to speed up the occurs check.
+
+(define (tenv/make)
+  {free=(tree:empty) env=(tree:empty)})
+
+(define (tenv/lookup tenv name)
+  (tree/member tenv.env symbol-index-cmp name))
+
+(define (tenv/extend tenv name scheme)
+  (let ((free0 (scheme/free scheme))
+        (free1 tenv.free))
+    ;; merge into tenv.free
+    (tree/inorder
+     (lambda (k v)
+       (set! free1 (tree/insert free1 magic-cmp k #f)))
+     free0)
+    {free=free1 env=(tree/insert tenv.env symbol-index-cmp name scheme)}))
+
+(define (occurs-free-in-tenv tvar tenv)
+  (match (tree/member tenv.free magic-cmp tvar) with
+    (maybe:yes _) -> #t
+    (maybe:no)    -> #f
+    ))
+
+(defmacro tenv/extend!
+  (tenv-extend! tenv name scheme) -> (set! tenv (tenv/extend tenv name scheme))
+  )
+
+(define (tenv/iterate p tenv)
+  (tree/inorder p tenv.env))
+
+;; collect all the free tvars in a type scheme
+(define scheme/free
+  (:scheme gens type)
+  -> (let ((free (tree:empty)))
+       (let walk ((type type))
+         (match type with
+           (type:pred _ args _)
+           -> (let loop ((args args))
+                (match args with
+                  ()           -> #u
+                  (arg . args) -> (begin (walk arg) (loop args))))
+           _ -> (if (not (member-eq? type gens))
+                    (tree/insert! free magic-cmp type #f))
+           ))
+       free))
+
+;; ----------------------------
 
 (define scheme-repr
   (:scheme gens type)
@@ -84,26 +141,6 @@
       (type:pred na _ _) (type:pred nb _ _) -> (eq? na nb)
       _ _ -> #f)
 
-    ;; note: a remaining difference between the python solver and the this solver:
-    ;;   the python solver will emit rlabel (name,abs(), ...) in some cases.
-    ;;   doesn't seem to have an impact (yet), but something to watch for:
-    ;;
-    ;; 7039 L        primapp [11] ('%rextend/x', None) {a=bool b=bool x=int y=char z=char}
-    ;; 7037 L          primapp [9] ('%rextend/y', None) {a=bool b=bool x=#f y=char z=char}
-    ;; 7035 L            primapp [7] ('%rextend/z', None) {a=bool b=bool y=#f z=char}
-    ;; 7033 L              primapp [5] ('%rextend/a', None) {a=bool b=bool z=#f}
-    ;; 7031 L                primapp [3] ('%rextend/b', None) {a=#f b=bool}
-    ;; 7029 L                  primapp [1] ('%rmake', None) {b=#f}
-    ;;
-    ;; vs
-    ;;
-    ;; 2360   11  100       primapp %rextend x : {x=int y=char z=char a=bool b=bool }
-    ;; 2358    9  100         primapp %rextend y : {y=char z=char a=bool b=bool }
-    ;; 2356    7  100           primapp %rextend z : {z=char a=bool b=bool }
-    ;; 2354    5  100             primapp %rextend a : {a=bool b=bool }
-    ;; 2352    3  100               primapp %rextend b : {b=bool }
-    ;; 2350    1  100                 primapp %rmake #f : {}
-
     (define (U-row u v)
       (match u v with
         ;; u and v are both rlabel
@@ -132,8 +169,8 @@
 		    (U (pred p1 tvars0) t0)
 		    (U (pred p1 tvars1) d0)
 		    (for-range i n
-			       (U (nth s1 i) (rlabel l0 (nth tvars0 i) (nth tvars1 i)))
-			       ))))
+                      (U (nth s1 i) (rlabel l0 (nth tvars0 i) (nth tvars1 i)))
+                      ))))
 	;; both are rdefault
 	(type:pred 'rdefault (t0) _) (type:pred 'rdefault (t1) _)
 	-> (U t0 t1)
@@ -176,46 +213,21 @@
 				       (maybe:yes tv) -> tv
 				       (maybe:no) -> t)))))
 
-  (define (occurs-in-type tvar type)
-    (let/cc return
-	(if (eq? tvar type)
-	    #t
-	    (match type with
-	      (type:tvar _ _) -> #f
-	      (type:pred _ args _)
-	      -> (begin
-		   (for-each
-		    (lambda (arg)
-		      (if (occurs-in-type tvar arg) (return #t) #u))
-		    args)
-		   #f)))))
-
-  ;; occurs-free and build-type-scheme could obviously
-  ;;   be made more efficient - build-type-scheme walks
-  ;;   the entire environment repeatedly.
-  (define (occurs-free-in-tenv tvar tenv)
-    (let/cc return
-	(alist/iterate
-	 (lambda (name scheme)
-	   (match scheme with
-	     (:scheme gens type)
-	     -> (if (not (member-eq? tvar gens))
-		    (if (occurs-in-type tvar type)
-			(return #t)))))
-	 tenv)
-      #f))
-
   (define (build-type-scheme type tenv)
-    (let ((gens (set-maker '())))
+    (let ((gens (set/empty)))
       (define (find-generic-tvars t)
 	(match t with
-	  (type:tvar _ _)      -> (if (not (occurs-free-in-tenv t tenv)) (gens::add t))
-	  (type:pred _ args _) -> (for-each find-generic-tvars args)))
+	  (type:tvar _ _)
+          -> (if (not (occurs-free-in-tenv t tenv)) (set/add! gens magic-cmp t))
+	  (type:pred _ args _)
+          -> (for-each find-generic-tvars args)))
       (let ((type (apply-subst type)))
 	(find-generic-tvars type)
 	(when the-context.options.debugtyping
-	      (printf "build-type-scheme type=" (type-repr type) " gens = " (join type-repr "," (gens::get)) "\n"))
-	(:scheme (gens::get) type))))
+          (printf "build-type-scheme type=" (type-repr type)
+                  " gens = " (join type-repr "," (set->list gens))
+                  "\n"))
+	(:scheme (set->list gens) type))))
 
   (define (type-of* exp tenv)
     (match (noderec->t exp) with
@@ -235,14 +247,6 @@
       (node:subst _ _)              -> (impossible)
       ))
 
-  (define (dump-tenv tenv)
-    (printf "tenv {\n")
-    (tree/inorder
-     (lambda (name scheme)
-       (printf "  " (sym name) " = " (scheme-repr scheme) "\n"))
-     tenv)
-    (printf "}\n"))
-
   (define (type-of exp tenv)
     (when the-context.options.debugtyping
       (printf "( type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n"))
@@ -259,32 +263,39 @@
 
   (define (type-of-literal lit exp tenv)
     (match lit with
-      (literal:string _)    -> string-type
-      (literal:int _)	    -> int-type
-      (literal:char _)	    -> char-type
-      (literal:undef)	    -> undefined-type
-      (literal:symbol _)    -> symbol-type
-      (literal:sexp _)      -> sexp-type
-      (literal:cons dt v l) -> (let ((dto (alist/get the-context.datatypes dt "no such datatype")))
-				 (match (dto.get-alt-scheme v) with
-				   (:scheme gens type)
-				   -> (match (instantiate-type-scheme gens type) with
-					(type:pred 'arrow (result-type . arg-types) _)
-					-> (begin
-					     (for-range
-						 i (length arg-types)
-						 (let ((tx (type-of-literal (nth l i) exp tenv)))
-						   (unify exp tx (nth arg-types i))))
-					     result-type)
-					x -> (error1 "strange constructor scheme" x))))
-      (literal:vector l)    -> (let ((tv (new-tvar)))
-				 (for-each
-				  (lambda (x)
-				    (let ((tx (type-of-literal x exp tenv)))
-				      (unify exp tv tx)))
-				  l)
-				 (pred 'vector (LIST tv))
-				 )
+      (literal:string _) -> string-type
+      (literal:int _)	 -> int-type
+      (literal:char _)	 -> char-type
+      (literal:bool _)   -> bool-type
+      (literal:undef)	 -> undefined-type
+      (literal:symbol _) -> symbol-type
+      (literal:sexp _)   -> sexp-type
+      (literal:cons dt v l)
+      -> (let ((dto (alist/get the-context.datatypes dt "no such datatype")))
+           (match (dto.get-alt-scheme v) with
+             (:scheme gens type)
+             -> (match (instantiate-type-scheme gens type) with
+                  (type:pred 'arrow (result-type . arg-types) _)
+                  -> (begin
+                       (for-range
+                           i (length arg-types)
+                         (let ((tx (type-of-literal (nth l i) exp tenv)))
+                           (unify exp tx (nth arg-types i))))
+                       result-type)
+                  x -> (error1 "strange constructor scheme" x))))
+      (literal:vector l)
+      -> (let ((tv (new-tvar)))
+           (for-list x l
+             (unify exp tv (type-of-literal x exp tenv)))
+           (pred 'vector (list tv)))
+      (literal:record tag fl)
+      -> (let loop ((t (rdefault (rabs)))
+                    (fl fl))
+           (match fl with
+             () -> (rproduct t)
+             ((litfield:t name val) . rest)
+             -> (loop (rlabel (make-label name) (rpre (type-of-literal val exp tenv)) t) rest)
+             ))
       ))
 
   ;; HACK: remove a raw predicate if present
@@ -292,18 +303,23 @@
     (type:pred 'raw (arg) _) -> arg
     t -> t)
 
+  ;; HACK: frob signature if bogus-bytecode-cexp.
+  (define (maybe-frob-cexp-sig pargs)
+    (if (eq? the-context.options.backend (backend:bytecode))
+        (map ffi-type-frob-int pargs)
+        pargs))
+
   (define (type-of-cexp gens sig exp tenv)
     (match (instantiate-type-scheme gens sig) with
       (type:pred 'arrow pargs _)
       -> (if (not (= (- (length pargs) 1) (length (noderec->subs exp))))
              (error1 "wrong number of args to cexp" exp)
-             (match pargs with
+             (match (maybe-frob-cexp-sig pargs) with
                () -> (error1 "malformed arrow type" sig)
                (result-type . parg-types)
                -> (let ((arg-types (map (lambda (x) (type-of x tenv)) (noderec->subs exp))))
-                    (for-each2 (lambda (a b)
-                                 (unify exp (unraw a) b))
-                               parg-types arg-types)
+                    (for-list2 a b parg-types arg-types
+                      (unify exp (unraw a) b))
                     result-type
                     )))
       type -> type))
@@ -336,8 +352,8 @@
     (let ((arg-types '()))
       (for-list formal formals
         (let ((type (optional-type formal tenv)))
-          (PUSH arg-types type)
-          (alist/push tenv formal (:scheme '() type))))
+          (push! arg-types type)
+          (tenv/extend! tenv formal (:scheme '() type))))
       (let ((btype (type-of body tenv))
             (ftype (arrow btype (reverse arg-types))))
         (if (no-type? sig)
@@ -346,14 +362,14 @@
       ))
 
   (define (apply-tenv name tenv)
-;;     (print-string "apply-tenv: ") (printn name)
-;;     (print-string " tenv= {\n")
-;;     (alist/iterate
-;;      (lambda (k v)
-;;        (printf " " (sym k) " " (scheme-repr v) "\n"))
-;;      tenv)
-;;     (print-string "}\n")
-    (match (alist/lookup tenv name) with
+    ;; (print-string "apply-tenv: ") (printn name)
+    ;; (print-string " tenv= {\n")
+    ;; (tenv/iterate
+    ;;  (lambda (k v)
+    ;;    (printf " " (sym k) " " (scheme-repr v) "\n"))
+    ;;  tenv)
+    ;; (print-string "}\n")
+    (match (tenv/lookup tenv name) with
       (maybe:no) -> (error1 "apply-tenv: unbound variable" name)
       (maybe:yes (:scheme gens type))
       -> (instantiate-type-scheme gens type)))
@@ -393,30 +409,25 @@
 	       (init-types (make-vector n no-type))
 	       )
 	   ;;(print-string "reordered: ") (printn names0)
-	   (for-each
-	    (lambda (part)
-	      ;; build temp tenv for typing the inits
-	      (let ((temp-tenv
-		     (foldr
-		      (lambda (i al)
-			(alist:entry names[i] (:scheme '() init-tvars[i]) al))
-		      tenv (reverse part))))
-		;; type each init in temp-tenv
-		(for-each
-		 (lambda (i)
-		   (let ((ti (type-of inits[i] temp-tenv))
-			 (_ (unify inits[i] ti init-tvars[i]))
-			 ;;(ti (apply-subst ti)))
-			 )
-		     (set! init-types[i] ti)))
-		 part)
-		;; now extend the environment with type schemes instead
-		(for-each
-		 (lambda (i)
-		   (let ((scheme (build-type-scheme init-types[i] tenv)))
-		     (alist/push tenv names[i] scheme)))
-		 part)))
-	    partition)
+	   (for-list part partition
+             ;; build temp tenv for typing the inits
+             (let ((temp-tenv
+                    (foldr
+                     (lambda (i tenv0)
+                       (tenv/extend tenv0 names[i] (:scheme '() init-tvars[i])))
+                     tenv (reverse part))))
+               ;; type each init in temp-tenv
+               (for-list i part
+                 (let ((ti (type-of inits[i] temp-tenv))
+                       (_ (unify inits[i] ti init-tvars[i]))
+                       ;;(ti (apply-subst ti)))
+                       )
+                   (set! init-types[i] ti)))
+               ;; now extend the environment with type schemes instead
+               (for-list i part
+                 (let ((scheme (build-type-scheme init-types[i] tenv)))
+                   (tenv/extend! tenv names[i] scheme)))
+               part))
 	   ;; type the body in the new polymorphic environment
 	   (type-of body tenv))))
 
@@ -430,7 +441,7 @@
 		(ta (type-of init tenv)))
 	    ;; XXX user-supplied type
 	    ;; extend environment
-	    (alist/push tenv name (:scheme '() ta))))
+            (tenv/extend! tenv name (:scheme '() ta))))
       ;; type body in the new env
       (type-of (nth inits n) tenv)))
 
@@ -456,7 +467,8 @@
 	       (let ((type0 (instantiate-type-scheme tvars type)))
 		 (unify exp tval type0))))
       ;; each alt has the same type
-      (for-each (lambda (alt) (unify alt tv (type-of alt tenv))) alts)
+      (for-list alt alts
+        (unify alt tv (type-of alt tenv)))
       ;; this will work even when else-exp is a dummy %%match-error
       (unify else-exp tv (type-of else-exp tenv))
       tv))
@@ -500,6 +512,8 @@
       (maybe:no) -> (let ((index (alist/length the-context.variant-labels)))
 		      (alist/push the-context.variant-labels label index))))
 
+  ;; these are used in type schemes in lookup-primap.  Since they are generalized
+  ;;  over, it's ok to use the same tvar repeatedly.
   (define T0 (new-tvar))
   (define T1 (new-tvar))
   (define T2 (new-tvar))
@@ -517,40 +531,42 @@
   ;;   for example accessing a record field requires a row type containing a label
   ;;   for the field.
 
+  ;; XXX need a little DSL for type schemes here, building them by hand is ugly/clumsy.
+
   (define (lookup-primapp name params)
     (match name with
-      '%fatbar	    -> (:scheme (LIST T0) (arrow T0 (LIST T0 T0)))
-      '%fail	    -> (:scheme (LIST T0) (arrow T0 '()))
-      '%match-error -> (:scheme (LIST T0) (arrow T0 '()))
-      '%make-vector -> (:scheme (LIST T0) (arrow (pred 'vector (LIST T0)) (LIST int-type T0)))
-      '%array-ref   -> (:scheme (LIST T0) (arrow T0 (LIST (pred 'vector (LIST T0)) int-type)))
-      '%array-set   -> (:scheme (LIST T0) (arrow undefined-type (LIST (pred 'vector (LIST T0)) int-type T0)))
+      '%fatbar	    -> (:scheme (list T0) (arrow T0 (list T0 T0)))
+      '%fail	    -> (:scheme (list T0) (arrow T0 '()))
+      '%match-error -> (:scheme (list T0) (arrow T0 '()))
+      '%make-vector -> (:scheme (list T0) (arrow (pred 'vector (list T0)) (list int-type T0)))
+      '%array-ref   -> (:scheme (list T0) (arrow T0 (list (pred 'vector (list T0)) int-type)))
+      '%array-set   -> (:scheme (list T0) (arrow undefined-type (list (pred 'vector (list T0)) int-type T0)))
       '%rmake       -> (:scheme '() (arrow (rproduct (rdefault (rabs))) '()))
-      '%ensure-heap -> (:scheme '() (arrow undefined-type (LIST int-type)))
+      '%ensure-heap -> (:scheme '() (arrow undefined-type (list int-type)))
       '%rextend     -> (match params with
                          (sexp:symbol label)
                          -> (let ((plabel (make-label label)))
                               ;; forall('a,'b).({lab=(abs) 'a} 'b -> {lab=(pre 'b) 'a})
-                              (:scheme (LIST T0 T1)
+                              (:scheme (list T0 T1)
                                        (arrow (rproduct (rlabel plabel (rpre T1) T0))
-                                              (LIST
+                                              (list
                                                (rproduct (rlabel plabel (rabs) T0))
                                                T1)))
                               )
                          _ -> (prim-error name))
       '%raccess     -> (match params with
 			 (sexp:symbol label)
-			 -> (:scheme (LIST T0 T1)
+			 -> (:scheme (list T0 T1)
 				     (arrow T0
-					    (LIST (rproduct (rlabel (make-label label)
+					    (list (rproduct (rlabel (make-label label)
 								    (rpre T0)
 								    T1)))))
 			 _ -> (prim-error name))
       '%rset        -> (match params with
 			 (sexp:symbol label)
-			 -> (:scheme (LIST T0 T1)
+			 -> (:scheme (list T0 T1)
 				     (arrow undefined-type
-					    (LIST (rproduct (rlabel (make-label label)
+					    (list (rproduct (rlabel (make-label label)
 								    (rpre T0)
 								    T1))
 						  T0)))
@@ -569,9 +585,9 @@
 			      (remember-variant-label label)
 			      (match arity with
 				;; ∀X.() → Σ(l:pre (Π());X)
-				0 -> (:scheme (LIST T0) (arrow (rsum (rlabel plabel (rpre (pred 'product '())) T0)) '()))
+				0 -> (:scheme (list T0) (arrow (rsum (rlabel plabel (rpre (pred 'product '())) T0)) '()))
 				;; ∀XY.X → Σ(l:pre X;Y)
-				1 -> (:scheme (LIST T0 T1) (arrow (rsum (rlabel plabel (rpre T0) T1)) (LIST T0)))
+				1 -> (:scheme (list T0 T1) (arrow (rsum (rlabel plabel (rpre T0) T1)) (list T0)))
 				;; ∀ABCD.Π(A,B,C) → Σ(l:pre (Π(A,B,C));D)
 				_ -> (let ((tdflt (new-tvar))
 					   (targs (n-tvars arity)))
@@ -594,7 +610,7 @@
 				  (:scheme (list:cons tdflt argvars)
 					   ;; e.g., to pick the second arg:
 					   ;; ∀0123. Σ(l:pre (0,1,2);3) → 1
-					   (arrow (nth argvars index) (LIST vtype))))
+					   (arrow (nth argvars index) (list vtype))))
 				;; normal variant
 				(match (alist/lookup the-context.datatypes dtname) with
 				  (maybe:no) -> (error1 "lookup-primapp: no such datatype" dtname)
@@ -602,26 +618,115 @@
 				  -> (let ((alt (dt.get altname))
 					   (tvars (dt.get-tvars))
 					   (dtscheme (pred dtname tvars)))
-				       (:scheme tvars (arrow (nth alt.types index) (LIST dtscheme))))))
+				       (:scheme tvars (arrow (nth alt.types index) (list dtscheme))))))
 			 _ -> (prim-error name))
       '%callocate  -> (let ((type (parse-type params)))
 			;; int -> (buffer <type>)
-			(:scheme '() (arrow (pred 'buffer (LIST type)) (LIST int-type))))
-      '%exit       -> (:scheme (LIST T0 T1) (arrow T0 (LIST T1)))
-      '%cget       -> (:scheme (LIST T0) (arrow T0 (LIST (pred 'buffer (LIST T0)) int-type)))
-      '%cset       -> (:scheme (LIST T0 T1) (arrow undefined-type (LIST (pred 'buffer (LIST T0)) int-type T1)))
+			(:scheme '() (arrow (pred 'buffer (list type)) (list int-type))))
+      '%exit       -> (:scheme (list T0 T1) (arrow T0 (list T1)))
       ;; these both can be done with %%cexp, but we need to be able to detect their usage in order to
       ;;   disable inlining of functions that use them.
-      '%getcc      -> (:scheme (LIST T0) (arrow (pred 'continuation (LIST T0)) (LIST)))
-      '%putcc      -> (:scheme (LIST T0 T1) (arrow T1 (LIST (pred 'continuation (LIST T0)) T0)))
+      '%getcc      -> (:scheme (list T0) (arrow (pred 'continuation (list T0)) (list)))
+      '%putcc      -> (:scheme (list T0 T1) (arrow T1 (list (pred 'continuation (list T0)) T0)))
       ;; used in an nvcase else clause when the compiler knows the match is complete
       ;;  [i.e., no else clause is needed]
-      '%complete-match -> (:scheme (LIST T0) (arrow T0 '()))
+      '%complete-match -> (:scheme (list T0) (arrow T0 '()))
       ;; llvm prims
-      '%llarith    -> (:scheme '() (arrow int-type (LIST int-type int-type)))
-      '%llicmp     -> (:scheme '() (arrow bool-type (LIST int-type int-type)))
-      '%lleq       -> (:scheme (LIST T0) (arrow bool-type (LIST T0 T0)))
+      '%llarith    -> (:scheme '() (arrow int-type (list int-type int-type)))
+      '%llicmp     -> (:scheme '() (arrow bool-type (list int-type int-type)))
+      '%lleq       -> (:scheme (list T0) (arrow bool-type (list T0 T0)))
+      ;; -------------------- FFI --------------------
+      '%ffi2  -> (lookup-ffi-scheme params)
+      '%malloc -> (:scheme '() (arrow (pred 'cref
+                                            (list (pred 'array (list (parse-type params)))))
+                                      (list int-type)))
+      '%halloc -> (:scheme '() (arrow (pred 'cref
+                                            (list (pred 'array (list (parse-type params)))))
+                                      (list int-type)))
+      '%free   -> (:scheme (list T0) (arrow undefined-type (list (pred 'cref (list T0)))))
+      '%c-aref -> (:scheme (list T0) (arrow (pred 'cref (list T0))
+                                            (list (pred 'cref (list (pred 'array (list T0)))) int-type)))
+      ;; forall(t0).cref(*(t0)) -> cref(t0)
+      '%c-get-ptr -> (:scheme (list T0)
+                              (arrow (pred 'cref (list T0))
+                                     (list (pred 'cref (list (pred '* (list T0)))))))
+      ;; forall(t0).cref(*(t0)),cref(t0) -> undefined
+      '%c-set-ptr -> (:scheme (list T0)
+                              (arrow undefined-type
+                                     (list (pred 'cref (list (pred '* (list T0))))
+                                           (pred 'cref (list T0)))))
+      '%c-get-int -> (:scheme (list T0) (arrow int-type (list (pred 'cref (list T0)))))
+      '%c-set-int -> (:scheme (list T0) (arrow undefined-type (list (pred 'cref (list T0)) int-type)))
+      '%c-sref    -> (get-sref-scheme params)
+      '%cref->string -> (:scheme '() (arrow string-type (list (pred 'cref (list (pred 'char '()))) int-type)))
+      '%string->cref -> (:scheme '() (arrow (pred 'cref (list (pred 'char '()))) (list string-type)))
+      '%c-cast       -> (:scheme (list T0)
+                                 (arrow (pred 'cref (list (parse-type params)))
+                                        (list (pred 'cref (list T0)))))
+      '%c-sizeof     -> (:scheme '() (arrow int-type '()))
+      '%cref->int    -> (:scheme (list T0) (arrow int-type (list (pred 'cref (list T0)))))
+      '%int->cref    -> (:scheme (list T0) (arrow (pred 'cref (list T0)) (list int-type)))
+      ;; for calling internal functions of the form `(object, object, ...) -> object`
+      '%llvm-call    -> (make-llvm-scheme params)
+      ;; for fetching irken objects in external symbols
+      '%llvm-get     -> (make-llvm-scheme params)
+      ;; -------------------- FFI --------------------
       _ -> (error1 "lookup-primapp" name)))
+
+  (define (ffi-type-frob-int type)
+    (match type with
+      ;; promote all c int types to irken ints.
+      (type:pred kind _ _) -> (if (member-eq? kind c-int-types)
+                                  int-type
+                                  type)
+      _ -> type
+      ))
+
+  (define get-sref
+    ;; structname.field0.field1.field2 ...
+    (sexp:attr (sexp:symbol sname) fname)
+    -> (:tuple (lookup-field fname (lookup-struct-fields sname)) sname)
+    (sexp:attr sub fname)
+    -> (let (((ref sname) (get-sref sub)))
+         (:tuple (cref-field fname ref) sname))
+    x -> (error1 "get-sref: malformed struct/union reference" (repr x))
+    )
+
+  (define (get-sref-scheme refexp)
+    (let (((ref sname) (get-sref refexp))
+          (ftype (ctype->irken-type* ref.ctype)))
+      (:scheme (list T0) (arrow (pred 'cref (list ftype))
+                                (list (pred 'cref
+                                            (list (pred 'struct
+                                                        (list (pred sname '()))))))))
+      ))
+
+  ;; for typing purposes, all int-like args (and results) become 'int'.
+  ;; XXX this would be the place to handle other immediate types like char, #t/#f, etc.
+  (define frob-int-arg
+    (ctype:int _ _) -> (ctype:int (cint:int) #t)
+    x               -> x
+    )
+
+  ;; XXX do we need to scan the resulting type for tvars to add to gens?
+  (define lookup-ffi-scheme
+    (sexp:symbol name)
+    -> (match (ffi-info.sigs::get name) with
+         (maybe:yes (csig:fun _ rtype argtypes))
+         -> (:scheme '() (arrow (ffi-type-frob-int (ctype->irken-type rtype))
+                                (map ctype->irken-type (map frob-int-arg argtypes))))
+         (maybe:yes (csig:obj _ obtype))
+         -> (:scheme '() (arrow (pred 'cref (list (ffi-type-frob-int (ctype->irken-type obtype)))) '()))
+         (maybe:no)
+         -> (error1 "lookup-ffi-scheme: unknown name" name))
+    x -> (error1 "lookup-ffi-scheme: malformed" (repr x))
+    )
+
+  (define make-llvm-scheme
+    ;; after the sig are optional metadata
+    (sexp:list ((sexp:string _) sig . _)) -> (parse-cexp-sig sig)
+    x -> (error1 "make-llvm-scheme: malformed" (repr x))
+    )
 
   ;; each exception is stored in a global table along with a tvar
   ;;  that will unify with each use.
@@ -700,7 +805,10 @@
 		    (type:pred 'arrow (result-type . arg-types) _)
 		    -> (begin
 			 (when (not (= (length arg-types) (length subs)))
-			       (error2 "wrong number of args to primapp" (map type-repr arg-types) subs))
+                           (printf "\n\nwrong number of args to primapp '" (sym name) "'\n"
+                                   "types: (" (join " " (map type-repr arg-types)) ")\n"
+                                   "args: " (join " " (map repr (map noderec->sexp subs))) "\n")
+                           (error "wrong number of args"))
 			 (for-range
 			     i (length arg-types)
 			     (let ((arg (nth subs i))
@@ -719,7 +827,7 @@
     (set-node-type! n (apply-subst (noderec->type n)))
     (for-each apply-subst-to-program (noderec->subs n)))
 
-  (let ((t (type-of node (alist/make))))
+  (let ((t (type-of node (tenv/make))))
     ;;(printf "applying subst...") (flush)
     (apply-subst-to-program node)
     ;;(printf "done.\n")
@@ -731,45 +839,22 @@
     (let ((name0 (symbol->string name))
           (parts (string-split name0 #\_)))
       (let loop ((parts (reverse parts)))
-        (if (all digit? (string->list (car parts)))
+        (if (all? digit? (string->list (car parts)))
             (loop (cdr parts))
             (format (join "_" (reverse parts)))))))
 
-  (let ((funstack (LIST 0)))
-    (for (make-node-generator n) (node depth)
+  (let ((funstack (list 0)))
+    (for (node depth) (make-node-generator n)
       ;; normalize indent
       (match (noderec->t node) with
         (node:function name formals)
         -> (begin
              (if (> depth (car funstack))
-                 (PUSH funstack depth)
+                 (push! funstack depth)
                  (while (< depth (car funstack))
-                   (pop funstack)))
+                   (pop! funstack)))
              (printf (rpad 20 (format (repeat (length funstack) "  ") (strip-alpha name)))
                      " : " (type-repr* (noderec->type node) #t) "\n"))
         _ -> #u
         )
       )))
-
-
-;; (define (test-typing)
-;;   (let ((context (make-context))
-;; 	(transform (transformer context))
-;; 	;;(exp0 (sexp:list (read-string "(%%cexp (int int -> int) \"%0+%1\" 3 #\\a)")))
-;; 	;;(exp0 (sexp:list (read-string "(begin #\\A (if #t 3 4))")))
-;; 	(exp0 (sexp:list (read-string "((lambda (a b) (%%cexp (int int -> int) \"%0+%1\" a b)) 3 4)")))
-;; 	(exp1 (transform exp0))
-;; 	(node0 (walk exp1))
-;; 	(graph0 (build-dependency-graph node0))
-;; 	(ignore (print-graph graph0))
-;; 	(strong (strongly graph0))
-;; 	(_ (set! context.scc-graph strong))
-;; 	(type0 (type-program node0 context))
-;; 	)
-;;     (pp-node node0)
-;;     (newline)
-;;     ))
-
-;; uncomment to test
-;(include "self/nodes.scm")
-;(test-typing)

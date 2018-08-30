@@ -1,0 +1,7 @@
+(uname
+  (includes sys/utsname.h)
+  (structs utsname)
+  (constants)
+  (sigs
+    (uname (* (struct utsname)) -> int)
+    ))

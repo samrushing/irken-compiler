@@ -39,76 +39,120 @@
   p (alist:entry k v tl) -> (begin (p k v) (alist/iterate p tl))
   )
 
-(define alist/map
-  p (alist:nil) -> (list:nil)
-  p (alist:entry k v tl) -> (list:cons (p k v) (alist/map p tl))
+(define alist->keys*
+  (alist:nil)          acc -> acc
+  (alist:entry k _ tl) acc -> (alist->keys* tl (list:cons k acc)))
+
+(define (alist->keys al)
+  (alist->keys* al (list:nil)))
+
+(define alist->values*
+  (alist:nil)          acc -> acc
+  (alist:entry _ v tl) acc -> (alist->values* tl (list:cons v acc)))
+
+(define (alist->values al)
+  (alist->values* al (list:nil)))
+
+(define alist/length*
+  (alist:nil)          acc -> acc
+  (alist:entry _ _ tl) acc -> (alist/length* tl (+ 1 acc)))
+
+(define (alist/length al)
+  (alist/length* al 0))
+
+;; create a inverse map of an existing alist.
+(define (alist/inverse al)
+  (let ((r (alist:nil)))
+    (alist/iterate
+     (lambda (k v)
+       (alist/push r v k))
+     al
+     )
+    r))
+
+(define alist/map*
+  p acc (alist:nil) -> acc
+  p acc (alist:entry k v tl) -> (alist/map* p (list:cons (p k v) acc) tl)
   )
 
-(define alist->keys
-  (alist:nil) -> (list:nil)
-  (alist:entry k _ tl) -> (list:cons k (alist->keys tl)))
+(define (alist/map p al)
+  (alist/map* p '() al))
 
-(define alist->values
-  (alist:nil) -> (list:nil)
-  (alist:entry _ v tl) -> (list:cons v (alist->keys tl)))
+(defmacro for-alist
+  (for-alist k v alist body ...)
+  -> (alist/iterate (lambda (k v) body ...) alist)
+  )
 
-(define alist/length
-  (alist:nil) -> 0
-  (alist:entry _ _ tl) -> (+ 1 (alist/length tl)))
+;; imperative alist 'object'.
 
-;; imperative alist object
-;;
-;; XXX: when I originally wrote this, these 'methods' merely used
-;;  the functions defined above.  This may have led to a nasty bug
-;;  wherein the program typed differently depending on the phase of
-;;  the moon.  I suspect/hope that this is a problem with using records
-;;  this way - I seem to remember something about such restrictions on
-;;  ocaml's object classes... rewriting this with the code inside the
-;;  closure seems to have fixed it... fingers crossed...
+(datatype alist-ob
+  (:t {alist=(alist 'a 'b)})
+  )
 
-(define (make-alist)
-  (let ((alist (alist:nil)))
-    (define (add k v)
-      (set! alist (alist:entry k v alist)))
-    (define (lookup k0)
-      (let loop ((l alist))
-	(match l with
-	  (alist:nil) -> (maybe:no)
-	  (alist:entry k1 v1 tl) -> (if (eq? k0 k1)
-					(maybe:yes v1)
-					(loop tl)))))
-    (define (lookup* k default)
-      (match (lookup k) with
-	(maybe:no) -> default
-	(maybe:yes v) -> v))
-    (define (iterate p)
-      (let loop ((l alist))
-	(match l with
-	  (alist:nil) -> #u
-	  (alist:entry k v tl) -> (begin (p k v) (loop tl)))))
-    (define (map p)
-      (let loop ((acc '())
-		 (l alist))
-	(match l with
-	  (alist:nil) -> (reverse acc)
-	  (alist:entry k v tl) -> (loop (list:cons (p k v) acc) tl))))
-    (define (keys)
-      (let loop ((acc '())
-		 (l alist))
-	(match l with
-	  (alist:nil) -> (reverse acc)
-	  (alist:entry k _ tl) -> (loop (list:cons k acc) tl))))
-    (define (values)
-      (let loop ((acc '())
-		 (l alist))
-	(match l with
-	  (alist:nil) -> (reverse acc)
-	  (alist:entry _ v tl) -> (loop (list:cons v acc) tl))))
-    {add=add
-     get=lookup
-     get-default=lookup*
-     iterate=iterate
-     map=map
-     keys=keys
-     values=values}
+(define (alist-maker)
+
+  (define (add self k v)
+    ;; should we check for it first?
+    (set! self.alist (alist:entry k v self.alist)))
+
+  (define (lookup self k0)
+    (let loop ((l self.alist))
+      (match l with
+	(alist:nil) -> (maybe:no)
+	(alist:entry k1 v1 tl) -> (if (eq? k0 k1)
+				      (maybe:yes v1)
+				      (loop tl)))))
+
+  (define (lookup* self k default)
+    (match (lookup self k) with
+      (maybe:no) -> default
+      (maybe:yes v) -> v))
+
+  (define (get-error self k errstring)
+    (match (lookup self k) with
+      (maybe:no) -> (error1 errstring k)
+      (maybe:yes v) -> v))
+
+  (define (iterate self p)
+    (let loop ((l self.alist))
+      (match l with
+	(alist:nil) -> #u
+	(alist:entry k v tl) -> (begin (p k v) (loop tl)))))
+
+  ;; XXX this should return a new alist?
+  (define (map self p)
+    (let loop ((acc '())
+	       (l self.alist))
+      (match l with
+	(alist:nil) -> (reverse acc)
+	(alist:entry k v tl) -> (loop (list:cons (p k v) acc) tl))))
+
+  (define (keys self)
+    (let loop ((acc '())
+	       (l self.alist))
+      (match l with
+	(alist:nil) -> (reverse acc)
+	(alist:entry k _ tl) -> (loop (list:cons k acc) tl))))
+
+  (define (values self)
+    (let loop ((acc '())
+	       (l self.alist))
+      (match l with
+	(alist:nil) -> (reverse acc)
+	(alist:entry _ v tl) -> (loop (list:cons v acc) tl))))
+
+  (define un (alist-ob:t self) -> self)
+
+  (let ((methods
+	 {add         = add
+	  get         = lookup
+	  get-default = lookup*
+	  get-err     = get-error
+	  iterate     = iterate
+	  map         = map
+	  keys        = keys
+	  values      = values
+          un          = un}))
+    ;; new method
+    {o=methods self=(alist-ob:t {alist=(alist:nil)})}
     ))

@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/counter.scm")
+
 ;; based on my python translation of Dorai Sitaram's common lisp implementation
 ;;   of scheme's <syntax-rules>.
 ;;
@@ -80,12 +82,12 @@
 
 (define (get-ellipsis-nestings p) ;; (sexp) -> (list sexp)
   (define dolist ;; (list sexp) -> (list sexp)
-    (p0 (sexp:symbol '...)) -> (LIST (sexp:list (get-ellipsis-nestings p0)))
+    (p0 (sexp:symbol '...)) -> (list (sexp:list (get-ellipsis-nestings p0)))
     (hd . tl)		    -> (append (get-ellipsis-nestings hd) (dolist tl))
     _			    -> '())
   (match p with
     (sexp:list pl)    -> (dolist pl)
-    (sexp:symbol sym) -> (LIST p)
+    (sexp:symbol sym) -> (list p)
     _		      -> '()))
 
 (define intersect?
@@ -120,7 +122,7 @@
 (define (get-bindings p e) ;; -> (list sexp)
   (define dolist
     (p (sexp:symbol '...)) e
-    -> (LIST (sexp (sexp:list (get-ellipsis-nestings p))
+    -> (list (sexp (sexp:list (get-ellipsis-nestings p))
 		   (sexp:list (map (lambda (ei)
 				      (sexp:list (get-bindings p ei)))
 				    e))))
@@ -129,8 +131,8 @@
 	       (dolist tlp tle))
     _ _ -> '()
     )
-  (match p e with 
-     (sexp:symbol k) e           -> (LIST (sexp p e))
+  (match p e with
+     (sexp:symbol k) e           -> (list (sexp p e))
      (sexp:list p) (sexp:list e) -> (dolist p e)
      _ _ -> '()
      )
@@ -148,14 +150,29 @@
       (hd . tl) -> (loop tl)
       )))
 
+;; this is only used to allow attribute reference names to be macro args.
+(define (expand-name sym0 r)
+  (match (mbe/assoc sym0 r) with
+    (maybe:no)                     -> sym0
+    (maybe:yes (sexp:symbol sym1)) -> sym1
+    (maybe:yes x) -> (error (format "name " (sym sym0) " did not expand to a symbol " (repr x)))
+    ))
+
+(define expand-field
+  (field:t name exp) r
+  -> (field:t name (expand-pattern exp r))
+  )
+
 (define (expand-pattern p r) ;; sexp, (list sexp) -> sexp
   (match p with
-    (sexp:list pl)    -> (sexp:list (expand-list pl r))
-    (sexp:vector pl)  -> (sexp:vector (expand-list pl r))
-    (sexp:symbol sym) -> (match (mbe/assoc sym r) with
-			    (maybe:yes v) -> v
-			    (maybe:no)    -> p)
-    x                 -> x
+    (sexp:list pl)      -> (sexp:list (expand-list pl r))
+    (sexp:vector pl)    -> (sexp:vector (expand-list pl r))
+    (sexp:record fs)    -> (sexp:record (map (lambda (f) (expand-field f r)) fs))
+    (sexp:attr exp sym) -> (sexp:attr (expand-pattern exp r) (expand-name sym r))
+    (sexp:symbol sym)   -> (match (mbe/assoc sym r) with
+                             (maybe:yes v) -> v
+                             (maybe:no)    -> p)
+    x                   -> x
     ))
 
 (define (expand-list p r) ;; (list sexp), (list sexp) -> (list sexp)
@@ -191,16 +208,16 @@
     (define (T s)
       ;; replace a single symbol.
       (match (tree/member sym-map symbol-index-cmp s) with
-	(maybe:yes replacement) 
+	(maybe:yes replacement)
 	-> replacement
-	(maybe:no) 
+	(maybe:no)
 	-> (let ((new (string->symbol (format (sym s) (int (gensym-counter.inc))))))
 	     (tree/insert! sym-map symbol-index-cmp s new)
 	     new)))
 
     (define walk
       (sexp:symbol s)
-      -> (sexp:symbol 
+      -> (sexp:symbol
 	  (if (eq? (string-ref (symbol->string s) 0) #\$)
 	      (T s)
 	      s))
@@ -211,7 +228,7 @@
 
     (walk out-pat)
     ))
-    
+
 (define (make-macro name patterns)
   (define (apply exp debug?)
     (let loop ((l patterns))

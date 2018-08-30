@@ -10,7 +10,7 @@
   (%%cexp (-> int) "random()"))
 
 (define (srandom n)
-  (%%cexp (int -> undefined) "(srandom (%0), PXLL_UNDEFINED)" n))
+  (%%cexp (int -> undefined) "(srandom (%0), IRK_UNDEFINED)" n))
 
 (define (fun p)
   ;; takes and returns an identity function

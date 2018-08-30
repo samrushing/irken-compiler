@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+;; Note: since removing support for recursive types, this code
+;;   no longer works.
+
 ;; See http://en.wikipedia.org/wiki/Fixed_point_combinator
 
 (include "lib/core.scm")

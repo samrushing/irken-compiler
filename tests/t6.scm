@@ -21,7 +21,7 @@
 ;;    r1 = (object *) 1;
 ;;    if (unbox(r0)==unbox(r1)) {
 ;;      r0 = top[2];
-;;      PXLL_RETURN(0);
+;;      IRK_RETURN(0);
 ;;    } else {
 ;;      r0 = varref (0,0);
 ;;      r1 = (object *) 3;
@@ -29,7 +29,7 @@
 ;;      lenv[2] = r0;
 ;;      goto FUN_146loop_7;
 ;;    }
-;;    PXLL_RETURN(0);
+;;    IRK_RETURN(0);
 
 ;; gcc -O3 compiles *that* to:
 ;; L130:

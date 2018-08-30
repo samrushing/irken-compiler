@@ -1,9 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "self/cps.scm")
-(include "self/typing.scm")
-(include "self/graph.scm")
-(include "self/analyze.scm")
+(require "self/cps.scm")
 
 (define (make-writer file)
   (let ((level 0)
@@ -11,7 +8,7 @@
         (nbytes 0)
         (total 0))
     (define (push s)
-      (PUSH buffer s)
+      (push! buffer s)
       (set! nbytes (+ nbytes (string-length s)))
       (if (>= nbytes 16384)
           (flush)))
@@ -31,7 +28,7 @@
       )
     (define (get-total)
       total)
-    {write=write-string indent=indent dedent=dedent copy=push close=close-file get-total=get-total}
+    {write=write-string indent=indent dedent=dedent copy=push close=close-file get-total=get-total flush=flush}
     ))
 
 (define (make-name-frobber)
@@ -77,17 +74,26 @@
     (lambda ()
       (format "L" (int (counter.inc))))))
 
+(define (encode-user-immediate dtname altname)
+  (match (alist/lookup the-context.datatypes dtname) with
+    (maybe:no) -> (raise (:NoSuchDatatype "NoSuchDatatype" dtname))
+    (maybe:yes dt)
+    -> (let ((alt (dt.get altname)))
+         (+ TC_USERIMM (<< alt.index 8)))))
+
 (define encode-immediate
-  (literal:int n)   -> (logior 1 (<< n 1))
-  (literal:char ch) -> (logior 2 (<< (char->ascii ch) 8))
-  (literal:undef)   -> #x0e
-  (literal:cons 'bool 'true _) -> #x106
-  (literal:cons 'bool 'false _) -> #x006
+  (literal:int n)              -> (logior 1 (<< n 1))
+  (literal:char ch)            -> (logior 2 (<< (char->ascii ch) 8))
+  (literal:undef)              -> #x0e
+  (literal:bool #t)            -> #x106
+  (literal:bool #f)            -> #x006
+  (literal:vector ())          -> #x12
+  (literal:cons 'list 'nil ()) -> TC_NIL
+  (literal:cons dt alt ())     -> (encode-user-immediate dt alt)
   x -> (error1 "expected immediate literal " x))
 
-
-(define immediate-true  (encode-immediate (literal:cons 'bool 'true '())))
-(define immediate-false (encode-immediate (literal:cons 'bool 'false '())))
+(define immediate-true  (encode-immediate (literal:bool #t)))
+(define immediate-false (encode-immediate (literal:bool #f)))
 
 ;; immediate types (multiples of 2 (but not 4!))
 (define TC_CHAR         (<<  1 1)) ;; 00000010 02
@@ -98,16 +104,17 @@
 (define TC_USERIMM      (<< 11 1)) ;; 00010110 16
 
 ;; pointer types (multiples of 4)
-(define TC_SAVE         (<< 1 2)) ;; 00000100  04
-(define TC_CLOSURE      (<< 2 2)) ;; 00001000  08
-(define TC_TUPLE        (<< 3 2)) ;; 00001100  0c
-(define TC_ENV          (<< 3 2)) ;; 00001100  0c alias
-(define TC_STRING       (<< 4 2)) ;; 00010000  10
-(define TC_VECTOR       (<< 5 2)) ;; 00010100  14
-(define TC_PAIR         (<< 6 2)) ;; 00011000  18
-(define TC_SYMBOL       (<< 7 2)) ;; 00011100  1c
-(define TC_BUFFER       (<< 8 2)) ;; 00100000  20
-(define TC_USEROBJ      (<< 9 2)) ;; 00100100  24
+(define TC_SAVE         (<<  1 2)) ;; 00000100  04
+(define TC_CLOSURE      (<<  2 2)) ;; 00001000  08
+(define TC_TUPLE        (<<  3 2)) ;; 00001100  0c
+(define TC_ENV          (<<  3 2)) ;; 00001100  0c alias
+(define TC_STRING       (<<  4 2)) ;; 00010000  10
+(define TC_VECTOR       (<<  5 2)) ;; 00010100  14
+(define TC_PAIR         (<<  6 2)) ;; 00011000  18
+(define TC_SYMBOL       (<<  7 2)) ;; 00011100  1c
+(define TC_BUFFER       (<<  8 2)) ;; 00100000  20
+(define TC_FOREIGN      (<<  9 2)) ;; 00100100  24
+(define TC_USEROBJ      (<< 10 2)) ;; 00100100  24
 
 (define (find-jumps insns)
   (let ((used (map-maker int-cmp)))
@@ -118,9 +125,13 @@
 	 -> (match (used::get num) with
 	      (maybe:yes _) -> #u
 	      (maybe:no)    -> (used::add num (if (= target -1)
-						  free
-						  (list:cons target free)
+						  free.val
+						  (list:cons target free.val)
 						  )))
+         (insn:fail num npop free)
+         -> (match (used::get num) with
+              (maybe:yes _) -> #u
+              (maybe:no)    -> (used::add num free.val))
 	 _ -> #u))
      insns)
     used))
@@ -137,48 +148,51 @@
 	(sig (filter (lambda (x) (not (eq? x '...))) sig)))
     (let ((candidates '()))
       (for-each
-       (lambda (x)
-	 (match x with
-	   (:pair sig0 index0)
-	   -> (if (subset? sig sig0)
-		  (PUSH candidates sig0))))
-       the-context.records)
+       (lambda (sig0)
+         (if (subset? sig sig0)
+             (push! candidates sig0)))
+       (cmap/keys the-context.records))
       (if (= 1 (length candidates))
 	  ;; unambiguous - there's only one possible match.
 	  (maybe:yes (nth candidates 0))
 	  ;; this sig is ambiguous given the set of known records.
-	  (maybe:no)))))
+	  (maybe:no)
+          ))))
 
 ;; profiler currently works only on the C backend.
 
 (define (emit-profile-0 o)
   (o.write "
-static int64_t prof_mark0;
-static int64_t prof_mark1;
-typedef struct {
-  int calls;
-  int64_t ticks;
-  char * name;
-} pxll_prof;
-static pxll_prof prof_funs[];
-static int prof_current_fun;
-static int prof_num_funs;
-static void prof_dump (void)
+void prof_dump (void)
 {
  int i=0;
- fprintf (stderr, \"%20s\\t%20s\\t%s\\n\", \"calls\", \"ticks\", \"name\");
+ fprintf (stderr, \"%15s\\t%15s\\t%15s\\t%15s\\t%s\\n\", \"calls\", \"ticks\", \"allocs\", \"words\", \"name\");
  for (i=0; prof_funs[i].name; i++) {
-   fprintf (stderr, \"%20d\\t%20\" PRIu64 \"\\t%s\\n\", prof_funs[i].calls, prof_funs[i].ticks, prof_funs[i].name);
+   fprintf (stderr, \"%15d\\t%15\" PRIu64 \"%15\" PRIu64 \"%15\" PRIu64 \"\\t%s\\n\", prof_funs[i].calls, prof_funs[i].ticks, prof_funs[i].allocs, prof_funs[i].alloc_words, prof_funs[i].name);
  }
 }
 "))
 
 (define (emit-profile-1 o)
-  (o.write "static pxll_prof prof_funs[] = \n  {{0, 0, \"top\"},")
+  (o.write "static pxll_prof prof_funs[] = \n  {{0, 0, 0, 0, \"top\"},")
   (for-map k v the-context.profile-funs
     (let ((name (cdr (reverse v.names)))) ;; strip 'top' off
-      (o.write (format "   {0, 0, \"" (join symbol->string "." name) "\"},"))))
-  (o.write "   {0, 0, NULL}};"))
+      (o.write (format "   {0, 0, 0, 0, \"" (join symbol->string "." name) "\"},"))))
+  (o.write "   {0, 0, 0, 0, NULL}};"))
+
+;; with large programs, the constructed initializers can get *really*
+;;  long... long enough to cause problems even for emacs.
+(define (sprinkle-newlines parts)
+  (let ((n 0)
+        (r '()))
+    (for-list part parts
+      (cond ((= n 10)
+             (push! r (string-append "\n\t" part))
+             (set! n 0))
+            (else
+             (push! r part)))
+      (inc! n))
+    (reverse r)))
 
 ;; we support three types of non-immediate literals:
 ;;
@@ -221,20 +235,33 @@ static void prof_dump (void)
 		 ;; constructor with args
 		 (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
 		       (addr (+ 1 (length output))))
-		   (PUSH output (uohead nargs dt variant alt.index))
-		   (for-each (lambda (x) (PUSH output x)) args0)
+		   (push! output (uohead nargs dt variant alt.index))
+		   (for-each (lambda (x) (push! output x)) args0)
 		   (format "UPTR(" (int litnum) "," (int addr) ")"))
 		 ;; nullary constructor - immediate
 		 (uitag dt variant alt.index)))
+        (literal:vector ())
+        -> (int->string (encode-immediate exp))
 	(literal:vector args)
 	-> (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
 		 (nargs (length args))
 		 (addr (+ 1 (length output))))
-	     (PUSH output (format "(" (int nargs) "<<8)|TC_VECTOR"))
-	     (for-each (lambda (x) (PUSH output x)) args0)
+	     (push! output (format "(" (int nargs) "<<8)|TC_VECTOR"))
+	     (for-each (lambda (x) (push! output x)) args0)
 	     (format "UPTR(" (int litnum) "," (int addr) ")"))
+        (literal:record tag fields)
+        -> (let ((args0 (map (lambda (field)
+                               (match field with
+                                 (litfield:t name val)
+                                 -> (walk val litnum)))
+                             fields))
+                 (nargs (length args0))
+                 (addr (+ 1 (length output))))
+             (push! output (format "(" (int nargs) "<<8)|UOTAG(" (int tag) ")"))
+             (for-each (lambda (x) (push! output x)) args0)
+             (format "UPTR(" (int litnum) "," (int addr) ")"))
 	(literal:symbol sym)
-	-> (let ((index (alist/get the-context.symbols sym "unknown symbol?")))
+        -> (let ((index (tree/get the-context.symbols symbol-index-cmp sym)))
 	     (format "UPTR(" (int index) ",1)"))
 	(literal:string s)
 	->  (format "UPTR0(" (int (cmap->index lits exp)) ")")
@@ -243,44 +270,47 @@ static void prof_dump (void)
 	))
     (o.dedent) ;; XXX fix this by defaulting to zero indent
     (for-map i lit lits.rev
-	(set! output '())
-        (match lit with
-          ;; strings are a special case here because they have a non-uniform structure: the existence of
-          ;;   the uint32_t <length> field means it's hard for us to put a UPTR in the front.
-          (literal:string s)
-          -> (let ((slen (string-length s)))
-               ;; this works because we want strings compared for eq? identity...
-               (o.write (format "pxll_string constructed_" (int i)
-                                " = {STRING_HEADER(" (int slen)
-                                "), " (int slen)
-                                ", \"" (c-string s) "\" };")))
-          ;; there's a temptation to skip the extra pointer at the front, but that would require additional smarts
-          ;;   in insn_constructed (as already exist for strings).
-          (literal:symbol s)
-          -> (begin
-               (o.write (format "// symbol " (sym s)))
-               (o.write (format "pxll_int constructed_" (int i)
-                                "[] = {UPTR(" (int i)
-                                ",1), SYMBOL_HEADER, UPTR0("
-                                (int (cmap->index lits (literal:string (symbol->string s))))
-                                "), INTCON(" (int symbol-counter) ")};"))
-               (set! symbol-counter (+ 1 symbol-counter))
-               )
-          _ -> (let ((val (walk lit i))
-                     (rout (list:cons val (reverse output))))
-                 (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
-          ))
+      (set! output '())
+      (match lit with
+        ;; strings are a special case here because they have a non-uniform structure: the existence of
+        ;;   the uint32_t <length> field means it's hard for us to put a UPTR in the front.
+        (literal:string s)
+        -> (let ((slen (string-length s)))
+             ;; this works because we want strings compared for eq? identity...
+             (o.write (format "pxll_string constructed_" (int i)
+                              " = {STRING_HEADER(" (int slen)
+                              "), " (int slen)
+                              ", \"" (c-string s) "\" };")))
+        ;; there's a temptation to skip the extra pointer at the front, but that would require additional smarts
+        ;;   in insn_constructed (as already exist for strings).
+        (literal:symbol s)
+        -> (begin
+             (o.write (format "// symbol " (sym s)))
+             (o.write (format "pxll_int constructed_" (int i)
+                              "[] = {UPTR(" (int i)
+                              ",1), SYMBOL_HEADER, UPTR0("
+                              (int (cmap->index lits (literal:string (symbol->string s))))
+                              "), INTCON(" (int symbol-counter) ")};"))
+             (set! symbol-counter (+ 1 symbol-counter))
+             )
+        _ -> (let ((val (walk lit i))
+                   (rout (list:cons val (sprinkle-newlines (reverse output)))))
+               (o.write (format "pxll_int constructed_" (int i) "[] = {" (join "," rout) "};")))
+        ))
     (let ((symptrs '()))
-      (alist/iterate
+      (tree/inorder
        (lambda (symbol index)
-	 (PUSH symptrs (format "UPTR(" (int index) ",1)")))
+	 (push! symptrs (format "UPTR(" (int index) ",1)")))
        the-context.symbols)
       ;; XXX NOTE: this does not properly use TC_EMPTY_VECTOR
-      (o.write (format "pxll_int pxll_internal_symbols[] = {(" (int (length symptrs)) "<<8)|TC_VECTOR, " (join ", " symptrs) "};"))
+      (o.write (format "pxll_int pxll_internal_symbols[] = {("
+                       (int (length symptrs)) "<<8)|TC_VECTOR,\n\t" (join "," (sprinkle-newlines symptrs)) "};"))
+      (o.write (format "object * irk_internal_symbols_p = (object*) &pxll_internal_symbols;"))
       )
     (o.indent)
     ))
 
+;; XXX quote and backslash probably don't belong here.
 (define c-string-safe?
   (char-class
    (string->list
@@ -320,47 +350,141 @@ static void prof_dump (void)
 	   r)
 	  rest))))
 
-(define (emit-lookup-field o)
-  (if (> (length the-context.records) 0)
-      (begin
-	(o.write "static int lookup_field (int tag, int label)")
-	(o.write "{ switch (tag) {")
-	(for-each
-	 (lambda (pair)
-	   (match pair with
-		  (:pair sig index)
-	      -> (begin (o.write (format "  // {" (join symbol->string " " sig) "}"))
-			(o.write (format "  case " (int index) ":"))
-			(o.write "  switch (label) {")
-			(for-range
-			 i (length sig)
-			 (o.write (format "     case "
-					  (int (lookup-label-code (nth sig i)))
-					  ": return " (int i) "; break;")))
-			(o.write "  } break;"))))
-	 (reverse the-context.records))
-	(o.write "} return 0; }"))
-      ;; record_fetch/record_store refer to this function even when it's not needed.
-      (o.write "static int lookup_field (int tag, int label) { return 0; }")
-      ))
+;; perfect hash function for ambiguous record field lookups.
+;; some field-index lookups are unable to be resolved at compile time.
+;; we use a map (size N) of (tag, label)->index at runtime.
+;; this map is implemented using a two-stage hash,
+;; vectoring into two tables of length N.
+
+;; based directly on Steve Hanov's python code.
+;; http://stevehanov.ca/blog/index.php?id=119
+
+;; Note: this is obviously a bit overkill, but previously I used a
+;;  large generated function that was going to really complicate
+;;  independent LLVM code generation (e.g. for JIT) and I really
+;;  wanted something table-based.  This generates a really small
+;;  table!
+
+;; unrolled - our keys are always of length 2
+;; NOTE: this obviously must match the hash function in include/header1.c:p_hash().
+;; XXX: this code is not compatible with 32-bit irkvm.  we should probably tweak
+;;   this slightly to avoid the 32-bit mask.  the given magic number is a prime, I'm
+;;   sure the exact size of the mask is of little concern.
+(define (hash2 d k0 k1)
+  (logand #xffffffff
+    (logxor k0
+      (* (logand #xffffffff
+            (logxor k1 (* d #x01000193)))
+         #x01000193))))
+
+(define (hash-item d item size)
+  (mod (hash2 d item.k0 item.k1) size))
+
+(define (create-minimal-perfect-hash table)
+
+  (define not-there 500000)
+
+  (let ((size (vector-length table))
+        (buckets (make-vector size (list:nil)))
+        (G (make-vector size 0))
+        (V (make-vector size not-there))
+        (split 0))
+    ;; Step 1: Place all of the keys into buckets.
+    (for-vector elem table
+      (let ((index (hash-item #x01000193 elem size)))
+        (set! buckets[index] (list:cons elem buckets[index]))))
+    ;; Step 2: Sort the buckets and process the ones with the most items first.
+    (set! buckets (sort-vector (lambda (a b) (> (length a) (length b))) buckets))
+    (let/cc break
+      (for-range i size
+        (let ((bucket buckets[i])
+              (blen (length bucket))
+              (d 1)
+              (item 0)
+              (slots (list:nil)))
+          (when (<= blen 1)
+            (set! split i)
+            (break #u))
+          ;; Repeatedly try different values of d until we find a hash function
+          ;; that places all items in the bucket into free slots
+          (while (< item blen)
+            (let ((slot (hash-item d (nth bucket item) size)))
+              (if (or (not (= V[slot] not-there))
+                      (member-eq? slot slots))
+                  (begin
+                    (set! d (+ 1 d))
+                    (set! item 0)
+                    (set! slots (list:nil)))
+                  (begin
+                    (push! slots slot)
+                    (set! item (+ item 1))))))
+          (set! slots (reverse slots))
+          (set! G[(hash-item #x01000193 (nth bucket 0) size)] d)
+          (for-range j blen
+            (let ((elem (nth bucket j)))
+              (set! V[(nth slots j)] elem.v)))
+          )))
+    ;; Only buckets with 1 item remain. Process them more quickly by directly
+    ;; placing them into a free slot. Use a negative value of d to indicate
+    ;; this.
+    (let ((freelist '()))
+      (for-range i size
+        (if (= V[i] not-there)
+            (push! freelist i)))
+      (for-range i size
+        (let ((bucket buckets[i])
+              (blen (length bucket)))
+          (when (= blen 1)
+            (let ((slot (pop! freelist))
+                  (elem (nth bucket 0)))
+              ;; we subtract one to ensure it's negative even if the zeroeth slot was
+              ;; used.
+              (set! G[(hash-item #x01000193 elem size)] (- 0 slot 1))
+              (set! V[slot] elem.v)))))
+      )
+    (:tuple G V)))
+
+;; the backend takes note whenever a field label's index cannot be
+;;  unambiguously resolved. rather than generating a table of all
+;;  tag,label->index tuples, we generate only the entries that resulted
+;;  in a call to `lookup_field()`.
+
+(define (build-ambig-table)
+  ;; we insert one bogus entry to handle a problem with the perfect hash algorithm
+  ;;  when there are exactly two ambiguous pairs.
+  (let ((table (tree/insert (tree/empty) magic-cmp (:tuple 1013 1013) 1013)))
+    (for-map sig index the-context.records.map
+      (let ((ambs '()))
+        (for-range i (length sig)
+          (let ((label-code (lookup-label-code (nth sig i))))
+            (match (tree/member the-context.ambig-rec int-cmp label-code) with
+              (maybe:yes _)
+              -> (push! ambs (:tuple i label-code))
+              (maybe:no)
+              -> #u)))
+        (when (> (length ambs) 0)
+          (for-list item ambs
+            (match item with
+              (:tuple i label-code)
+              -> (tree/insert! table magic-cmp (:tuple index label-code) i))))
+        ))
+    table))
 
 (define (emit-datatype-table o)
   (o.write (format "// datatype table"))
-  (alist/iterate
-   (lambda (name dt)
-     (o.write (format "// name: " (sym name)))
-     (dt.iterate
-      (lambda (tag alt)
-	(o.write (format "//  (:" (sym tag) " " (join type-repr " " alt.types) ")")))))
-   the-context.datatypes))
+  (for-alist name dt the-context.datatypes
+    (o.write (format "// name: " (sym name)))
+    (dt.iterate
+     (lambda (tag alt)
+       (o.write (format "//  (:" (sym tag) " " (join type-repr " " alt.types) ")"))))))
 
 (define (get-file-contents path)
-  (read-file-contents
-   (find-file the-context.options.include-dirs path)))
+  (let (((path0 file) (find-file the-context.options.include-dirs path)))
+    (read-file-contents file)))
 
 (define (copy-file-contents ofile path)
   (let ((ifile (file/open-read path)))
-    (for (make-file-generator ifile) block
+    (for block (make-file-generator ifile)
          (ofile.copy block))
     (file/close ifile)))
 
@@ -372,70 +496,30 @@ static void prof_dump (void)
       (set! i (+ i 1)))
     ))
 
-(include "self/c.scm")
-(include "self/llvm.scm")
-(include "self/bytecode.scm")
-
-(define (compile-with-backend base cps)
-  (match the-context.options.backend with
-    (backend:bytecode)
-    -> (compile-to-bytecode base cps)
-    _ -> (compile-with-backend0 base cps)
+;; generate metadata for this program.  It is made available as a literal,
+;; accessible via the 'irk_get_metadata'.
+(define (generate-metadata)
+  (match (alist/lookup the-context.datatypes 'sexp) with
+    (maybe:yes _)
+    -> (let ((r '()))
+         (push! r (sexp1 'variants
+                        (alist/map
+                         (lambda (name index) (sexp (sym name) (int index)))
+                         the-context.variant-labels)))
+         (push! r (sexp1 'exceptions
+                        (alist/map
+                         (lambda (name type) (sexp (sym name) (type->sexp (apply-subst type))))
+                         the-context.exceptions)))
+         (push! r (sexp1 'datatypes
+                        (alist/map
+                         (lambda (name dt) (dt.to-sexp))
+                         the-context.datatypes)))
+         (let ((lit (unsexp (sexp1 'metadata r))))
+           (scan-literals (list lit))
+           (cmap/add the-context.literals lit))
+         )
+    ;; if the program doesn't even include lib/sexp, then it cannot make
+    ;;   use of metadata regardless. skip it.
+    (maybe:no)
+    -> (cmap/add the-context.literals (literal:vector (list (literal:int 0))))
     ))
-
-;; note: the llvm backend relies on the C backend to some extent.
-
-(define (compile-with-backend0 base cps)
-
-  (let ((opath (string-append base ".c"))
-	(ofile (file/open-write opath #t #o644))
-	(o (make-writer ofile))
-	(tmp-path (format base ".tmp.c"))
-	(tfile (file/open-write tmp-path #t #o644))
-	(o0 (make-writer tfile))
-	(llvm? (eq? the-context.options.backend (backend:llvm)))
-	(sources (LIST opath))
-	)
-    (notquiet (printf "\n-- C output --\n : " opath "\n"))
-    (for-each
-     (lambda (path) (o.write (format "#include <" path ">")))
-     (reverse the-context.cincludes))
-    (for-each
-     (lambda (path) (o.write (format "#include \"" path "\"")))
-     (reverse the-context.lincludes))
-    (for-each o.write (reverse the-context.cverbatim))
-    (o.copy (get-file-contents "include/header1.c"))
-    (emit-constructed o)
-    (emit-lookup-field o)
-    (emit-datatype-table o)
-    (number-profile-funs)
-    (if the-context.options.profile
-	(emit-profile-0 o)
-	(o.write "static void prof_dump (void) {}"))
-    (if llvm?
-	(let ((llpath (format base ".ll"))
-	      (llvm-file (file/open-write llpath #t #o644))
-	      (ollvm (make-writer llvm-file)))
-	  (printf " : " llpath "\n")
-	  (ollvm.copy
-	   (get-file-contents "include/preamble.ll"))
-	  (emit-llvm o ollvm "toplevel" cps)
-	  (ollvm.close)
-          (notquiet (printf "wrote " (int (ollvm.get-total)) " bytes to " llpath ".\n"))
-	  (PUSH sources llpath))
-	(emit-c o0 o cps))
-    (if the-context.options.profile (emit-profile-1 o))
-    (notquiet (print-string "done.\n"))
-    (o0.close)
-    ;; copy code after declarations
-    (copy-file-contents o tmp-path)
-    (o.close)
-    (notquiet (printf "wrote " (int (o.get-total)) " bytes to " opath ".\n"))
-    (unlink tmp-path)
-    (when (not the-context.options.nocompile)
-      (notquiet (print-string "compiling...\n"))
-      (invoke-cc base sources the-context.options (if llvm? "-flto" ""))
-      #u
-      )
-    )
-  )

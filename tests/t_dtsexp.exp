@@ -1,6 +1,26 @@
 (thing
-  ((one 0 ())
-    (two 1 ())
-    (three 2 ())))
+  ((one
+    0
+    ((int) (int)))
+    (two 1 ((bool)))
+    (three
+      2
+      ((char) (thing)))))
+{u1 three 2 {u1 two 1 {u1 one 0 <u0>}}}
 thing:two has tag 1
-#u
+(tree
+  ((red
+    0
+    ((tree 'a 'b)
+      (tree 'a 'b)
+      'a
+      'b))
+    (black
+      1
+      ((tree 'a 'b)
+        (tree 'a 'b)
+        'a
+        'b))
+    (empty 2 ())))
+{u1 empty 2 {u1 black 1 {u1 red 0 <u0>}}}
+10

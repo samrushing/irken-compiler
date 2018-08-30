@@ -1,6 +1,6 @@
 ;; -*- Mode: Irken; coding: utf-8 -*-
 
-(include "lib/set.scm")
+(require "lib/counter.scm")
 
 (typealias typerec {parent=(maybe type) pending=bool})
 
@@ -11,6 +11,9 @@
 
 (define (pred name subs)
   (type:pred name subs {parent=(maybe:no) pending=#f}))
+
+(define (pred1 name)
+  (pred name '()))
 
 (define (arrow result-type arg-types)
   (pred 'arrow (list:cons result-type arg-types)))
@@ -46,13 +49,39 @@
    ('symbol symbol-type)
    ))
 
+(define cint-types
+  (alist/make
+   ('char      (pred1 'char))
+   ('uchar     (pred1 'uchar))
+   ('short     (pred1 'short))
+   ('ushort    (pred1 'ushort))
+   ('int       (pred1 'int))
+   ('uint      (pred1 'uint))
+   ('long      (pred1 'long))
+   ('ulong     (pred1 'ulong))
+   ('longlong  (pred1 'longlong))
+   ('ulonglong (pred1 'ulonglong))
+   ('i8        (pred1 'i8))
+   ('u8        (pred1 'u8))
+   ('i16       (pred1 'i16))
+   ('u16       (pred1 'u16))
+   ('i32       (pred1 'i32))
+   ('u32       (pred1 'u32))
+   ('i64       (pred1 'i64))
+   ('u64       (pred1 'u64))
+   ('i128      (pred1 'i128))
+   ('u128      (pred1 'u128))
+   ('i256      (pred1 'i256))
+   ('u256      (pred1 'u256))
+   ))
+
 ;; row types
-(define (rproduct row)          (pred 'rproduct (LIST row)))
-(define (rsum row)              (pred 'rsum (LIST row)))
-(define (rdefault arg)          (pred 'rdefault (LIST arg)))
-(define (rlabel name type rest) (pred 'rlabel (LIST name type rest)))
+(define (rproduct row)          (pred 'rproduct (list row)))
+(define (rsum row)              (pred 'rsum (list row)))
+(define (rdefault arg)          (pred 'rdefault (list arg)))
+(define (rlabel name type rest) (pred 'rlabel (list name type rest)))
 (define (rabs)                  (pred 'abs '()))
-(define (rpre t)                (pred 'pre (LIST t)))
+(define (rpre t)                (pred 'pre (list t)))
 (define (make-label sym)        (pred sym '()))
 
 
@@ -79,7 +108,7 @@
 	     ))
       ))
 
-  (type:pred kind (LIST (collect row '())) rt)
+  (type:pred kind (list (collect row '())) rt)
   )
 
 (define (row-canon t)
@@ -115,7 +144,7 @@
       (type:pred label () _) (type:pred 'pre (t) _) -> (format (sym label) "=" (trep t))
       (type:pred label () _) (type:pred 'abs () _)  -> (format (sym label) "=#f")
       (type:pred label () _) x                      -> (format (sym label) "=" (trep x))
-      x y -> (error1 "bad row type" (LIST x y))
+      x y -> (error1 "bad row type" (list x y))
       )
 
     (define row-repr
@@ -302,15 +331,10 @@
       (printf "          parsed = " (type-repr result) "\n"))
     result))
 
-;; I think this is a bug: the moo() in there should be inside the pre(),
-;;  otherwise it's a malformed row! [hey, maybe this is where 'kinding' comes in. 8^)]
-;;
-;; moo(t20093, rproduct(rlabel(level, pre(int),
-;;                      rlabel(key, pre(t908),
-;;                      rlabel(val, pre(t909),
-;;                      rlabel(left, moo(t20068, pre(t20092)),
-;;                      rlabel(right, moo(t20073, pre(t20093)),
-;;                      rdefault(abs))))))))
+(define (parse-cexp-sig sig)
+  (let ((generic-tvars (alist-maker))
+        (result (parse-type* sig generic-tvars)))
+    (:scheme (generic-tvars::values) result)))
 
 ;; rproduct(rlabel(x, pre(bool), rlabel(y, pre(int), rdefault(abs))))
 ;; => '(x y)
@@ -338,27 +362,88 @@
   (let ((sig (get-record-sig t)))
     (sexp:list (map sexp:symbol sig))))
 
-;; (define (test-types)
-;;   (let ((t0 (parse-type (car (read-string "((list sexp) -> int)"))))
-;;      (t1 (parse-type (car (read-string "(thing 'a 'b (list 'a) (list 'b))"))))
-;;      (t2 (parse-type (car (read-string "'a"))))
-;;      (t3 (parse-type (car (read-string "{x=int ...}"))))
-;;      (t4 (parse-type (car (read-string "(((continuation 'a) -> 'a) -> 'a)"))))
-;;      (t5 (parse-type (car (read-string "{z=int x=int a=int b=int george=int}"))))
-;;      )
+(define c-int-types
+  ;; XXX distinguish between signed and unsigned!
+  ;; XXX also need to handle 64-bit types on a 32-bit platform.
+  '(uint8_t uint16_t uint32_t uint64_t
+    int8_t int16_t int32_t int64_t
+    ;; these are via lib/ctypes
+    int uint short ushort long ulong longlong ulonglong
+    i8 u8 i16 u16 i32 u32 i64 u64
+    ;; note: 128 & 256 are not here.
+    ))
 
-;;     (printn t0)
-;;     (print-string (type-repr t0))
-;;     (newline)
-;;     (print-string (type-repr t1))
-;;     (newline)
-;;     (print-string (type-repr t2))
-;;     (newline)
-;;     (print-string (type-repr t3))
-;;     (newline)
-;;     (print-string (type-repr t4))
-;;     (newline)
-;;     (printf "t5 0: " (type-repr t5) "\n")
-;;     (printf "t5 1: " (type-repr (row-canon t5)) "\n")
-;;     (printn (get-tvars t1))
-;;     ))
+(define (int-ctype->itype cint signed?)
+  (pred
+   (match cint signed? with
+     (cint:char)  #t     -> 'char
+     (cint:char)  #f     -> 'uchar
+     (cint:int)   #t     -> 'int
+     (cint:int)   #f     -> 'uint
+     (cint:short) #t     -> 'short
+     (cint:short) #f     -> 'ushort
+     (cint:long)  #t     -> 'long
+     (cint:long)  #f     -> 'ulong
+     (cint:longlong) #t  -> 'longlong
+     (cint:longlong) #f  -> 'ulonglong
+     (cint:width w) _ -> (string->symbol (format (if signed? "i" "u") (int (* w 8))))
+     ;; _ _              -> (error1 "unsupported cint type"
+     ;;                             (format "cint=" (cint-repr cint signed?)
+     ;;                                     " signed=" (bool signed?)))
+     )
+   '()))
+
+(define ctype->irken-type*
+  (ctype:name name)  -> (pred name '())
+  (ctype:int cint s) -> (int-ctype->itype cint s)
+  (ctype:array _ t)  -> (pred 'array (list (ctype->irken-type* t)))
+  (ctype:pointer t)  -> (pred '* (list (ctype->irken-type* t)))
+  (ctype:struct n)   -> (pred 'struct (list (pred n '())))
+  (ctype:union n)    -> (pred 'union (list (pred n '())))
+  )
+
+;; we want only the outermost layer of 'pointer' converted to cref,
+;;  leave the internal types alone.
+(define ctype->irken-type
+  (ctype:pointer t)  -> (pred 'cref (list (ctype->irken-type* t)))
+  (ctype:array _ t)  -> (pred 'cref (list (ctype->irken-type* t)))
+  t                  -> (ctype->irken-type* t)
+  )
+
+;; XXX we need the inverse of the above function for llvm.
+(define irken-type->ctype
+  ;; XXX detect cref, struct, etc
+  (type:pred 'char _ _)      -> (ctype:int (cint:char)     #t)
+  (type:pred 'uchar _ _)     -> (ctype:int (cint:char)     #f)
+  (type:pred 'int _ _)       -> (ctype:int (cint:int)      #t)
+  (type:pred 'uint _ _)      -> (ctype:int (cint:int)      #f)
+  (type:pred 'short _ _)     -> (ctype:int (cint:short)    #t)
+  (type:pred 'ushort _ _)    -> (ctype:int (cint:short)    #f)
+  (type:pred 'long _ _)      -> (ctype:int (cint:long)     #t)
+  (type:pred 'ulong _ _)     -> (ctype:int (cint:long)     #f)
+  (type:pred 'longlong _ _)  -> (ctype:int (cint:longlong) #t)
+  (type:pred 'ulonglong _ _) -> (ctype:int (cint:longlong) #f)
+  (type:pred 'i8 _ _)        -> (ctype:int (cint:width 1)  #t)
+  (type:pred 'u8 _ _)        -> (ctype:int (cint:width 1)  #f)
+  (type:pred 'i16 _ _)       -> (ctype:int (cint:width 2)  #t)
+  (type:pred 'u16 _ _)       -> (ctype:int (cint:width 2)  #f)
+  (type:pred 'i32 _ _)       -> (ctype:int (cint:width 4)  #t)
+  (type:pred 'u32 _ _)       -> (ctype:int (cint:width 4)  #f)
+  (type:pred 'i64 _ _)       -> (ctype:int (cint:width 8)  #t)
+  (type:pred 'u64 _ _)       -> (ctype:int (cint:width 8)  #f)
+  (type:pred 'i128 _ _)      -> (ctype:int (cint:width 16) #t)
+  (type:pred 'u128 _ _)      -> (ctype:int (cint:width 16) #f)
+  (type:pred 'i256 _ _)      -> (ctype:int (cint:width 32) #t)
+  (type:pred 'u256 _ _)      -> (ctype:int (cint:width 32) #f)
+  (type:pred 'cref (sub) _)  -> (ctype:pointer (irken-type->ctype sub))
+  (type:pred 'array (sub) _) -> (ctype:pointer (irken-type->ctype sub))
+  (type:pred 'struct ((type:pred name _ _)) _) -> (ctype:struct name)
+  (type:pred 'union  ((type:pred name _ _)) _) -> (ctype:union name)
+  (type:pred name _ _) -> (ctype:name name)
+  x -> (raise (:Types/IrkenType2Ctype (type-repr x)))
+  )
+
+(define un-cref
+  (type:pred 'cref (sub) _) -> sub
+  x -> (raise (:Types/NotACREF (type-repr x)))
+  )

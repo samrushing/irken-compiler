@@ -1,7 +1,23 @@
 
-#include "pxll.h"
+#include "irken.h"
+
+#ifdef IRK_PROFILE
+static int64_t prof_mark0;
+static int64_t prof_mark1;
+typedef struct {
+  int calls;
+  int64_t ticks;
+  int64_t allocs;
+  int64_t alloc_words;
+  char * name;
+} pxll_prof;
+static pxll_prof prof_funs[];
+static int prof_current_fun;
+static int prof_num_funs;
+#endif
 
 static int lookup_field (int tag, int label);
+object * irk_get_metadata();
 
 static
 inline
@@ -67,19 +83,25 @@ get_case_tup (object * ob)
 }
 
 static
-inline
-pxll_int
-get_imm_payload (object * ob)
-{
-  return ((pxll_int) ob) >> 8;
-}
-
-static
 pxll_int
 get_tuple_size (object * ob)
 {
   header * h = (header *) ob;
   return (*h)>>8;
+}
+
+// for runtime reflection.
+object *
+irk_objectptr2int (object * ob)
+{
+  return box((pxll_int)(*ob));
+}
+
+// for runtime reflection.
+object *
+irk_object2int (object * ob)
+{
+  return box((pxll_int)ob);
 }
 
 static
@@ -102,7 +124,7 @@ dump_object (object * ob, int depth)
   // indent (depth);
   if (depth > 100) {
     fprintf (stdout , "...");
-    return (object *) PXLL_UNDEFINED;
+    return (object *) IRK_UNDEFINED;
   }
   if (!ob) {
     fprintf (stdout, "<null>");
@@ -139,6 +161,10 @@ dump_object (object * ob, int depth)
       break;
     case TC_EMPTY_VECTOR:
       fprintf (stdout, "#()");
+      break;
+    case TC_USERIMM:
+      // a user immediate unit-type...
+      fprintf (stdout, "<u%" PRIuPTR ">", (((pxll_int)ob)>>8));
       break;
     case 0: {
       // structure
@@ -197,6 +223,18 @@ dump_object (object * ob, int depth)
 	fprintf (stdout, "<buffer %" PRIuPTR " words %" PRIuPTR " bytes>", n, n * (sizeof(pxll_int)));
 	break;
       }
+      case TC_FOREIGN:
+        switch (GET_TUPLE_LENGTH (*ob)) {
+        case 1:
+          fprintf (stdout, "<foreign %p>", ob[1]);
+          break;
+        case 2:
+          fprintf (stdout, "<foreign ");
+          dump_object (ob[1], depth+1);
+          fprintf (stdout, " off=%" PRIuPTR ">", UNTAG_INTEGER(ob[2]));
+          break;
+        }
+        break;
       case TC_SYMBOL:
 	print_string ((object*)ob[1], 0);
 	break;
@@ -216,13 +254,18 @@ dump_object (object * ob, int depth)
       }
     }
       break;
-    case TC_USERIMM:
-      // a user immediate unit-type...
-      fprintf (stdout, "<u%" PRIuPTR ">", (((pxll_int)ob)>>8));
     }
   }
-  return (object *) PXLL_UNDEFINED;
+  return (object *) IRK_UNDEFINED;
 }
+
+// 'magic' comparison function.
+// This is a generalized comparison function that takes any irken
+//   object.  It orders all objects with a lexicographic recursive
+//   comparison, and relies on the fact that all tuples are tagged
+//   with either builtin object type tags, or are made of tuples of
+//   such.  Any future boxless/tagless modification to irken will
+//   require automatically-generated comparison functions.
 
 static
 inline
@@ -235,73 +278,27 @@ pxll_int min_int (pxll_int a, pxll_int b)
   }
 }
 
-// magic<? ('a 'a -> bool)
-// uses runtime tags to lexicographically compare any two objects.
-// XXX infinite objects?
-// XXX consider 'magic_cmp'. (i.e., the 'cmp' datatype).
-// XXX consider how this may interact with the avoid-boxing optimization.
-
-// XXX grok why this goes FUCKING INSANE with a moderately complex
-//   object when the eq? test is missing.  I think it's because we
-//   make two comparisons for each level of sub-object.  The only
-//   real fix for this is to use 3-way comparison everywhere.
-//   probably means rewriting frb.scm as well (!).
-
-pxll_int
-magic_less_than (object * a, object * b)
-{
-  if (a == b) {
-    return 0;
-  } else if (is_int (a) && is_int (b)) {
-    return ((pxll_int) a < (pxll_int) b);
-  } else if (is_immediate (a) && is_immediate (b)) {
-    return ((pxll_int) a < (pxll_int) b);
-  } else if (is_immediate (a)) {
-    return 1; // immediates are less than all tuples.
-  } else if (is_immediate (b)) {
-    return 0;
-  } else {
-    pxll_int tca = GET_TYPECODE (*a);
-    pxll_int tcb = GET_TYPECODE (*b);
-    if (tca < tcb) {
-      return 1;
-    } else if (tcb < tca) {
-      return 0;
-    } else if (tca == TC_STRING) {
-      pxll_string * sa = (pxll_string *) a;
-      pxll_string * sb = (pxll_string *) b;
-      int cmp = memcmp (sa->data, sb->data, min_int (sa->len, sb->len));
-      if (cmp == 0) {
-        return (sa->len < sb->len);
-      } else {
-        return (cmp < 0);
-      }
-    } else {
-      // tags are the same: do per-element comparison.
-      // XXX check special internal types like TC_CLOSURE!
-      pxll_int len_a = GET_TUPLE_LENGTH (*a);
-      pxll_int len_b = GET_TUPLE_LENGTH (*b);
-      for (int i=0; i < min_int (len_a, len_b); i++) {
-        if (magic_less_than ((object*)a[i+1], (object*)b[i+1])) {
-          return 1;
-        } else if (magic_less_than ((object*)b[i+1], (object*)a[i+1])) {
-          return 0;
-        } else {
-          // a[i] == b[i], continue to the next...
-        }
-      }
-      // if we are here, items are equal up to min-length.
-      return (len_a < len_b);
-    }
-  }
-}
-
+static
 pxll_int
 magic_cmp_int (pxll_int a, pxll_int b)
 {
   if (a == b) {
     return 0;
   } else if (a < b) {
+    return -1;
+  } else {
+    return 1;
+  }
+}
+
+static
+pxll_int
+magic_cmp_string (pxll_string * sa, pxll_string * sb)
+{
+  int cmp = memcmp (sa->data, sb->data, min_int (sa->len, sb->len));
+  if (cmp == 0) {
+    return magic_cmp_int (sa->len, sb->len);
+  } else if (cmp < 0) {
     return -1;
   } else {
     return 1;
@@ -327,16 +324,9 @@ magic_cmp (object * a, object * b)
     } else if (tcb < tca) {
       return +1;
     } else if (tca == TC_STRING) {
-      pxll_string * sa = (pxll_string *) a;
-      pxll_string * sb = (pxll_string *) b;
-      int cmp = memcmp (sa->data, sb->data, min_int (sa->len, sb->len));
-      if (cmp == 0) {
-        return magic_cmp_int (sa->len, sb->len);
-      } else if (cmp < 0) {
-        return -1;
-      } else {
-        return 1;
-      }
+      return magic_cmp_string ((pxll_string *) a, (pxll_string *) b);
+    } else if (tca == TC_SYMBOL) {
+      return magic_cmp_int ((pxll_int)a[2],(pxll_int)b[2]);
     } else {
       // tags are the same: do per-element comparison.
       // XXX check special internal types like TC_CLOSURE!
@@ -353,6 +343,80 @@ magic_cmp (object * a, object * b)
       return magic_cmp_int (len_a, len_b);
     }
   }
+}
+
+// llvm literal relocation.
+
+object * llvm_all_lits;
+object * llvm_this_lit = NULL;
+
+// at entry, ob points to a tuple object of some kind.
+static
+void
+relocate_llvm_walk (object * ob)
+{
+  pxll_int tc = GET_TYPECODE (*ob);
+  if (tc == TC_STRING) {
+    return;
+  } else {
+    pxll_int len = GET_TUPLE_LENGTH(*ob);
+    for (int i=0; i < len; i++) {
+      object item = ob[i+1];
+      pxll_int item0 = (pxll_int) item;
+      if (item0 < 0) {
+        // negative values indicate an external relocation
+        ob[i+1] = llvm_all_lits[(-item0)];
+      } else if (item0 & 3) {
+        // an immediate value, leave it
+      } else {
+        // a relocatable pointer.
+        object * ob1 = llvm_this_lit + (item0 >> 2);
+        ob[i+1] = ob1;
+        relocate_llvm_walk (ob1);
+      }
+    }
+  }
+}
+
+void
+relocate_llvm_literals (object * vec, uint32_t * offsets)
+{
+  llvm_all_lits = vec;
+  pxll_int n = GET_TUPLE_LENGTH (*vec);
+  for (int i=0; i < n; i++) {
+    llvm_this_lit = vec[i+1];
+    object * offset_object = (object*)(vec[i+1]) + offsets[i];
+    relocate_llvm_walk (offset_object);
+    vec[i+1] = offset_object;
+  }
+}
+
+// needed by llvm to avoid dealing with `FILE * stdout`, which cannot be accessed
+//  portably by llvm code because it is a macro.
+
+object *
+irk_write_stdout (object * data, object * size)
+{
+  return box (fwrite (GET_STRING_POINTER (data), 1, unbox(size), stdout));
+}
+
+object *
+irk_putc (object * ch)
+{
+  fputc (GET_CHAR (ch), stdout);
+  return IRK_UNDEFINED;
+}
+
+object *
+irk_flush()
+{
+  return box (fflush (stdout));
+}
+
+object *
+irk_dump_object (object * data)
+{
+  return dump_object (data, 0);
 }
 
 static
@@ -374,7 +438,7 @@ print_string (object * ob, int quoted)
       if (isprint(*ps)) {
 	fputc (*ps, stdout);
       } else {
-	fprintf (stdout, "\\0x%02x", (unsigned char) *ps);
+	fprintf (stdout, "\\x%02x", (unsigned char) *ps);
       }
     }
     if (i > 50) {
@@ -396,7 +460,7 @@ print_list (pxll_pair * l)
     object * car = l->car;
     object * cdr = l->cdr;
     dump_object (car, 0);
-    if (cdr == PXLL_NIL) {
+    if (cdr == IRK_NIL) {
       fprintf (stdout, ")");
       break;
     } else if (!is_immediate (cdr) && GET_TYPECODE (*cdr) == TC_PAIR) {
@@ -408,6 +472,17 @@ print_list (pxll_pair * l)
       fprintf (stdout, ")");
       break;
     }
+  }
+}
+
+static
+pxll_int
+irk_get_vector_length (object * vec)
+{
+  if (vec == (object *) TC_EMPTY_VECTOR) {
+    return 0;
+  } else {
+    return GET_TUPLE_LENGTH (*vec);
   }
 }
 
@@ -470,6 +545,13 @@ pxll_int vm (int argc, char * argv[]);
 
 #include "rdtsc.h"
 
+#ifdef __aarch64__
+// disable llvm.readcyclecounter on arm, where it is expensive and privileged.
+#define USE_CYCLECOUNTER 0
+#else
+#define USE_CYCLECOUNTER 1
+#endif
+
 uint64_t gc_ticks = 0;
 
 #if 1
@@ -478,24 +560,26 @@ void
 clear_space (object * p, pxll_int n)
 {
   while (n--) {
-    *p++ = PXLL_NIL;
+    *p++ = IRK_NIL;
   }
 }
 #else
 void
 clear_space (object * p, pxll_int n)
 {
-  memset (p, (int) PXLL_NIL, sizeof(object) * n);
+  memset (p, (int) IRK_NIL, sizeof(object) * n);
 }
 #endif
 
-object * lenv = PXLL_NIL;
-object * k = PXLL_NIL;
-object * top = PXLL_NIL; // top-level (i.e. 'global') environment
-object * result;
+object * lenv = IRK_NIL;
+object * k = IRK_NIL;
+object * top = IRK_NIL; // top-level (i.e. 'global') environment
 object * limit; // = heap0 + (heap_size - head_room);
 object * freep; // = heap0;
 static object * t = 0; // temp - for swaps & building tuples
+
+static int irk_argc;
+static char ** irk_argv;
 
 // for gdb...
 void
@@ -511,9 +595,10 @@ int
 get_stack_depth()
 {
   int result = 0;
-  while (k != PXLL_NIL) {
+  object * k0 = k;
+  while (k0 != IRK_NIL) {
     result++;
-    k = (object*) k[1];
+    k0 = (object*) k0[1];
   }
   return result;
 }
@@ -547,10 +632,6 @@ varset (pxll_int depth, pxll_int index, object * val) {
   lenv0[index+2] = val;
 }
 
-// REGISTER_DECLARATIONS //
-
-// CONSTRUCTED LITERALS //
-
 #include "gc1.c"
 
 static object *
@@ -563,12 +644,16 @@ allocate (pxll_int tc, pxll_int size)
   //   in gc_flip() to 'pre-clear' the heap... probably a cache effect...
   while (size--) {
     // this keeps gc from being confused by partially-filled objects.
-    *(++freep) = PXLL_NIL;
+    *(++freep) = IRK_NIL;
   }
   ++freep;
 #else
   // if you use this version, be sure to set <clear_tospace>!
   freep += size + 1;
+#endif
+#ifdef IRK_PROFILE
+  prof_funs[prof_current_fun].allocs++;
+  prof_funs[prof_current_fun].alloc_words += size;
 #endif
   return save;
 }
@@ -586,11 +671,127 @@ alloc_no_clear (pxll_int tc, pxll_int size)
 object *
 make_vector (pxll_int size, object * val)
 {
-  object * v = allocate (TC_VECTOR, size);
-  for (int i=0; i < size; i++) {
-    v[i+1] = (object *) val;
+  if (size == 0) {
+    return (object *) TC_EMPTY_VECTOR;
+  } else {
+    object * v = allocate (TC_VECTOR, size);
+    for (int i=0; i < size; i++) {
+      v[i+1] = (object *) val;
+    }
+    return v;
   }
-  return v;
+}
+
+object *
+make_foreign (void * ptr)
+{
+  object * r = allocate (TC_FOREIGN, 1);
+  r[1] = (object *) ptr;
+  return r;
+}
+
+object *
+make_malloc (pxll_int size, pxll_int count)
+{
+  object * r = allocate (TC_FOREIGN, 1);
+  r[1] = (object *) malloc (size * count);
+  return r;
+}
+
+object *
+make_halloc (pxll_int size, pxll_int count)
+{
+  object * buffer = alloc_no_clear (TC_BUFFER, HOW_MANY (size * count, sizeof(object)));
+  object * result = allocate (TC_FOREIGN, 2);
+  result[1] = buffer;
+  result[2] = box(0);
+  return result;
+}
+
+void *
+get_foreign (object * ob)
+{
+  if (GET_TUPLE_LENGTH (*ob) == 1) {
+    // TC_FOREIGN <pointer>
+    return (void *) ob[1];
+  } else {
+    // TC_FOREIGN <buffer> <offset>
+    object * buffer = (object*) ob[1];
+    uint8_t * base = (uint8_t *) (buffer + 1);
+    pxll_int offset = UNTAG_INTEGER (ob[2]);
+    return (void *) (base + offset);
+  }
+}
+
+object *
+offset_foreign (object * foreign, pxll_int offset)
+{
+  if (offset == 0) {
+    return foreign;
+  } else {
+    // Note: offset is in bytes
+    if (GET_TUPLE_LENGTH (*foreign) == 1) {
+      // TC_FOREIGN <pointer>
+      object * r = allocate (TC_FOREIGN, 1);
+      r[1] = (uint8_t *) (foreign[1]) + offset;
+      return r;
+    } else {
+      // TC_FOREIGN <buffer> <offset>
+      object * r = allocate (TC_FOREIGN, 2);
+      r[1] = foreign[1];
+      r[2] = (object*) TAG_INTEGER ((UNTAG_INTEGER (foreign[2]) + offset));
+      return r;
+    }
+  }
+}
+
+object *
+free_foreign (object * foreign)
+{
+  if (GET_TUPLE_LENGTH (*foreign) == 1) {
+    free (foreign[1]);
+  }
+  return (object*) IRK_UNDEFINED;
+}
+
+object *
+irk_cref_2_string (object * src, object * len)
+{
+  pxll_int len0 = UNTAG_INTEGER (len);
+  object * result = make_string (len0);
+  uint8_t * src0 = (uint8_t * ) get_foreign (src);
+  void * dst = GET_STRING_POINTER (result);
+  memcpy (dst, src0, len0);
+  return result;
+}
+
+object *
+irk_string_2_cref (object * src)
+{
+  return make_foreign (GET_STRING_POINTER (src));
+}
+
+object *
+irk_cref_2_int (object * src)
+{
+  return TAG_INTEGER (((pxll_int *) src)[1]);
+}
+
+object *
+irk_int_2_cref (object * src)
+{
+  return make_foreign ((void*)UNTAG_INTEGER(src));
+}
+
+// XXX this needs more thought
+#include <errno.h>
+// Note: 'errno' is no longer simply an external int.  It can be defined in any of several ways,
+//   which means that our llvm generated code cannot access it without going through the C api.
+//   (for example, on OSX its location is the result of a call to `_error()`)
+object *
+irk_get_errno (void)
+{
+  return TAG_INTEGER ((pxll_int) errno);
 }
 
 
@@ -621,7 +822,11 @@ record_store (object * rec, pxll_int label, object * val)
 void
 vector_range_check (object * v, pxll_int index)
 {
-  range_check (GET_TUPLE_LENGTH (*v), index);
+  if (v == (object*) TC_EMPTY_VECTOR) {
+    range_check (0, index);
+  } else {
+    range_check (GET_TUPLE_LENGTH (*v), index);
+  }
 }
 
 void
@@ -633,18 +838,10 @@ check_heap()
 }
 
 object *
-topref (pxll_int index) {
-  return (object*)top[index+2];
-}
-
-void
-insn_topset (pxll_int index, object * val) {
-  top[index+2] = val;
-}
-
-object *
-insn_callocate (pxll_int size, pxll_int count) {
-  return alloc_no_clear (TC_BUFFER, HOW_MANY (size * count, sizeof(object)));
+irk_print_string (object * s)
+{
+  pxll_string * s0 = (pxll_string *) s;
+  return box (fwrite (s0->data, 1, s0->len, stdout));
 }
 
 void
@@ -652,9 +849,9 @@ DENV0 (object * env)
 {
   pxll_tuple * t = (pxll_tuple *) env;
   fprintf (stdout, "ENV@%p: [", env);
-  while (t != (pxll_tuple*)PXLL_NIL) {
+  while (t != (pxll_tuple*)IRK_NIL) {
     pxll_int n = get_tuple_size ((object *) t);
-    fprintf (stdout, "%ld ", n);
+    fprintf (stdout, "%" PRIdPTR " ", n);
     t = t->next;
   }
   fprintf (stdout, "]\n");
@@ -675,29 +872,41 @@ RIB0 (object * env)
   fprintf (stdout, "\n");
 }
 
+const char * irk_trace_current_fun = NULL;
+
 void TRACE (const char * name)
 {
   // this is wrong, needs to use k, not lenv.
-  stack_depth_indent();
-  fprintf (stderr, "%s ", name);
-  DENV();
+  if (name != irk_trace_current_fun) {
+    stack_depth_indent();
+    fprintf (stderr, "%s ", name);
+    DENV();
+    irk_trace_current_fun = name;
+  }
 }
 
 void T (pxll_int n)
 {
-  fprintf (stderr, "[%ld]", n);
+  fprintf (stderr, "[%" PRIdPTR "]", n);
 }
 
 static uint64_t program_start_time;
 static uint64_t program_end_time;
-static void prof_dump (void);
+void prof_dump (void);
 
-typedef void(*kfun)(void);
-void exit_continuation (void)
+typedef void(*kfun)(object *);
+typedef void(*pfun)(void);
+void exit_continuation (object * result)
 {
+#if USE_CYCLECOUNTER
   program_end_time = rdtsc();
-  dump_object ((object *) result, 0);
-  fprintf (stdout, "\n");
+#endif
+  if ((result != (object*) IRK_UNDEFINED) && !IS_INTEGER(result)) {
+    // only print the result object if it's "interesting".
+    dump_object ((object *) result, 0);
+    fprintf (stdout, "\n");
+  }
+#if USE_CYCLECOUNTER
   if (verbose_gc) {
     fprintf (
       stderr, "{total ticks: %" PRIu64 " gc ticks: %" PRIu64 "}\n",
@@ -705,14 +914,59 @@ void exit_continuation (void)
       gc_ticks
     );
   }
+#endif
   prof_dump();
   if (is_int (result)) {
-    exit ((int)(intptr_t)UNBOX_INTEGER(result));
+    exit ((int)(intptr_t)UNTAG_INTEGER(result));
   } else {
     exit (0);
   }
 }
 
+object *
+mem2ptr (object * ob)
+{
+  switch (get_case_tup (ob)) {
+  case TC_USEROBJ + 0:
+    // buffer object
+    return ob+1;
+    break;
+  case TC_USEROBJ + 1:
+    // pointer
+    return (object*) UNTAG_INTEGER (*((pxll_int*)(ob+1)));
+    break;
+  default:
+    fprintf (stderr, "bad cmem object\n");
+    abort();
+  }
+}
+
+object *
+ptr2mem (void * ptr)
+{
+  object * result = allocate (TC_USEROBJ + 1, 1);
+  result[1] = (object*) TAG_INTEGER ((pxll_int)ptr);
+  return result;
+}
+
+object *
+buf2mem (object * buf)
+{
+  object * result = allocate (TC_USEROBJ + 0, 1);
+  result[1] = buf;
+  return result;
+}
+
+static
+object *
+make_string (pxll_int len)
+{
+  pxll_string * result = (pxll_string *) allocate (TC_STRING, STRING_TUPLE_LENGTH (len));
+  result->len = len;
+  return (object *) result;
+}
+
+#if 0
 // --------------------------------------------------------------------------------
 // invoke-closure is used by the bytecode VM to call back into Irken.
 // It could theoretically be used by any C code that needed e.g. a
@@ -738,23 +992,180 @@ invoke_closure (object * closure, object * args)
 void invoke_closure_1 (void)
 {
   lenv = (object*) k[2]; k = (object *)k[1];
-  // Note: no PXLL_RETURN here. that's because we want to return (in the C sense)
+  // Note: no IRK_RETURN here. that's because we want to return (in the C sense)
   //  to invoke_closure so the result can be returned to the original C caller,
   //  e.g. vm_go().
-  // if there *was* a PXLL_RETURN here, it would actually call exit_continuation(),
+  // if there *was* a IRK_RETURN here, it would actually call exit_continuation(),
   //  and exit the entire program.
+}
+#endif
+
+static
+object *
+irk_copy_string (char * s)
+{
+  int slen = strlen (s);
+  pxll_string * r = (pxll_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
+  r->len = slen;
+  memcpy (GET_STRING_POINTER (r), s, slen);
+  return (object *) r;
+}
+
+object *
+irk_copy_tuple (object * ob)
+{
+  if (is_immediate (ob)) {
+    return ob;
+  } else {
+    header h = (header) (ob[0]);
+    int tag  = h & 0xff;
+    pxll_int len = GET_TUPLE_LENGTH (ob[0]);
+    //DO(ob);
+    object * r = allocate (tag, len);
+    for (int i=0; i < len; i++) {
+      // r[i+1] = copy(&ob[i+1]);
+      r[i+1] = ob[i+1];
+    }
+    return r;
+  }
+}
+
+
+object *
+irk_make_argv()
+{
+  object * r = allocate (TC_VECTOR, irk_argc);
+  for (int i=0; i < irk_argc; i++) {
+    r[i+1] = irk_copy_string (irk_argv[i]);
+  }
+  return r;
+}
+
+object *
+irk_set_verbose_gc (object * data)
+{
+  pxll_int r = verbose_gc;
+  verbose_gc = IRK_IS_TRUE (data);
+  return (object*) r;
+}
+
+object *
+irk_make_string (object * len)
+{
+  pxll_int len0 = unbox(len);
+  pxll_string * r = (pxll_string*) alloc_no_clear (TC_STRING, string_tuple_length (len0));
+  r->len = len0;
+  return (object *) r;
+}
+
+object *
+irk_string_cmp (pxll_string * a, pxll_string * b)
+{
+  return (object*) UITAG (1 + magic_cmp_string (a, b));
+}
+
+// --------------------------------------------------------------------------------
+
+// used by bignum.scm
+
+#ifdef __LP64__
+
+// note: these functions take a result vector in order to avoid
+//   allocating a result tuple in these functions.  If they are
+//   used in a tight loop that otherwise does not allocate, they
+//   can avoid a heap check and overflow the heap.
+
+// 60-bit limbs
+object *
+irk_mul2 (pxll_int a, pxll_int b, object * rvo)
+{
+  __int128_t r;
+  __int128_t mask = (__int128_t)((((int64_t)1)<<60)-1);
+  pxll_vector * rv = (pxll_vector *) rvo;
+  r = ((__int128_t) a) * ((__int128_t) b);
+  rv->val[0] = box ((int64_t) (r >> 60));
+  rv->val[1] = box ((int64_t) (r & mask));
+  return (object*) IRK_UNDEFINED;
+}
+
+// divide two digits by one digit.
+// assumptions: b >= big/halfmask (i.e. base/2)
+object *
+irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
+{
+  pxll_vector * rv = (pxll_vector *) rvo;
+  __int128_t mask = (__int128_t)((((int64_t)1)<<60)-1);
+  __int128_t a = (((__int128_t)ah)<<60) | ((__int128_t)al);
+  __int128_t q = a / b;
+  __int128_t r = a % b;
+  rv->val[0] = box ((int64_t) (q & mask));
+  rv->val[1] = box ((int64_t) (r & mask));
+  return (object*) IRK_UNDEFINED;
+}
+
+#else
+
+// 28-bit limbs
+object *
+irk_mul2 (pxll_int a, pxll_int b, object * rvo)
+{
+  int64_t r;
+  int64_t mask = (int64_t)((((int32_t)1)<<28)-1);
+  pxll_vector * rv = (pxll_vector *) rvo;
+  r = ((int64_t) a) * ((int64_t) b);
+  rv->val[0] = box ((int32_t) (r >> 28));
+  rv->val[1] = box ((int32_t) (r & mask));
+  return (object*) IRK_UNDEFINED;
+}
+
+// divide two digits by one digit.
+// assumptions: b >= big/halfmask (i.e. base/2)
+object *
+irk_div2b1 (pxll_int ah, pxll_int al, pxll_int b, object * rvo)
+{
+  pxll_vector * rv = (pxll_vector *) rvo;
+  int64_t mask = (int64_t)((((int32_t)1)<<28)-1);
+  int64_t a = (((int64_t)ah)<<28) | ((int64_t)al);
+  int64_t q = a / b;
+  int64_t r = a % b;
+  rv->val[0] = box ((int32_t) (q & mask));
+  rv->val[1] = box ((int32_t) (r & mask));
+  return (object*) IRK_UNDEFINED;
+}
+
+#endif
+
+// --------------------------------------------------------------------------------
+
+extern uint32_t irk_ambig_size;
+extern int32_t G[];
+extern int32_t V[];
+
+static
+uint32_t
+p_hash (uint32_t d, int k0, int k1)
+{
+  d = ((d * 0x01000193) ^ k1) & 0xffffffff;
+  d = ((d * 0x01000193) ^ k0) & 0xffffffff;
+  return d % irk_ambig_size;
+}
+
+static int lookup_field (int tag, int label)
+{
+  int32_t d = G[p_hash(0x01000193, tag, label)];
+  if (d < 0) {
+    return V[-d-1];
+  } else {
+    return V[p_hash(d, tag, label)];
+  }
 }
 
 // --------------------------------------------------------------------------------
 
 void toplevel (void);
 
-// XXX rename these!
-static int argc;
-static char ** argv;
-
 int
-main (int _argc, char * _argv[])
+main (int argc, char * argv[])
 {
   heap0 = (object *) malloc (sizeof (object) * heap_size);
   heap1 = (object *) malloc (sizeof (object) * heap_size);
@@ -765,20 +1176,24 @@ main (int _argc, char * _argv[])
     if (clear_tospace) {
       clear_space (heap0, heap_size);
     }
-    argc = _argc;
-    argv = _argv;
+    irk_argc = argc;
+    irk_argv = argv;
     limit = heap0 + (heap_size - head_room);
     freep = heap0;
     k = allocate (TC_SAVE, 3);
-    k[1] = (object *) PXLL_NIL; // top of stack
-    k[2] = (object *) PXLL_NIL; // null environment
+    k[1] = (object *) IRK_NIL; // top of stack
+    k[2] = (object *) IRK_NIL; // null environment
     k[3] = (object *) exit_continuation;
+#if USE_CYCLECOUNTER
     program_start_time = rdtsc();
+#endif
     toplevel();
     return 0;
   }
 }
 
-
-#define PXLL_RETURN(d) result = r##d; ((kfun)(k[3]))();
+#define IRK_RETURN(d) ((kfun)(k[3]))(r##d);
 #define O object *
+
+// With the C backend, generated code follow this point.
+// With the LLVM backend, this file is linked with the generated code.

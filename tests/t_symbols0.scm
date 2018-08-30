@@ -1,3 +1,4 @@
-;(include "lib/core.scm")
-;(include "lib/pair.scm")
-'(foo bar foo bar)
+(include "lib/core.scm")
+(include "lib/pair.scm")
+(printn '(foo bar foo bar))
+

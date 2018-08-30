@@ -149,7 +149,7 @@
 (define (get-args n)
   (let ((r '()))
     (for-range i n
-      (PUSH r CODE[(+1 (+ pc i))]))
+      (push! r CODE[(+1 (+ pc i))]))
     (reverse r)))
 
 (define (print-lenv)
@@ -521,7 +521,7 @@
 
 (define opcode-info
   (list->vector
-   (LIST
+   (list
     (opcode:t "lit"     2 insn-lit)
     (opcode:t "ret"     1 insn-ret)
     (opcode:t "add"     3 insn-add)

@@ -1,34 +1,49 @@
 ;; -*- Mode: Irken -*-
 
 (define (string-tuple-length n)
-  (%backend (c llvm)
+  (%backend c
     (%%cexp (int -> int) "string_tuple_length (%0)" n))
-  (%backend bytecode
-    (how-many (+ n 4) (get-word-size))))
+  (%backend (bytecode llvm)
+    (how-many (+ n 4) (get-word-size)))
+  )
 
 (define (make-string n)
-  (%backend (c llvm)
-    (%ensure-heap #f (string-tuple-length n))
+  (%ensure-heap #f (string-tuple-length n))
+  (%backend c
     (%%cexp
      (int -> string)
      "(t=alloc_no_clear (TC_STRING, string_tuple_length (%0)), ((pxll_string*)(t))->len = %0, t)"
      n))
+  (%backend llvm
+    (%llvm-call ("@irk_make_string" (int -> string) ccc) n))
   (%backend bytecode
-    (%ensure-heap #f (string-tuple-length n))
     (%%cexp (int -> string) "smake" n))
   )
 
+(defmacro string-range-check
+  (string-range-check s n)
+  -> (when (not (and (<= 0 n) (< n (string-length s))))
+       (raise (:String/Range s n n)))
+  (string-range-check s lo hi)
+  -> (when (not (and (<= 0 lo) (<= lo hi) (<= hi (string-length s))))
+       (raise (:String/Range s lo hi))))
+
 (define (buffer-copy src src-start n dst dst-start)
-  (%backend (c llvm)
-    ;; XXX range check
+  (string-range-check src src-start (+ src-start n))
+  (string-range-check dst dst-start (+ dst-start n))
+  (%backend c
     (%%cexp
      (string int string int int -> undefined)
      "memcpy (%0+%1, %2+%3, %4)" dst dst-start src src-start n))
+  (%backend llvm
+    (%llvm-call ("@irk_buffer_copy" (string int int string int -> undefined))
+                src src-start n dst dst-start))
   (%backend bytecode
     (%%cexp (string int int string int -> undefined)
             "scopy"
             src src-start n dst dst-start)))
 
+;; XXX need a %copy-tuple prim. (or %copy-object?)
 ;; XXX why not use substring?
 (define (copy-string s1 n)
   (let ((s2 (make-string n)))
@@ -36,25 +51,10 @@
     s2))
 
 (define (substring src start end)
-  ;; XXX range check
   (let ((n (- end start))
 	(r (make-string n)))
     (buffer-copy src start n r 0)
     r))
-
-(define (ascii->char n)
-  (%backend (c llvm)
-    (%%cexp (int -> char) "TO_CHAR(%0)" n))
-  (%backend bytecode
-    (%%cexp (int int -> char) "makei" #x02 n))
-  )
-
-(define (char->ascii c)
-  (%backend (c llvm)
-    (%%cexp (char -> int) "GET_CHAR(%0)" c))
-  (%backend bytecode
-    (%%cexp (char -> int) "unchar" c))
-  )
 
 (define (char->string ch)
   (let ((r (make-string 1)))
@@ -62,20 +62,26 @@
     r))
 
 (define (bool->string b)
-  ;; XXX wait, why am I copying this?
+  ;; we copy because strings are mutable.
   (copy-string (if b "#t" "#f") 2))
 
+;; XXX these range checks need to raise an exception.
 (define (string-ref s n)
-  (%backend (c llvm)
-    (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
+  (string-range-check s n)
+  (%backend c
     (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
+  (%backend llvm
+    (%llvm-call ("@irk_string_ref" (string int -> char)) s n))
   (%backend bytecode
     (%%cexp (string int -> char) "sref" s n)))
 
 (define (string-set! s n c)
-  (%backend (c llvm)
-    (%%cexp ((raw string) int -> undefined) "range_check (((pxll_string *)(%0))->len, %1)" s n)
-    (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c))
+  (string-range-check s n)
+  (%backend c
+    (%%cexp (string int char -> undefined) "%0[%1] = GET_CHAR (%2)" s n c)
+    #u) ;; avoid C warning.
+  (%backend llvm
+    (%llvm-call ("@irk_string_set" (string int char -> undefined)) s n c))
   (%backend bytecode
     (%%cexp (string int char -> undefined) "sset" s n c)))
 
@@ -93,7 +99,7 @@
 (defmacro string-append
   (string-append)           -> ""
   (string-append s0)        -> s0
-  (string-append s0 s1 ...) -> (string-concat (LIST s0 s1 ...))
+  (string-append s0 s1 ...) -> (string-concat (list s0 s1 ...))
   )
 
 (define (string-join l sep)
@@ -115,31 +121,51 @@
 	  (else
 	   (loop (+ i 1) j acc)))))
 
+;; XXX this needs to be renamed 'string-cmp'
 (define (string-compare a b) : (string string -> cmp)
-  (%backend (c llvm)
-    (let ((alen (string-length a))
-          (blen (string-length b))
-          (cmp (%%cexp (string string int -> int) "memcmp (%0, %1, %2)" a b (min alen blen))))
-      (cond ((= cmp 0)
-             (int-cmp alen blen))
-            (else (int-cmp cmp 0)))))
+  (%backend c
+    (%%cexp ((raw string) (raw string) -> cmp) "irk_string_cmp (%0, %1)" a b))
+  (%backend llvm
+    (%llvm-call ("@irk_string_cmp" (string string -> cmp) ccc) a b))
   (%backend bytecode
-    (magic-cmp a b))
-  )
+    (magic-cmp a b)))
 
-(define (string-find a b)
-  ;; find <a> in <b>
+(define (string-find-from a b pos)
+  ;; find <a> in <b>, starting at b[pos]
   (let ((alen (string-length a))
 	(blen (string-length b)))
     (if (< blen alen)
 	-1
-	(let loop ((i 0) (j 0))
+	(let loop ((i pos) (j 0))
 	  (cond ((= j alen) (- i j))
 		((= i blen) -1)
 		((eq? (string-ref a j) (string-ref b i))
 		 (loop (+ i 1) (+ j 1)))
 		(else
 		 (loop (+ i 1) 0)))))))
+
+(define (string-find a b)
+  (string-find-from a b 0))
+
+(define (string-split-string src split)
+  (let ((len0 (string-length src))
+        (len1 (string-length split))
+        (r '()))
+    (when (> len1 len0)
+      (raise (:String/SplitTooLong split)))
+    (let loop ((pos 0))
+      (let ((where (string-find-from split src pos)))
+        (if (= where -1)
+            (begin
+              (push! r (substring src pos len0))
+              (reverse r))
+            (begin
+              (push! r (substring src pos where))
+              (loop (+ where len1))))))))
+
+(define (string-replace-all src from to)
+  (let ((parts (string-split-string src from)))
+    (format (join to parts))))
 
 (define (starts-with a b)
   ;; does <a> start with <b>?
@@ -150,6 +176,18 @@
 	(let loop ((i 0))
 	  (cond ((= i blen) #t)
 		((eq? (string-ref a i) (string-ref b i))
+		 (loop (+ i 1)))
+		(else #f))))))
+
+(define (ends-with a b)
+  ;; does <a> end with <b>?
+  (let ((alen (string-length a))
+	(blen (string-length b)))
+    (if (< alen blen)
+	#f
+	(let loop ((i 0))
+	  (cond ((= i blen) #t)
+		((eq? (string-ref a (- alen 1 i)) (string-ref b (- blen 1 i)))
 		 (loop (+ i 1)))
 		(else #f))))))
 
@@ -170,44 +208,65 @@
 	s2)))
 
 (define (list->string l)
-  (let ((buffer (make-string (length l))))
-    (let loop ((l l) (i 0))
-      (match l with
-	() -> buffer
-	(hd . tl) -> (begin (string-set! buffer i hd) (loop tl (+ i 1))))
-      )))
+  (let ((len (length l))
+        (buffer (make-string len))
+        (i 0))
+    (for-list ch l
+      (string-set! buffer i ch)
+      (set! i (+ i 1)))
+    buffer))
 
 (define (string->list s)
   (let loop ((l (list:nil)) (n (string-length s)))
     (if (= n 0)
 	l
-	(loop (list:cons (string-ref s (- n 1)) l) (- n 1)))))
+	(loop (list:cons (string-ref s (- n 1)) l)
+              (- n 1)))))
 
 (define (char-class char-list)
   (let ((v (make-vector 256 #f)))
-
-    (define (in-class? ch)
-      v[(char->ascii ch)])
-
-    (let loop ((l char-list))
-      (match l with
-	()        -> in-class?
-	(hd . tl) -> (begin (set! v[(char->ascii hd)] #t) (loop tl))
-	))))
+    (define (in-class? ch) v[(char->ascii ch)])
+    (for-list ch char-list
+      (set! v[(char->ascii ch)] #t))
+    in-class?
+    ))
 
 (define whitespace    '(#\space #\tab #\newline #\return))
-(define delimiters     (string->list "()[]{}:"))
-(define letters        (string->list "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+(define delimiters     (string->list "()[]{}:;"))
+(define lowercase      (string->list "abcdefghijklmnopqrstuvwxyz"))
+(define uppercase      (string->list "ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+(define letters        (append lowercase uppercase))
 (define all-delimiters (append whitespace delimiters))
 (define digits         (string->list "0123456789"))
+(define hex-digits     (string->list "0123456789ABCDEFabcdef"))
 (define printable      (append digits letters (string->list "!\"#$%&'*+,-./:;<=>?@\\^_`[({|})]~")))
 
 (define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
 (define delim?         (char-class all-delimiters))
 (define digit?         (char-class digits))
+(define hex-digit?     (char-class hex-digits))
+(define lower?         (char-class lowercase))
+(define upper?         (char-class uppercase))
 (define letter?        (char-class letters))
 (define field?         (char-class (cons #\- (append letters digits))))
 (define printable?     (char-class printable))
+
+;; ascii only
+(define (toupper ch)
+  (if (lower? ch)
+      (ascii->char (- (char->ascii ch) 32))
+      ch))
+
+(define (upcase s)
+  (list->string (map toupper (string->list s))))
+
+(define (tolower ch)
+  (if (upper? ch)
+      (ascii->char (+ (char->ascii ch) 32))
+      ch))
+
+(define (downcase s)
+  (list->string (map tolower (string->list s))))
 
 (define safe-char
   #\space   -> " "
@@ -215,12 +274,13 @@
   #\tab     -> "\\t"
   #\return  -> "\\r"
   #\"       -> "\\\""
+  #\\       -> "\\\\"
   ch        -> (if (printable? ch)
                    (char->string ch)
                    (format "\\x" (zpad 2 (hex (char->ascii ch)))))
   )
 
-
+;; XXX this should be called string-repr!
 (define (repr-string s)
   (format "\"" (join (map safe-char (string->list s))) "\""))
 
@@ -235,8 +295,7 @@
 		(+ (* 10 n)
 		   (- (char->ascii (string-ref s i)) 48)))))))
 
-;; XXX pre-compute 0..100
-
+;; pre-compute 0..100?
 (define (int->string n)
   (if (= 0 n)
       (char->string #\0) ;; don't use a constant here, mutable string
@@ -248,85 +307,42 @@
 		  (list:cons (ascii->char (+ 48 (remainder x 10))) r)
 		  )))))
 
-(define hex-table (literal #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\a #\b #\c #\d #\e #\f)))
+(%backend (c llvm)
 
-(define (int->hex-string n)
-  (let loop ((x (abs n)) (r '()))
-    (if (= 0 x)
-	(list->string
-	 (if (< n 0)
-	     (list:cons #\- r) r))
-	(loop (>> x 4)
-	      (list:cons hex-table[(logand x 15)] r)))))
+  (define (strlen s)
+    (%%cexp (cstring -> int) "strlen(%0)" s))
 
-(define (int->oct-string n)
-  (let loop ((x (abs n)) (r '()))
-    (if (= 0 x)
-	(list->string
-	 (if (< n 0)
-	     (list:cons #\- r) r))
-	(loop (>> x 3)
-	      (list:cons hex-table[(logand x 7)] r)))))
-
-(define (pad width s left? ch)
-  (let ((n (string-length s)))
-    (if (> n width)
-	s ;; too wide
-	(let ((np (- width n)))
-	  (if left?
-	      (format (list->string (n-of np ch)) s)
-	      (format s (list->string (n-of np ch))))))))
-(define (lpad w s ch) (pad w s #t ch))
-(define (rpad w s ch) (pad w s #f ch))
-(define (cpad w s ch)
-  (let ((sl (string-length s))
-	(lp (+ sl (/ (- w sl) 2))))
-    (rpad w (lpad lp s ch) ch)))
-
-(defmacro fitem
-  (fitem (<int> n))		-> (int->string n)
-  (fitem (<char> ch))		-> (char->string ch)
-  (fitem (<bool> b))		-> (bool->string b)
-  (fitem (<hex> n))		-> (int->hex-string n)
-  (fitem (<oct> n))		-> (int->oct-string n)
-  (fitem (<sym> s))		-> (symbol->string s)
-  (fitem (<join> l))		-> (string-concat l)
-  (fitem (<join> sep l))	-> (string-join l sep)         ;; separate each string in <l> with <sep>
-  (fitem (<join> p sep l))	-> (string-join (map p l) sep) ;; map <p> over list <l>, separate each with <sep>
-  (fitem (<string> s))          -> (repr-string s)
-  (fitem (<lpad> n item ...))	-> (lpad n (format item ...) #\space) ;; left-pad
-  (fitem (<rpad> n item ...))	-> (rpad n (format item ...) #\space) ;; right-pad
-  (fitem (<cpad> n item ...))	-> (cpad n (format item ...) #\space) ;; center-pad
-  (fitem (<zpad> n item ...))	-> (lpad n (format item ...) #\0)     ;; zero-pad
-  (fitem (<repeat> n item ...)) -> (string-concat (n-of n (format item ...)))
-  (fitem x)			-> x	;; anything else must already be a string
+  (define (copy-cstring s)
+    (let ((len (strlen s))
+          (result (make-string len)))
+      (%%cexp (string cstring int -> undefined)
+              "memcpy (%0, %1, %2)"
+              result s len)
+      result))
   )
 
-(defmacro formatl
-  (formatl) -> (list:nil)
-  (formatl item items ...) -> (list:cons (fitem item) (formatl items ...))
-  )
+;; read from a string one char at a time...
+;; XXX think about generator interfaces...
+(define (string-reader s)
+  (let ((pos 0)
+	(slen (string-length s)))
+    (lambda ()
+      (if (>= pos slen)
+	  #\eof
+	  (let ((r (string-ref s pos)))
+	    (set! pos (+ 1 pos))
+	    r)))))
 
-(defmacro format
-  (format item)	    -> (fitem item)
-  (format item ...) -> (string-concat (formatl item ...))
-  )
+(defmacro for-string
+  (for-string chname s body ...)
+  -> (let (($s s)) ;; avoid duplicating <s> expression.
+       (for-range $i (string-length $s)
+	 (let ((chname (string-ref $s $i)))
+	   body ...))))
 
-(defmacro format-join
-  (format-join sep item ...) -> (string-join (formatl item ...) sep)
-  )
+(define (string-generator s)
+  (makegen emit
+    (for-string ch s
+      (emit ch))))
 
-(defmacro printf
-  (printf item ...) -> (print-string (format item ...))
-  )
 
-(define (strlen s)
-  (%%cexp (cstring -> int) "strlen(%0)" s))
-
-(define (copy-cstring s)
-  (let ((len (strlen s))
-	(result (make-string len)))
-    (%%cexp (string cstring int -> undefined)
-	    "memcpy (%0, %1, %2)"
-	    result s len)
-    result))

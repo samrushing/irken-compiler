@@ -31,7 +31,7 @@
     (match n with
       (tree:empty)
       -> (tree:red (tree:empty) (tree:empty) k v)
-      
+
       (tree:red l r k2 v2)
       -> (match (cmp k k2) with
            (cmp:<) -> (tree:red (ins l) r k2 v2)
@@ -44,13 +44,13 @@
            (cmp:>) -> (rbalance l (ins r) k2 v2)
            (cmp:=) -> n
            )))
-  
+
   (let ((s (ins root)))
     (match s with
       (tree:red l r k0 v0) -> (tree:black l r k0 v0)
       _ -> s
       ))
-  
+
   )
 
 ;; deletion translated from https://github.com/bmeurer/ocaml-rbtrees
@@ -91,19 +91,19 @@
     (tree:red (tree:empty) R k0 v0)
     -> (:tuple R k0 v0 #f)
     (tree:black L R k0 v0)
-    -> (let-values (((L k1 v1 d) (remove-min L)))
-	 (let ((m (tree:black L R k0 v0)))
-	   (if d
-	       (let-values (((s d) (runbalanced m)))
-		 (:tuple s k1 v1 d))
-	       (:tuple m k1 v1 #f))))
+    -> (let (((L k1 v1 d) (remove-min L))
+             (m (tree:black L R k0 v0)))
+         (if d
+             (let (((s d) (runbalanced m)))
+               (:tuple s k1 v1 d))
+             (:tuple m k1 v1 #f)))
     (tree:red L R k0 v0)
-    -> (let-values (((L k1 v1 d) (remove-min L)))
-	 (let ((m (tree:red L R k0 v0)))
-	   (if d
-	       (let-values (((s d) (runbalanced m)))
-		 (:tuple s k1 v1 d))
-	       (:tuple m k1 v1 #f))))
+    -> (let (((L k1 v1 d) (remove-min L))
+             (m (tree:red L R k0 v0)))
+         (if d
+             (let (((s d) (runbalanced m)))
+               (:tuple s k1 v1 d))
+             (:tuple m k1 v1 #f)))
     )
 
   (define blackify
@@ -115,30 +115,30 @@
     -> (:tuple (tree:empty) #f)
     (tree:black L R k0 v0)
     -> (match (cmp k k0) with
-         (cmp:<) -> (let-values (((L d) (remove-aux L)))
-                      (let ((m (tree:black L R k0 v0)))
-                        (if d (runbalanced m) (:tuple m #f))))
-         (cmp:>) -> (let-values (((R d) (remove-aux R)))
-                      (let ((m (tree:black L R k0 v0)))
-                        (if d (lunbalanced m) (:tuple m #f))))
+         (cmp:<) -> (let (((L d) (remove-aux L))
+                          (m (tree:black L R k0 v0)))
+                      (if d (runbalanced m) (:tuple m #f)))
+         (cmp:>) -> (let (((R d) (remove-aux R))
+                          (m (tree:black L R k0 v0)))
+                      (if d (lunbalanced m) (:tuple m #f)))
          (cmp:=) -> (match R with
                       (tree:empty) -> (blackify L)
-                      _ -> (let-values (((R k0 v0 d) (remove-min R)))
-                             (let ((m (tree:black L R k0 v0)))
-                               (if d (lunbalanced m) (:tuple m #f))))))
+                      _ -> (let (((R k0 v0 d) (remove-min R))
+                                 (m (tree:black L R k0 v0)))
+                             (if d (lunbalanced m) (:tuple m #f)))))
     (tree:red L R k0 v0)
     -> (match (cmp k k0) with
-         (cmp:<) -> (let-values (((L d) (remove-aux L)))
-                      (let ((m (tree:red L R k0 v0)))
-                        (if d (runbalanced m) (:tuple m #f))))
-         (cmp:>) -> (let-values (((R d) (remove-aux R)))
-                      (let ((m (tree:red L R k0 v0)))
-                        (if d (lunbalanced m) (:tuple m #f))))
+         (cmp:<) -> (let (((L d) (remove-aux L))
+                          (m (tree:red L R k0 v0)))
+                      (if d (runbalanced m) (:tuple m #f)))
+         (cmp:>) -> (let (((R d) (remove-aux R))
+                          (m (tree:red L R k0 v0)))
+                      (if d (lunbalanced m) (:tuple m #f)))
          (cmp:=) -> (match R with
                       (tree:empty) -> (:tuple L #f)
-                      _ -> (let-values (((R k0 v0 d) (remove-min R)))
-                             (let ((m (tree:red L R k0 v0)))
-                               (if d (lunbalanced m) (:tuple m #f)))))))
+                      _ -> (let (((R k0 v0 d) (remove-min R))
+                                 (m (tree:red L R k0 v0)))
+                             (if d (lunbalanced m) (:tuple m #f))))))
   (remove-aux root)
   )
 
@@ -193,7 +193,7 @@
     ))
 
 (define tree/min
-  (tree:empty) -> (raise (:KeyError))
+  (tree:empty) -> (raise (:Tree/Empty))
   (tree:black (tree:empty) _ k v) -> (:tuple k v)
   (tree:red   (tree:empty) _ k v) -> (:tuple k v)
   (tree:black L _ _ _) -> (tree/min L)
@@ -201,7 +201,7 @@
   )
 
 (define tree/max
-  (tree:empty) -> (raise (:KeyError))
+  (tree:empty) -> (raise (:Tree/Empty))
   (tree:black _ (tree:empty) k v) -> (:tuple k v)
   (tree:red   _ (tree:empty) k v) -> (:tuple k v)
   (tree:black _ R _ _) -> (tree/max R)
@@ -239,19 +239,19 @@
   (tree/insert! root cmp k v) -> (set! root (tree/insert root cmp k v)))
 
 (defmacro for-map
-  (for-map k v map body ...) 
+  (for-map k v map body ...)
   -> (tree/inorder (lambda (k v) body ...) map)
   )
 
 ;; some way to do these using foldr?
 (define (tree/keys t)
   (let ((r '()))
-    (tree/reverse (lambda (k v) (PUSH r k)) t)
+    (tree/reverse (lambda (k v) (push! r k)) t)
     r))
 
 (define (tree/values t)
   (let ((r '()))
-    (tree/reverse (lambda (k v) (PUSH r v)) t)
+    (tree/reverse (lambda (k v) (push! r v)) t)
     r))
 
 (define tree/dump
@@ -260,35 +260,25 @@
   d p (tree:black l r k v) -> (begin (tree/dump (+ d 1) p l) (p k v d) (tree/dump (+ d 1) p r))
   )
 
-;; the defn of make-generator, call/cc, etc... makes it pretty hard
-;;  to pass more than one arg through a continuation.  so instead we'll
-;;  use a 'pair' constructor to iterate through the tree...
-
-;; XXX use :tuple instead, so let-values can be used.
-
-;; (define (tree/make-generator tree end-key end-val)
-;;   (make-generator
-;;    (lambda (consumer)
-;;      (tree/inorder (lambda (k v) (consumer (:pair k v))) tree)
-;;      (let loop ()
-;;        (consumer (:pair end-key end-val))
-;;        (loop))
-;;      )
-;;    ))
-
-;; 'standard' generator form.
-
 (define (tree/make-generator t)
-  (make-generator
-   (lambda (consumer)
-     (tree/inorder 
-      (lambda (k v)
-	(consumer (maybe:yes (:tuple k v))))
-      t)
-     (forever (consumer (maybe:no))))))
+  (makegen emit
+    (tree/inorder
+     (lambda (k v)
+       (emit (:tuple k v)))
+     t)))
+
+(define (tree/make-reverse-generator t)
+  (makegen emit
+    (tree/reverse
+     (lambda (k v)
+       (emit (:tuple k v)))
+     t)))
 
 ;; do a range query [lo, hi) over the map/set.
-(define (tree/range root < lo hi p)
+(define (tree/range root cmp lo hi p)
+
+  (define (< a b)
+    (eq? (cmp:<) (cmp a b)))
 
   (define (visit l r k v)
     (if (< lo k) (walk l))
@@ -305,20 +295,12 @@
   (walk root)
   )
 
-(define tree/least
-  (tree:empty)                     -> (error "tree/least on empty tree")
-  (tree:red (tree:empty) _ k v)    -> (:tuple k v)
-  (tree:black (tree:empty) _ k v)  -> (:tuple k v)
-  (tree:red l _ _ _)               -> (tree/least l)
-  (tree:black l _ _ _)             -> (tree/least l)
-  )
-
-(define (tree/pop-least s cmp)
-  (let-values (((k v) (tree/least s)))
+(define (tree/pop-min s cmp)
+  (let (((k v) (tree/min s)))
     (:tuple (:tuple k v) (tree/delete s cmp k))))
 
-(defmacro tree/pop-least!
-  (tree/pop-least! s cmp)
-  -> (let-values (((least s0) (tree/pop-least s cmp)))
+(defmacro tree/pop-min!
+  (tree/pop-min! s cmp)
+  -> (let (((min s0) (tree/pop-min s cmp)))
        (set! s s0)
-       least))
+       min))

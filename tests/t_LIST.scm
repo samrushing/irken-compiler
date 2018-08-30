@@ -1,8 +1,8 @@
 (include "lib/core.scm")
 (include "lib/pair.scm")
 
-(LIST
- (LIST 1 2)
- (LIST 3 4)
- (LIST 5 6)
+(list
+ (list 1 2)
+ (list 3 4)
+ (list 5 6)
  )

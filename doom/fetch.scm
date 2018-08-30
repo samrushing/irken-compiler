@@ -1,15 +1,15 @@
 ;; -*- Mode: Irken -*-
 
-(include "doom/doom.scm")
+(require "lib/basis.scm")
+(require "doom/doom.scm")
 
 (define (fetch-head ip)
-  (let ((sfd (socket AF_INET SOCK_STREAM 0))
-	(addr (make-in-addr ip 80)))
-    (connect sfd addr)
-    (printn (send sfd "HEAD / HTTP/1.0\r\n\r\n"))
-    (print-string (recv sfd 1024))
-    (print-string "done!\n")
-    (close sfd)
+  (let ((sock (doom/make (tcp4-sock)))
+	(addr (address/make4 ip 80)))
+    (sock.connect addr)
+    (sock.send "HEAD / HTTP/1.0\r\n\r\n")
+    (printf (string (sock.recv)) "\n")
+    (sock.close)
     ))
 
 (let ((ip "72.52.84.226"))

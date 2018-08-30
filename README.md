@@ -22,13 +22,13 @@ News:
 
 20170329: Merged the bytecode backend and VM.
 
-  This has been tested on four platforms: 
+  This has been tested on four platforms:
 
   * amd64 osx-10
   * amd64 freebsd-11
   * amd64 linux-ubuntu-xenial
   * aarch64 linux-debian rpi-3
-    
+
 Yes, this means that Irken works on ARMv8! (all three backends).
 (for more detail see below).
 
@@ -107,10 +107,6 @@ To use the LLVM backend:
 
     $ irken vm.scm -llvm
 
-Note: the llvm backend currently assumes that `-flto` can be fed to `clang`, this works
-  on OS X, but seems to fail on FreeBSD & Linux.  I think some kind of plugin is needed.
-  You can remove `-flto` from `flags.scm` if necessary.
-
 
 Bytecode Backend:
 -----------------
@@ -145,3 +141,15 @@ get everything working by commenting all rdtsc-related code in
 include/{header1.c,gc1.c}.  My understanding is that reading this
 register is a Bad Idea on the ARM, so I may conditionalize it in the
 source.
+
+
+32-bit platforms
+----------------
+
+Once upon a time Irken compiled and ran on x86.  With the SSA-style
+rewrite that relies on tail call elimination, this appears to no
+longer be possible.  Neither gcc or llvm seem to support full tail
+call elimination on this platform.  Even manually tagging all
+functions with 'fastcc' (by compiling to llvm asm and editing the
+result) does not fix the problem.  If you really need to run Irken on
+a 32-bit platform, know that the VM seems to work just fine.

@@ -1,123 +1,262 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/os.scm")
+;; we use a vector of limbs.
+;; this facilitates mutating bignums in place,
+;;   and is considerably faster than using a list
+;;   of limbs.
 
 (datatype big
   (:zero)
-  (:pos (list int))
-  (:neg (list int))
+  (:pos (vector int))
+  (:neg (vector int))
   )
 
-;; NOTE: multiply and divide algorithms require that
-;;  the base be half the word size.
+;; we need some sort of compile-time selector, like %backend,
+;;   but for word-size - because we do not want to mutate these
+;;   values (we want them all inlined).
 
-;; for 64-bit platforms:
-(define big/base #x20000000)
-(define big/repr-width 8)
-;; largest power of ten that fits in a digit.
-(define big/decimal-base 100000000)
-(define big/decimal-pad 8)
+(define big/bits           60)
+(define big/base           #x1000000000000000)
+(define big/halfbits       30)
+(define big/mask           #xfffffffffffffff)
+(define big/halfmask       #x3fffffff)
+(define big/repr-width     15)
+(define big/decimal-base   1000000000000000000)
+(define big/decimal-pad    18)
 
-(define (go32)
-  (set! big/base #x20000000)
-  (set! big/repr-width 8)
-  (set! big/decimal-base 100000000)
-  (set! big/decimal-pad 8)
-  )
-
-(define (go16)
-  ;; I think it's the division algorithm that is placing
-  ;;  such drastic limits on the base here.  Anything larger
-  ;;  breaks it.  Needs investigation
-  (printf "bignum: using 16-bit limbs.\n")
-  (set! big/base #x1000)
-  (set! big/repr-width 3)
-  (set! big/decimal-base 100)
-  (set! big/decimal-pad 2)
-  )
-
-;; base16, for testing using relatively small numbers.
-(define (go8)
-  (printf "bignum: using hex-digit limbs.\n")
-  (set! big/base #x10)
-  (set! big/repr-width 1)
-  (set! big/decimal-base 100)
-  (set! big/decimal-pad 2)
-  )
-
-(define (check-platform)
-  (match (get-word-size) with
-    8 -> (go32)
-    4 -> (go16)
-    _ -> (raise (:StrangePlatform))
-    ))
-
-(check-platform)
-
-;; for testing, use hexadecimal digits
+;; digits are in most-significant-first order.
 
 (define (digits-repr digs)
-  (let loop ((digs digs) (acc '()))
-    (match digs with
-      () -> acc
-      (hd . tl) -> (loop tl (list:cons (format (zpad big/repr-width (hex hd))) acc))
-      )))
+  (let ((r '()))
+    ;; iterate in reverse to accumulate
+    (for-range-rev i (vlen digs)
+      (push! r (format (zpad big/repr-width (hex digs[i])))))
+    (format (join "." r))))
+
+;; eventually we'll add support to the reader for big literals
+;;  [though probably in decimal form]
 
 (define big-repr
-  (big:zero) -> "B0"
-  (big:pos digits) -> (format "B+" (join id "." (digits-repr digits)))
-  (big:neg digits) -> (format "B-" (join id "." (digits-repr digits)))
+  (big:zero)     -> "B0"
+  (big:pos digs) -> (format "B+" (digits-repr digs))
+  (big:neg digs) -> (format "B-" (digits-repr digs))
   )
 
-;; canonicalize the results of a subtraction
-;; Note: the list of digits is in MSB form here.
-(define remove-zeros
-  (0 . tl) -> (remove-zeros tl)
-  x	   -> x
+(define big->digits
+  (big:zero)   -> #()
+  (big:neg ds) -> ds
+  (big:pos ds) -> ds
   )
 
-;; in standard LSB form
-(define (canon x)
-  (reverse (remove-zeros (reverse x))))
+;; define some commonly-used constants.
+(define big/0 (big (I 0)))
+(define big/1 (big (I 1)))
+(define big/2 (big (I 2)))
+(define big/3 (big (I 3)))
+(define big/4 (big (I 4)))
+(define big/5 (big (I 5)))
+(define big/6 (big (I 6)))
+(define big/7 (big (I 7)))
+(define big/8 (big (I 8)))
+(define big/9 (big (I 9)))
+(define big/10 (big (I 10)))
 
-;; ---------- addition -----------
+(define digits/base #(1 0))
+(define digits/0 #())
+(define digits/1 #(1))
 
-(define (digits-add0 a b acc carry?)
-  (match a b with
-    () ()   -> (reverse (if carry? (list:cons 1 acc) acc))
-    () digs -> (digits-add0 (LIST 0) digs acc carry?)
-    digs () -> (digits-add0 (LIST 0) digs acc carry?)
-    (d0 . tl0) (d1 . tl1)
-    -> (let ((sum (+ d0 d1 (if carry? 1 0))))
-	 (if (>= sum big/base)
-	     (digits-add0 tl0 tl1 (list:cons (- sum big/base) acc) #t)
-	     (digits-add0 tl0 tl1 (list:cons sum acc) #f)))
-    ;;_ _ -> (error "matching is borken?")
-    ))
+;; ---------- utility -----------
 
-(define (digits-add a b)
-  (digits-add0 a b '() #f))
+(define (vcons v n)
+  (let ((len (vlen v))
+        (r (make-vector (+ 1 len) 0)))
+    (set! r[0] n)
+    (for-range i len
+      (set! r[(+ i 1)] v[i]))
+    r))
+
+(define (vlen v)
+  (vector-length v))
+
+(define (vtake v n)
+  (let ((r (make-vector n v[0])))
+    (for-range i n
+      (set! r[i] v[i]))
+    r))
+
+(define (vdrop v n)
+  (let ((len (vlen v))
+        (len1 (- len n))
+        (r (make-vector len1 v[0])))
+    (for-range i len1
+      (set! r[i] v[(+ i n)]))
+    r))
+
+(define (vslice v start end)
+  (if (< (- end start) 0)
+      #()
+      (let ((r (make-vector (- end start) 0)))
+        (for-range i (- end start)
+          (set! r[i] v[(+ i start)]))
+        r)))
+
+;; drop any leading zeros
+(define (canon digs)
+  (let ((len (vlen digs))
+        (i 0)
+        (drop 0))
+    (while (and (< i len) (= digs[i] 0))
+      (inc! i))
+    (if (> i 0)
+        (vdrop digs i)
+        digs)))
+
+(define (split-dig n)
+  (:tuple (>> n big/halfbits) (logand big/halfmask n)))
+
+(define (unsplit-dig a0 a1)
+  (logior (<< a0 big/halfbits) a1))
+
+(define big-negate
+  (big:zero)  -> (big:zero)
+  (big:pos x) -> (big:neg x)
+  (big:neg x) -> (big:pos x)
+  )
+
+;; assumes positive n
+(define int->digits
+  0 acc -> (list->vector acc)
+  n acc -> (int->digits
+	    (/ n big/base)
+	    (list:cons (mod n big/base) acc))
+  )
+
+(define int->big
+  0 -> (big:zero)
+  n -> (let ((pos? (>= n 0))
+             (absn (if pos? n (- 0 n))))
+         (if pos?
+             (big:pos (int->digits absn '()))
+             (big:neg (int->digits absn '())))))
+
+(define (big->int n)
+  (let ((digits (big->digits n)))
+    (when (> 1 (vector-length digits))
+      (raise (:Bignum/TooBig n)))
+    (match n with
+      (big:pos _) -> digits[0]
+      (big:neg _) -> (- digits[0])
+      (big:zero)  -> 0
+      )))
+
+(define big=
+  (big:zero)  (big:zero)  -> #t
+  (big:zero)  _		  -> #f
+  _ (big:zero)            -> #f
+  (big:pos _) (big:neg _) -> #f
+  (big:neg _) (big:pos _) -> #f
+  (big:pos a) (big:pos b) -> (eq? (digits-cmp a b) (cmp:=))
+  (big:neg a) (big:neg b) -> (eq? (digits-cmp a b) (cmp:=))
+  )
+
+;; append `n` zeros to `digs`
+;; note: equivalent to "<< (n * big/bits)"
+(define (shift digs n)
+  (let ((len (vlen digs))
+        (r (make-vector (+ n len) 0)))
+    (for-range i len
+      (set! r[i] digs[i]))
+    r))
+
+;; this makes a non-canonical result, used by karatsuba.
+(define (add-zeros digs n)
+  (let ((len (vlen digs))
+        (r (make-vector (+ n len) 0)))
+    (for-range i len
+      (set! r[(+ i n)] digs[i]))
+    r))
+
+(define power-of-two?
+  2 acc -> (maybe:yes acc)
+  n acc -> (if (odd? n)
+               (maybe:no)
+               (power-of-two? (>> n 1) (+ 1 acc))))
+
+;; ---------- comparison -----------
 
 ;; this will fail if either list is non-canonical
 ;;  (i.e. contains zero padding).
-(define (digits-cmp da db)
-  (let ((na (length da))
-	(nb (length db)))
-    (cond ((< na nb) (cmp:<)) ;; aa < bbbb
-	  ((> na nb) (cmp:>)) ;; aaaa > bb
-	  (else
-	   (let loop ((da (reverse da))
-		      (db (reverse db)))
-	     ;; compare most-significant digit by digit...
-	     (cond ((null? da) (cmp:=))
-		   ((< (car da) (car db)) (cmp:<))
-		   ((> (car da) (car db)) (cmp:>))
-		   (else
-		    (loop (cdr da) (cdr db)))))))))
 
-(define (digits-<? da db)
-  (eq? (digits-cmp da db) (cmp:<)))
+(define (digits-cmp* a b i n)
+  (cond ((= i n) (cmp:=))
+        ((= a[i] b[i]) (digits-cmp* a b (+ i 1) n))
+        (else (int-cmp a[i] b[i]))))
+
+(define (digits-cmp a b)
+  (let ((alen (vlen a))
+        (blen (vlen b)))
+    (if (= alen blen)
+        (digits-cmp* a b 0 alen)
+        (int-cmp alen blen))))
+
+(define (digits<* a b i n)
+  (cond ((= i n) #f)
+        ((= a[i] b[i]) (digits<* a b (+ i 1) n))
+        (else (< a[i] b[i]))))
+
+(define (digits< a b)
+  (let ((alen (vlen a))
+        (blen (vlen b)))
+    (match (int-cmp alen blen) with
+      (cmp:<) -> #t
+      (cmp:>) -> #f
+      (cmp:=) -> (digits<* a b 0 alen)
+      )))
+
+(define big-cmp
+  (big:zero)  (big:zero)  -> (cmp:=)
+  (big:zero)  (big:pos _) -> (cmp:<)
+  (big:zero)  (big:neg _) -> (cmp:>)
+  (big:pos _) (big:zero)  -> (cmp:>)
+  (big:pos _) (big:neg _) -> (cmp:>)
+  (big:pos a) (big:pos b) -> (digits-cmp a b)
+  (big:neg _) (big:zero)  -> (cmp:<)
+  (big:neg _) (big:pos _) -> (cmp:<)
+  (big:neg a) (big:neg b) -> (digits-cmp b a)
+  )
+
+(define (big< a b)
+  (eq? (cmp:<) (big-cmp a b)))
+
+;; ---------- addition -----------
+
+;; XXX use digits-add! below
+(define (digits-add* a b)
+  (let ((alen (vlen a))
+        (blen (vlen b))
+        (r (make-vector alen 0))
+        (carry 0)
+        (dig 0)
+        (i (- alen 1))
+        (j (- blen 1)))
+    (while (>= i 0)
+      (set! dig (+ a[i] carry (if (>= j 0) b[j] 0)))
+      (cond ((>= dig big/base)
+             (set! r[i] (- dig big/base))
+             (set! carry 1))
+            (else
+             (set! r[i] dig)
+             (set! carry 0)))
+      (dec! i)
+      (dec! j))
+    (if (= carry 0) r (vcons r 1))
+    ))
+
+(define (digits-add a b)
+  ;; guarantee that a is longer or equal
+  (if (< (vlen a) (vlen b))
+      (digits-add* b a)
+      (digits-add* a b)))
 
 (define big-add
   (big:zero) x              -> x
@@ -130,29 +269,28 @@
 
 ;; ---------- subtraction -----------
 
-;; used for borrowing
-(define digits-sub1
-  () -> (raise (:UnderflowError))
-  (1) -> '()
-  (0 . tl) -> (list:cons (- big/base 1) (digits-sub1 tl))
-  (n . tl) -> (list:cons (- n 1) tl)
-  )
-
 ;; assumes b < a
-(define (digits-sub0 a b acc)
-  (match a b with
-    () ()   -> (reverse (remove-zeros acc))
-    () digs -> (raise (:UnderflowError))
-    digs () -> (append (reverse acc) digs)
-    (d0 . tl0) (d1 . tl1)
-    -> (let ((diff (- d0 d1)))
-	 (if (< diff 0)
-	     (digits-sub0 (digits-sub1 tl0) tl1 (list:cons (+ big/base diff) acc))
-	     (digits-sub0 tl0 tl1 (list:cons diff acc))))
-    ))
-
 (define (digits-sub a b)
-  (digits-sub0 a b '()))
+  (let ((alen (vlen a))
+        (blen (vlen b))
+        (r (make-vector alen 0))
+        (borrow 0)
+        (dig 0)
+        (i (- alen 1))
+        (j (- blen 1)))
+    (while (>= i 0)
+      (set! dig (- a[i] (if (>= j 0) b[j] 0) borrow))
+      (cond ((< dig 0)
+             (set! borrow 1)
+             (set! dig (+ dig big/base)))
+            (else
+             (set! borrow 0)))
+      (set! r[i] dig)
+      (dec! i)
+      (dec! j))
+    (if (= borrow 1)
+        (raise (:UnderflowError))
+        (canon r))))
 
 (define (digits-sub-mag da db)
   (match (digits-cmp da db) with
@@ -169,149 +307,304 @@
   (big:neg da) (big:pos db) -> (big-negate (big-add (big:pos da) (big:pos db)))
   )
 
-;; ---------- utility -----------
+;; ---------- shifting -----------
 
-(define big-negate
-  (big:zero) -> (big:zero)
-  (big:pos x) -> (big:neg x)
-  (big:neg x) -> (big:pos x)
+(define bit-size
+  0 acc -> acc
+  n acc -> (bit-size (>> n 1) (+ acc 1))
   )
 
-(define big-<?
-  (big:zero)  (big:zero)  -> #f
-  (big:zero)  (big:pos _) -> #t
-  (big:zero)  (big:neg _) -> #f
-  (big:pos _) (big:zero)  -> #f
-  (big:neg _) (big:zero)  -> #t
-  (big:pos _) (big:neg _) -> #f
-  (big:neg _) (big:pos _) -> #t
-  (big:pos a) (big:pos b) -> (eq? (digits-cmp a b) (cmp:<))
-  (big:neg a) (big:neg b) -> (eq? (digits-cmp a b) (cmp:>))
+;; we do a little extra work to figure out
+;;   the result size (to avoid a copy by `canon`).
+
+;; msb: 000000xxxxxxxxxxx
+;;        xxxxxxxxxxxxxyy n < bits - bit-size
+;;   xxxxxxxxxxxyyyyyyyyy n > bits - bit-size
+;;      xxxxxxxxxxxyyyyyy n = bits - bit-size
+
+;; assumes: n < big/bits.
+(define (digits-lshift* digs n)
+  (let ((len (vlen digs))
+        ;; do we need an extra digit?
+        (extra (if (> n (- big/bits (bit-size digs[0] 0))) 1 0))
+        (rlen (+ len extra))
+        (r (make-vector rlen 0))
+        (nlo (- big/bits n))
+        (masklo (- (<< 1 nlo) 1))
+        (part 0))
+    ;; we work right to left...
+    (for-range-rev i len
+      (set! r[(+ i extra)] (logior part (<< (logand digs[i] masklo) n)))
+      (set! part (>> digs[i] nlo))
+      )
+    (if (= extra 1)
+        (set! r[0] part))
+    r))
+
+(define (digits-lshift digs n)
+  (if (eq? digs #())
+      #()
+      (let (((q r) (divmod n big/bits)))
+        (when (> r 0)
+          (set! digs (digits-lshift* digs r)))
+        (when (> q 0)
+          (set! digs (shift digs q)))
+        digs
+        )))
+
+;; msb: 00000xxxxxxxxxxxx
+;;      0000000000xxxxxxx n < bit-size
+;;      00000000000000000 n = bit-size
+;;      00000000000000000 n > bit-size
+
+;; drop = 0:
+;;    deadbeef
+;;     deadbee
+;; drop = 1:
+;;    deadbeef
+;;      deadbe
+
+;; assumes: n < big/bits.
+(define (digits-rshift* digs n)
+  (let ((len (vlen digs))
+        (drop (if (< n (bit-size digs[0] 0)) 0 1))
+        (rlen (- len drop))
+        (r (make-vector rlen 0))
+        (nlo (- big/bits n))
+        (mask (- (<< 1 n) 1))
+        (part 0))
+    ;; left to right...
+    (for-range i len
+      ;; if drop == 1 and i == 0, we are only fetching part
+      (if (not (and (= drop 1) (= i 0)))
+          (set! r[(- i drop)] (logior (<< part nlo) (>> digs[i] n))))
+      (set! part (logand digs[i] mask)))
+    r))
+
+(define (digits-rshift digs n)
+  (cond ((= n 0) digs)
+        ((eq? digs #()) #())
+        (else
+         (let (((q r) (divmod n big/bits)))
+           (when (> r 0)
+             (set! digs (digits-rshift* digs r)))
+           (when (> q 0)
+             (set! digs (vtake digs (- (vlen digs) q))))
+           digs))))
+
+(define big-lshift
+  (big:zero)  _ -> (big:zero)
+  (big:pos n) s -> (big:pos (digits-lshift n s))
+  (big:neg n) s -> (big:neg (digits-lshift n s))
   )
 
-;; assumes positive n
-(define int->digits
-  0 acc -> (reverse acc)
-  n acc -> (int->digits
-	    (/ n big/base)
-	    (list:cons (mod n big/base) acc))
+(define big-rshift
+  (big:zero)  _ -> (big:zero)
+  (big:pos n) s -> (digits->big (digits-rshift n s) #t)
+  (big:neg n) s -> (digits->big (digits-rshift n s) #f)
   )
-
-(define (int->big n)
-  (if (zero? n)
-      (big:zero)
-      (let ((pos? (>= n 0))
-	    (absn (if pos? n (- 0 n))))
-	(if pos?
-	    (big:pos (int->digits absn '()))
-	    (big:neg (int->digits absn '()))))))
-
-(define big=
-  (big:zero)  (big:zero)  -> #t
-  (big:zero)  _		  -> #f
-  _ (big:zero)            -> #f
-  (big:pos _) (big:neg _) -> #f
-  (big:neg _) (big:pos _) -> #f
-  (big:pos a) (big:pos b) -> (eq? (digits-cmp a b) (cmp:=))
-  (big:neg a) (big:neg b) -> (eq? (digits-cmp a b) (cmp:=))
-  )
-
-(define (add-zeros digs n)
-  (append digs (n-of n 0)))
-
-(define (shift digs n)
-  (append (n-of n 0) digs))
 
 ;; ---------- multiplication -----------
+
+;; note: these two functions are needed only when a
+;;  mul2 primitive is unavailable.
+
+;; two half-digits multiplied by one half-digit
+;; result: three half-digits.
+
+;;            a1 a0
+;;               b0
+;;            -----
+;;            x1 x0
+;;         y1 y0
+;;         --------
+;;         r2 r1 r0
+
+(define (mul2n1 a1 a0 b0 r)
+  (let (((x1 x0) (split-dig (* b0 a0)))
+        ((y1 y0) (split-dig (* b0 a1)))
+        (r1 (+ x1 y0))
+        ((c1 r1) (split-dig r1)))
+    ;; note: not in MSB! (so the diagrams match the code)
+    (set! r[2] (+ y1 c1)) ;; r2
+    (set! r[1] r1)        ;; r1
+    (set! r[0] x0)        ;; r0
+    ))
+
+;; multiply two 1-digit values into one 2-digit result.
+
+;;            a1 a0
+;;            b1 b0
+;;            -----
+;;         x2 x1 x0
+;;      y2 y1 y0
+;;      -----------
+;;      r3 r2 r1 r0
+
+(define (mul2-half a b r)
+  (let (((a1 a0) (split-dig a))
+        ((b1 b0) (split-dig b))
+        (rx (make-vector 3 0))
+        (ry (make-vector 3 0))
+        (_ (mul2n1 a1 a0 b0 rx))
+        (_ (mul2n1 a1 a0 b1 ry))
+        (r1 (+ rx[1] ry[0]))
+        ((c1 r1) (split-dig r1))
+        (r2 (+ rx[2] ry[1] c1))
+        ((c2 r2) (split-dig r2)))
+    ;; now we have: (y2+c2) (x2+y1+c1) (x1+y0) x0
+    ;; recombine them into full digits.
+    (set! r[0] (unsplit-dig (+ ry[2] c2) r2))
+    (set! r[1] (unsplit-dig r1 rx[0]))
+    ))
+
+;; note: this replaces mul2 and mul2n1 above.
+;; use prim from include/header1.c
+(define (mul2 a b r)
+  (%backend c
+    (%%cexp (int int (vector int) -> undefined) "irk_mul2 (%0, %1, %2)" a b r))
+  (%backend llvm
+    (%llvm-call ("@irk_ll_mul2" (int int (vector int) -> undefined)) a b r))
+  (%backend (bytecode)
+    (mul2-half a b r)))
+
+;; for adding a partial product into the final sum.
+;;
+;; RRRRRRRRRRRRR
+;;     AAAAAA--- this is with an offset of 3.
+;;    CXXXXXX    X := R+A
+;;               C is the carry added to
+;;                 the digit one to the left.
+
+;; XXX make digits-add use this.
+(define (digits-add! r a off)
+  (let ((rlen (vlen r))
+        (alen (vlen a))
+        (carry 0)
+        (i (- rlen 1 off))
+        (j (- alen 1)))
+    (while (>= j 0)
+      (set! r[i] (+ r[i] carry a[j]))
+      (cond ((>= r[i] big/base)
+             (set! r[i] (- r[i] big/base))
+             (set! carry 1))
+            (else
+             (set! carry 0)))
+      (dec! i)
+      (dec! j))
+    carry ;; note: returns final carry.
+    ))
+
+;;    AAAAA
+;;    *   B
+;;    -----
+;;   CCCCCC
+
+(define (digits-mul1 A b R)
+  (let ((carry 0)
+        (mulv (make-vector 2 0))
+        (p2 0))
+    (for-range-rev i (vlen A)
+      (mul2 A[i] b mulv)
+      (set! p2 (+ mulv[1] carry))
+      (cond ((>= p2 big/base)
+             (set! R[(+ i 1)] (- p2 big/base))
+             (set! carry (+ mulv[0] 1)))
+            (else
+             (set! R[(+ i 1)] p2)
+             (set! carry mulv[0]))))
+    (set! R[0] carry)))
+
+;; grade-school algorithm
+;;      AAAAA                       99999  note: carry to an extra
+;; *      BBB                  *      999  digit is not possible.
+;; ----------                  ----------
+;;     000000                      899991
+;;    111111                      899991
+;; + 222222                    + 899991
+;; ----------                  ----------
+;;   PPPPPPPP                    99899001
+;;
+
+;; assumes |a| >= |b|
+(define (digits-mul-school a b)
+  (let ((alen (vlen a))
+        (blen (vlen b))
+        (part (make-vector (+ alen 1) 0)) ;; for each partial product |a|+1
+        (r (make-vector (+ alen blen) 0)) ;; for the result |a|+|b|
+        (carry 0))                        ;; carry for running sum.
+    (for-range i blen
+      (inc! r[(- blen i)] carry)
+      (digits-mul1 a b[(- blen i 1)] part) ;; get partial product into <part>
+      (set! carry (digits-add! r part i)) ;; add it into the final sum
+      )
+    r))
+
+(define (digits-mul a b)
+  (cond ((or (eq? #() a) (eq? #() b)) #()) ;; these handle internal results
+        ((and (= 1 (vlen a)) (= a[0] 1)) b) ;; of other algorithms.
+        ((and (= 1 (vlen b)) (= b[0] 1)) a)
+        (else
+         (let ((alen (vlen a))
+               (blen (vlen b)))
+           (if (< (max alen blen) KARATSUBA-CUTOFF)
+               (canon
+                (if (< alen blen)
+                   (digits-mul-school b a)
+                   (digits-mul-school a b)))
+               (karatsuba a b))))
+        ))
+
+;; measured with tests/t_find_karatsuba.scm
+(define KARATSUBA-CUTOFF 25)
 
 (define (karatsuba da db)
 
   ;; http://www.keithschwarz.com/interesting/code/karatsuba/Karatsuba.python.html
 
   (define (add a b)
-    (canon (digits-add a b)))
+    (digits-add a b))
 
   (define (sub a b)
-    (canon (digits-sub a b)))
+    (digits-sub a b))
 
   (define (pad-to digs n)
-    (let ((len (length digs)))
+    (let ((len (vlen digs)))
       (if (< len n)
 	  (add-zeros digs (- n len))
 	  digs)))
 
   (define K
-    () _  -> (LIST 0)
-    _ ()  -> (LIST 0)
-    (a) (b) -> (let ((prod (* a b))
-		     (r1 (/ prod big/base))
-		     (r0 (remainder prod big/base)))
-		 (LIST r0 r1))
-    a b -> (let ((n (max (length a) (length b)))
-		 (x (pad-to a n))
-		 (y (pad-to b n))
-		 (n0 (/ (+ 1 n) 2))
-		 (n1 (/ n 2))
-		 (x0 (slice x n1 n))
-		 (x1 (slice x 0 n1))
-		 (y0 (slice y n1 n))
-		 (y1 (slice y 0 n1))
-		 (p0 (K x0 y0))
-		 (p1 (K (add x0 x1) (add y0 y1)))
-		 (p2 (K x1 y1))
-		 (z0 p0)
-		 (z1 (sub p1 (add p0 p2)))
-		 (z2 p2)
-		 (z0prod (shift z0 (* 2 n1)))
-		 (z1prod (shift z1 n1))
-		 (z2prod z2)
-		 )
-	     (add (add z0prod z1prod) z2prod)))
+    #() _ -> digits/0
+    _ #() -> digits/0
+    a b
+    -> (let ((alen (vlen a))
+             (blen (vlen b)))
+         (if (and (> alen KARATSUBA-CUTOFF) (> blen KARATSUBA-CUTOFF))
+             (let ((n (max alen blen))
+                   (x (pad-to a n))
+                   (y (pad-to b n))
+                   (m0 (/ (+ 1 n) 2))
+                   (m1 (/ n 2))
+                   (x0 (vslice x m0 n))
+                   (x1 (vslice x 0 m0))
+                   (y0 (vslice y m0 n))
+                   (y1 (vslice y 0 m0))
+                   (p0 (K x0 y0))
+                   (p1 (K (add x0 x1) (add y0 y1)))
+                   (p2 (K x1 y1))
+                   (z0 p0)
+                   (z1 (sub p1 (add p0 p2)))
+                   (z2 p2)
+                   (z0prod z0)
+                   (z1prod (shift z1 m1))
+                   (z2prod (shift z2 (* 2 m1))))
+               (add (add z0prod z1prod) z2prod))
+             (digits-mul-school a b))))
 
-  (canon (K da db))
+  (canon (K da db)))
 
-  )
-
-;; multiply by a single digit
-(define digits-mul1
-  ()        n carry acc -> (reverse (remove-zeros (list:cons carry acc)))
-  (d0 . tl) n carry acc
-  -> (let ((next (+ carry (* n d0)))
-	   (quo (/ next big/base))
-	   (rem (remainder next big/base)))
-       (digits-mul1 tl n quo (list:cons rem acc))))
-
-;; grade-school algorithm
-(define (digits-mul-school x y)
-  (define recur
-           () n acc -> acc
-    (y0 . tl) n acc
-    -> (recur
-	tl (+ n 1)
-	(digits-add
-	 acc
-	 (shift (digits-mul1 x y0 0 '()) n)))
-    )
-  (canon (recur y 0 '())))
-
-(define (shift digs n)
-  (append (n-of n 0) digs))
-
-;; TODO: compute this.
-(define KARATSUBA-CUTOFF 10)
-
-(define digits-mul
-  () _  -> (LIST 0)  ;; these handle internal
-  _  () -> (LIST 0)  ;;   results of other algorithms
-  x  (one) -> (digits-mul1 x one 0 '())
-  (one) x  -> (digits-mul1 x one 0 '())
-  x y      -> (let ((lx (length x))
-		    (ly (length y)))
-		(if (and (< lx KARATSUBA-CUTOFF) (< ly KARATSUBA-CUTOFF))
-		    (digits-mul-school x y)
-		    (karatsuba x y)))
-  )
-
+;; XXX handle powers of two with shifting
 (define big-mul
   (big:zero) x		    -> (big:zero)
   x (big:zero)              -> (big:zero)
@@ -323,308 +616,472 @@
 
 ;; ---------- division -----------
 
-;; Burnikel-Ziegler:
 ;; http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.47.565&rep=rep1&type=pdf
-;; http://damien-guichard.developpez.com/tutoriels/ocaml/?page=page_6
+;; assumptions: b >= big/halfmask (i.e. base/2)
 
-;; divide by a single digit (grade school algorithm)
-;; NOTE: dx in MSB order, output in LSB order
-(define (digits-div1 dx n)
-  ;;(printf "div1 " (join int->string " " dx) " n= " (int n ) "\n")
-  (define div1
-    ()        carry acc -> (:tuple (canon acc) (int->digits carry '()))
-    (d0 . tl) carry acc
-    -> (let ((v (+ d0 (* carry big/base)))
-	     (q (/ v n))
-	     (r (mod v n))
-	     (x 0)
-	     )
-	 (div1 tl r (list:cons q acc))))
-  (div1 dx 0 '())
+;; note: these two functions are needed only when a
+;;  div2b1 primitive is unavailable.
+
+;; XXX as commented above, consider having these write into a result vector.
+
+;; divide 3 half-digits by two half-digits.
+;; XXX the paper mentions a special case that probably needs
+;;  dealing with here.
+(define (div3h2 a1 a2 a3 b1 b2)
+  (let ((a (unsplit-dig a1 a2))
+        (q (/ a b1))
+        (c (- a (* q b1)))
+        (D (* q b2))
+        (R (- (unsplit-dig c a3) D)))
+    (when (< R 0) ;; q is too large by at least one
+      (set! q (- q 1))
+      (set! R (+ R (unsplit-dig b1 b2)))
+      (when (< R 0) ;; q is still too large
+        (set! q (- q 1))
+        (set! R (+ R (unsplit-dig b1 b2)))
+        ) ;; now R is correct
+      )
+    (:tuple q R)
+    ))
+
+(define (div2b1-half ah al b)
+  (let (((a1 a2) (split-dig ah))
+        ((a3 a4) (split-dig al))
+        ((b1 b2) (split-dig b))
+        ((q1 R) (div3h2 a1 a2 a3 b1 b2))
+        ((r1 r2) (split-dig R))
+        ((q2 S) (div3h2 r1 r2 a4 b1 b2)))
+    (:tuple (unsplit-dig q1 q2) S)))
+
+;; on most architectures, there's a two-word divide-with-remainder insn.
+(define (div2b1 ah al b r)
+  (%backend c
+    (%%cexp (int int int (vector int) -> undefind)
+            "irk_div2b1 (%0, %1, %2, %3)"
+            ah al b r))
+  (%backend llvm
+    (%llvm-call ("@irk_ll_div2b1" (int int int (vector int) -> undefined)) ah al b r))
+  (%backend bytecode
+    (let (((q0 r0) (div2b1-half ah al b)))
+      (set! r[0] q0)
+      (set! r[1] r0)))
   )
 
-(define (burnzieg da db)
+(define (VEC1 v)
+  (make-vector 1 v))
 
-  (let ((la (length da))
-	(lb (length db)))
-    (if (<= lb 2)
-	(let ((b2 (match db with
-		    (b0) -> b0
-		    (b0 b1) -> (+ (* b0 big/base) b1)
-		    _ -> (impossible))))
-	  (digits-div1 da b2))
-	(let ((n (/ (- lb 1) 2))
-	      (a0 (slice da (- la n) la))
-	      (a1 (slice da 0 (- la n))))
-	  (if (digits-<? (reverse db) (reverse a1))
-	      ;; simple case
-	      (let-values (((q1 r1) (burnzieg a1 db))
-			   ((q0 r0) (burnzieg
-				     (reverse (digits-add (shift r1 n) (reverse a0)))
-				     db)))
-		(:tuple (digits-add (shift q1 n) q0) r0))
-	      ;; remainder check case
-	      (let ((b0 (slice db (- lb n) lb))
-		    (b1 (slice db 0 (- lb n))))
-		(let-values (((q1 r1) (burnzieg a1 b1)))
-		  (let ((a0pr1 (digits-add (shift r1 n) (reverse a0)))
-			(b0xq1 (digits-mul (reverse b0) q1)))
-		    (if (not (digits-<? a0pr1 b0xq1))
-			(:tuple q1
-				(digits-sub a0pr1 b0xq1))
-			(:tuple (digits-sub q1 '(1))
-				(digits-sub (reverse db)
-					    (digits-sub b0xq1 a0pr1)))))
-		  )))))
+(define (VEC2 a b)
+  (let ((v (make-vector 2 a)))
+    (set! v[1] b)
+    v))
+
+;; http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.111.9736&rep=rep1&type=pdf
+
+;; XXX consider using case to indicate digits vs int, i.e. `A` and `q`.
+
+;; divide `a` and `b` when quotient can (mostly) fit into big/base.
+;; assumes |a| >= 2, |b| >= 1
+(define (divschool0 a b)
+  (if (not (digits< a (shift b 1)))
+      (let ((a-bB (digits-sub a (shift b 1)))
+            ((q r) (divschool0 a-bB b)))
+        ;; q = q+base
+        (:tuple (digits-add q digits/base) r))
+      (let ((qr (make-vector 2 0))
+            (_ (div2b1 a[0] a[1] b[0] qr))
+            (q qr[0])
+            (r qr[1])
+            (t (digits-mul b (VEC1 q)))) ;; XXX was digits-mul1
+        (when (digits< a t)
+          (set! q (- q 1))
+          (set! t (digits-sub t b)))
+        (when (digits< a t)
+          (set! q (- q 1))
+          (set! t (digits-sub t b)))
+        (:tuple (VEC1 q) (digits-sub a t)))
+      ))
+
+;; divide a and b that have been appropriately shifted
+(define (divschool1 a b)
+  (let ((m (vlen a))
+        (n (vlen b)))
+    (cond ((< m n) (:tuple #() a))
+          ((= m n)
+           (if (digits< a b)
+               (:tuple #() a)
+               (:tuple digits/1 (digits-sub a b))))
+          ((= m (+ 1 n)) (divschool0 a b))
+          (else
+           (let ((count (- m n 1))
+                 (a1 (vtake a (+ n 1)))
+                 (s  (vdrop a (+ n 1)))
+                 ((q1 r1) (divschool0 a1 b))
+                 ((q r) (divschool1
+                         (digits-add (canon (shift r1 count)) s)
+                         b)))
+             (:tuple (digits-add (shift q1 count) q) r)))
+          )))
+
+(define (shift-to-base/2 n a)
+  (if (< n (>> big/base 1))
+      (shift-to-base/2 (<< n 1) (+ a 1))
+      a))
+
+;; prepare for school division by shifting both dividend and divisor
+;;   until the divisor is at least base/2.
+(define (divschool2 a b)
+  (let ((nshift (shift-to-base/2 b[0] 0))
+        (a0 (digits-lshift a nshift))
+        (b0 (digits-lshift b nshift))
+        ((q r) (divschool1 a0 b0)))
+    ;; remainder must be unshifted.
+    (:tuple q (digits-rshift r nshift))
     ))
 
 (define (digits->big x pos?)
   (match (canon x) pos? with
-    () _ -> (big:zero)
-    y  #t -> (big:pos y)
-    y  #f -> (big:neg y)
+    #() _ -> (big:zero)
+    v  #t -> (big:pos v)
+    v  #f -> (big:neg v)
     ))
 
-(define (digits-div da db pos?)
-  ;; XXX test for zero
-  (match (burnzieg (reverse da) (reverse db)) with
-    (:tuple quo rem)
-    -> (:tuple (digits->big quo pos?) (digits->big rem #t))))
+(define (burnzieg da db)
+  (let ((la (vlen da))
+	(lb (vlen db)))
+    (if (or (< lb BURNZIEG-CUTOFF) (< (- la lb) BURNZIEG-CUTOFF))
+        (divschool2 da db)
+	(let ((n (/ (- lb 1) 2))
+	      (a0 (vslice da (- la n) la))
+	      (a1 (vslice da 0 (- la n))))
+	  (if (digits< db a1)
+	      ;; simple case
+	      (let (((q1 r1) (burnzieg a1 db))
+                    ((q0 r0) (burnzieg (digits-add (shift r1 n) a0) db)))
+		(:tuple (digits-add (shift q1 n) q0) r0))
+              ;; remainder check case
+              (let ((b0 (vslice db (- lb n) lb))
+        	    (b1 (vslice db 0 (- lb n)))
+                    ((q1 r1) (burnzieg a1 b1))
+                    (a0pr1 (digits-add (shift r1 n) a0))
+                    (b0xq1 (digits-mul b0 q1)))
+                (if (not (digits< a0pr1 b0xq1))
+                    (:tuple q1
+                            (digits-sub a0pr1 b0xq1))
+                    (:tuple (digits-sub q1 digits/1)
+                            (digits-sub db (digits-sub b0xq1 a0pr1)))
+                    )))))))
 
+(define BURNZIEG-CUTOFF 10)
+
+(define (digits-div da db pos?)
+  (if (and (= 1 (vlen da)) (= 1 da[0]))
+      (:tuple big/0 big/1)
+      (begin
+        (match (burnzieg da db) with
+        ;;(match (divschool2 da db) with
+          (:tuple quo rem)
+          -> (:tuple (digits->big quo pos?) (digits->big rem #t))))))
+
+;; XXX handle powers of two with shifting
 (define big-div
   x            (big:zero)   -> (raise (:ZeroDivisionError))
-  (big:zero)   x            -> (:tuple (big:zero) x)
+  (big:zero)   x            -> (:tuple (big:zero) (big:zero))
   (big:pos da) (big:pos db) -> (digits-div da db #t)
   (big:neg da) (big:neg db) -> (digits-div da db #t)
   (big:pos da) (big:neg db) -> (digits-div da db #f)
   (big:neg da) (big:pos db) -> (digits-div da db #f)
   )
 
-;; ---------- interface -----------
+;; --------------- decimal conversion ------------
 
-(define (pair->dec p pad?)
-  (let ((n (match p with
-	     ()    -> 0
-	     (a)   -> a
-	     (a b) -> (+ (* b big/base) a)
-	     _ -> (impossible))))
+;; not too much thought has gone into this.
+;; I'm sure something much better can be done.
+(define (dec->big* s)
+  (let ((len (string-length s))
+        (S 10) ;; chunk size - 10^10
+        (base (int->big 10000000000)) ;; 10^10
+        ((quo rem) (divmod len 10))
+        (r big/0))
+    (for-range i quo
+      (let ((sub (substring s (* i S) (* (+ i 1) S)))
+            (part (int->big (string->int sub))))
+        (set! r (big-add part (big-mul r base)))
+        ))
+    (let ((sub (substring s (* quo S) len))
+          (part (int->big (string->int sub))))
+      (big-add part (big-mul r (big-pow (int->big 10) rem))))))
+
+(define (dec->big s)
+  (if (starts-with s "-")
+      (big-negate (dec->big* (substring s 1 (string-length s))))
+      (dec->big* s)))
+
+(define (digit->dec p pad?)
+  (let ((n (if (eq? p #()) 0 p[0])))
     (if pad?
 	(format (zpad big/decimal-pad (int n)))
 	(format (int n)))))
 
 (define (digits->dec dn)
-  (let ((parts
-	 (let loop ((dn0 (reverse dn)) (acc '()))
-	   (match (digits-div1 dn0 big/decimal-base) with
-	     (:tuple quo rem)
-	     -> (if (null? quo)
-		    (list:cons (pair->dec rem #f) acc)
-		    (loop (reverse quo)
-			  (list:cons (pair->dec rem #t) acc)))
-	     ))))
-    (format (join id "" parts))))
-
-(define big->dec
-  (big:zero) -> "0"
-  (big:pos dn) -> (digits->dec dn)
-  _ -> (raise (:NotImplementedError))
-  )
-
-;; ---------- testing -----------
-
-(defmacro assert
-  (assert x) -> (if x #u (raise (:AssertError)))
-  )
-
-(define (test0)
-  (go8)
-  (assert (string=? (big-repr (big:zero)) "B0"))
-  (assert (string=? (big-repr (int->big #x314159)) "B+3.1.4.1.5.9"))
-
-  (printf "addition\n")
-
-  (assert (string=? "B+3.1.4.1.5.a" (big-repr (big-add (int->big #x314159) (int->big 1)))))
-  (assert (string=? "B+6.2.8.2.b.2" (big-repr (big-add (int->big #x314159) (int->big #x314159)))))
-  (assert (string=? "B+f.0" (big-repr (big-add (int->big #xef) (int->big #x1)))))
-  (assert (string=? "B+b.e.f.0" (big-repr (big-add (int->big #xbeef) (int->big #x1)))))
-  (assert (string=? "B+1.0.0.0.0" (big-repr (big-add (int->big #xffff) (int->big #x1)))))
-
-  (printf "big-<?\n")
-  (assert (not (big-<? (int->big 0) (int->big 0))))
-  (assert (big-<? (int->big 0) (int->big 1)))
-  (assert (not (big-<? (int->big 1) (int->big 0))))
-  (assert (not (big-<? (int->big 1) (int->big 1))))
-  (assert (not (big-<? (int->big #x1000) (int->big #x300))))
-  (assert (eq? #f (big-<? (int->big #x1000) (int->big #x300))))
-  (assert (eq? #t (big-<? (int->big #x300) (int->big #x1000))))
-
-  (printf "digits-sub1\n")
-  (assert (string=? "15 15 15" (format (join int->string " " (digits-sub1 '(0 0 0 1))))))
-
-  ;; subtraction
-  (printf "subtraction\n")
-
-  (assert (string=? "B0" (big-repr (big-sub (int->big 1) (int->big 1)))))
-  (assert (string=? "B+5" (big-repr (big-sub (int->big 10) (int->big 5)))))
-  (assert (string=? "B+1.2.0.0" (big-repr (big-sub (int->big #x1234) (int->big #x34)))))
-  (assert (string=? "B+a.a.a.e.e" (big-repr (big-sub (int->big #xAAAFF) (int->big #x11)))))
-  (assert (string=? "B-1.1" (big-repr (big-sub (int->big #x0) (int->big #x11)))))
-  (assert (string=? "B+f" (big-repr (big-sub (int->big #x10) (int->big #x1)))))
-  (assert (string=? "B-f" (big-repr (big-sub (int->big #x1) (int->big #x10)))))
-  (assert (string=? "B+1.1" (big-repr (big-sub (int->big #x12) (int->big #x1)))))
-  (assert (string=? "B+1.0" (big-repr (big-sub (int->big #x12) (int->big #x2)))))
-  (assert (string=? "B+1.0" (big-repr (big-sub (int->big #x13) (int->big #x3)))))
-  (assert (string=? "B+1.0" (big-repr (big-sub (int->big #x11) (int->big #x1)))))
-  (assert (string=? "B+f.f.f.f" (big-repr (big-sub (int->big #x10000) (int->big #x1)))))
-  (assert (string=? "B+1.0.0.0.f.f.f" (big-repr (big-sub (int->big #x1001000) (int->big #x1)))))
-
-  (printf "subtraction - negative result\n")
-  (assert (string=? "B-1.0" (big-repr (big-sub (int->big #x1) (int->big #x11)))))
-  (assert (string=? "B-1.1.0.0" (big-repr (big-sub (int->big #x11) (int->big #x1111)))))
-
-  (printf "larger numbers\n")
-  (assert (string=? "B+d.e.a.d.b.e.f.0" (big-repr (big-add (int->big #xdeadbeef) (int->big 1)))))
-  (check-platform)
-  )
-
-;; exhaustive testing of add & sub
-
-(define (exhaustive stop)
-  (go16)
-  (let ((counter 0))
-    (for-range
-	i stop
-	(printf "\ni= " (int i) " : ")
-	(for-range
-	    j stop
-	    (printf (int j) " ")
-	    (flush)
-	    (let ((a (int->big (+ i j)))
-		  (b (big-add (int->big i) (int->big j)))
-		  (c (int->big (+ (- 0 i) j)))
-		  (d (big-add (int->big (- 0 i)) (int->big j)))
-		  (e (int->big (- i j)))
-		  (f (big-sub (int->big i) (int->big j)))
-		  (g (int->big (- (- i) j)))
-		  (h (big-sub (int->big (- i)) (int->big j)))
-		  )
-	      (try
-	       (begin
-		 (assert (big= a b))
-		 (assert (big= c d))
-		 (assert (big= e f))
-		 (assert (big= g h))
-		 (set! counter (+ counter 1)))
-	       except
-	       (:AssertError)
-	       -> (printf "failed with i=" (int i) " j=" (int j) "\n"
-			  (big-repr a) " = " (big-repr b) "\n"
-			  (big-repr c) " = " (big-repr d) "\n"
-			  )
-	       )
-	      )))
-    (printf (int counter) " tests passed.\n")
-    )
-  (check-platform)
-  )
-
-(define (big-fact n)
-  (define recur
-    1 acc -> acc
-    n acc -> (recur (- n 1) (big-mul acc (int->big n)))
-    )
-  (recur n (int->big 1))
-  )
-
-(define (test1)
-  (define hex-map
-    (literal
-     (alist/make
-      (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
-      (#\a 10) (#\b 11) (#\c 12) (#\d 13) (#\e 14) (#\f 15)
-      (#\A 10) (#\B 11) (#\C 12) (#\D 13) (#\E 14) (#\F 15)
+  (let loop ((dn0 dn)
+             (acc '()))
+    (let (((q r) (divschool2 dn0 (VEC1 big/decimal-base))))
+      (if (eq? q #())
+          (list:cons (digit->dec r #f) acc)
+          (loop q
+                (list:cons (digit->dec r #t) acc)))
       )))
 
-  (define (read-hex-digit ch)
-    (match (alist/lookup hex-map ch) with
-      (maybe:no) -> (error "bad hex digit")
-      (maybe:yes num) -> num))
-
-  ;; assumes base 16!
-  (define (hex->big s)
-    (define recur
-      () acc -> (big:pos acc)
-      (hd . tl) acc -> (recur tl (list:cons (read-hex-digit hd) acc)))
-    (recur (string->list s) '()))
-
-  (printf
-   (big-repr
-    (big-mul
-     (hex->big "eb2cb7a132097789dc60a2f4f09c56f51afa09c50e80c95d7b39b3e426690093")
-     (int->big #xc)))
-   "\n")
+(define big->dec
+  (big:zero)   -> "0"
+  (big:pos dn) -> (format (join (digits->dec dn)))
+  (big:neg dn) -> (format "-" (join (digits->dec dn)))
   )
 
-(define (big-pow x n)
-  (define pow
-    (big:zero)  acc -> acc
-    (big:neg _) acc -> (raise (:NotImplementedError))
-    n           acc -> (pow (big-sub n (int->big 1)) (big-mul acc x))
-    )
-  (pow n x))
+;; ---------- DSL -----------
 
-(define (testdiv a b)
-  (match (big-div a b) with
-    (:tuple quo rem)
-    -> (begin
-	 (printf "quo " (big-repr quo) "\n")
-	 (printf "rem " (big-repr rem) "\n")
-	 )))
+;; a mini-DSL for bignum expressions.  within (big ...) the
+;; normal operators translate to bignum operators.
 
-(define (test2)
-  (let (((quo rem) (big-div (big-fact 1000) (big-fact 999))))
-    (assert (big= quo (int->big 1000)))
-    (assert (big= rem (big:zero)))
+(defmacro big
+  (big (<I> n))          -> (int->big n)
+  (big (<*> a b))        -> (big-mul (big a) (big b))
+  (big (<*> a b ...))    -> (big-mul (big a) (big (* b ...)))
+  (big (</> a b))        -> (big-quo (big a) (big b))
+  (big (<mod> a b))      -> (big-mod (big a) (big b))
+  (big (<+> a b))        -> (big-add (big a) (big b))
+  (big (<+> a b ...))    -> (big-add (big a) (big (+ b ...)))
+  (big (<-> a b))        -> (big-sub (big a) (big b))
+  (big (<pow> x n))      -> (big-pow (big x) n)
+  (big (<=> a b))        -> (big= (big a) (big b))
+  (big (<dec> s))        -> (dec->big s)
+  (big (<expmod> b e m)) -> (big-exp-mod (big b) (big e) (big m))
+  (big (<>>> x n))       -> (big-rshift (big x) n)
+  (big (<<<> x n))       -> (big-lshift (big x) n)
+  (big (<!big> exp))     -> exp
+  (big (op arg ...))     -> (bigl op () (arg ...))
+  (big x)                -> x
+  )
+
+(defmacro bigl
+  (bigl op (acc ...) ())             -> (op acc ...)
+  (bigl op (acc ...) (arg args ...)) -> (bigl op (acc ... (big arg)) (args ...))
+  )
+
+;; ---------- other funs -----------
+
+(define big-zero?
+  (big:zero) -> #t
+  _          -> #f
+  )
+
+(define big-neg?
+  (big:neg _) -> #t
+  _           -> #f
+  )
+
+(define (vlast v)
+  v[(- (vlen v) 1)]
+  )
+
+(define big-odd?
+  (big:zero)     -> #f
+  (big:neg digs) -> (= (logand 1 (vlast digs)) 1)
+  (big:pos digs) -> (= (logand 1 (vlast digs)) 1)
+  )
+
+(define (big-pow x n) : (big int -> big)
+  (cond ((< n 0) (raise (:NotImplementedError)))
+        ((= n 0) big/1)
+        (else
+         (let (((q r) (divmod n 2))
+               (half (big-pow x q))
+               (left (if (= r 0) big/1 x)))
+           (big-mul left (big-mul half half))))
+        ))
+
+(define (big-quo x n)
+  (let (((q _) (big-div x n)))
+    q))
+
+(define (big-rem x n)
+  (let (((_ r) (big-div x n)))
+    r))
+
+;; XXX handles negative x, what about negative n?
+(define (big-mod x n)
+  (let ((r (big-rem x n)))
+    (if (big-neg? x)
+        (big-sub n r)
+        r)))
+
+(define (big-exp-mod b e m)
+  (match e with
+    (big:zero) -> big/1
+    _ -> (let ((e2 (big-rshift e 1))
+               (x (big-exp-mod b e2 m))
+               (t (big-mod (big-mul x x) m)))
+           (if (big-odd? e)
+               (big-mod (big-mul t b) m)
+               t))))
+
+;; XXX this should be named big/bits.  in fact, we need to
+;;     do an audit of the names in this file to get a clear
+;;     distinction between `->` and `/` functions.
+
+;; how many bits in `n`
+(define (big->bits n)
+  (define int-bits
+    0 acc -> acc
+    n acc -> (int-bits (>> n 1) (+ 1 acc)))
+  (let ((digs (big->digits n))
+        (dlen (vlen digs)))
+    (if (= dlen 0)
+        0
+        (+ (int-bits digs[0] 0)
+           (* big/bits (- dlen 1))))))
+
+;; ---------- string encoding -----------
+;;
+;; This is a two's-complement base256 encoding, meant to be
+;;   compatible with asn.1 BER INTEGER encoding.
+
+(define remove-zeros
+  (0 . tl) -> (remove-zeros tl)
+  x	   -> x
+  )
+
+(define (negative-byte? b)
+  (> (logand b #x80) 0))
+
+;; to negate a base256 value, we take the 1's complement, convert
+;;   to bignum, then add one.
+
+(define (complement-b256 bytes)
+  (define (8comp n)
+    (logxor #xff n))
+  (map 8comp bytes))
+
+(define (maybe-complement bytes)
+  (if (negative-byte? (nth bytes 0)) ;; note: assumes non-empty <bytes>
+      (:tuple #t (complement-b256 bytes))
+      (:tuple #f bytes)))
+
+
+;; We fill in the result starting from the big end.  If the size of
+;; the input does not line up with the limb size exactly, we start
+;; filling the first (most significant) limb in the middle, so we
+;; arrive at the end completely lined up.
+
+;; unsigned base256 ((list int) -> (list digits))
+(define (u256->digits bytes)
+  (let ((digits '())
+        (nbytes (length bytes))
+        (r (mod (* nbytes 8) big/bits))
+        (digit 0)
+        (byte 0)
+        (bbits 0)                       ;; bits left in this byte
+        (dbits (if (= r 0) big/bits r)) ;; bits left in this limb
+        (nbits (* nbytes 8))            ;; bits left in s
+        )
+    (while (> nbits 0)
+      ;; make sure we have some bits
+      (when (= bbits 0)
+        (set! byte (pop! bytes))
+        (set! bbits 8))
+      ;; start a new digit if we need to
+      (when (= dbits 0)
+        (push! digits digit)
+        (set! digit 0)
+        (set! dbits big/bits))
+      ;; roll some bits in
+      (let ((bits (min bbits dbits)))
+        (set! digit (logior (<< digit bits) (>> byte (- bbits bits))))
+        (dec! bbits bits)
+        (dec! dbits bits)
+        (dec! nbits bits)
+        (set! byte (logand byte (- (<< 1 bits) 1)))
+        ))
+    (push! digits digit)
+    (reverse digits)
     ))
 
-(define (test3)
-  (let ((x (big-fact 1000))
-	(s "402387260077093773543702433923003985719374864210714632543799910429938512398629020592044208486969404800479988610197196058631666872994808558901323829669944590997424504087073759918823627727188732519779505950995276120874975462497043601418278094646496291056393887437886487337119181045825783647849977012476632889835955735432513185323958463075557409114262417474349347553428646576611667797396668820291207379143853719588249808126867838374559731746136085379534524221586593201928090878297308431392844403281231558611036976801357304216168747609675871348312025478589320767169132448426236131412508780208000261683151027341827977704784635868170164365024153691398281264810213092761244896359928705114964975419909342221566832572080821333186116811553615836546984046708975602900950537616475847728421889679646244945160765353408198901385442487984959953319101723355556602139450399736280750137837615307127761926849034352625200015888535147331611702103968175921510907788019393178114194545257223865541461062892187960223838971476088506276862967146674697562911234082439208160153780889893964518263243671616762179168909779911903754031274622289988005195444414282012187361745992642956581746628302955570299024324153181617210465832036786906117260158783520751516284225540265170483304226143974286933061690897968482590125458327168226458066526769958652682272807075781391858178889652208164348344825993266043367660176999612831860788386150279465955131156552036093988180612138558600301435694527224206344631797460594682573103790084024432438465657245014402821885252470935190620929023136493273497565513958720559654228749774011413346962715422845862377387538230483865688976461927383814900140767310446640259899490222221765904339901886018566526485061799702356193897017860040811889729918311021171229845901641921068884387121855646124960798722908519296819372388642614839657382291123125024186649353143970137428531926649875337218940694281434118520158014123344828015051399694290153483077644569099073152433278288269864602789864321139083506217095002597389863554277196742822248757586765752344220207573630569498825087968928162753848863396909959826280956121450994871701244516461260379029309120889086942028510640182154399457156805941872748998094254742173582401063677404595741785160829230135358081840096996372524230560855903700624271243416909004153690105933983835777939410970027753472000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
-    (assert (string=? (big->dec x) s))
+(define (b256->digits s)
+  (let ((bytes0 (map char->int (string->list s)))
+        ((neg? bytes1) (maybe-complement bytes0))
+        (digits (u256->digits bytes1)))
+    (:tuple neg? digits)))
+
+(define (b256->big s)
+  (match (b256->digits s) with
+    (:tuple _    ()) -> (big:zero)
+    (:tuple #t digs) -> (big-sub (big:neg (list->vector digs)) big/1)
+    (:tuple #f digs) -> (big:pos (list->vector digs))
     ))
 
-(define (test4)
-  (let ((i 73)
-	(j 186)
-	(a (int->big (+ i j)))
-	(b (big-add (int->big i) (int->big j)))
-	(c (int->big (+ (- 0 i) j)))
-	(d (big-add (int->big (- 0 i)) (int->big j)))
-	(e (int->big (- i j)))
-	(f (big-sub (int->big i) (int->big j)))
-	(g (int->big (- (- i) j)))
-	(h (big-sub (int->big (- i)) (int->big j)))
-	)
-    (assert (big= a b))
-    (assert (big= c d))
-    (assert (big= e f))
-    (assert (big= g h))))
+(define (u256->big s)
+  (big:pos (list->vector (u256->digits (map char->int (string->list s))))))
 
+;; we convert LSB->MSB.
+(define (digits->b256 dv)
+  (let ((digits (reverse (vector->list dv)))
+        (digit 0)
+        (bytes '())
+        (byte 0)
+        (dbits 0)                             ;; bits left in digit
+        (bbits 8)                             ;; bits left in byte (to fill)
+        (nbits (* (length digits) big/bits))) ;; bits left in digits
+    (while (> nbits 0)
+      ;; make sure we have some bits
+      (when (= dbits 0)
+        (set! digit (pop! digits))
+        (set! dbits big/bits))
+      ;; start a new byte if we need to
+      (when (= bbits 0)
+        (push! bytes byte)
+        (set! byte 0)
+        (set! bbits 8))
+      ;; roll some bits in
+      (let ((bits (min dbits bbits))
+            (mask (- (<< 1 bits) 1))
+            (part (logand digit mask)))
+        ;; we want the bits from digit at the top, and the bits from byte on the bottom
+        (set! byte (logior (<< part (- 8 bbits)) byte))
+        (set! digit (>> digit bits))
+        (dec! dbits bits)
+        (dec! bbits bits)
+        (dec! nbits bits)
+      ))
+    (push! bytes byte)
+    (remove-zeros bytes)
+    ))
 
-;; 16777216 tests
-;(exhaustive #x1000)
+(define (ensure-sign bytes neg?)
+  (let ((b0 (nth bytes 0)))
+    (match neg? (= #x80 (logand #x80 b0)) with
+      #t #f -> (list:cons #xff bytes)
+      #f #t -> (list:cons #x00 bytes)
+      _  _  -> bytes
+      )))
 
-;; these tests require base16 (for big-repr)
-;(when (= big/base 16)
-;      (test0)
-;      (test1))
+(define big->b256
+  (big:pos dv)
+  -> (list->string
+      (map int->char
+           (ensure-sign (digits->b256 dv) #f)))
+  (big:neg dv)
+  -> (list->string
+      (map int->char
+           (ensure-sign
+            (complement-b256
+             (digits->b256 (digits-sub dv #(1))))
+            #t)))
+  (big:zero)
+  -> "\x00" ;; or ""?
+  )
 
-;; 65536 tests
-;(exhaustive #x100)
-;(test0)
-;(test2)
-;(test3)
-;(test4)
-(printf "(big-fact 1000) => \n" (big->dec (big-fact 1000)) "\n")
-
-
+(define big->u256
+  (big:zero)   -> ""
+  (big:pos dv) -> (list->string (map int->char (digits->b256 dv)))
+  n -> (raise (:NotPositive n))
+  )

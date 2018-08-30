@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(include "doom/kqueue.scm")
-(include "doom/socket.scm")
-(include "doom/scheduler.scm")
+(require "lib/net/socket.scm")
+(require "doom/kqueue.scm")
+(require "doom/scheduler.scm")
+(require "doom/socket.scm")
+

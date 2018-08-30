@@ -9,5 +9,5 @@
   (:sym symbol)
   )
 
-(LIST (thing:int 1) (thing:str "two") (thing:sym 'three))
+(list (thing:int 1) (thing:str "two") (thing:sym 'three))
   

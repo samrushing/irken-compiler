@@ -17,25 +17,26 @@
 	    '("begin" "call-with-current-continuation" "call/cc"
 	      "case" "cond" "vcase" "match" "with" "datatype" "defmacro"
 	      "else" "if" "lambda"
-	      "let" "let*" "letrec"
+	      "let" "let*" "letrec" "let-values"
 	      "define" "set!"
 	      "include"
 	      "typealias"
+              "letcc" "getcc" "putcc" "let/cc"
+              "make-enum" "try" "except"
 	      ) t)
        "\\>") 1)
      ;; named let
-     '("(let\\s-+\\(\\sw+\\)"
-       (1 font-lock-function-name-face))
+     '("(let\\s-+\\(\\sw+\\)" (1 font-lock-function-name-face))
+     '("(make-enum\\s-+\\([^ \t\n)]+\\)" (1 font-lock-type-face))
      ;; functions
      ;; SMR: 2015 - had to tweak this regex, something breaking, probably syntax-table related?
      ;;   may very well affect the other uses of \\sw...
-     '("(define\\s-+(?\\([^ \t\n)]+\\)"
-       (1 font-lock-function-name-face))
+     '("(define\\s-+(?\\([^ \t\n)]+\\)" . (1 font-lock-function-name-face))
+     '("(\\([^) \t\n]*:[^) \t\n]+\\)" . (1 font-lock-type-face))
      ;; datatypes
-     '("(datatype\\s-+\\(\\sw+\\)" (1 font-lock-type-face))
+     '("(datatype\\s-+(?\\([^ \t\n)]+\\)" . (1 font-lock-type-face))
      ;; constructors (again, the issue with \\sw)
      ;; '("\\<\\sw*:\\sw+\\>" . font-lock-type-face)
-     '("(\\(\\sw*:[^) \t\n]+\\)" . (1 font-lock-type-face))
       ;; matching
       '("->" . font-lock-function-name-face)
       ))
@@ -73,16 +74,29 @@
 (put 'match 'scheme-indent-function 'scheme-indent-match)
 (put 'datatype 'scheme-indent-function 1)
 (put 'map-range 'scheme-indent-function 1)
+(put 'makegen 'scheme-indent-function 1)
 (put 'for-range 'scheme-indent-function 2)
+(put 'for-range* 'scheme-indent-function 3)
+(put 'for-range-rev 'scheme-indent-function 2)
 (put 'for-list 'scheme-indent-function 2)
 (put 'for-list2 'scheme-indent-function 4)
 (put 'for-set 'scheme-indent-function 2)
 (put 'for-set2 'scheme-indent-function 4)
 (put 'for-map 'scheme-indent-function 3)
+(put 'for-alist 'scheme-indent-function 3)
+(put 'for-vector 'scheme-indent-function 2)
+(put 'for-vector-rev 'scheme-indent-function 2)
+(put 'for-string 'scheme-indent-function 2)
+(put 'for 'scheme-indent-function 2)
 (put 'let/cc 'scheme-indent-function 1)
 (put 'while 'scheme-indent-function 1)
 (put 'when 'scheme-indent-function 1)
+(put 'when-maybe 'scheme-indent-function 2)
+(put 'while-maybe 'scheme-indent-function 2)
+(put 'while-queue 'scheme-indent-function 2)
 (put '%backend 'scheme-indent-function 1)
+(put 'make-enum 'scheme-indent-function 1)
+(put 'with-file 'scheme-indent-function 2)
 
 ;; I want it to indent to the same place (i.e., unnatural lisp).
 ;;  this doesn't do it.

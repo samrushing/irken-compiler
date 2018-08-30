@@ -1,7 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/cmap.scm")
-
 (datatype backend
   (:c)
   (:llvm)
@@ -20,18 +18,22 @@
    noletreg		= #f
    debugtyping          = #f
    dumptypes            = #f
+   dump                 = '()
    quiet                = #f
    no-range-check       = #f
+   opt-rounds           = 5
+   inline-threshold     = 13
    backend              = (backend:c)
-   include-dirs		= (LIST "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
+   include-dirs		= (list "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    libraries            = '()
    })
 
 (define (make-context)
   {datatypes            = (alist/make)
     aliases             = (alist/make)
-    macros              = (alist/make)
-    dep-graph           = (map-maker symbol-cmp)
+    macros              = (tree/empty)
+    required            = (set/empty) ;; set of already-required modules
+    dep-graph           = (map-maker symbol-index-cmp)
     scc-graph           = '()
     vars                = (tree/empty)
     funs                = (tree/empty)
@@ -39,17 +41,19 @@
     cincludes           = '()
     lincludes           = '()
     cverbatim           = '()
-    records             = '()
-    labels              = '()
+    records             = (cmap/make magic-cmp)
+    labels              = (cmap/make magic-cmp)
     literals            = (cmap/make magic-cmp)
     literal-ids         = (tree/empty)
-    symbols             = (alist/make)
+    symbols             = (tree/empty)
     variant-labels      = (alist/make)
     options             = (make-options)
     exceptions          = (alist/make)
     profile-funs        = (tree/empty)
     cexps               = (map-maker magic-cmp)
     callocates          = (map-maker magic-cmp)
+    ffi-map             = (cmap/make magic-cmp)
+    ambig-rec           = (tree/empty)
     }
   )
 
@@ -115,20 +119,14 @@
   (add-var 'top))
 
 (define (lookup-label-code label)
-  (let loop ((pairs the-context.labels))
-    (match pairs with
-      () -> (error1 "lookup-label-code" label)
-      ((:pair key val) . rest)
-      -> (if (eq? key label)
-	     val
-	     (loop rest)))))
+  (cmap->index the-context.labels label))
 
 (define (print-vars)
   (let ((flagpad (+ 2 VFLAG-NFLAGS)))
     (print-string "vars = {\n")
     (print-string
      (format "  " (cpad  6 "refs") (cpad  6 "sets") (cpad 6 "calls")
-	     (cpad 6 "mult") (lpad flagpad "flags") "  " (rpad 30 "name") "\n"))
+	     (cpad 6 "mult") (lpad flagpad "flags") "  name\n"))
     (tree/inorder
      (lambda (k v)
        (print-string
@@ -139,7 +137,7 @@
 		(lpad 6 (int v.mult))
 		(lpad flagpad (flags-repr v.flags))
 		"  "
-		(rpad 30 (sym k))
+		(sym k)
 		"\n")))
      the-context.vars)
     (print-string "}\n")))

@@ -17,6 +17,8 @@
   (or test1 test2 ...)	-> (if test1 #t (or test2 ...))
   )
 
+;; note: in Irken, all `let` are `let*`.
+
 (defmacro let
 
   (let () body ...)
@@ -34,31 +36,29 @@
   -> (letrec ((tag (function tag (name ...) #f body1 body2 ...)))
        (tag val ...))
 
-  ;; XXX this still does not allow free mixing of single and 
-  ;;  multiple bindings, because of the catch-all let->let-splat
-  ;;  below.  To do this correctly we need to cascade the two macros,
-  ;;  which might require some hackery to avoid chaining lets...
   ;; multiple-value-bind
+  ;; functions using this construct must return their multiple
+  ;;  values using the (:tuple ...) polyvariant.
+  (let (((name0 name1 ...) val)) body ...)
+  -> (match val with
+       (:tuple name0 name1 ...)
+       -> (begin body ...))
   (let (((name0 name1 ...) val) bind ...) body ...)
-  -> (let-values (((name0 name1 ...) val))
-       (let (bind ...)
-         body ...))
-  
+  -> (match val with
+       (:tuple name0 name1 ...)
+       -> (let (bind ...)
+            body ...))
+
   ;; normal <let> here, we just rename it to our core
   ;; binding construct, <let_splat>
-  (let ((name val) ...) body1 body2 ...)
-  -> (let-splat ((name val) ...) body1 body2 ...)
+  ;; note: these cascading let-splat forms will be combined
+  ;;  by the optimize phase when possible.
+  (let (bind0) body ...)
+  -> (let-splat (bind0) body ...)
+  (let (bind0 bind1 ...) body ...)
+  -> (let-splat (bind0)
+        (let (bind1 ...) body ...))
 
-  )
-
-;; functions using this construct must return their multiple
-;;  values using the (:tuple ...) polyvariant.
-
-(defmacro let-values
-  (let-values (((x y ...) val)) body0 body1 ...)
-  -> (match val with (:tuple x y ...) -> (begin body0 body1 ...))
-  (let-values (((x y ...) val) b0 b1 ...) body0 body1 ...)
-  -> (match val with (:tuple x y ...) -> (let-values (b0 b1 ...) body0 body1 ...))
   )
 
 ;; simplified <cond>
@@ -69,6 +69,16 @@
 	c1 c2 ...) -> (if test
 			  (begin e1 e2 ...)
 			  (cond c1 c2 ...)))
+
+(defmacro inc!
+  (inc! n)   -> (set! n (+ n 1))
+  (inc! n m) -> (set! n (+ n m))
+  )
+
+(defmacro dec!
+  (dec! n)   -> (set! n (- n 1))
+  (dec! n m) -> (set! n (- n m))
+  )
 
 (defmacro while
   (while test body ...)
@@ -81,14 +91,60 @@
   (when test body ...)
   -> (if test (begin body ...)))
 
+(defmacro when-maybe
+  (when-maybe var mob
+    body ...)
+  -> (match mob with
+       (maybe:yes var) -> (begin body ...)
+       (maybe:no) -> #u
+       ))
+
+(defmacro if-maybe
+  (if-maybe var mob then else)
+  -> (match mob with
+       (maybe:yes var) -> then
+       (maybe:no) -> else
+       ))
+
+(defmacro while-maybe
+  (while-maybe var mob
+    body ...)
+  -> (let $loop ()
+       (match mob with
+         (maybe:yes var) -> (begin body ... ($loop))
+         (maybe:no) -> #u
+         )))
+
+;; actually this could probably be done with for-range
+;; with this pattern: (for-range i (10 20) ...)
+;; XXX doesn't work when <hi> is calculated.
+(defmacro for-range*
+  (for-range* vname lo hi body ...)
+  -> (let $loop ((vname lo)
+                 ($stop hi))
+       (if (= vname $stop)
+           #u
+           (begin
+             body ...
+             ($loop (+ vname 1) $stop)))))
+
 (defmacro for-range
   (for-range vname num body ...)
-  -> (let (($n num))
-       (let $loop ((vname 0))
-	 (if (= vname $n)
-	     #u
-	     (begin body ...
-		    ($loop (+ vname 1)))))))
+  -> (for-range* vname 0 num body ...)
+  )
+
+(defmacro for-range-rev*
+  (for-range-rev* vname lo hi body ...)
+  -> (let $loop ((vname (- hi 1))
+                 ($stop lo))
+       (if (< vname $stop)
+           #u
+           (begin body ...
+                  ($loop (- vname 1) $stop)))))
+
+(defmacro for-range-rev
+  (for-range-rev vname num body ...)
+  -> (for-range-rev* vname 0 num body ...))
 
 (defmacro for-vector
   (for-vector vname vec body ...)
@@ -97,10 +153,16 @@
 	 (let ((vname $v[$i]))
 	   body ...))))
 
+(defmacro for-vector-rev
+  (for-vector-rev vname vec body ...)
+  -> (let (($v vec)) ;; avoid duplicating <vec> expression.
+       (for-range-rev $i (vector-length $v)
+	 (let ((vname $v[$i]))
+	   body ...))))
+
 (defmacro forever
   (forever body ...)
   -> (let $loop () body ... ($loop)))
-
 
 ;; make an iterator from a 'visit' function.
 ;; XXX: needs more work - the ability to specify other args
@@ -119,7 +181,7 @@
 (defmacro for
 
   ;; multiple variables
-  (for generator-exp (var0 ...) body0 ...)
+  (for (var0 ...) generator-exp body0 ...)
   -> (let (($gen generator-exp))
        (let $genloop (($item ($gen)))
 	 (match $item with
@@ -132,7 +194,7 @@
   ;;  the performance advantage of avoiding the :tuple wrapper.]
 
   ;; single-variable
-  (for generator-exp var body0 ...)
+  (for var generator-exp body0 ...)
   -> (let (($gen generator-exp))
        (let $genloop (($item ($gen)))
 	 (match $item with
@@ -140,4 +202,10 @@
 	   (maybe:yes var)
 	   -> (begin body0 ...
 		     ($genloop ($gen))))))
+  )
+
+(defmacro pipe
+  (pipe a)       -> a
+  (pipe a b)     -> (a b)
+  (pipe a b ...) -> (a (pipe b ...))
   )

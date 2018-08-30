@@ -39,7 +39,7 @@
   (let ((file (file/open-read path))
 	(token-gen (make-lex-generator file))
 	(paren-stack '())
-	(indents (LIST 0))
+	(indents (list 0))
 	(start-of-line #t)
 	(held-token eof-token)
 	(tok eof-token)

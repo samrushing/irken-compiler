@@ -8,7 +8,7 @@ bootstrap: vm
 
 vm: vm/irkvm
 
-vm/irkvm: vm/irkvm.c
+vm/irkvm: vm/irkvm.c include/header1.c include/irken.h
 	python util/build_vm.py
 
 test:
@@ -21,9 +21,6 @@ clean:
 # leave self/compile[0-9]? binaries.
 semi:
 	python util/clean.py -s
-
-dist:
-	python util/dist.py
 
 tags:
 	find ./self ./lib -name "*.scm" | etags -

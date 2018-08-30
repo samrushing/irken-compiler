@@ -1,0 +1,48 @@
+;; -*- Mode: Irken -*-
+
+(decaf
+ (includes "decaf/ed448.h")
+ (cflags (%platform
+          ;; freebsd pkg gets rid of the extra level...
+          FreeBSD "-I/usr/local/include/"
+          ;; via 'make install' from git sources.
+          else "-I/usr/local/include/decaf/")
+         )
+ (lflags "-L/usr/local/lib" "-ldecaf")
+ (constants
+  DECAF_EDDSA_448_PUBLIC_BYTES
+  DECAF_EDDSA_448_PRIVATE_BYTES
+  DECAF_EDDSA_448_SIGNATURE_BYTES
+  DECAF_X448_PUBLIC_BYTES
+  DECAF_X448_PRIVATE_BYTES
+  )
+ (verbatim
+  (sig decaf_ed448_derive_public_key
+       ((* u8) ;; pubkey
+        (* u8) ;; privkey
+        -> void))
+  (sig decaf_ed448_sign
+       ((* u8) ;; signature
+        (* u8) ;; privkey
+        (* u8) ;; pubkey
+        (* u8) ;; message
+        int    ;; message_len
+        int    ;; prehashed
+        (* u8) ;; context
+        int    ;; context_len
+        -> void))
+  (sig decaf_ed448_verify
+       ((* u8) ;; signature
+        (* u8) ;; pubkey
+        (* u8) ;; message
+        int    ;; message_len
+        int    ;; prehashed
+        (* u8) ;; context
+        int    ;; context_len
+        -> int))
+  ;; diffie-hellman
+  (sig decaf_x448 ((* u8) (* u8) (* u8) -> int))
+  (sig decaf_x448_derive_public_key ((* u8) (* u8) -> void))
+  )
+ )
+
