@@ -20,10 +20,3 @@
         inflateInit_ inflate inflateEnd
         )
   )
-;; (zlibVersion -> (* char))
-;; (deflateInit (* (struct z_stream_s)) int -> int)
-;; (deflate     (* (struct z_stream_s)) int -> int)
-;; (deflateEnd  (* (struct z_stream_s)) -> int)
-;; (inflateInit (* (struct z_stream_s)) int -> int)
-;; (inflate     (* (struct z_stream_s)) int -> int)
-;; (inflateEnd  (* (struct z_stream_s)) -> int)
