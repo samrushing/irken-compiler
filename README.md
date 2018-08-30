@@ -54,8 +54,7 @@ the 'self' directory, and browse over the files in "tests".
 Bootstrap:
 ----------
 
-Irken is now written in itself, so you need to bootstrap it.  You can do this
-via the python script.
+Irken is written in itself, so you need to bootstrap it using a pre-compiled bytecode image.
 
 Just run ``make bootstrap``:
 
