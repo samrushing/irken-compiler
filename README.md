@@ -91,7 +91,7 @@ rebuild self/compile before installing:
 Usage:
 ------
 
-Here's a sample - build the toy VM and test it out:
+Here's a sample - create a random ASCII maze:
 
     $ irken demo/maze/maze.scm
     $ demo/maze/maze 10 10 -ascii
