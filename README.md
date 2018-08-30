@@ -130,7 +130,7 @@ try out another compiler like this:
 LLVM Backend:
 -------------
 
-To use the LLVM backend:
+To use the LLVM backend, add the `-llvm` arg:
 
     $ self/compile demo/parse/synlight.scm -llvm
     $ demo/parse/synlight demo/parse/irken-lex.sg tests/tak20.scm
