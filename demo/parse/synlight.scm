@@ -11,18 +11,18 @@
 ;; at some point I'd like to design a markup system that
 ;;  lets you attach markup to grammar productions.
 
-(include "lib/basis.scm")
-(include "lib/getopt.scm")
-(include "lib/map.scm")
-(include "lib/cmap.scm")
-(include "lib/counter.scm")
-(include "lib/parse/lexer.scm")
-(include "lib/dfa/charset.scm")
-(include "lib/dfa/rx.scm")
-(include "lib/dfa/deriv.scm")
-(include "lib/dfa/dfa.scm")
-(include "lib/dfa/emit.scm")
-(include "lib/dfa/lexicon.scm")
+(require "lib/basis.scm")
+(require "lib/getopt.scm")
+(require "lib/map.scm")
+(require "lib/cmap.scm")
+(require "lib/counter.scm")
+(require "lib/parse/lexer.scm")
+(require "lib/dfa/charset.scm")
+(require "lib/dfa/rx.scm")
+(require "lib/dfa/deriv.scm")
+(require "lib/dfa/dfa.scm")
+(require "lib/dfa/emit.scm")
+(require "lib/dfa/lexicon.scm")
 
 ;; ---------- ANSI terminal output ------------
 
