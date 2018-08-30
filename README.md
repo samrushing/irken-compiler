@@ -11,14 +11,28 @@ macros.  It uses type inference along with a powerful type system to
 give you the speed of a compiled language with high-level data types
 and a higher degree of safety than languages like C/C++.
 
-* Why: to host massively scalable systems scriptable via a python-like language.
+* Why: to host massively scalable systems without using threads.
 * How: compile using continuation-passing style to avoid using the C stack.
-* Blog:         [http://alien.nightmare.com/](http://alien.nightmare.com/)
-* GitHub:       [https://github.com/samrushing/irken-compiler/](https://github.com/samrushing/irken-compiler/)
-* Older Source: [http://nightmare.com/rushing/irken/](http://nightmare.com/rushing/irken/)
+* Blog: [http://alien.nightmare.com/](http://alien.nightmare.com/)
+* GitHub: [https://github.com/samrushing/irken-compiler/](https://github.com/samrushing/irken-compiler/)
 
 News:
 -----
+
+20180829: Merged the FFI branch in.
+
+  This includes a *lot* of work:
+
+  * new FFI system that supports all three backends.
+  * `genffi` uses a full C parser to generate an interface file.
+  * ASN.1 codec
+  * Lots of crypto support code (x509, hmac, hkdf, rsa-pss, libsodium, libdecaf, ...).
+  * constant-time modular bignum arithmetic for crypto, based on Thomas Pornin's i31 code.
+  * DFA lexer and regex library based on derivatives.
+  * Earley parser.
+  * TLS 1.3 implementation.
+  * websockets/rfc6455.
+  * HTTP/2 server.
 
 20170329: Merged the bytecode backend and VM.
 
@@ -28,11 +42,6 @@ News:
   * amd64 freebsd-11
   * amd64 linux-ubuntu-xenial
   * aarch64 linux-debian rpi-3
-
-Yes, this means that Irken works on ARMv8! (all three backends).
-(for more detail see below).
-
-20170217: Merged the LLVM backend, plus many new fixes & features.
 
 Introduction/Tutorial:
 ----------------------
@@ -84,11 +93,31 @@ Usage:
 
 Here's a sample - build the toy VM and test it out:
 
-    $ cd vm
-    $ irken vm.scm
-    $ ./vm tests/t11.byc
+    $ irken demo/maze/maze.scm
+    $ demo/maze/maze 10 10 -ascii
+    
+     +-----------------------+-----+
+     |                       |     |
+     |  ------+------  +---  +---  |
+     |        |        |     |     |
+     +--+---  |  +-----+  +--+  ---+
+     |  |     |  |        |  |     |
+     |  |  +--+  |  +---  |  |  |  |
+     |  |  |     |  |     |     |  |
+     |  |  |  ---+  +-----+  ---+--+
+     |  |  |     |        |        |
+     |  |  +--+  +------  +-----+  |
+     |  |  |  |  |        |     |  |
+     |  |  |  |  |  ------+  |  |  |
+     |     |  |  |        |  |     |
+     |  ---+  |  +--------+  +-----+
+     |     |     |        |  |     |
+     |  ---+-----+  +---  |  +--+  |
+     |     |     |  |     |     |  |
+     |     |  |  |  |  ---+---  |  |
+     |        |     |              |
+     +--------+-----+--------------+
 
-The VM executes some bytecode that runs the 'tak' benchmark 20 times.
 
 You might want to try looking at and understanding the 'verbose' output from the compiler,
 using a relatively small example:
@@ -126,10 +155,6 @@ You can also run the compiler in the VM:
     $ irkvm self/compile.byc myfile.scm -b
     $ irkvm myfile.byc
 
-I am currently working on a universal FFI interface that should be
-usable from all 3 backends.
-
-
 ARMv8
 -----
 
@@ -146,10 +171,12 @@ source.
 32-bit platforms
 ----------------
 
-Once upon a time Irken compiled and ran on x86.  With the SSA-style
-rewrite that relies on tail call elimination, this appears to no
-longer be possible.  Neither gcc or llvm seem to support full tail
-call elimination on this platform.  Even manually tagging all
+Once upon a time Irken compiled and ran on 32-bit x86.  With the
+SSA-style rewrite that relies on tail call elimination, this appears
+to no longer be possible.  Neither gcc or llvm seem to support full
+tail call elimination on this platform.  Even manually tagging all
 functions with 'fastcc' (by compiling to llvm asm and editing the
 result) does not fix the problem.  If you really need to run Irken on
 a 32-bit platform, know that the VM seems to work just fine.
+[that said, many of the library facilities assume 64-bit integers are
+ available]
