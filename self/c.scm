@@ -12,7 +12,7 @@
 	 'bool         -> (format "IRK_IS_TRUE(" arg ")")
 	 'string       -> (format "((irk_string*)(" arg "))->data")
 	 'cstring      -> (format "(char*)" arg)
-	 'buffer       -> (format "(" (irken-type->c-type type) "(((irk_vector*)" arg ")+1))")
+	 'buffer       -> (format "((" (irken-type->c-type type) ")(((irk_vector*)" arg ")+1))")
          'cref         -> (format "(" (irken-type->c-type type) ") get_foreign(" arg ")")
 	 'arrow	       -> arg
 	 'vector       -> arg
