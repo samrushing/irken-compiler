@@ -121,7 +121,7 @@
         (repeat 1))
 
     (define (emit val repeat)
-      (PUSH
+      (push!
        r
        (if (= repeat 1)
            (format (int val))
