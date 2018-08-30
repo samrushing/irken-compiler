@@ -67,6 +67,42 @@
   (enum-pair:f name)     -> (format (sym name))
   )
 
+;; --- ctype to s-expression ---
+
+;; written, but not yet used to replace `ctype2-repr`.
+
+;; a ctype in s-expression form.
+(define ctype2->sexp
+  (ctype2:name 'void)   -> (sexp:symbol 'void)
+  (ctype2:name name)    -> (sexp (sym 'type) (sym name))
+  (ctype2:int cint s?)  -> (sexp:symbol (string->symbol (cint-repr cint s?)))
+  (ctype2:float l? d?)  -> (sexp:symbol (string->symbol (format (if l? "long" "") (if d? "double" "float"))))
+  (ctype2:array size t) -> (sexp (sym 'array) (int size) (ctype2->sexp t))
+  (ctype2:pointer t)    -> (sexp (sym '*) (ctype2->sexp t))
+  (ctype2:struct name (maybe:no))        -> (sexp (sym 'struct) (sym name))
+  (ctype2:struct name (maybe:yes slots)) -> (sexp (sym 'struct) (sym name) (list (map declarator->sexp slots)))
+  (ctype2:union name (maybe:no))         -> (sexp (sym 'union) (sym name))
+  (ctype2:union name (maybe:yes slots))  -> (sexp (sym 'union) (sym name) (list (map declarator->sexp slots)))
+  (ctype2:enum name (maybe:no))          -> (sexp (sym 'enum) (sym name))
+  (ctype2:enum name (maybe:yes pairs))   -> (sexp (sym 'enum) (sym name) (list (map enum-pair->sexp pairs)))
+  (ctype2:function type args)            -> (sexp (sym 'fun) (list (map declarator->sexp args)) (sym '->) (ctype2->sexp type))
+  )
+
+(define declarator->sexp
+  (declarator:t type (maybe:no))
+  -> (ctype2->sexp type)
+  (declarator:t type (maybe:yes name))
+  -> (sexp (sym 'named) (ctype2->sexp type))
+  )
+
+(define enum-pair->sexp
+  (enum-pair:t name val) -> (sexp (sym name) (int val))
+  (enum-pair:f name)     -> (sexp (sym name))
+  )
+
+;; -----------------------------
+
+
 ;; ...and back into C
 
 (define cint->c
