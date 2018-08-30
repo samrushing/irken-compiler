@@ -1,0 +1,29 @@
+;; -*- Mode: lisp -*-
+
+(zlib
+  (includes "zlib.h")
+  (cflags "")
+  (lflags "-lz")
+  (structs z_stream_s)
+  (constants Z_NO_FLUSH Z_PARTIAL_FLUSH Z_SYNC_FLUSH Z_FULL_FLUSH Z_FINISH Z_BLOCK Z_TREES
+             ;; compression levels
+             Z_NO_COMPRESSION Z_BEST_SPEED Z_BEST_COMPRESSION Z_DEFAULT_COMPRESSION
+             ;; return values
+             Z_OK
+             Z_STREAM_END Z_NEED_DICT Z_ERRNO Z_STREAM_ERROR Z_DATA_ERROR Z_MEM_ERROR
+             Z_BUF_ERROR Z_VERSION_ERROR
+             ;; required because of the macro hacks in xxxInit_
+             ZLIB_VER_MAJOR ZLIB_VER_MINOR ZLIB_VER_REVISION
+             )
+  (sigs zlibVersion
+        deflateInit_ deflate deflateEnd
+        inflateInit_ inflate inflateEnd
+        )
+  )
+;; (zlibVersion -> (* char))
+;; (deflateInit (* (struct z_stream_s)) int -> int)
+;; (deflate     (* (struct z_stream_s)) int -> int)
+;; (deflateEnd  (* (struct z_stream_s)) -> int)
+;; (inflateInit (* (struct z_stream_s)) int -> int)
+;; (inflate     (* (struct z_stream_s)) int -> int)
+;; (inflateEnd  (* (struct z_stream_s)) -> int)
