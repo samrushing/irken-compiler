@@ -535,7 +535,9 @@
       (ctype2:function rtype args)
       -> (W (format " ("
                     (join declarator-repr " " args)
-                    " -> " (ctype2-repr rtype) "))\n"))
+                    " -> "
+                    (ctype2-repr rtype)
+                    "))\n"))
       nonfun
       -> (W (format " " (ctype2-repr nonfun) ")\n"))
       ))
