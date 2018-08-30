@@ -55,8 +55,7 @@ Bootstrap:
 ----------
 
 Irken is now written in itself, so you need to bootstrap it.  You can do this
-via the python script, or manually.
-[see https://github.com/samrushing/irken-compiler/wiki/bootstrapping-manually]
+via the python script.
 
 Just run ``make bootstrap``:
 
