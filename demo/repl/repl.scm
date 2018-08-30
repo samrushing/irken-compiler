@@ -1,14 +1,16 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
+(require "lib/basis.scm")
 
 ;; --- s-expression input ---
 
 (define (ask prompt ifile ofile)
   (file/write ofile prompt)
   (file/flush ofile)
-  (file/read-line ifile))
+  (match (file/read-line ifile) with
+    (maybe:yes line) -> line
+    (maybe:no)       -> ""
+    ))
 
 ;; --- universal datatype ---
 ;;
@@ -163,9 +165,8 @@
   (match (eval rator env) with
     (univ:function formals body)
     -> (match (eval-args rator formals rands env) with
-         (maybe:no) -> (repl-error (format "wrong number of arguments to function " (repr rator)))
-         (maybe:yes new-rib)
-         -> (eval body (env:rib new-rib env))
+         (maybe:yes new-rib) -> (eval body (env:rib new-rib env))
+         (maybe:no)          -> (repl-error (format "wrong number of arguments to function " (repr rator)))
          )
     op -> (repl-error (format "operator is not a function: " (univ-repr op)))
     ))
