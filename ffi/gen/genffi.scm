@@ -179,7 +179,8 @@
                 typedef-names)))
         (typedefs (tree/empty))
         (structs (tree/empty))
-        (functions (tree/empty)))
+        (functions (tree/empty))
+        (enums (tree/empty)))
 
     (define (parse-toks toks root)
       (earley tdgram (prod:nt root) (list-generator toks)))
@@ -205,12 +206,14 @@
              ;; name top-level anon typedef structs
              (ctype2:struct '%anonymous sub) -> (set! type (ctype2:struct name sub))
              (ctype2:union '%anonymous sub)  -> (set! type (ctype2:union name sub))
+             (ctype2:enum '%anonymous sub)   -> (set! type (ctype2:enum name sub))
              _ -> #u
              )
            ;; if it's a named struct/union, add it to that table as well.
            (match type with
              (ctype2:struct name1 slots)     -> (tree/insert! structs magic-cmp (:tuple name1 #t) type)
              (ctype2:union name1 slots)      -> (tree/insert! structs magic-cmp (:tuple name1 #f) type)
+             (ctype2:enum name1 pairs)       -> (tree/insert! enums symbol-index-cmp name1 type)
              _                               -> #u
              )
            (tree/insert! typedefs symbol-index-cmp name type))
@@ -224,6 +227,8 @@
            -> (tree/insert! structs magic-cmp (:tuple name #t) type)
            (ctype2:union name slots)
            -> (tree/insert! structs magic-cmp (:tuple name #f) type)
+           (ctype2:enum name pairs)
+           -> (tree/insert! enums symbol-index-cmp name type)
            type
            -> (tree/insert! functions symbol-index-cmp name type)
            )
@@ -254,7 +259,7 @@
             ))))
     (printf "...done.\n")
     ;; our result, a kind of database gleaned from the cpp file.
-    {typedefs=typedefs structs=structs functions=functions}
+    {typedefs=typedefs structs=structs functions=functions enums=enums}
     ))
 
 (define (substitute-all-typedefs types)
@@ -367,6 +372,7 @@
              (lflags '())
              (structs '())
              (constants '())
+             (enums '())
              (sigs '())
              (verbatim '()))
          (for-list list lists ;; list := sexp
@@ -374,6 +380,8 @@
              (append! structs (map sexp->symbol obs)))
            (when-maybe obs (sexp-starting-with 'constants list)
              (append! constants (map sexp->symbol obs)))
+           (when-maybe obs (sexp-starting-with 'enums list)
+             (append! enums (map sexp->symbol obs)))
            (when-maybe obs (sexp-starting-with 'sigs list)
              (append! sigs (map sexp->symbol obs)))
            (when-maybe obs (sexp-starting-with 'includes list)
@@ -392,6 +400,7 @@
           structs=structs
           sigs=sigs
           constants=constants
+          enums=enums
           verbatim=verbatim
           }
          )
@@ -560,6 +569,7 @@
       -> (raise (:GenFFI/NoSuchFun "gen-sigs: no such function/object" name))
       )))
 
+;; we add a prefix so as to not conflict with the actual definition.
 (define (add-prefix type)
   (define AP
     (ctype2:struct name mslots) -> (ctype2:struct (string->symbol (format "irk_" (sym name))) mslots)
@@ -568,6 +578,40 @@
     )
   (map-type AP type)
   )
+
+(define (emit-enums iface-file names enums)
+
+  (define (emit-enum pairs)
+    ;; duplicate the rules in C on how enums are valued.
+    (let ((last -1))
+      (for-list item pairs
+        (match item with
+          (enum-pair:t name val)
+          -> (begin
+               (set! last val)
+               (stdio/write iface-file (format "(con " (sym name) " " (int val) ")\n")))
+          (enum-pair:f name)
+          -> (begin
+               ;; if no value is supplied, add one to the previous value.
+               (inc! last)
+               (stdio/write iface-file (format "(con " (sym name) " " (int last) ")\n")))
+          ))))
+
+  (for-list name names
+    (match (tree/member enums symbol-index-cmp name) with
+      (maybe:yes (ctype2:enum _ (maybe:yes pairs)))
+      -> (begin
+           (stdio/write iface-file (format ";; enum " (sym name) "\n"))
+           (emit-enum pairs)
+           #u
+           )
+      _
+      -> (printf "no enum! " (sym name) "\n")
+      ))
+  (when (not (null? names))
+    (stdio/write iface-file (format ";; end enums\n"))
+    #u
+    ))
 
 ;; The second C file generated is used to compute the sizes and offsets
 ;;   of all required structs/unions.
@@ -655,15 +699,17 @@
             (stdio/write iface-file (format (repr exp) "\n")))
           ;; emit the signatures...
           (write-sigs iface types renames (lambda (s) (stdio/write iface-file s)))
+          ;; emit any enums
+          (emit-enums iface-file iface.enums types.enums)
           (stdio/close iface-file)
           ;; compile iface2
           (compile (append iface.lflags (append iface.cflags (list opath "-o" iface2))))
           ;; append to interface
-          (system (format iface2 " >> " iface-path))
+          (system (format "./" iface2 " >> " iface-path))
           ;; compile iface1
           (compile (append iface.cflags (list (format iface1 ".c") "-o" iface1)))
           ;; append to interface
-          (system (format iface1 " >> " iface-path))
+          (system (format "./" iface1 " >> " iface-path))
           (cleanup base)
           )))))
 
