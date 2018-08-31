@@ -6,13 +6,13 @@ generate interfaces for C APIs.
 
 There are many pitfalls in this forbidden land.  Often the API advertised
 by the documentation does not match the actual function signatures.  One
-of the biggest problems are created when macros are used in various ways
+of the biggest problems is created when macros are used in various ways
 to rename functions, parameters, types, etc.  They are also used to add
 extra (undocumented) parameters (e.g. zlib).
 
-In general, my preference is to avoid linking against C libraries at all,
-since a major focus of this project is added security against that world
-of razors and chainsaws.
+In general, my preference is to avoid linking against C libraries at
+all, since a major focus of the Irken project is added security
+against that world of razors and chainsaws.
 
 FFI Specifications
 ------------------
@@ -20,7 +20,7 @@ FFI Specifications
 The process starts with writing a 'spec' file.  This is a file of s-expressions
 that describes what you need out of the API.  You list the include files needed,
 along with a list of constants, functions you need signatures for, and structures
-you need to acess.  Hopefully `genffi` can do the rest.
+you need to access.  Hopefully `genffi` can do the rest.
 
 sample.ffi:
 
@@ -30,6 +30,8 @@ sample.ffi:
       (includes "myheader.h" "other-header.h")
       (constants MYLIB_YES MYLIB_NO)
       (sigs my_fun1 my_fun2)
+      (struct my_struct1)
+      (enums my_enum)
       (verbatim
         (sig my_fun3 ((* char) int int -> int)))
       )
@@ -39,6 +41,11 @@ the `verbatim` section: this is where you can place things directly into
 the output that cannot be handled by the normal `genffi` process.  Or if
 you'd rather take complete control over the output for whatever reason.
 
+In the `struct` section you should list only structs you actually need
+to allocate and/or access.
+
+An `enum` section will cause `genffi` to emit a constant record for each
+value in the enum.
 
 Normal Usage
 ------------
