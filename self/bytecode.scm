@@ -643,13 +643,10 @@
             (size (tree/size ambig))
             (table (make-vector size {k0=0 k1=0 v=0}))
             (i 0))
-        (tree/inorder
-         (lambda (k v)
-           (match k with
-             (:tuple tag label)
-             -> (set! table[i] {k0= tag k1=label v=v}))
-           (set! i (+ i 1)))
-         ambig)
+        (for-map k v ambig
+          (let (((tag label) k))
+            (set! table[i] {k0= tag k1=label v=v})
+            (inc! i)))
         ;; Note: this is built as a literal, which at runtime will
         ;;  have the type `(vector (vector int))`
         (let (((G V) (create-minimal-perfect-hash table)))
