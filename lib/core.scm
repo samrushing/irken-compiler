@@ -512,6 +512,27 @@
         (forever ($consumer (maybe:no)))
         )))
 
+;; emits `(:tuple index item)`
+(define (counting-gen gen)
+  (let ((i 0))
+    (makegen emit
+      (for item gen
+        (emit (:tuple i item))
+        (inc! i)))))
+
+;; emits `(:tuple last? item)`
+(define (notify-last-gen gen)
+  ;; delay each item in order to tag with `last?` boolean.
+  (let ((last (match (gen) with
+                (maybe:yes item) -> item
+                (maybe:no)       -> (raise (:EmptyGenerator)))))
+    (makegen emit
+      (for item gen
+        (emit (:tuple #f last))
+        (set! last item))
+      (emit (:tuple #t last))
+      )))
+
 ;; We use polymorphic variants for exceptions.
 ;; Since we're a whole-program compiler there's no need to declare
 ;; them - though I might could be convinced it's still a good idea.
