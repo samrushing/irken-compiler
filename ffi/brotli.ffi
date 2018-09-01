@@ -1,0 +1,28 @@
+;; -*- Mode: lisp -*-
+
+(brotli
+  (includes "brotli/encode.h" "brotli/decode.h")
+  (cflags "")
+  (lflags "-lbrotlienc -lbrotlidec")
+  (enums BrotliEncoderMode BrotliEncoderOperation BrotliEncoderParameter
+         BrotliDecoderResult BrotliDecoderParameter)
+  (constants
+   BROTLI_MAX_WINDOW_BITS
+   BROTLI_LARGE_MAX_WINDOW_BITS
+   BROTLI_MIN_INPUT_BLOCK_BITS
+   BROTLI_MAX_INPUT_BLOCK_BITS
+   BROTLI_MIN_QUALITY
+   BROTLI_MAX_QUALITY)
+  (sigs
+   BrotliEncoderSetParameter
+   BrotliEncoderCreateInstance
+   BrotliEncoderDestroyInstance
+   BrotliEncoderMaxCompressedSize
+   BrotliEncoderCompress
+   BrotliEncoderCompressStream
+   BrotliEncoderIsFinished
+   BrotliEncoderHasMoreOutput
+   BrotliEncoderTakeOutput
+   BrotliEncoderVersion
+   )
+  )
