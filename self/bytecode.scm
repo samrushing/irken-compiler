@@ -663,6 +663,12 @@
     ;; XXX once we have an 'official' streaming encoding for random datatypes, consider
     ;;   switching to that encoding for literals/etc.
 
+    (define get-dtcon-tag
+      'nil label -> (alist/get the-context.variant-labels label "unknown variant label")
+      dt variant -> (let ((dtob (alist/get the-context.datatypes dt "no such datatype"))
+                          (alt (dtob.get variant)))
+                      alt.index))
+
     (define (emit-one-literal ob)
       (match (lit-already::get ob) with
         (maybe:yes index)
@@ -682,16 +688,15 @@
              (literal:bool #t) -> (o.copy "T")
              (literal:bool #f) -> (o.copy "F")
              (literal:cons dt variant args)
-             -> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
-                      (alt (dto.get variant))
+             -> (let ((tag (get-dtcon-tag dt variant))
                       (nargs (length args)))
                   (if (= nargs 0)
                       ;; immediate constructor
-                      (o.copy (format "I" (encode-int (get-uitag dt variant alt.index))))
+                      (o.copy (format "I" (encode-int (get-uitag dt variant tag))))
                       ;; constructor with args
                       (begin
                         (o.copy (format "C"
-                                        (encode-int (get-uotag dt variant alt.index))
+                                        (encode-int (get-uotag dt variant tag))
                                         (encode-int nargs)))
                         (for-list arg args
                           (emit-one-literal arg)))))

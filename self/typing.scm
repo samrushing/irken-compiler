@@ -271,18 +271,16 @@
       (literal:symbol _) -> symbol-type
       (literal:sexp _)   -> sexp-type
       (literal:cons dt v l)
-      -> (let ((dto (alist/get the-context.datatypes dt "no such datatype")))
-           (match (dto.get-alt-scheme v) with
-             (:scheme gens type)
-             -> (match (instantiate-type-scheme gens type) with
-                  (type:pred 'arrow (result-type . arg-types) _)
-                  -> (begin
-                       (for-range
-                           i (length arg-types)
-                         (let ((tx (type-of-literal (nth l i) exp tenv)))
-                           (unify exp tx (nth arg-types i))))
-                       result-type)
-                  x -> (error1 "strange constructor scheme" x))))
+      -> (match (get-dtcon-scheme dt v (length l)) with
+           (:scheme gens type)
+           -> (match (instantiate-type-scheme gens type) with
+                (type:pred 'arrow (result-type . arg-types) _)
+                -> (begin
+                     (for-range i (length arg-types)
+                       (let ((tx (type-of-literal (nth l i) exp tenv)))
+                         (unify exp tx (nth arg-types i))))
+                     result-type)
+                x -> (error1 "strange constructor scheme" x)))
       (literal:vector l)
       -> (let ((tv (new-tvar)))
            (for-list x l
@@ -297,6 +295,28 @@
              -> (loop (rlabel (make-label name) (rpre (type-of-literal val exp tenv)) t) rest)
              ))
       ))
+
+  (define (get-dtcon-scheme dt v arity)
+    (if (eq? dt 'nil)
+        (get-vcon-scheme v arity)
+        ((%%attr (alist/get the-context.datatypes dt "no such datatype")
+                 get-alt-scheme) v)))
+
+  ;; XXX duplicates code from %vcon below.
+  (define (get-vcon-scheme label arity)
+    (let ((plabel (make-label label)))
+      (remember-variant-label label)
+      (match arity with
+        ;; ∀X.() → Σ(l:pre (Π());X)
+        0 -> (:scheme (list T0) (arrow (rsum (rlabel plabel (rpre (pred 'product '())) T0)) '()))
+        ;; ∀XY.X → Σ(l:pre X;Y)
+        1 -> (:scheme (list T0 T1) (arrow (rsum (rlabel plabel (rpre T0) T1)) (list T0)))
+        ;; ∀ABCD.Π(A,B,C) → Σ(l:pre (Π(A,B,C));D)
+        _ -> (let ((tdflt (new-tvar))
+                   (targs (n-tvars arity)))
+               (:scheme (list:cons tdflt targs)
+                        (arrow (rsum (rlabel plabel (rpre (pred 'product targs)) tdflt))
+                               targs))))))
 
   ;; HACK: remove a raw predicate if present
   (define unraw

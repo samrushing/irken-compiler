@@ -956,26 +956,31 @@
         (maybe:no) -> (impossible)
         ))
 
+    (define get-dtcon-tag
+      'nil label -> (alist/get the-context.variant-labels label "unknown variant label")
+      dt variant -> (let ((dtob (alist/get the-context.datatypes dt "no such datatype"))
+                          (alt (dtob.get variant)))
+                      alt.index))
+
     (define (walk exp litnum)
       (match exp with
 	;; data constructor
 	(literal:cons dt variant args)
-	-> (let ((dto (alist/get the-context.datatypes dt "no such datatype"))
-		 (alt (dto.get variant))
+	-> (let ((tag (get-dtcon-tag dt variant))
 		 (nargs (length args)))
 	     (if (> nargs 0)
 		 ;; constructor with args
-		 (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
+		 (let ((args0 (map (partial (walk _ litnum)) args))
                        (oindex0 oindex))
-		   (push-val (uohead (uotag dt variant alt.index) nargs))
+		   (push-val (uohead (uotag dt variant tag) nargs))
                    (for-each push-val args0)
                    (<< oindex0 2))
 		 ;; nullary constructor - immediate
-		 (uitag dt variant alt.index)))
+		 (uitag dt variant tag)))
         (literal:vector ())
         -> (encode-immediate exp)
         (literal:vector args)
-        -> (let ((args0 (map (lambda (arg) (walk arg litnum)) args))
+        -> (let ((args0 (map (partial (walk _ litnum)) args))
                  (nargs (length args))
                  (oindex0 oindex))
              (push-val (uohead TC_VECTOR nargs))
@@ -1157,7 +1162,7 @@
     (emit-llvm ollvm "toplevel" cps)
     (ollvm.close)
     (notquiet (printf "wrote " (int (ollvm.get-total)) " bytes to " llpath ".\n"))
-    ;; XXX header1.c needs something like find-file, but that currently returns
-    ;;  an open file, not a valid pathname.
-    (list llpath (string-append (last the-context.options.include-dirs) "include/header1.c"))))
+    (let (((path0 ignore-file) (find-file the-context.options.include-dirs "include/header1.c")))
+      (file/close ignore-file)
+      (list llpath path0))))
 
