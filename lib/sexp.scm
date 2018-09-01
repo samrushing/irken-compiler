@@ -136,7 +136,7 @@
   (sexp:attr lhs a) -> (+ 1 (+ (pp-size lhs) (string-length (symbol->string a))))
   )
 
-(define (pp* exp width indent)
+(define (pp* exp width depth)
   (define (recur d exp)
     (let ((size (pp-size exp)))
       (if (< size width)
@@ -155,7 +155,7 @@
 		      (printf ")"))
 	    ;; XXX complete for vector & record.
 	    _ -> (printf (repr exp))))))
-  (recur indent exp)
+  (recur depth exp)
   (print-string "\n")
   )
 
