@@ -351,9 +351,6 @@
       (map (lambda (x) (make-array (ns ...) v))
            (n-of n 0))))
 
-(define (address-of ob)
-  (%%cexp ('a -> int) "(irk_int)%0" ob))
-
 ;; this is a little harsh. 8^)
 ;; think of it as a placeholder for something better to come.
 (define (error x)
@@ -407,10 +404,6 @@
 
 (define (throw k v)
   (putcc k v))
-
-(defmacro letcc
-  (letcc name body ...)
-  -> (callcc (lambda (name) body ...)))
 
 (defmacro let/cc
   (let/cc name body ...)
