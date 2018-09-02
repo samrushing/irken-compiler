@@ -374,12 +374,10 @@
 (define (sort-vector < v)
   (list->vector (sort < (vector->list v))))
 
-(define (list-generator L) : ((list 'a) -> (-> (maybe 'a)))
-  (make-generator
-   (lambda (consumer)
-     (for-list item L
-       (consumer (maybe:yes item)))
-     (forever (consumer (maybe:no))))))
+(define (list-generator xs)
+  (makegen emit
+    (for-list x xs
+      (emit x))))
 
 (define (generator->list gen)
   (let ((r '()))
