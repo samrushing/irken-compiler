@@ -250,7 +250,7 @@ Like `for-range*`, but in reverse. `(hi ... lo]`.
 
 ## for-range-rev
 
-Like `for-range`, but in reverse. `(hi ... lo]`.
+Like `for-range`, but in reverse. `(hi ... 0]`.
 
 ## for-vector
 
