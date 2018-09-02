@@ -180,7 +180,7 @@ with side-effects, like I/O or assignment.
 (begin exp0 exp1 ... expn)
 ```
 
-Its type is the type of `expn`.
+Its type and value are that of `expn`.
 
 Example:
 
