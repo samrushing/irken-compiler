@@ -133,7 +133,7 @@ empty lists:
 
     (ints2:more 1 (ints2:more 2 (ints2:last 3)))
 
-You can also have mutually recursive datatypes:
+We can also have mutually recursive datatypes:
 
     (datatype crazy1
       (:one crazy2)
@@ -191,7 +191,7 @@ and a `(btree (list int))`:
 Complex Datatypes
 -----------------
 
-By combining recursion and polymorphism, you can build complex and useful new types:
+By combining recursion and polymorphism, we can build complex and useful new types:
 
     (datatype alist
       (:empty)
