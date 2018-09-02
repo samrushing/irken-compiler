@@ -327,6 +327,6 @@ Example:
 ```scheme
 (pipe emit html-ize parse lex input)
 =>
-(emit (html-isze (parse (lex input))))
+(emit (html-ize (parse (lex input))))
 ```
 
