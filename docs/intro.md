@@ -1,6 +1,5 @@
 
-Irken is a Functional Language
-------------------------------
+# Irken is a Functional Language
 
 Irken is a member of the [Lisp family of languages](https://en.wikipedia.org/wiki/Lisp).
 Within that family, it is a dialect of the language [Scheme](https://en.wikipedia.org/wiki/Scheme_(programming_language)).
@@ -26,16 +25,14 @@ Running it:
     $ ./myfile
 
 
-Hello World
------------
+## Hello World
 
 ```scheme
 (require "lib/basis.scm")
 (printf "Hello, World!\n")
 ```
 
-Builtin Types
--------------
+## Builtin Types
 
 The usual collection of simple types:
 
@@ -46,15 +43,13 @@ The usual collection of simple types:
    * booleans: `#t`, `#f` (for 'true' and 'false')
    * undefined: `#u` (or 'unit')
 
-Builtin Containers
-------------------
+## Builtin Containers
 
    * lists: `("x" "y" "z")`, `(0 2 4 8 16 32 64)`
    * vectors: `#(0 1 2 3 4)`
    * records: `{age=23 name="george"}`
 
-Calling Functions
------------------
+## Calling Functions
 
 Irken uses a prefix notation.  The first element of the list
 is the function being called, the remaining elements are the arguments.
@@ -66,8 +61,7 @@ is the function being called, the remaining elements are the arguments.
 (+ (- x 44) (- y 41))
 ```
 
-Names
------
+## Names
 
 In most languages, names of variables and functions are limited to
 alphanumeric characters and the underscore.  In Irken (like most Lisps),
@@ -82,8 +76,7 @@ Some common naming conventions:
   * `*a*`: a global variable, e.g. `*the-symbol-table*`.
   * `%a`, `%%a`: irken-internal things.
 
-Every Expression Has a Value
-----------------------------
+## Every Expression Has a Value
 
 Imperative languages often divide the language into two categories,
 'expressions' and 'statements'.  Irken is a functional language, and
@@ -93,14 +86,12 @@ expression has a 'value'.
 Expressions that perform imperative operations often return the special
 value `#u` (for 'undefined' or 'unit').
 
-Special Forms
--------------
+## Special Forms
 
 Most Irken expressions are of the form `(function arg0 arg1 ...)`.  However, there
 are some 'special forms' that behave differently, like `if`, `let`, `cond`.
 
-Simple Conditional
-------------------
+## Simple Conditional
 
 ```scheme
 (if (odd? n)
@@ -119,8 +110,7 @@ two choices is evaluated.
 ```
 
 
-Creating Variables
-------------------
+## Creating Variables
 
 `let` is a special form that binds new variables:
 
@@ -145,8 +135,7 @@ The general format is:
   )
 ```
 
-Assigning Variables
--------------------
+## Assigning Variables
 
 Variables are assigned with `set!`.
 
@@ -154,8 +143,7 @@ Variables are assigned with `set!`.
 (set! x 19)
 ```
 
-Defining Functions
-------------------
+## Defining Functions
 
 Functions are created with `define`:
 
@@ -179,5 +167,28 @@ Here is a factorial function:
       1
       (* n (fact (- n 1)))
       ))
+```
+
+
+## Sequencing with `begin`
+
+This is for a sequence of expressions, an imperative thing by
+definition.  In other words, you use this when you are doing things
+with side-effects, like I/O or assignment.
+
+```scheme
+(begin exp0 exp1 ... expn)
+```
+
+Its type is the type of `expn`.
+
+Example:
+
+```scheme
+(begin
+  (printf "flushing buffers...\n")
+  (flush-buffers!)
+  (state:ready)
+)
 ```
 
