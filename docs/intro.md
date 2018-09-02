@@ -2,16 +2,17 @@
 Irken is a Functional Language
 ------------------------------
 
-Irken is a member of the Lisp family of languages.  Within that
-family, it is a dialect of the language Scheme.  Lisp languages use
-prefix-notation expressions in nested parentheses to structure all
-code.
+Irken is a member of the [Lisp family of languages](https://en.wikipedia.org/wiki/Lisp).
+Within that family, it is a dialect of the language [Scheme](https://en.wikipedia.org/wiki/Scheme_(programming_language)).
+Lisp languages use prefix-notation expressions in nested parentheses to
+structure all code.
 
-Functional languages emphasize the mathematical 'function'-ness of
-programming, and discourage (Lisp, Scheme, OCaml), or even forbid
-(Haskell, Erlang) the manipulation of state using assignment.
+[Functional languages](https://en.wikipedia.org/wiki/Functional_programming)
+emphasize the mathematical 'function'-ness of programming, and
+discourage (Lisp, Scheme, OCaml), or even forbid (Haskell, Erlang) the
+manipulation of state using assignment.
 
-Unlike most lisps, Irken is a _compiled-only_ language.  It uses a
+Unlike most Lisps, Irken is a _compiled-only_ language.  It uses a
 whole-program compiler, so compilation is always a single step (i.e.,
 there are no object files and no 'link' phase).  There is no
 interactive prompt, or 'read-eval-print-loop'/'repl' (yet).
@@ -28,8 +29,10 @@ Running it:
 Hello World
 -----------
 
-    (require "lib/basis.scm")
-    (printf "Hello, World!\n")
+```scheme
+(require "lib/basis.scm")
+(printf "Hello, World!\n")
+```
 
 Builtin Types
 -------------
@@ -58,14 +61,16 @@ is the function being called, the remaining elements are the arguments.
 
 `x + 1` in most languages would be `(+ x 1)` in Irken.
 
-    (+ 1 2)
-    (+ (- x 44) (- y 41))
+```scheme
+(+ 1 2)
+(+ (- x 44) (- y 41))
+```
 
 Names
 -----
 
 In most languages, names of variables and functions are limited to
-alphanumeric characters and the underscore.  In Irken (like most lisps),
+alphanumeric characters and the underscore.  In Irken (like most Lisps),
 nearly any character is legal as part of a name.
 
 Some common naming conventions:
@@ -97,17 +102,21 @@ are some 'special forms' that behave differently, like `if`, `let`, `cond`.
 Simple Conditional
 ------------------
 
-    (if (odd? n)
-      (+ 1 n)
-      n)
+```scheme
+(if (odd? n)
+  (+ 1 n)
+  n)
+```
 
 `if` is a special form that evaluates the test first, and chooses
 one of the other two branches depending on that test.  Only one of the
 two choices is evaluated.
 
-    (if (odd? n)
-        (printf "n is odd.\n")
-        (printf "n is even.\n"))
+```scheme
+(if (odd? n)
+    (printf "n is odd.\n")
+    (printf "n is even.\n"))
+```
 
 
 Creating Variables
@@ -115,40 +124,60 @@ Creating Variables
 
 `let` is a special form that binds new variables:
 
-    (let ((h (compute-height))
-          (w (compute-width)))
-      (* w h))
+```scheme
+(let ((h (compute-height))
+      (w (compute-width)))
+  (* w h))
+```
 
 Here, `h` and `w` are new variables.  The value of the entire
 `let` expression is `(* w h)`.
 
 The general format is:
 
-    (let ((<var0> <value0>)
-          (<var1> <value1>)
-          ...
-          (<varn> <valuen>)
-          )
-      code using var0..varn
+```scheme
+(let ((<var0> <value0>)
+      (<var1> <value1>)
+      ...
+      (<varn> <valuen>)
       )
+  code using var0..varn
+  )
+```
 
 Assigning Variables
 -------------------
 
 Variables are assigned with `set!`.
 
-    (set! x 19)
+```scheme
+(set! x 19)
+```
 
 Defining Functions
 ------------------
 
 Functions are created with `define`:
 
-    (define (double x)
-      (+ x x))
+```scheme
+(define (double x)
+  (+ x x))
+```
 
 Which can now be called:
 
-    (+ 1 (double x))
-    (double (double x))
+```scheme
+(+ 1 (double x))
+(double (double x))
+```
+
+Here is a factorial function:
+
+```scheme
+(define (fact n)
+  (if (= n 0)
+      1
+      (* n (fact (- n 1)))
+      ))
+```
 
