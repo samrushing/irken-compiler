@@ -1,6 +1,9 @@
 
 # The Irken Library
 
- * Low-level functions, macros, integer math are [here](core.md).
- * [Lists](list.md)
- * [Maps and Sets](mapset.md)
+ * [core](core.md). Low-level functions, macros, integer math.
+ * [derived expressions](derived.md). Automatically included by the compiler.
+ * [lists](list.md).
+ * [maps and sets](mapset.md).
+ * [I/O](io.md).
+ * [random](random.md).
