@@ -39,15 +39,15 @@ The usual collection of simple types:
    * integers: `34`, `19`, `-27`, `#xdeadbeef`
    * strings: `"this is a string"`
    * characters: `#\A`, `#\b`, `#\newline`
-   * symbols: `color`
-   * boolean: `#t`, `#f` (for 'true' and 'false')
+   * symbols: `'color`, `'unknwon-unknowns`
+   * booleans: `#t`, `#f` (for 'true' and 'false')
    * undefined: `#u` (or 'unit')
 
 Builtin Containers
 ------------------
 
-   * vectors: `#(0 1 2 3 4)`
    * lists: `("x" "y" "z")`, `(0 2 4 8 16 32 64)`
+   * vectors: `#(0 1 2 3 4)`
    * records: `{age=23 name="george"}`
 
 Calling Functions
@@ -68,10 +68,14 @@ In most languages, names of variables and functions are limited to
 alphanumeric characters and the underscore.  In Irken (like most lisps),
 nearly any character is legal as part of a name.
 
-Some common conventions for naming:
+Some common naming conventions:
 
-  * boolean functions/variables end in `?`.
-  * functions that change state (i.e., assignments) often end in `!`.
+  * `a?`: a boolean function or variable - `(odd? n)`.
+  * `a!`: functions that change state, assignments - `(move! ob 3 4)`
+  * `a->b` indicates conversion - `int->char`.
+  * `a/b` indicates a function related to a type or subsystem: `zlib/deflate`, `sql/query`.
+  * `*a*`: a global variable, e.g. `*the-symbol-table*`.
+  * `%a`, `%%a`: irken-internal things.
 
 Every Expression Has a Value
 ----------------------------
@@ -87,8 +91,8 @@ value `#u` (for 'undefined' or 'unit').
 Special Forms
 -------------
 
-Most Irken code is of the `(function arg0 arg1 ...)` form.  However, there
-are some 'special forms' that behave differently.
+Most Irken expressions are of the form `(function arg0 arg1 ...)`.  However, there
+are some 'special forms' that behave differently, like `if`, `let`, `cond`.
 
 Simple Conditional
 ------------------

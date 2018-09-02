@@ -2,7 +2,7 @@
 Defining New Types
 ==================
 
-Unlike most lisps, Irken's type system is based on 'algebraic
+Unlike most Lisps, Irken's type system is based on 'algebraic
 datatypes', where complex types are built from simpler types.
 
 New types are created with the `datatype` special form:
@@ -18,6 +18,9 @@ Here, we've created a new datatype `year`, which has four
 different 'variants'.  To create a 'known' year:
 
     (year:known 1972)
+
+[`year:known` is called a 'constructor'.  It builds a value of
+of datatype `year`, with the variant `known`.]
 
 To create a 'range' year...
 
@@ -71,15 +74,8 @@ different types:
     (thing:two 27 27)
 
 When we create such a value, we 'instantiate' the polymorphic type
-(i.e. 'fill in the blanks').  We say that
-
-    (thing:one "a string")
-
-is of type `(thing string)` and
-
-    (thing:two 27 27)
-
-is of type `(thing int)`.
+(i.e. 'fill in the blanks').  We say that `(thing:one "a string")` is
+of type `(thing string)` and `(thing:two 27 27)` is of type `(thing int)`.
 
 Note that we _cannot_ do this:
 
@@ -107,7 +103,7 @@ are _not_ of the same type:
 But these two _are_ of the same type:
 
     (thing2:one 34)
-    (thing2:two 34 "string")
+    (thing2:two 19 "string")
 
 Recursive Datatypes
 -------------------
@@ -176,7 +172,7 @@ Or a binary tree of anything:
        (:node 'a (btree 'a) (btree 'a))
        )
 
-Or a `(tree int)`:
+Here's a `(tree int)`:
 
     (btree:node 19
       (btree:node 34
@@ -184,11 +180,11 @@ Or a `(tree int)`:
         (btree:empty))
       (btree:empty))
 
-Or a `(btree string)`:
+and a `(btree string)`:
 
     (btree:node "hey there" (btree:empty) (btree:empty))
 
-Or a `(btree (list int))`:
+and a `(btree (list int))`:
 
     (btree:node (list:cons 1 (list:nil)) (btree:empty) (btree:empty))
 
@@ -216,7 +212,7 @@ A Datatype For Mathematical Expressions
 
 We can represent mathematical expressions symbolically.
 
-First, we create datatype of all the different operations we support:
+First, we create a datatype of all the different operations we support:
 
     (datatype binop
       (:+)
@@ -224,6 +220,9 @@ First, we create datatype of all the different operations we support:
       (:*)
       (:/)
       )
+
+[Note that none of its variants have data attached.  This would be the equivalent
+ of an `enum` type in C, Java, etc...]
 
 Now, a datatype for expressions:
 
@@ -233,7 +232,7 @@ Now, a datatype for expressions:
       (:binop binop exp exp)
       )
 
-Here's a variable (denoted by a `symbol`):
+Here's a variable (named with a 'symbol'):
 
     (exp:var 'x)
 
