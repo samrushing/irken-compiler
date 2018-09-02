@@ -416,7 +416,7 @@ Capture the current continuation.
 Don't use this.  Use `callcc` or `let/cc`.
 
 ## (putcc k r) [macro]
-type: ((continuation 'a) 'a -> 'b)
+type: `((continuation 'a) 'a -> 'b)`
 
 Replace the current continuation.
 Don't use this.  Use `throw` or `let/cc`.
@@ -605,3 +605,9 @@ type: `{argv=(vector string) argc=int}`
 A record containing the program's command-line arguments upon startup.
 Note: when running under the VM, `argv[0]` is silently removed
 so that the bytecode file appears as `argv[0]`.
+
+Example:
+
+```scheme
+(printf "this program " sys.argv[0] " was invoked with " (int sys.argc) "arguments.\n")
+```
