@@ -135,7 +135,7 @@ divide `a` and `b`.
 -----------------
 ```scheme
 (defmacro *
-  (* x) -> x
+  (* x)       -> x
   (* a b ...) -> (binary* a (* b ...)))
 ```
 
@@ -184,7 +184,7 @@ right-shift `a` by `b` bits.
 -------------
 type: `(int int -> int)`
 
-fetch thing `i`th bit from `n` as an integer.
+fetch the `i`th bit from `n` as an integer.
 
 (bit-set n i)
 -------------
@@ -349,8 +349,10 @@ type: `(char -> int)`
 ASCII conversion.
 The special character `#\eof` has value `256`.
 
-## char->ascii [alias for char->int]
-## ascii->char [alias for int->char]
+## char->ascii
+[alias for char->int]
+## ascii->char
+[alias for int->char]
 
 ## (make-vector n val)
 type: `(int 'a -> (vector 'a))`
@@ -411,11 +413,13 @@ discard the argument, return `#u`.
 type: `(-> (continuation 'a))`
 
 Capture the current continuation.
+Don't use this.  Use `callcc` or `let/cc`.
 
 ## (putcc k r) [macro]
 type: ((continuation 'a) 'a -> 'b)
 
 Replace the current continuation.
+Don't use this.  Use `throw` or `let/cc`.
 
 ## (callcc p)
 type: `(((continuation 'a) -> 'a) -> 'a)`
@@ -465,6 +469,14 @@ Usually used for non-local exit.  For example:
 
 This is an [Option Type](https://en.wikipedia.org/wiki/Option_type).
 
+Example:
+```scheme
+(define peek
+  ()        -> (maybe:no)
+  (hd . tl) -> (maybe:yes hd)
+  )
+```
+
 ## (maybe? m)
 type: `((maybe 'a) -> bool)`
 
@@ -488,8 +500,9 @@ type: `(string -> (continuation int))`
 Currently only supported with the C backend.
 Load a continuation (previously dumped with `dump`).
 
-Note: the dump/load facility may require disabling ASLR.
-See the notes in `lib/core.scm` for more detail.
+Note: the dump/load facility may require disabling ASLR, which is platform-specific:
+  * MacOS: [disabling ASLR](http://src.chromium.org/viewvc/chrome/trunk/src/build/mac/change_mach_o_flags.py?revision=111385) _or_ link with `-no_pie` (add `-Wl,-no_pie` to `CFLAGS`).
+  * Linux: setarch `uname -m` -R <binary> _or_ link with `-no_pie` (add `-Wl,-no_pie` to `CFLAGS`).
 
 ## (make-generator producer)
 type: `((((maybe 'a) -> undefined) -> undefined) -> ( -> (maybe 'a)))`
@@ -543,7 +556,7 @@ Example:
 (raise (:ForbiddenFruit 'apple))
 ```
 
-## (try <body ...> except <exception-patterns>) [macro]
+## (try body... except exception-patterns...) [macro]
 
 Exception handling.  Example:
 
@@ -589,6 +602,6 @@ Note: not yet available on the VM.
 ## sys [record]
 type: `{argv=(vector string) argc=int}`
 
-A record containing the programs arguments upon invocation.
+A record containing the program's command-line arguments upon startup.
 Note: when running under the VM, `argv[0]` is silently removed
 so that the bytecode file appears as `argv[0]`.
