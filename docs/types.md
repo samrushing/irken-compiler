@@ -21,21 +21,22 @@ don't crash in the _way_ that C programs crash.  'segfaults' are rare
 with Irken, virtually always caused by either a bug in the compiler or
 an unsafe use of the Foreign Function Interface (calling out to C).
 
-For example, languages like C, C++, and Java all use the idea of a
+For example, languages like C, C++, and Java all have the idea of a
 'NULL' pointer.  It's easy, even for a seasoned programmer, to forget
-to check a pointer for NULL.
+to check a pointer for NULL.  Java is the reason your grandmother
+recognizes `NullPointerException`.  NULL pointers in C are the reason
+most people have seen the 'blue screen of death'.
 
-In Irken, there is no such beast: its equivalent is the `maybe` type.
-It captures the idea that a computation may or may not return a
-result.  Since Irken's pattern matching requires that every case is
-handled, every time, it's impossible to forget to handle the case
-where a return value is `(maybe:no)`.
-
+In Irken, its equivalent is the `maybe` type.  It captures the idea
+that a computation may or may not return a result.  Since Irken's
+pattern matching requires that every case is handled, _every_ time,
+it's impossible to forget to handle the case where a return value is
+`(maybe:no)`.
 
 ### Clarity of Thought
 
 This is hard to explain to someone unfamiliar with this kind of type
-system.  Irken (and ML/OCaml/Haskell) programming encourages a
+system.  Irken (and ML, OCaml, & Haskell) programming encourages a
 different approach to problem-solving.  Usually the first step is to
 think about the _types_, rather than the _algorithms_.  After many
 years of experience, I believe this is a 'better' way to program.  It
@@ -47,7 +48,7 @@ laid out, the algorithms usually fall into place.
 
 I've been programming for over 35 years, and I still experience a bit
 of shock and joy when a program works perfectly the first time I run
-it.
+it.  It happens all the time.
 
 ## Type Inference
 
@@ -128,11 +129,11 @@ After optimizing by the C compiler, that test turns into:
 
 Irken uses a small set of 'base types':
 
-  * integers (signed, 63-bit on a 64-bit machine)
+  * integers
   * booleans
   * characters
   * strings
-  * symbols (a singleton for each unique string).
+  * symbols
   * undefined (one value only: `#u`).
 
 From these are built some container types:
