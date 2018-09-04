@@ -26,7 +26,7 @@ def getenv_or (name, default):
         return default
 
 def system (cmd):
-    print cmd
+    print (cmd)
     if os.system (cmd) != 0:
         sys.stderr.write ('system cmd failed: %r\n' % (cmd,))
         raise SystemError
@@ -52,7 +52,7 @@ copy_tree ('include', IRKENTOP, ['.h', '.c', '.ll'])
 copy_tree ('ffi', IRKENTOP, ['_ffi.scm'])
 
 # we need a new binary with the new CFLAGS
-print 'building new binary with updated CFLAGS for install...'
+print ('building new binary with updated CFLAGS for install...')
 cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -g -I%s' % (IRKENINC,))
 flags = open ('self/flags.scm', 'rb').read()
 
@@ -64,7 +64,7 @@ open ('self/flags.scm', 'wb').write (
 system ('self/compile self/compile.scm -q')
 
 # rebuild bytecode
-print 'building new bytecode image...'
+print ('building new bytecode image...')
 system ('self/compile self/compile.scm -b -q')
 
 # copy binary
@@ -77,6 +77,6 @@ system ('cp -p self/compile.byc %s/' % (IRKENLIB,))
 open ('vm/irkc', 'wb').write (
     "#!/bin/sh\n%s/irkvm %s/compile.byc $@\n" % (IRKENBIN, IRKENLIB)
 )
-os.chmod ('vm/irkc', 0755)
+os.chmod ('vm/irkc', 0o755)
 system ('cp -p vm/irkc %s/' % (IRKENBIN,))
 
