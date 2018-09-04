@@ -69,7 +69,7 @@
   )
 
 (define length*
-  ()        acc -> acc
+  ()       acc -> acc
   (_ . tl) acc -> (length* tl (+ 1 acc)))
 
 (define (length l)
