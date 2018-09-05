@@ -3,6 +3,8 @@
 
 ## Introduction.
 
+[Installing Irken](install.md).
+
 A [gentle introduction](intro.md).
 
 ## Datatypes.

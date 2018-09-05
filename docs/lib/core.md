@@ -1,6 +1,6 @@
 
 The Core Library
-----------------
+================
 
 The 'core' (in `lib/core.scm`) contains the lowest-level primitives, a
 sort of minimal set of features needed by any program.
