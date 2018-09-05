@@ -374,6 +374,9 @@
 	  '%exn-raise  -> (compile tail? (first args) lenv k)
           ;; do-nothing prim to cast C types.
           '%c-cast     -> (compile tail? (first args) lenv k)
+          ;; do-nothing prim to cast between int and immediate-float types.
+          '%i2f       -> (compile tail? (first args) lenv k)
+          '%f2i       -> (compile tail? (first args) lenv k)
 	  ;; note: discards first argument...
 	  '%exn-handle -> (compile tail? (second args) lenv k)
 	  _ -> (c-primargs args name params (noderec->type exp) lenv k))))

@@ -14,6 +14,7 @@
 	 'cstring      -> (format "(char*)" arg)
 	 'buffer       -> (format "((" (irken-type->c-type type) ")(((irk_vector*)" arg ")+1))")
          'cref         -> (format "(" (irken-type->c-type type) ") get_foreign(" arg ")")
+         'float        -> (format "irk_untag_float ((irk_float)" arg ").as_double")
 	 'arrow	       -> arg
 	 'vector       -> arg
 	 'symbol       -> arg
@@ -76,6 +77,7 @@
     (type:pred 'int _ _)     -> (format "TAG_INTEGER((irk_int)" exp ")")
     (type:pred 'bool _ _)    -> (format "IRK_TEST(" exp ")")
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
+    (type:pred 'float _ _)   -> (format "(irk_tag_float ((irk_float)(" exp "))).as_object")
     (type:pred 'cref _ _)    -> (format "(make_foreign((void*)" exp "))")
     (type:pred '* _ _)       -> (format "(make_foreign((void*)" exp "))")
     (type:pred 'void _ _)    -> (format "((" exp "), IRK_UNDEFINED)")

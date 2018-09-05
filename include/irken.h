@@ -108,6 +108,14 @@ object * heap1 = NULL;
 static irk_int unbox (object * n) {return (irk_int)n >> 1;}
 static object *   box (irk_int n) {return (object *) ((n << 1) | 1);}
 
+typedef union {
+  irk_int as_int;
+  double as_double;
+  object * as_object;
+} irk_float;
+
+static irk_float irk_tagfloat (irk_float f);
+
 // Here's an interesting idea.  Can we store the first item of a multi-item tuple
 //   in with the typecode?  Can we avoid storing lengths?  Maybe if the most important
 //   variable-length tuple is the environment tuple, we can define its tag in such a way

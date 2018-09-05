@@ -690,7 +690,9 @@
       '%llvm-call    -> (make-llvm-scheme params)
       ;; for fetching irken objects in external symbols
       '%llvm-get     -> (make-llvm-scheme params)
-      ;; -------------------- FFI --------------------
+      ;; -------------- immediate float --------------
+      '%i2f          -> (:scheme '() (arrow float-type (list int-type)))
+      '%f2i          -> (:scheme '() (arrow int-type (list float-type)))
       _ -> (error1 "lookup-primapp" name)))
 
   (define (ffi-type-frob-int type)

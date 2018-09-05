@@ -75,6 +75,7 @@
 
 (defmacro fitem
   (fitem (<int> n))		-> (int->string n)
+  (fitem (<float> f))		-> (float->string f)
   (fitem (<char> ch))		-> (char->string ch)
   (fitem (<bool> b))		-> (bool->string b)
   (fitem (<hex> n))		-> (int->hex-string n)

@@ -1135,6 +1135,26 @@ irk_div2b1 (irk_int ah, irk_int al, irk_int b, object * rvo)
 
 #endif
 
+// ----ieee754 'double'/'binary64' encoding----------------------------------------
+
+#ifdef __LP64__
+
+irk_float
+irk_tag_float (irk_float f)
+{
+  f.as_int |= 1;
+  return f;
+}
+
+irk_float
+irk_untag_float (irk_float f)
+{
+  f.as_int ^= 1;
+  return f;
+}
+
+#endif
+
 // --------------------------------------------------------------------------------
 
 extern uint32_t irk_ambig_size;
