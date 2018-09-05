@@ -156,7 +156,6 @@ Which can now be called:
 
 ```scheme
 (+ 1 (double x))
-(double (double x))
 ```
 
 Here is a factorial function:

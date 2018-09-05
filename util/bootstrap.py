@@ -31,7 +31,7 @@ def tweak (s):
 def system (cmd):
     if windows:
         cmd = tweak (cmd)
-    print cmd
+    print (cmd)
     if 0 != os.system (cmd):
         raise CommandFailed (cmd)
 
@@ -66,30 +66,30 @@ def sys_in_dir (where, what):
     with WorkInDir (where):
         system (what)
 
-open ('self/flags.scm', 'wb').write (
+open ('self/flags.scm', 'w').write (
 """
 (define CC "%s")
 (define CFLAGS "%s")
 """ % (gcc, cflags))
 
-print 'copying the bootstrap compiler'
+print ('copying the bootstrap compiler')
 copy ('self/bootstrap.byc', 'self/compile.byc')
 
-print 'building VM'
+print ('building VM')
 # system ('make vm')
-execfile ('util/build_vm.py')
+exec(open('util/build_vm.py').read())
 
-print 'generating posix FFI...'
+print ('generating posix FFI...')
 system ('IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/posix.ffi')
 
-print 'compiling stage0 binary (with vm)...'
+print ('compiling stage0 binary (with vm)...')
 system ('IRKENLIB=. vm/irkvm self/compile.byc self/compile.scm -q')
 
-print 'compiling stage1 binary (with stage0):'
+print ('compiling stage1 binary (with stage0):')
 system ('IRKENLIB=. self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.1.c')
 
-print 'compiling stage2 binary (with stage1):'
+print ('compiling stage2 binary (with stage1):')
 system ('IRKENLIB=. self/compile self/compile.scm -q')
 move ('self/compile.c', 'self/compile.2.c')
 
@@ -111,10 +111,10 @@ def diff (p0, p1):
 # file comparison on windows?  duh, should just do it in python.
 samesame = diff ('self/compile.1.c', 'self/compile.2.c')
 if samesame:
-    print 'stage1 and stage2 identical, party on wayne!'
-    print 'consider running "python util/install.py" now'
+    print ('stage1 and stage2 identical, party on wayne!')
+    print ('consider running "python util/install.py" now')
 else:
-    print 'stage1 and stage2 output differs'
+    print ('stage1 and stage2 output differs')
 
 unlink ('self/compile.1.c')
 move ('self/compile.2.c', 'self/compile.c')
