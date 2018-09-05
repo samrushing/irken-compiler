@@ -23,6 +23,6 @@ if sysname == 'FreeBSD':
 elif sysname == 'Linux':
     cflags += ' -D_GNU_SOURCE -ldl'
 
-cmd = '%s %s vm/irkvm.c -o vm/irkvm' % (cc, cflags)
-print (cmd)
+cmd = '%s vm/irkvm.c -o vm/irkvm %s' % (cc, cflags)
+print cmd
 os.system (cmd)

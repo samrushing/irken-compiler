@@ -836,7 +836,8 @@ object
 vm_go (void)
 {
   register irk_int pc = 0;
-  register object * vm_regs[NREGS];
+  object * vm_regs0[NREGS];
+  register object ** vm_regs = vm_regs0;
   register bytecode_t * code = bytecode;
   for (int i=0; i < NREGS; i++) {
     vm_regs[i] = IRK_NIL;
