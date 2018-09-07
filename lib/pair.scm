@@ -144,9 +144,9 @@
   )
 
 (define drop
-  ()       _ -> (error "list index out of range")
   xs       0 -> xs
   (_ . xs) n -> (drop xs (- n 1))
+  ()       _ -> (error "list index out of range")
   )
 
 ;; (a b c d e f) 3 x   -> (a b c x d e f)
