@@ -40,14 +40,9 @@
   ;; functions using this construct must return their multiple
   ;;  values using the (:tuple ...) polyvariant.
   (let (((name0 name1 ...) val)) body ...)
-  -> (match val with
-       (:tuple name0 name1 ...)
-       -> (begin body ...))
+  -> (tuple-bind val (name0 name1 ...) (begin body ...))
   (let (((name0 name1 ...) val) bind ...) body ...)
-  -> (match val with
-       (:tuple name0 name1 ...)
-       -> (let (bind ...)
-            body ...))
+  -> (tuple-bind val (name0 name1 ...) (let (bind ...) body ...))
 
   ;; normal <let> here, we just rename it to our core
   ;; binding construct, <let_splat>
@@ -59,6 +54,22 @@
   -> (let-splat (bind0)
         (let (bind1 ...) body ...))
 
+  )
+
+;; XXX this could probably be done with %vcase directly.
+(defmacro tuple-bind
+  (tuple-bind val bindings body)
+  -> (match-with-macro val with (tuple-pattern () bindings) -> body)
+  )
+
+;; ((x y) (a b)) => (:tuple (:tuple x y) (:tuple a b))
+(defmacro tuple-pattern
+  (tuple-pattern (sub ...) ())
+  -> (:tuple sub ...)
+  (tuple-pattern (sub ...) (pat0 pat1 ...))
+  -> (tuple-pattern (sub ... (tuple-pattern () pat0)) (pat1 ...))
+  (tuple-pattern _ pat0)
+  -> pat0
   )
 
 ;; simplified <cond>

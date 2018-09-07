@@ -549,13 +549,13 @@
                  type
                  (expand-body body))))
 
-  (define (expand-match exps)
+  (define (expand-match* exps expand-rules?)
     (let loop ((vars '())
 	       (inits '())
 	       (el exps))
       (match el with
 	((sexp:symbol 'with) . rules)
-        -> (let (((vars code) (compile-pattern expand (reverse vars) rules)))
+        -> (let (((vars code) (compile-pattern expand (reverse vars) (if expand-rules? (map expand rules) rules))))
              (expand
               (if (null? inits)
                   code
@@ -566,6 +566,12 @@
 	-> (let ((var (new-match-var)))
 	     (loop (list:cons var vars) (list:cons (sexp (sym var) value) inits) el))
 	_ -> (error1 "malformed match expression" exps))))
+
+  (define (expand-match exps)
+    (expand-match* exps #f))
+
+  (define (expand-match-with-macro exps)
+    (expand-match* exps #t))
 
   (define expand-cinclude
     ((sexp:string path))
@@ -754,6 +760,7 @@
       ('let-splat expand-let-splat)
       ('let-subst expand-let-subst)
       ('match expand-match)
+      ('match-with-macro expand-match-with-macro)
       ('cinclude expand-cinclude)
       ('local-include expand-linclude)
       ('cverbatim expand-cverbatim)
