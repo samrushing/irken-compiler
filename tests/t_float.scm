@@ -192,13 +192,15 @@
     acc (dig . tl) -> (digits->big (big (+ (* big/10 acc) (I dig))) tl)
     )
 
+  ;; ((list int) (list int) int) -> (:tuple (list int) (list int) int)
   (define move-dot
     whole frac 0 -> (:tuple whole frac 0)
     whole frac n
     -> (let ((lw (length whole))
              (lf (length frac))
              (m (if (>0 n) (min lf n) (min lw (- n)))))
-         ;; adjust the position of the dot by moving digits from whole <-> frac.
+         ;; adjust the position of the dot
+         ;;   by moving digits from whole <-> frac.
          ;; wwww.ffff E+1 => wwwwf.fff
          ;; wwww.ffff E+2 => wwwwff.ff
          ;; wwww.ffff E-1 => www.wffff
@@ -207,50 +209,34 @@
                ((<0 n) (:tuple (take whole (- lw m)) (append (drop whole (- lw m)) frac) (+ n m)))
                (else   (:tuple whole frac 0)))))
 
+  ;;  x       y
+  ;; ---  = ----
+  ;; 10^e   2^52
+
+  (define (frac->big digits)
+    (let ((n (digits->big big/0 digits))
+          (ndigits (length digits))
+          (e10 (big-pow big/10 ndigits))
+          (e2 (int->big (<< 1 52))))
+      (big-quo (big-mul e2 n) e10)))
+
   (let ((chars (string->list s))
         ((neg? (whole chars)) (read-signed-digits chars))
         ((frac chars) (read-fraction chars))
         ((eneg? (exp chars)) (read-exponent chars))
         (exp0 (if eneg? (- (digits->int 0 exp)) (digits->int 0 exp)))
-        ((whole frac exp) (move-dot whole frac exp0)))
-    (printf "  "
-            (if neg? "-" "+")
-            (zpad 1 (join int->string "" whole))
-            "."
-            (zpad 1 (join int->string "" frac))
-            "e"
-            (int exp)
-            "\n")
+        ((whole frac exp) (move-dot whole frac exp0))
+        (whole0 (digits->big big/0 whole))
+        (wbits (big->bits whole0))
+        (fbits (- 52 wbits))
+        (joined (big-add (big-lshift whole0 52) (frac->big frac))))
+    (printf "adjusted " (big-repr joined) "\n")
+
+    ;; ok that works all fine and dandy, _except_ we now have an
+    ;;  unwanted decimal exponent to deal with.  so maybe we _do_
+    ;;  have to join whole & frac first, then convert to binary,
+    ;;  taking the exponent into account.
     ))
-
-;; returns (:tuple neg? numerator denominator-power)
-;; e.g. denominator-power of 5 => denominator = 10^5.
-
-(define (string->dec-ratio s)
-  (let ((chars (string->list s))
-        (neg? #f))
-    (let/cc return
-      (match chars with
-        ()         -> (return (:tuple #f (big:zero) 0)) ;; what strtod does
-        (#\- . tl) -> (begin (set! chars tl) (set! neg? #t))
-        _ -> #u)
-
-      (let loop ((chars chars)
-                 (r (big:zero))
-                 (dot 0))
-        (match chars dot with
-          ()         _ -> (:tuple neg? r dot)
-          (#\. . tl) 0 -> (loop tl r 1)
-          (#\e . tl) _ -> (raise (:String2Float/NotImplemented s))
-          (#\E . tl) _ -> (raise (:String2Float/NotImplemented s))
-          (digit . tl) _
-          -> (if (not (digit? digit))
-                 (raise (:String2Float/ParseFailure s))
-                 (loop tl
-                       (big (+ (* r big/10)
-                               (I (- (char->ascii digit) 48))))
-                       (if (> dot 0) (+ 1 dot) dot)))
-          )))))
 
 ;; ok, converting to binary.
 ;; 1) split into whole and fraction parts.
@@ -297,15 +283,18 @@
 
 ;;3243f6a8885a3
 
-(parse-float "3.14159e10")
-(parse-float "-3.14159")
-(parse-float "3.14159e1")
-(parse-float "3.14159e-1")
-(parse-float "3.14159e+1")
-(parse-float "7")
-(parse-float "7e20")
-(parse-float "7e-1")
-(parse-float "2718281828e-4")
-(parse-float "2718281828e+4")
-(parse-float "2718.281828e-4")
-(parse-float "2718.281828e+4")
+(parse-float "3.14159265358979323846")
+
+
+;; (parse-float "3.14159e10")
+;; (parse-float "-3.14159")
+;; (parse-float "3.14159e1")
+;; (parse-float "3.14159e-1")
+;; (parse-float "3.14159e+1")
+;; (parse-float "7")
+;; (parse-float "7e20")
+;; (parse-float "7e-1")
+;; (parse-float "2718281828e-4")
+;; (parse-float "2718281828e+4")
+;; (parse-float "2718.281828e-4")
+;; (parse-float "2718.281828e+4")
