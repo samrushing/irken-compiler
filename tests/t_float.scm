@@ -50,7 +50,7 @@
         (%cref->string #f buffer r))))
 
 (datatype ieee754
-  (:double bool int int) ;; sign exponent significand
+  (:double bool int int) ;; sign exponent significand (implied high bit of one)
   (:zero bool)           ;; sign
   (:infinity bool)       ;; sign
   (:nan bool int)        ;; NaN (not a number)
@@ -121,13 +121,17 @@
 ;; (printf (float (f+ f1 f0)) "\n")
 ;; (printf (float (f- f1 f1)) "\n")
 
-(printf "+zero " (float (float/encode (ieee754:zero #f))) "\n")
-(printf "-zero " (float (float/encode (ieee754:zero #t))) "\n")
-(printf "+inf  " (float (float/encode (ieee754:infinity #f))) "\n")
-(printf "-inf  " (float (float/encode (ieee754:infinity #t))) "\n")
-(printf "+NaN  " (float (float/encode (ieee754:nan #f 314159))) "\n")
-(printf "-NaN  " (float (float/encode (ieee754:nan #t 314159))) "\n")
-(printf "subn  " (float (float/encode (ieee754:subnormal #f 314159))) "\n")
+(define (t0)
+  (printf "+zero " (float (float/encode (ieee754:zero #f))) "\n")
+  (printf "-zero " (float (float/encode (ieee754:zero #t))) "\n")
+  (printf "+inf  " (float (float/encode (ieee754:infinity #f))) "\n")
+  (printf "-inf  " (float (float/encode (ieee754:infinity #t))) "\n")
+  (printf "+NaN  " (float (float/encode (ieee754:nan #f 42))) "\n")
+  (printf "-NaN  " (float (float/encode (ieee754:nan #t 42))) "\n")
+  (printf "subn  " (float (float/encode (ieee754:subnormal #f 42))) "\n")
+  )
+
+;;(t0)
 
 ;;(printf "sin(pi/4) " (float
 
@@ -140,6 +144,85 @@
           r
           (loop (>> n 1) (+ r 1))))))
 
+;; ---- float parsing ----
+
+(define (parse-float s)
+
+  (define (char->digit ch)
+    (- (char->int ch) 48))
+
+  ;; (list char) -> (list int)
+  (define read-digits
+    acc (digit . tl)
+    -> (if (digit? digit)
+           (read-digits (list:cons (char->digit digit) acc) tl)
+           (:tuple (reverse acc) (list:cons digit tl)))
+    acc ()
+    -> (:tuple (reverse acc) (list:nil))
+    )
+
+  (define read-signed-digits
+    (#\- . tl) -> (:tuple #t (read-digits (list:nil) tl))
+    (#\+ . tl) -> (:tuple #f (read-digits (list:nil) tl))
+    chars      -> (:tuple #f (read-digits (list:nil) chars))
+    )
+
+  (define read-fraction
+    (#\. . tl) -> (read-digits (list:nil) tl)
+    chars      -> (:tuple (list:nil) chars)
+    )
+
+  (define read-exponent
+    (#\E #\+ . tl) -> (:tuple #f (read-digits (list:nil) tl))
+    (#\E #\- . tl) -> (:tuple #t (read-digits (list:nil) tl))
+    (#\E     . tl) -> (:tuple #f (read-digits (list:nil) tl))
+    (#\e #\+ . tl) -> (:tuple #f (read-digits (list:nil) tl))
+    (#\e #\- . tl) -> (:tuple #t (read-digits (list:nil) tl))
+    (#\e     . tl) -> (:tuple #f (read-digits (list:nil) tl))
+    chars          -> (:tuple #f (:tuple (list:nil) chars))
+    )
+
+  (define digits->int
+    acc ()         -> acc
+    acc (dig . tl) -> (digits->int (+ (* 10 acc) dig) tl)
+    )
+
+  (define digits->big
+    acc ()         -> acc
+    acc (dig . tl) -> (digits->big (big (+ (* big/10 acc) (I dig))) tl)
+    )
+
+  (define move-dot
+    whole frac 0 -> (:tuple whole frac 0)
+    whole frac n
+    -> (let ((lw (length whole))
+             (lf (length frac))
+             (m (if (>0 n) (min lf n) (min lw (- n)))))
+         ;; adjust the position of the dot by moving digits from whole <-> frac.
+         ;; wwww.ffff E+1 => wwwwf.fff
+         ;; wwww.ffff E+2 => wwwwff.ff
+         ;; wwww.ffff E-1 => www.wffff
+         ;; wwww.ffff E-2 => ww.wwffff
+         (cond ((>0 n) (:tuple (append whole (take frac m)) (drop frac m) (- n m)))
+               ((<0 n) (:tuple (take whole (- lw m)) (append (drop whole (- lw m)) frac) (+ n m)))
+               (else   (:tuple whole frac 0)))))
+
+  (let ((chars (string->list s))
+        ((neg? (whole chars)) (read-signed-digits chars))
+        ((frac chars) (read-fraction chars))
+        ((eneg? (exp chars)) (read-exponent chars))
+        (exp0 (if eneg? (- (digits->int 0 exp)) (digits->int 0 exp)))
+        ((whole frac exp) (move-dot whole frac exp0)))
+    (printf "  "
+            (if neg? "-" "+")
+            (zpad 1 (join int->string "" whole))
+            "."
+            (zpad 1 (join int->string "" frac))
+            "e"
+            (int exp)
+            "\n")
+    ))
+
 ;; returns (:tuple neg? numerator denominator-power)
 ;; e.g. denominator-power of 5 => denominator = 10^5.
 
@@ -151,6 +234,7 @@
         ()         -> (return (:tuple #f (big:zero) 0)) ;; what strtod does
         (#\- . tl) -> (begin (set! chars tl) (set! neg? #t))
         _ -> #u)
+
       (let loop ((chars chars)
                  (r (big:zero))
                  (dot 0))
@@ -168,31 +252,25 @@
                        (if (> dot 0) (+ 1 dot) dot)))
           )))))
 
-;; generate the ratio 4 bits at a time.
+;; ok, converting to binary.
+;; 1) split into whole and fraction parts.
+;;  note: there's no way to avoid this, since we are in base 10 but
+;;    need the mantissa in binary.  for example, 3.14 and 31.4 have
+;;    different mantissas.
+
+;; generate the ratio 16 bits at a time.
 (define (ratio-bit-gen n d)
-  (set! d (big-quo d (int->big 16)))
+  (set! d (big-quo d (int->big (<< 1 16))))
   (makegen emit
     (let loop ((n n))
       (let (((q r) (big-div n d)))
         (emit q)
-        (loop (big-lshift r 4))))))
+        (loop (big-lshift r 16))))))
 
-;; too many digits, needs bignum:
-(printn (string->dec-ratio "3.14159265358979323846"))
-;; just fits:
-(printn (string->dec-ratio "3.14159265358979323"))
-
-(let (((neg? num den-pow) (string->dec-ratio "3.14159265358979323846"))
-      (gen (ratio-bit-gen num (big-pow big/10 (- den-pow 1)))))
-  (printn (big->dec num))
-  (printn (big->dec (big-pow big/10 den-pow)))
-  (for-range i 60
-    (match (gen) with
-      (maybe:yes digit)
-      -> (printf (bin (big->int digit)) " ")
-      (maybe:no)
-      -> (impossible))))
-(printf "\n")
+;; ;; too many digits, needs bignum:
+;; (printn (string->dec-ratio "3.14159265358979323846"))
+;; ;; just fits:
+;; (printn (string->dec-ratio "3.14159265358979323"))
 
 ;; 400921fb54442d18
 ;; 0 100 0000 0000
@@ -213,9 +291,21 @@
 ;; 300100100001111110110101010001000100001011010001100001000110
 
 
-;; 3  0010 0100 0011 1111 0110 1010 1000 1000 1000 0101 1010 0011
-;; 11 0010 0100 0011 1111 0110 1010 1000 1000 1000 0101 1010 0011
-;;  3  2    4    3    f    6    a    8    8    8    5    a    3
+;;    3 0010 0100 0011 1111 0110 1010 1000 1000 1000 0101 1010 0011
+;; 0011 0010 0100 0011 1111 0110 1010 1000 1000 1000 0101 1010 0011
+;;  3    2    4    3    f    6    a    8    8    8    5    a    3
 
 ;;3243f6a8885a3
 
+(parse-float "3.14159e10")
+(parse-float "-3.14159")
+(parse-float "3.14159e1")
+(parse-float "3.14159e-1")
+(parse-float "3.14159e+1")
+(parse-float "7")
+(parse-float "7e20")
+(parse-float "7e-1")
+(parse-float "2718281828e-4")
+(parse-float "2718281828e+4")
+(parse-float "2718.281828e-4")
+(parse-float "2718.281828e+4")
