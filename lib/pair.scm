@@ -390,7 +390,7 @@
   (define loop
     1 acc (maybe:yes item) -> (reverse (list:cons item acc))
     n acc (maybe:yes item) -> (loop (- n 1) (list:cons item acc) (gen))
-    n acc (maybe:no)       -> (list:nil)
+    n acc (maybe:no)       -> (reverse acc)
     )
   (loop n '() (gen)))
 
