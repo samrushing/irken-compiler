@@ -187,15 +187,15 @@
         (joined (digits->big big/0 (append whole frac)))
         ((n52 bexp dexp) (clamp joined dexp))
         (normal (normalize n52)))
-    (printf "     s " s "\n"
-            "joined " (big-repr joined) "\n"
-            "   n52 " (int n52) "\n"
-            "   n52 " (hex n52) "\n"
-            "  bexp " (int bexp) "\n"
-            " dexp0 " (int dexp0) "\n"
-            " dexp1 " (int dexp1) "\n"
-            "  dexp " (int dexp) "\n"
-            "normal " (zpad 13 (hex normal)) "\n")
+    ;; (printf "     s " s "\n"
+    ;;         "joined " (big-repr joined) "\n"
+    ;;         "   n52 " (int n52) "\n"
+    ;;         "   n52 " (hex n52) "\n"
+    ;;         "  bexp " (int bexp) "\n"
+    ;;         " dexp0 " (int dexp0) "\n"
+    ;;         " dexp1 " (int dexp1) "\n"
+    ;;         "  dexp " (int dexp) "\n"
+    ;;         "normal " (zpad 13 (hex normal)) "\n")
     (let ((result (float/encode (ieee754:double neg? bexp (<< normal 1)))))
       (when (not (zero? dexp))
         ;; we have a decimal exponent to deal with
@@ -207,7 +207,6 @@
 
   (define (clamp n)
     (let ((nbits (big->bits n)))
-      (printf "nbits " (int nbits) "\n")
       (if (> nbits 52)
           (:tuple (big->int (big-rshift n (- nbits 52))) (- nbits 1))
           (:tuple (big->int (big-lshift n (- 52 nbits))) (- nbits 1)))))
