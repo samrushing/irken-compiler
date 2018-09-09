@@ -207,8 +207,9 @@
 
   (define (clamp n)
     (let ((nbits (big->bits n)))
+      (printf "nbits " (int nbits) "\n")
       (if (> nbits 52)
-          (clamp (big-quo n big/10))
+          (:tuple (big->int (big-rshift n (- nbits 52))) (- nbits 1))
           (:tuple (big->int (big-lshift n (- 52 nbits))) (- nbits 1)))))
 
   (define (normalize n)
@@ -217,7 +218,7 @@
   (define (encode n neg?)
     (let (((n52 bexp) (clamp n))
           (normal (normalize n52)))
-    (float/encode (ieee754:double neg? bexp (<< normal 1)))))
+      (float/encode (ieee754:double neg? bexp (<< normal 1)))))
 
   (match n with
     (big:zero)  -> f/0
@@ -274,10 +275,13 @@
   (pfloat (int->float -3))
   )
 
-;; (t0)
-;; (t1)
-;; (t2)
+(define (t3)
+  (pfloat (big->float (dec->big "61778152893995157846522121203566086120008407128530432425609934")))
+  (pfloat (big->float (dec->big "-61778152893995157846522121203566086120008407128530432425609934")))
+  )
 
-(pfloat (int->float 1))
-(printf (zpad 16 (hex (%f2i #f (int->float 1)))) "\n")
-(pfloat (fsin (f/ (parse-float "3.14159265358979323846") (int->float 4))))
+(t0)
+(t1)
+(t2)
+(t3)
+
