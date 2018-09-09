@@ -168,11 +168,11 @@
     acc (dig . tl) -> (digits->big (big (+ (* big/10 acc) (I dig))) tl)
     )
 
-  (define (clamp n)
+  (define (clamp n dexp)
     (let ((nbits (big->bits n)))
       (if (> nbits 52)
-          (clamp (big-quo n big/10))
-          (:tuple (big->int (big-lshift n (- 52 nbits))) (- nbits 1)))))
+          (clamp (big-quo n big/10) (+ dexp 1))
+          (:tuple (big->int (big-lshift n (- 52 nbits))) (- nbits 1) dexp))))
 
   (define (normalize n)
     (logxor n (<< 1 51)))
@@ -181,21 +181,21 @@
         ((neg? (whole chars)) (read-signed-digits chars))
         ((frac chars) (read-fraction chars))
         ((eneg? (exp chars)) (read-exponent chars))
-        (joined (digits->big big/0 (append whole frac)))
-        ((n52 bexp) (clamp joined))
         (dexp0 (digits->int 0 exp))
         (dexp1 (if eneg? (- dexp0) dexp0))
         (dexp (- dexp1 (length frac)))
+        (joined (digits->big big/0 (append whole frac)))
+        ((n52 bexp dexp) (clamp joined dexp))
         (normal (normalize n52)))
-    ;; (printf "     s " s "\n"
-    ;;         "joined " (big-repr joined) "\n"
-    ;;         "   n52 " (int n52) "\n"
-    ;;         "   n52 " (hex n52) "\n"
-    ;;         "  bexp " (int bexp) "\n"
-    ;;         " dexp0 " (int dexp0) "\n"
-    ;;         " dexp1 " (int dexp1) "\n"
-    ;;         "  dexp " (int dexp) "\n"
-    ;;         "normal " (zpad 13 (hex normal)) "\n")
+    (printf "     s " s "\n"
+            "joined " (big-repr joined) "\n"
+            "   n52 " (int n52) "\n"
+            "   n52 " (hex n52) "\n"
+            "  bexp " (int bexp) "\n"
+            " dexp0 " (int dexp0) "\n"
+            " dexp1 " (int dexp1) "\n"
+            "  dexp " (int dexp) "\n"
+            "normal " (zpad 13 (hex normal)) "\n")
     (let ((result (float/encode (ieee754:double neg? bexp (<< normal 1)))))
       (when (not (zero? dexp))
         ;; we have a decimal exponent to deal with
@@ -274,9 +274,10 @@
   (pfloat (int->float -3))
   )
 
-(t0)
-(t1)
-(t2)
+;; (t0)
+;; (t1)
+;; (t2)
 
 (pfloat (int->float 1))
 (printf (zpad 16 (hex (%f2i #f (int->float 1)))) "\n")
+(pfloat (fsin (f/ (parse-float "3.14159265358979323846") (int->float 4))))
