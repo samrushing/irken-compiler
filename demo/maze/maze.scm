@@ -5,6 +5,7 @@
 (require "lib/mtwist.scm")
 (require "lib/getopt.scm")
 (require "lib/codecs/base85.scm")
+(require "lib/codecs/base64.scm")
 
 (require "demo/maze/gen.scm")
 (require "demo/maze/ascii.scm")
@@ -24,6 +25,7 @@
    (flag 'js)
    (flag 'hex)
    (flag 'b85)
+   (flag 'b64)
    (flag 'solve)
    (arg 'seed (int 31415926535))
    (pos 'w (int 115))
@@ -48,6 +50,7 @@
           "  [-ascii] ASCII output\n"
           "  [-js] javascript output\n"
           "  [-b85] base85 output\n"
+          "  [-b64] base64 output\n"
           "  [-hex] HEX output\n"
           "  [-solve] add the solution to SVG output\n"
           "example: $ " sys.argv[0] " 50 50\n")
@@ -68,6 +71,7 @@
         (ascii #f)
         (js #f)
         (b85 #f)
+        (b64 #f)
         (solve? #f)
         )
     (when-maybe v (get-bool-opt opts 'hex)
@@ -78,6 +82,8 @@
       (set! js #t))
     (when-maybe v (get-bool-opt opts 'b85)
       (set! b85 #t))
+    (when-maybe v (get-bool-opt opts 'b64)
+      (set! b64 #t))
     (when-maybe v (get-bool-opt opts 'solve)
       (set! solve? #t))
     (when-maybe v (get-int-opt opts 'h)
@@ -94,6 +100,7 @@
       (cond (ascii (graph->ascii maze w h solution))
             (js (graph->js maze w h s solution))
             (b85 (graph->base85 maze w h))
+            (b64 (graph->base64 maze w h))
             (hex (graph->hex maze w h))
             (else (graph->svg maze w h s solution)))
       )
