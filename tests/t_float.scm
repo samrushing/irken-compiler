@@ -119,6 +119,20 @@
 ;;   (%%cexp (float -> float) "__exp10(%0)" a))
 (define (fexp10 a)
   (%%cexp (float -> float) "pow(10,%0)" a))
+(define (ffloor a)
+  (%%cexp (float -> float) "floor(%0)" a))
+(define (fround a)
+  (%%cexp (float -> int) "lround(%0)" a))
+(define (ftrunc a)
+  (%%cexp (float -> int) "lround(trunc(%0))" a))
+(define (f<? a b)
+  (%%cexp (float float -> bool) "%0 < %1" a b))
+(define (f>? a b)
+  (%%cexp (float float -> bool) "%0 > %1" a b))
+(define (fcmp a b)
+  (cond ((f<? a b) (cmp:<))
+        ((f>? a b) (cmp:>))
+        (else (cmp:=))))
 
 ;; ---- float parsing ----
 
@@ -127,34 +141,37 @@
   (define (char->digit ch)
     (- (char->int ch) 48))
 
-  ;; (list char) -> (list int)
-  (define read-digits
+  (define read-digits*
     acc (digit . tl)
     -> (if (digit? digit)
-           (read-digits (list:cons (char->digit digit) acc) tl)
+           (read-digits* (list:cons (char->digit digit) acc) tl)
            (:tuple (reverse acc) (list:cons digit tl)))
     acc ()
     -> (:tuple (reverse acc) (list:nil))
     )
 
+  ;; (list char) -> (list int)
+  (define (read-digits digits)
+    (read-digits* (list:nil) digits))
+
   (define read-signed-digits
-    (#\- . tl) -> (:tuple #t (read-digits (list:nil) tl))
-    (#\+ . tl) -> (:tuple #f (read-digits (list:nil) tl))
-    chars      -> (:tuple #f (read-digits (list:nil) chars))
+    (#\- . tl) -> (:tuple #t (read-digits tl))
+    (#\+ . tl) -> (:tuple #f (read-digits tl))
+    chars      -> (:tuple #f (read-digits chars))
     )
 
   (define read-fraction
-    (#\. . tl) -> (read-digits (list:nil) tl)
+    (#\. . tl) -> (read-digits tl)
     chars      -> (:tuple (list:nil) chars)
     )
 
   (define read-exponent
-    (#\E #\+ . tl) -> (:tuple #f (read-digits (list:nil) tl))
-    (#\E #\- . tl) -> (:tuple #t (read-digits (list:nil) tl))
-    (#\E     . tl) -> (:tuple #f (read-digits (list:nil) tl))
-    (#\e #\+ . tl) -> (:tuple #f (read-digits (list:nil) tl))
-    (#\e #\- . tl) -> (:tuple #t (read-digits (list:nil) tl))
-    (#\e     . tl) -> (:tuple #f (read-digits (list:nil) tl))
+    (#\E #\+ . tl) -> (:tuple #f (read-digits tl))
+    (#\E #\- . tl) -> (:tuple #t (read-digits tl))
+    (#\E     . tl) -> (:tuple #f (read-digits tl))
+    (#\e #\+ . tl) -> (:tuple #f (read-digits tl))
+    (#\e #\- . tl) -> (:tuple #t (read-digits tl))
+    (#\e     . tl) -> (:tuple #f (read-digits tl))
     chars          -> (:tuple #f (:tuple (list:nil) chars))
     )
 
@@ -225,8 +242,35 @@
     (big:neg _) -> (encode (big-negate n) #t))
   )
 
+(define (highest-bit-set n)
+  (%backend c (%%cexp (int -> int) "(64 - __builtin_clzl (%0))" n))
+  (%backend llvm (- 64 (%llvm-call ("@irk_ctlz" (int -> int)) n)))
+  (%backend bytecode
+    (let loop ((n n) (r 0))
+      (if (zero? n)
+          r
+          (loop (>> n 1) (+ r 1))))))
+
 (define (int->float n)
-  (big->float (int->big n)))
+
+  (define (clamp n)
+    (let ((nbits (highest-bit-set n)))
+      (if (> nbits 52)
+          (:tuple (>> n (- nbits 52)) (- nbits 1))
+          (:tuple (<< n (- 52 nbits)) (- nbits 1)))))
+
+  (define (normalize n)
+    (logxor n (<< 1 51)))
+
+  (define (encode n neg?)
+    (let (((n52 bexp) (clamp n))
+          (normal (normalize n52)))
+      (float/encode (ieee754:double neg? bexp (<< normal 1)))))
+
+  (cond ((zero? n) f/0)
+        ((>0 n) (encode n #f))
+        (else (encode (- n) #t)))
+  )
 
 ;; ---- testing ----
 
@@ -283,4 +327,3 @@
 (t1)
 (t2)
 (t3)
-
