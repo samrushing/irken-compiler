@@ -1,5 +1,7 @@
 ;; -*- Mode: Irken -*-
 
+;; https://perl.plover.com/classes/cftalk/INFO/gosper.txt
+
 (require "lib/basis.scm")
 (require "demo/bignum.scm")
 
@@ -129,6 +131,13 @@
   (makegen emit
     (for item g
       (emit (int->big item)))))
+
+(define (cf->dec ndigits gen)
+  (let ((bgen (embiggen gen))
+        (base (int->big 10))
+        (digits (gen-take ndigits (cf->big-digits bgen base)))
+        (chars (map big->dec digits)))
+    (format (first chars) "." (join "" (rest chars)))))
 
 (define (digits-10k gen)
   ;; take 2000 'digits' (in base 100,000)
