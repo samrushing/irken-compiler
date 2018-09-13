@@ -767,6 +767,9 @@
       (type:pred 'rlabel ((type:pred exn-name _ _) exn-type _) _)
       -> (let ((global-type (get-exn-type exn-name)))
 	   (unify exp global-type exn-type))
+      ;; XXX do we need to assert that row is a row type?
+      (type:tvar _ _)
+      -> #u
       _ -> (error1 "unify-exception-types: bad type" (type-repr row))
       ))
 
@@ -778,6 +781,9 @@
 	-> (begin
 	     (unify-exception-types val row tenv)
 	     val-type)
+        (type:tvar _ _)
+        ;; XXX do we need to assert that row is a row type?
+        -> val-type
 	_ -> (begin
 	       (printf "bad exception type:\n")
 	       (pp-node val) (newline)
@@ -793,6 +799,9 @@
 	-> (begin
 	     (unify-exception-types exn-match row tenv)
 	     match-type)
+        ;; XXX do we need to assert that row is a row type?
+        (type:tvar _ _)
+        -> val-type
 	_ -> (error1 "unify-handlers: expected row sum type" (type-repr val-type)))))
 
   (define (type-of-primapp name params subs tenv)
