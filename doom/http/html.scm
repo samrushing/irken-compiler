@@ -31,6 +31,16 @@
    (rope:leaf (symbol->string name))
    (rope:leaf ">")))
 
+(define (empty-params name params)
+  (rope-bracket
+   (rope:leaf "<")
+   (rope/build
+    (rope:leaf (symbol->string name))
+    (if (not (null? params))
+        (rope:leaf (format " " (join " " (reverse params))))
+        (rope:leaf "")))
+   (rope:leaf "/>")))
+
 (define (html-wrap tag params contents)
   (rope-bracket (open-tag tag params) contents (close-tag tag)))
 
@@ -59,6 +69,9 @@
   (hitem (<&join> p sep l)) -> (rope/join (rope:leaf sep) (map p l))
   ;; pretty-printed sexp
   (hitem (<&pp> exp))       -> (html (pre (&cat (generator->list (pp-html exp 80)))))
+  ;; empty tag with params.
+  (hitem ((tag param ...)))
+  -> (empty-params (quote (%%symbol tag)) (hparams (list:nil) (param ...)))
   ;; empty tag
   (hitem (tag))
   -> (empty-tag (quote (%%symbol tag)))
