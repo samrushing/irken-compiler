@@ -151,6 +151,15 @@
   -> (set! root (tree/delete root cmp k))
   )
 
+(defmacro tree/delete!?
+  (tree/delete?! root cmp k)
+  -> (let (($result (tree/delete root cmp k)))
+       (cond ((not (eq? $result root))
+              (set! root $result)
+              #t)
+             (else
+              #f))))
+
 (define tree/black-height
   (tree:empty) acc	   -> acc
   (tree:red L _ _ _) acc   -> (tree/black-height L acc)
