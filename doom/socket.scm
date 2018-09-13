@@ -111,6 +111,7 @@
         ))
 
     (define (close)
+      (poller/forget sock.fd)
       (sock/close sock))
 
     (define (get-fd)

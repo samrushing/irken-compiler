@@ -1,6 +1,12 @@
 ;; -*- Mode: Irken -*-
 
 (require "doom/kqueue.scm")
+(require "doom/timeq.scm")
+
+;; XXX there's a strong argument here for using vectors rather than a
+;;  map for the pending events, since all unixen maintain a strict fd
+;;  limit (FD_SETSIZE). will revisit this for performance tuning.
+;;  [I'll probably try that when I do epoll for linux]
 
 ;; XXX we will need a priority queue.
 
@@ -52,7 +58,7 @@
 
 (defmacro debugf
   (debugf x ...)
-  -> (printf (bold "[" (int *thread-id*) "]") x ...)
+  -> (printf (bold "[" (int *thread-id*) "] ") x ...)
   )
 
 ;; TODO: since this code is using getcc/putcc directly, it's possible
@@ -70,13 +76,24 @@
 
 (define (poller/dispatch)
   (match (queue/pop! the-poller.runnable) with
-    (maybe:yes (:tuple thread-id eh k))
-    -> (begin
-         (set! *the-exception-handler* eh)
-         (set! *thread-id* thread-id)
-         (putcc k #u))
+    (maybe:yes save)
+    -> (poller/restore save)
     (maybe:no)
     -> (poller/wait-and-schedule)))
+
+(define (poller/make-save k)
+  (:tuple *thread-id* *the-exception-handler* k))
+
+(define (poller/schedule save)
+  (queue/add! the-poller.runnable save))
+
+(define poller/restore
+  (:tuple thread-id exn-handler k)
+  -> (begin
+       ;; (debugf "restoring " (int thread-id) "\n")
+       (set! *the-exception-handler* exn-handler)
+       (set! *thread-id* thread-id)
+       (putcc k #u)))
 
 ;; these funs know that EVFILT values are consecutive small negative ints
 
@@ -92,11 +109,11 @@
   (inc! the-poller.nwait)
   (tree/insert! (kfilt filter)
                 int-cmp ident
-                (:tuple *thread-id* *the-exception-handler* k)))
+                (poller/make-save k)))
 
 (define (poller/delete-event ident filter)
-  (tree/delete! (kfilt filter) int-cmp ident)
-  (dec! the-poller.nwait))
+  (when (tree/delete!? (kfilt filter) int-cmp ident)
+    (dec! the-poller.nwait)))
 
 ;; put the current thread to sleep while waiting for the kevent (ident, filter).
 (define (poller/wait-for ident filter)
@@ -118,6 +135,11 @@
 (define (poller/wait-for-write fd)
   (poller/wait-for fd EVFILT_WRITE))
 
+(define (poller/forget fd)
+  (poller/delete-event fd EVFILT_READ)
+  (poller/delete-event fd EVFILT_WRITE)
+  )
+
 (define poller/enqueue-waiting-thread
   (:kev ident filter)
   -> (match (poller/lookup-event ident filter) with
@@ -134,13 +156,16 @@
 
 (define (poller/wait-and-schedule)
   ;; all the runnable threads have done their bit, now throw it to kevent().
-  (if (= the-poller.nwait 0)
-      (printf "no events, will wait forever!\n"))
-  (let ((n (syscall (kevent the-poller.kqfd the-poller.ievents the-poller.oevents))))
-    (set! the-poller.ievents.index 0)
-    (for-range i n
-      (poller/enqueue-waiting-thread
-       (get-kevent the-poller.oevents i)))
-    (poller/dispatch)
-    ))
+  (when (and (eq? the-timeq (tree:empty)) (= the-poller.nwait 0))
+    (debugf "no more events, exiting.\n")
+    (%exit #f 1))
+  (let ((timeout (timeq/time-to-next))
+        (n (syscall (kevent the-poller.kqfd the-poller.ievents the-poller.oevents timeout))))
+      (set! the-poller.ievents.index 0)
+      (for-range i n
+        (poller/enqueue-waiting-thread
+         (get-kevent the-poller.oevents i)))
+      (timeq/schedule)
+      (poller/dispatch)
+      ))
 

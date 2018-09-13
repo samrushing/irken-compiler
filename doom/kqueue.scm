@@ -26,10 +26,14 @@
      (c-get-int (%c-sref kevent.filter kev*))
      )))
 
-(define (kevent kqfd changes-in changes-out)
-  (kqueue/kevent
-   kqfd
-   (%c-cast (struct kevent) changes-in.karray)  changes-in.index
-   (%c-cast (struct kevent) changes-out.karray) changes-out.size
-   NULL ;; timespec, eventually will need a timeout here.
-   ))
+(define (kevent kqfd changes-in changes-out timeout)
+  (let ((ts* (halloc (struct timespec)))
+        ((sec nsec) (divmod timeout 1000000000)))
+    (c-set-int (%c-sref timespec.tv_sec ts*) sec)
+    (c-set-int (%c-sref timespec.tv_nsec ts*) nsec)
+    (kqueue/kevent
+     kqfd
+     (%c-cast (struct kevent) changes-in.karray)  changes-in.index
+     (%c-cast (struct kevent) changes-out.karray) changes-out.size
+     ts*
+     )))
