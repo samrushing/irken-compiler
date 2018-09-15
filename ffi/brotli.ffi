@@ -2,8 +2,8 @@
 
 (brotli
   (includes "brotli/encode.h" "brotli/decode.h")
-  (cflags "")
-  (lflags "-lbrotlienc -lbrotlidec")
+  (cflags "-I/usr/local/include")
+  (lflags "-L/usr/local/lib/ -lbrotlienc -lbrotlidec")
   (enums BrotliEncoderMode BrotliEncoderOperation BrotliEncoderParameter
          BrotliDecoderResult BrotliDecoderParameter)
   (constants
