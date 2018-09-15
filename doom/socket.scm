@@ -2,6 +2,7 @@
 
 (require "lib/net/socket.scm")
 (require "doom/scheduler.scm")
+(require "doom/sync.scm")
 
 ;; we have two different styles of wait/retry:
 ;; 1) normal: try the syscall, if EWOULDBLOCK then wait & retry it.
@@ -46,7 +47,8 @@
 (define (doom/make* sock isize osize)
   (let ((sock sock)
         (ibuf (buffer/make isize))
-        (obuf (buffer/make osize)))
+        (obuf (buffer/make osize))
+        (sendm (mutex/make)))
 
     (define (listen n)
       ;; XXX zilch the two buffers
@@ -97,7 +99,7 @@
                 ))
             (string-concat (reverse parts)))))
 
-    (define (send data)
+    (define (send* data)
       (let ((left (string-length data)))
         (buffer/reset! obuf)
         ;; this is cheating, we should loop here instead
@@ -109,6 +111,10 @@
             (dec! left sent)
             ))
         ))
+
+    (define (send data)
+      (with-mutex sendm
+          (send* data)))
 
     (define (close)
       (poller/forget sock.fd)

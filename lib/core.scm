@@ -558,6 +558,10 @@
 ;; XXX consider how save/restore of *the-exception-handler*  might want to be done
 ;;  by `callcc` [or at the very least a variant that does].
 
+;; XXX consider implementing the chain of exceptions as a stack/list,
+;; rather than hiding it in a chain of lambda/let bindings.  Then we might have
+;; a single global exception-handling function that tries each handler in turn.
+
 (defmacro try
   ;; done accumulating body parts, finish up.
   (try (begin body0 ...) <except> exn-match ...)

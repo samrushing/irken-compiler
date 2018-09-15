@@ -34,7 +34,7 @@
        (try
         (begin body ... (m.release))
         except
-        anything
+        EXN
         -> (begin
              (m.release)
-             (raise anything)))))
+             (raise EXN)))))
