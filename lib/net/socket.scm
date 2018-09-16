@@ -56,6 +56,8 @@
       (raise (:Socket/BufferUnderflow))
       (let ((r (cref->string (c-aref buf.buf buf.pos) n)))
         (inc! buf.pos n)
+        (when (= buf.pos buf.end)
+          (buffer/reset! buf))
         r)))
 
 (define (buffer/get-all! buf)
