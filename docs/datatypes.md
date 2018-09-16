@@ -2,8 +2,9 @@
 Defining New Types
 ==================
 
-Unlike most Lisps, Irken's type system is based on 'algebraic
-datatypes', where complex types are built from simpler types.
+Unlike most Lisps, Irken's type system is based on [algebraic
+datatypes](https://en.wikipedia.org/wiki/Algebraic_data_type),
+where complex types are built from simpler types in a controlled manner.
 
 New types are created with the `datatype` special form:
 
