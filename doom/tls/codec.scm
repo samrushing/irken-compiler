@@ -168,6 +168,9 @@
     (define (unpack-finished len)
       (tls-hsk:finished (get-opaque len)))
 
+    (define (unpack-keyupdate len)
+      (tls-hsk:key-update (= (get-u8) 1)))
+
     (define (unpack-alert)
       (let ((level (get-u8))
             (desc (get-u8)))
@@ -185,6 +188,7 @@
          (match (int->tls-hsk-type kind) with
            (tls-hsk-type:client-hello) -> (unpack-client-hello len)
            (tls-hsk-type:finished)     -> (unpack-finished len)
+           (tls-hsk-type:key-update)   -> (unpack-keyupdate len)
            _ -> (raise (:TLS/Alert (tls-alert-desc:unexpected-message) "unexpected handshake"))
            ))))
 

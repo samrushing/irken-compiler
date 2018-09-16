@@ -1,7 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 ;; -----------------
-;; TLS-1.3, RFC XXXX
+;; TLS-1.3, RFC 8446
 ;; -----------------
 ;;
 ;; supported diffie-hellman groups:
@@ -336,6 +336,11 @@
     (define (handle-appdata plaintext)
       (buffer/add! ibuf plaintext))
 
+    (define (handle-key-update up?)
+      ;; XXX TBD
+      (printf "got key update request: " (bool up?) "\n")
+      )
+
     (define (handle-record pkt)
       ;;(printf "**** state == " (sym (tls-state->name state)) "\n")
       (match state pkt.record with
@@ -343,6 +348,7 @@
         (tls-state:wfini) (tls-record:hsk (tls-hsk:finished vdat))   -> (handle-finished vdat)
         (tls-state:wfini) (tls-record:change-cipher-spec)            -> (handle-change-cipher-spec pkt)
         (tls-state:cnctd) (tls-record:appdata plaintext)             -> (handle-appdata plaintext)
+        (tls-state:cnctd) (tls-record:hsk (tls-hsk:key-update up?))  -> (handle-key-update up?)
         any               (tls-record:alert level desc)              -> (handle-alert desc)
         any rec
         -> (raise (:TLS/Alert (tls-alert-desc:unexpected-message) "unexpected record"))

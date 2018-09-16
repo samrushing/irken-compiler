@@ -77,6 +77,7 @@
   (:client-hello {legver=int random=string sessid=string suites=(list int) exts=(list tlsext)})
   (:server-hello {legver=int random=string sessid=string suite=int exts=(list tlsext)})
   (:finished string) ;; verify-data
+  (:key-update bool)
   (:other string)
   )
 
