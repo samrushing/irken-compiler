@@ -172,7 +172,7 @@ Or a binary tree of anything:
        (:node 'a (btree 'a) (btree 'a))
        )
 
-Here's a `(tree int)`:
+Here's a `(btree int)`:
 
     (btree:node 19
       (btree:node 34
