@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/codecs/base64.scm")
+(require "lib/crypto/sha1.scm")
+
 ;; RFC 6455
 
 ;; XXX provide some way of checking the `sec-websocket-protocol` header.
@@ -77,30 +80,40 @@
       (maybe:no)       data -> #u
       )
 
+    (define (get-packet emit)
+      (let ((h (get-uint 2))
+            (fin    (>> (logand h #x8000) 15))
+            (opcode (>> (logand h #x0f00) 8))
+            (maskp  (>> (logand h #x0080) 7))
+            (plen   (>> (logand h #x007f) 0))
+            (masking (maybe:no)))
+        (match plen with
+          126 -> (set! plen (get-uint 2))
+          127 -> (set! plen (get-uint 8))
+          _   -> #u)
+        (when (> plen (<< 1 20))
+          (raise (:Websocket/TooMuchData plen)))
+        (when (not (zero? maskp))
+          (set! masking (maybe:yes (get-uint 4))))
+        (let ((payload (sock.recv-exact plen)))
+          (maybe-unmask! masking payload)
+          (match opcode with
+            8 -> (set! exit? #t)
+            9 -> (send-pong payload)
+            x -> (emit (:tuple opcode payload (not (zero? fin))))
+            ))))
+
     (define (packet-generator)
       (makegen emit
         (while (not exit?)
-          (let ((h (get-uint 2))
-                (fin    (>> (logand h #x8000) 15))
-                (opcode (>> (logand h #x0f00) 8))
-                (maskp  (>> (logand h #x0080) 7))
-                (plen   (>> (logand h #x007f) 0))
-                (masking (maybe:no)))
-            (match plen with
-              126 -> (set! plen (get-uint 2))
-              127 -> (set! plen (get-uint 8))
-              _   -> #u)
-            (when (> plen (<< 1 20))
-              (raise (:Websocket/TooMuchData plen)))
-            (when (not (zero? maskp))
-              (set! masking (maybe:yes (get-uint 4))))
-            (let ((payload (sock.recv-exact plen)))
-              (maybe-unmask! masking payload)
-              (match opcode with
-                8 -> (set! exit? #t)
-                9 -> (send-pong payload)
-                x -> (emit (:tuple opcode payload (not (zero? fin))))
-                ))))))
+          (try
+           (get-packet emit)
+           except EXN
+           -> (begin
+                (set! exit? #t)
+                (print-exception EXN))
+           )
+          )))
 
     (define (send-packet opcode data fin?)
       (let ((head (logior (<< opcode 8) (if fin? #x8000 #x0000)))
