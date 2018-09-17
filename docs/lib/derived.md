@@ -304,9 +304,9 @@ Example:
   (printf (int val) "\n"))
 
 => 0
-   1
    2
-   3
+   4
+   6
    ...
 ```
 

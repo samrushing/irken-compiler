@@ -2,8 +2,9 @@
 Defining New Types
 ==================
 
-Unlike most Lisps, Irken's type system is based on 'algebraic
-datatypes', where complex types are built from simpler types.
+Unlike most Lisps, Irken's type system is based on [algebraic
+datatypes](https://en.wikipedia.org/wiki/Algebraic_data_type),
+where complex types are built from simpler types in a controlled manner.
 
 New types are created with the `datatype` special form:
 
@@ -172,7 +173,7 @@ Or a binary tree of anything:
        (:node 'a (btree 'a) (btree 'a))
        )
 
-Here's a `(tree int)`:
+Here's a `(btree int)`:
 
     (btree:node 19
       (btree:node 34
