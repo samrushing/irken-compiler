@@ -130,6 +130,9 @@
   (%backend bytecode
     (magic-cmp a b)))
 
+;; alias
+(define string-cmp string-compare)
+
 (define (string-find-from a b pos)
   ;; find <a> in <b>, starting at b[pos]
   (let ((alen (string-length a))
