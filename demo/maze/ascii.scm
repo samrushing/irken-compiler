@@ -130,6 +130,13 @@
     (printf (list->string (reverse result)) "\n")
     ))
 
+(define (graph->base64 G m n)
+  (let ((result '()))
+    (for ch (b64-enc (bytegen G m n))
+      (push! result ch))
+    (printf (list->string (reverse result)) "\n")
+    ))
+
 ;; raw binary, 2 bits per cell.
 ;; to use: (graph->bin "/tmp/maze.bin" maze w h)
 (define (graph->bin path G m n)

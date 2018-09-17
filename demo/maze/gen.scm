@@ -35,9 +35,9 @@
     (set! *random-seed* (logand #xffffffff (read-cycle-counter))))
   *random-seed*)
 
-(define (make-maze m n)
+(define (make-maze m n seed)
   (let ((G (make-grid m n))
-        (G0 (DFS G m n)))
+        (G0 (DFS G m n seed)))
     G0))
 
 (define (bit-set? n i)
@@ -48,12 +48,12 @@
   -> (set! n (logior n (<< 1 i)))
   )
 
-;; depth-first-search.
-(define (DFS G m n)
+;; depth-first search.
+(define (DFS G m n seed)
 
   ;; assumes <s> is non-zero!
   (define choose-random-edge
-    (let ((rng (generate-random-bits 2 (get-seed))))
+    (let ((rng (generate-random-bits 2 seed)))
       (lambda (s)
         (let loop ((mn (rng)))
           (match mn with
@@ -64,7 +64,7 @@
             )))))
 
   (define rand-range
-    (let ((rng (mt19937 (get-seed))))
+    (let ((rng (mt19937 seed)))
       (lambda (n)
         (mod (rng) n))))
 
