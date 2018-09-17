@@ -12,8 +12,14 @@
    EISCONN ENOTCONN
    ;; minimum needed for fcntl() to set non-blocking mode.
    O_NDELAY F_GETFL F_SETFL
+   ;; socket options
+   SOL_SOCKET
+   SO_DEBUG SO_REUSEADDR SO_REUSEPORT SO_KEEPALIVE SO_DONTROUTE
+   SO_LINGER SO_BROADCAST SO_OOBINLINE SO_SNDBUF SO_RCVBUF SO_SNDLOWAT
+   SO_RCVLOWAT SO_SNDTIMEO SO_RCVTIMEO SO_TYPE SO_ERROR SO_NOSIGPIPE
+   SO_NREAD SO_NWRITE SO_LINGER_SEC
    )
- (sigs inet_ntop inet_pton socket bind listen accept connect recv send)
+ (sigs inet_ntop inet_pton socket bind listen accept connect recv send setsockopt getsockopt)
  (verbatim
   (sig fcntl (int int int -> int))
   ;; this is often a macro *and* a function.

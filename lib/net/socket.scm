@@ -186,6 +186,13 @@
      (socket/fcntl sock.fd F_SETFL (logior flags O_NDELAY)))
     ))
 
+(define (sock/set-reuseaddr sock)
+  (let ((val* (halloc int)))
+    (c-set-int val* 1)
+    (syscall
+     (socket/setsockopt sock.fd SOL_SOCKET SO_REUSEADDR (%c-cast void val*) (%c-sizeof int)))
+    ))
+
 (define (sock/recv sock buf) : (sock buffer -> int)
   (let ((buf* (%c-cast void (c-aref buf.buf buf.pos)))
         (nbytes (syscall (socket/recv sock.fd buf* (- buf.size buf.pos) 0))))

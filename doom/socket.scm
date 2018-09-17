@@ -125,6 +125,7 @@
 
     ;; body of doom/make*
     (sock/set-nonblocking sock)
+    (sock/set-reuseaddr sock)
 
     {listen=listen
      bind=bind
