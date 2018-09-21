@@ -36,12 +36,14 @@
      (string int string int int -> undefined)
      "memcpy (%0+%1, %2+%3, %4)" dst dst-start src src-start n))
   (%backend llvm
-    (%llvm-call ("@irk_buffer_copy" (string int int string int -> undefined))
-                src src-start n dst dst-start))
+    (%llvm-call
+     ("@irk_buffer_copy" (string int int string int -> undefined))
+     src src-start n dst dst-start))
   (%backend bytecode
-    (%%cexp (string int int string int -> undefined)
-            "scopy"
-            src src-start n dst dst-start)))
+    (%%cexp
+     (string int int string int -> undefined)
+     "scopy"
+     src src-start n dst dst-start)))
 
 ;; XXX need a %copy-tuple prim. (or %copy-object?)
 ;; XXX why not use substring?
@@ -65,7 +67,6 @@
   ;; we copy because strings are mutable.
   (copy-string (if b "#t" "#f") 2))
 
-;; XXX these range checks need to raise an exception.
 (define (string-ref s n)
   (string-range-check s n)
   (%backend c
@@ -244,7 +245,7 @@
 (define hex-digits     (string->list "0123456789ABCDEFabcdef"))
 (define printable      (append digits letters (string->list "!\"#$%&'*+,-./:;<=>?@\\^_`[({|})]~")))
 
-(define whitespace?    (char-class '(#\space #\tab #\newline #\return)))
+(define whitespace?    (char-class whitespace))
 (define delim?         (char-class all-delimiters))
 (define digit?         (char-class digits))
 (define hex-digit?     (char-class hex-digits))
@@ -287,16 +288,19 @@
 (define (repr-string s)
   (format "\"" (join (map safe-char (string->list s))) "\""))
 
-;; XXX should *not* use ascii conversions.
-;; really dumb temp version, only works with [0-9]+ !!
 (define (string->int s)
-  (let ((sl (string-length s)))
-    (let loop ((i 0) (n 0))
-      (if (= i sl)
-	  n
-	  (loop (+ i 1)
-		(+ (* 10 n)
-		   (- (char->ascii (string-ref s i)) 48)))))))
+  (let ((digits (string->list s)))
+    (define (d2i ch)
+      (if (digit? ch)
+          (- (char->int ch) 48)
+          (raise (:String/BadInt s))))
+    (define ds2i
+      acc ()        -> acc
+      acc (hd . tl) -> (ds2i (+ (* 10 acc) (d2i hd)) tl))
+    (match digits with
+      (#\- . rest) -> (- (ds2i 0 rest))
+      _            -> (ds2i 0 digits)
+      )))
 
 ;; pre-compute 0..100?
 (define (int->string n)
@@ -312,6 +316,7 @@
 
 (%backend (c llvm)
 
+  ;; these are now somewhat obsolete because FFI.
   (define (strlen s)
     (%%cexp (cstring -> int) "strlen(%0)" s))
 
