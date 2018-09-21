@@ -434,7 +434,7 @@
                (send-alert desc)
                #u)
      (:TLS/ReceivedFatalAlert desc)
-     -> (begin (debugf "received tls alert: '" (sym (tls-alert-desc->name desc)) "\n")
+     -> (begin (debugf "received tls alert: '" (sym (tls-alert-desc->name desc)) "'\n")
                (set-state! (tls-state:closed)) ;; half-closed?
                #u)
      (:Doom/EOF s)
