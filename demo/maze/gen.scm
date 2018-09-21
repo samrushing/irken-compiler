@@ -35,9 +35,9 @@
     (set! *random-seed* (logand #xffffffff (read-cycle-counter))))
   *random-seed*)
 
-(define (make-maze m n seed)
+(define (make-maze m n seed bias)
   (let ((G (make-grid m n))
-        (G0 (DFS G m n seed)))
+        (G0 (DFS G m n seed bias)))
     G0))
 
 (define (bit-set? n i)
@@ -48,12 +48,36 @@
   -> (set! n (logior n (<< 1 i)))
   )
 
+;; biased random 0..3.
+;; -63..+63 negative numbers bias horizontal passageways - positive, vertical.
+(define (biased-rand-wall seed bias)
+  (let ((gen (generate-random-bits 8 seed))
+        (bias0 (if (<0 bias) (- bias) bias)))
+    (makegen emit
+      (forever
+       (match (gen) with
+         (maybe:yes n)
+         -> (let ((nlo (logand #b11 n)))
+              (emit
+               (if (= bias 0)
+                   nlo
+                   ;; if bias = 5, then we want 64-5/64 to be untouched.
+                   (if (< (>> n 2) bias0)
+                       (if (<0 bias)
+                           (logand #b01 nlo) ;; horizontal passageways
+                           (logior #b10 nlo)) ;; vertical passageways
+                       nlo))))
+         (maybe:no)
+         -> (impossible)
+         )))))
+
 ;; depth-first search.
-(define (DFS G m n seed)
+(define (DFS G m n seed bias)
 
   ;; assumes <s> is non-zero!
   (define choose-random-edge
-    (let ((rng (generate-random-bits 2 seed)))
+    ;;(let ((rng (generate-random-bits 2 seed)))
+    (let ((rng (biased-rand-wall seed bias)))
       (lambda (s)
         (let loop ((mn (rng)))
           (match mn with

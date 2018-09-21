@@ -28,6 +28,7 @@
    (flag 'b64)
    (flag 'solve)
    (arg 'seed (int 31415926535))
+   (arg 'bias (int 0))
    (pos 'w (int 115))
    (pos 'h (int 85))
    ))
@@ -52,6 +53,7 @@
           "  [-b85] base85 output\n"
           "  [-b64] base64 output\n"
           "  [-hex] HEX output\n"
+          "  [-bias] -100..100 % bias horizontal..vertical\n"
           "  [-solve] add the solution to SVG output\n"
           "example: $ " sys.argv[0] " 50 50\n")
   (%exit #f -1))
@@ -73,6 +75,7 @@
         (b85 #f)
         (b64 #f)
         (solve? #f)
+        (bias 0)
         (seed (get-seed))
         )
     (when-maybe v (get-bool-opt opts 'hex)
@@ -95,8 +98,12 @@
       (set! s v))
     (when-maybe v (get-int-opt opts 'seed)
       (set! seed v))
+    (when-maybe v (get-int-opt opts 'bias)
+      (printf "v " (int v) "\n")
+      (when (and (>= v -100) (<= v 100))
+        (set! bias (/ (* v 64) 100))))
 
-    (let ((maze (make-maze w h seed))
+    (let ((maze (make-maze w h seed bias))
           (solution (if solve? (BFS maze w h) (list:nil))))
       (cond (ascii (graph->ascii maze w h solution))
             (js (graph->js maze w h s solution))
