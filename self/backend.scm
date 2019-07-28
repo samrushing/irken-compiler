@@ -148,11 +148,9 @@
 		      _ -> (impossible))) sig))
 	(sig (filter (lambda (x) (not (eq? x '...))) sig)))
     (let ((candidates '()))
-      (for-each
-       (lambda (sig0)
-         (if (subset? sig sig0)
-             (push! candidates sig0)))
-       (cmap/keys the-context.records))
+      (for-list sig0 (cmap/keys the-context.records)
+        (if (subset? sig sig0)
+            (push! candidates sig0)))
       (if (= 1 (length candidates))
 	  ;; unambiguous - there's only one possible match.
 	  (maybe:yes (nth candidates 0))

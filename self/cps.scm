@@ -689,10 +689,23 @@
                   (add-to-set k.target k.free)
                   lenv k))
                 ))
-	  _ -> (c-record-extension fields exp lenv k))))
+	  _ -> (c-record-extension (first fields) exp lenv k))))
 
-    (define (c-record-extension fields exp lenv k)
-      (error "c-record-extension: NYI"))
+    (define (c-record-extension field exp lenv k)
+      (match field with
+        (:pair new-field new-value)
+        -> (let ((osig (get-record-sig (noderec->type exp)))
+                 (nsig (sort symbol<? (list:cons new-field osig)))
+                 (otag (get-record-tag osig))
+                 (ntag (get-record-tag nsig)))
+             (c-primargs (list exp new-value)
+                         '%record-ext
+                         (sexp (int otag) (int ntag)
+                               (sexp:list (map sexp:symbol osig))
+                               (sexp:list (map sexp:symbol nsig))
+                               (sexp:symbol new-field))
+                         (noderec->type exp)
+                         lenv k))))
 
     (define (record-label-tag label)
       (cmap/add the-context.labels label))

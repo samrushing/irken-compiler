@@ -794,6 +794,7 @@ irk_get_errno (void)
   return TAG_INTEGER ((irk_int) errno);
 }
 
+#define LOOKUP_FIELD(rec,label) lookup_field ((GET_TYPECODE(*rec)-TC_USEROBJ)>>2,label)
 
 // used to lookup record elements when the index
 //  cannot be computed at compile-time.

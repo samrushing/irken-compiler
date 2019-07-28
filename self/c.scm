@@ -568,46 +568,63 @@
         (define (ambig code)
           (tree/insert! the-context.ambig-rec int-cmp code #u))
 
+        ;; return a C expression for a record slot, by label (for get or set).
+        (define (record-slot-exp sig label reg)
+          (record-slot-exp* (guess-record-type sig) label reg))
+
+        (define (record-slot-exp* msig label reg)
+          (match msig with
+            ;; compile-time lookup
+            (maybe:yes sig0)
+            -> (format "((irk_vector*)r" (int reg)
+                       ")->val[" (int (index-eq label sig0))
+                       "]")
+            (maybe:no)
+            ;; run-time lookup
+            -> (let ((label-code (lookup-label-code label)))
+                 (ambig label-code)
+                 (format "((irk_vector*)r" (int reg)
+                         ")->val[LOOKUP_FIELD(r" (int reg)
+                         "," (int label-code) ")]"))
+            ))
+
         (define prim-record-get
           (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
-          -> (let ((label-code (lookup-label-code label)))
-               (match (guess-record-type sig) with
-                 (maybe:yes sig0)
-                 -> (o.write (format "O r" (int k.target) ;; compile-time lookup
-                                     " = ((irk_vector*)r" (int rec-reg)
-                                     ")->val[" (int (index-eq label sig0))
-                                     "];"))
-                 (maybe:no)
-                 -> (begin
-                      (o.write (format "O r" (int k.target) ;; run-time lookup
-                                       " = ((irk_vector*)r" (int rec-reg)
-                                       ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
-                                       ")-TC_USEROBJ)>>2," (int label-code)
-                                       ")]; // label=" (sym label)))
-                      (ambig label-code)
-                      )))
+          -> (let ((refexp (record-slot-exp sig label rec-reg)))
+               (oformat "O r" (int k.target) " = " refexp ";"))
           _ _ -> (primop-error))
 
-        ;; XXX very similar to record-get, maybe some way to collapse the code?
         (define prim-record-set
           (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg arg-reg)
-          -> (let ((label-code (lookup-label-code label)))
-               (match (guess-record-type sig) with
-                 (maybe:yes sig0)
-                 -> (o.write (format "((irk_vector*)r" (int rec-reg) ;; compile-time lookup
-                                     ")->val[" (int (index-eq label sig0))
-                                     "] = r" (int arg-reg) ";"))
-                 (maybe:no)
-                 -> (begin
-                      (o.write (format "((irk_vector*)r" (int rec-reg) ;; run-time lookup
-                                       ")->val[lookup_field((GET_TYPECODE(*r" (int rec-reg)
-                                       ")-TC_USEROBJ)>>2," (int label-code)
-                                       ")] = r" (int arg-reg) ";"))
-                      (ambig label-code)
-                      ))
+          -> (let ((refexp (record-slot-exp sig label rec-reg)))
+               (oformat refexp " = r" (int arg-reg) ";")
                (when (>= k.target 0)
-                 (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
+                 (o.write (format "O r" (int k.target) " = (O) TC_UNDEFINED;"))))
           _ _ -> (primop-error))
+
+        (define prim-record-ext
+          (sexp:list ((sexp:int otag) (sexp:int ntag)
+                      (sexp:list osig) (sexp:list nsig)
+                      (sexp:symbol nfield)))
+          (src-reg arg-reg)
+          -> (let ((mosig (guess-record-type osig))
+                   (mnsig (guess-record-type nsig)))
+               (oformat "O r" (int k.target)
+                        " = alloc_no_clear (UOTAG (" (int ntag)
+                        "), " (int (length nsig)) ");")
+               ;; copy old fields
+               (for-list fs osig
+                 (match fs with
+                   (sexp:symbol f)
+                   -> (oformat (record-slot-exp* mnsig f k.target) " = "
+                               (record-slot-exp* mosig f src-reg) ";")
+                   _ -> (raise (:Impossible))
+                   ))
+               ;; set new field
+               (oformat (record-slot-exp nsig nfield k.target) " = r" (int arg-reg) ";")
+               )
+          _ _ -> (primop-error)
+          )
 
         (define (prim-callocate parm args)
           (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
@@ -815,6 +832,7 @@
           '%array-set    -> (prim-array-set args)
           '%record-get   -> (prim-record-get parm args)
           '%record-set   -> (prim-record-set parm args)
+          '%record-ext   -> (prim-record-ext parm args)
           '%callocate    -> (prim-callocate parm args)
           '%exit         -> (prim-exit args)
           '%getcc        -> (prim-getcc args)
