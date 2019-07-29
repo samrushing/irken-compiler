@@ -61,9 +61,8 @@
 	 #t) ;; non-literal symbol matches anything
   ;; list pattern
   (sexp:list pl) (sexp:list el) -> (matches-list? pl el)
-  ;; now what other objects should we support in patterns?
-  ;; this is probably incorrect, we really need an equal? function
-  p e				-> (eq? p e)
+  ;; other objects, e.g. sexp:cons.
+  p e				-> (sexp=? p e)
   )
 
 ;; Very confusing.  With *no* ellipses, this returns a flat list of
