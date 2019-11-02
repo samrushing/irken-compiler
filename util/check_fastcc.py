@@ -7,6 +7,7 @@
 # this utility compares use & def for 'fastcc', since we have a mixture of
 #  the two calling conventions.
 
+from __future__ import print_function
 import sys
 
 def find_name (line):
@@ -24,7 +25,7 @@ d_defs = {}
 d_uses = {}
 
 path = sys.argv[1]
-fd = open (path, 'rb')
+fd = open (path, 'r')
 while 1:
     line = fd.readline()
     if not line:
@@ -40,21 +41,21 @@ while 1:
         if 'call' in parts:
             try:
                 k, v = find_name (line)
-                if d_uses.has_key (k):
+                if k in d_uses:
                     d_uses[k].append (v)
                 else:
                     d_uses[k] = [v]
             except ValueError:
-                print 'no fun: ' + line[:-1]
+                print ('no fun: ' + line[:-1])
 
 # now that we've scanned everything, check that all uses are correct.
-for fun, values in d_uses.iteritems():
+for fun, values in d_uses.items():
     for fast in values:
-        if d_defs.has_key (fun):
+        if fun in d_defs:
             if d_defs[fun] != fast:
-                print fun,
-        elif d_decl.has_key (fun):
+                print (fun, end=' ')
+        elif fun in d_decl:
             if d_decl[fun] != fast:
-                print fun,
+                print (fun, end=' ')
         else:
             raise ValueError ("unknown fun?: %s" % fun)

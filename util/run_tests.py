@@ -51,7 +51,7 @@ def test_t22():
     assert (lines[1:] == (r6 + r6 + ['#u', '']))
 
 if not os.path.isfile ('parse/lexstep.scm'):
-    print 'generating parse/lexstep.scm...'
+    print ('generating parse/lexstep.scm...')
     os.system ('(cd parse; python lexer.py)')
 
 def test_t_lex():
@@ -87,12 +87,12 @@ for size, file in files:
     if file.endswith ('.scm'):
         base, ext = os.path.splitext (file)
         path = os.path.join ('tests', file)
-        print 'compiling', path
+        print ('compiling %s' % path)
         fail = file.startswith ('f')
         # XXX need to make 'special' tests such that they can compile with
         #   custom flags (e.g. t_stl).
         code = system ('self/compile %s' % (path,))
-        print 'code=', code
+        print ('code=%s' % code)
         if code == 0:
             if fail:
                 failed.append ((base, 'compile did not fail like expected'))
@@ -121,8 +121,8 @@ for size, file in files:
             if not fail:
                 failed.append ((base, 'did not compile'))
 
-print '%d tests passed' % succeeded
+print ('%d tests passed' % succeeded)
 if len(failed):
-    print '%d tests failed!!' % (len(failed))
+    print ('%d tests failed!!' % (len(failed)))
     for base, reason in failed:
-        print base, reason
+        print ('%s %s' % (base, reason))

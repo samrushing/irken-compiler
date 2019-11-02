@@ -16,7 +16,7 @@ class Timer:
         self.interval = time.time() - self.start
 
 def system (cmd):
-    print cmd
+    print (cmd)
     if 0 != os.system (cmd):
         raise CommandFailed (cmd)
 
@@ -38,7 +38,7 @@ def do_one (val):
 values = []
 for thresh in range (0, 21):
     r = do_one (thresh)
-    print r
+    print (r)
     values.append (r)
 
-print values
+print (values)
