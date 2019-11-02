@@ -24,5 +24,5 @@ elif sysname == 'Linux':
     cflags += ' -D_GNU_SOURCE -ldl'
 
 cmd = '%s vm/irkvm.c -o vm/irkvm %s' % (cc, cflags)
-print cmd
+print (cmd)
 os.system (cmd)

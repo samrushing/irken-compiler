@@ -97,8 +97,8 @@ def diff (p0, p1):
     import os
     p0, p1 = tweak (p0), tweak (p1)
     if os.stat(p0).st_size == os.stat(p1).st_size:
-        f0 = open (p0, 'rb')
-        f1 = open (p1, 'rb')
+        f0 = open (p0, 'r')
+        f1 = open (p1, 'r')
         while 1:
             b0 = f0.read (32700)
             b1 = f1.read (32700)

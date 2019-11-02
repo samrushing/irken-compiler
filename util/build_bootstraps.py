@@ -13,7 +13,7 @@ class CommandFailed (Exception):
     pass
 
 def system (cmd):
-    print cmd
+    print (cmd)
     if 0 != os.system (cmd):
         raise CommandFailed (cmd)
 

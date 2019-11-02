@@ -54,10 +54,10 @@ copy_tree ('ffi', IRKENTOP, ['_ffi.scm'])
 # we need a new binary with the new CFLAGS
 print ('building new binary with updated CFLAGS for install...')
 cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -g -I%s' % (IRKENINC,))
-flags = open ('self/flags.scm', 'rb').read()
+flags = open ('self/flags.scm', 'r').read()
 
 # this way we pull in whatever decisions were made for bootstrap.py, updating only IRKENINC
-open ('self/flags.scm', 'wb').write (
+open ('self/flags.scm', 'w').write (
     flags.replace ('./include', IRKENINC)
     )
 
@@ -74,7 +74,7 @@ system ('cp -p vm/irkvm %s/irkvm' % (IRKENBIN,))
 # copy byte compiler image
 system ('cp -p self/compile.byc %s/' % (IRKENLIB,))
 # make irkc script
-open ('vm/irkc', 'wb').write (
+open ('vm/irkc', 'w').write (
     "#!/bin/sh\n%s/irkvm %s/compile.byc $@\n" % (IRKENBIN, IRKENLIB)
 )
 os.chmod ('vm/irkc', 0o755)
