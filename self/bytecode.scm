@@ -147,7 +147,7 @@
       (if (= target -1)
           '() ;; pointless dead literal.
           (let ((enc (encode-immediate lit)))
-            (if (and (> enc 0) (< enc (<< 1 30))) ;; will it fit in a bytecode_t?
+            (if (and (> enc 0) (< enc #x3fffffff)) ;; will it fit in a bytecode_t?
                 (LINSN 'imm target enc)
                 (LINSN 'lit
                        target
