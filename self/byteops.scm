@@ -111,6 +111,7 @@
     (OI 'obptr2int 2    #f     #t)   ;; target src
     (OI 'errno   1      #f     #t)   ;; target
     (OI 'meta    1      #f     #t)   ;; target
+    (OI 'hash    5      #f     #t)   ;; target d k0 k1 size
     ;;  name   nargs varargs target? args
     ))
 

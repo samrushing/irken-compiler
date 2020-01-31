@@ -619,10 +619,9 @@
 
   ;; this is a kludge, but should work for a few more years...
   (define (get-word-size)
-    (match (< (<< 1 30) 0) with
-      #t -> 4
-      #f -> 8
-      ))
+    ;; note: this string conversion is deliberate: it avoids encoding an
+    ;;  over-sized literal integer into the bytecode string.
+    (if (< (string->int "1073741824") 0) 4 8))
 
   ;; true for nearly all 32 and 64-bit platforms.
   ;; [only one I've used: old-school 64-bit OSF/1 on DEC Alpha]

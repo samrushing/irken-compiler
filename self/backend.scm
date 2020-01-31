@@ -375,20 +375,36 @@ void prof_dump (void)
 ;;  wanted something table-based.  This generates a really small
 ;;  table!
 
-;; unrolled - our keys are always of length 2
 ;; NOTE: this obviously must match the hash function in include/header1.c:p_hash().
 ;; XXX: this code is not compatible with 32-bit irkvm.  we should probably tweak
 ;;   this slightly to avoid the 32-bit mask.  the given magic number is a prime, I'm
 ;;   sure the exact size of the mask is of little concern.
-(define (hash2 d k0 k1)
-  (logand #xffffffff
-    (logxor k0
-      (* (logand #xffffffff
-            (logxor k1 (* d #x01000193)))
-         #x01000193))))
+(%backend llvm
 
-(define (hash-item d item size)
-  (mod (hash2 d item.k0 item.k1) size))
+  ;; unrolled - our keys are always of length 2
+  (define (hash2 d k0 k1)
+    (logand #xffffffff
+      (logxor k0
+        (* (logand #xffffffff
+              (logxor k1 (* d #x01000193)))
+           #x01000193))))
+
+  (define (hash-item d item size)
+    (mod (hash2 d item.k0 item.k1) size))
+  )
+
+(%backend c
+  (define (hash-item d item size)
+    (%%cexp
+     (int int int int -> int)
+     "hash_item (%0, %1, %2, %3)"
+     d item.k0 item.k1 size))
+  )
+
+(%backend bytecode
+  (define (hash-item d item size)
+    (%%cexp (int int int int -> int) "hash" d item.k0 item.k1 size))
+  )
 
 (define (create-minimal-perfect-hash table)
 

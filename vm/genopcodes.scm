@@ -3,9 +3,9 @@
 ;; generate an include file for irkvm.c with information
 ;;  about all the opcodes.
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "self/byteops.scm")
+(require "lib/basis.scm")
+(require "lib/map.scm")
+(require "self/byteops.scm")
 
 (define (generate-irkvm-h)
   (let ((file (stdio/open-write "vm/irkvm.h"))

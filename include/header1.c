@@ -1161,6 +1161,16 @@ static int lookup_field (int tag, int label)
   }
 }
 
+// replacement for backend.scm:hash2 & hash-item on 32-bit platforms.
+static
+uint32_t
+hash_item (uint32_t d, uint32_t k0, uint32_t k1, uint32_t size)
+{
+  d = ((d * 0x01000193) ^ k1);
+  d = ((d * 0x01000193) ^ k0);
+  return d % size;
+}
+
 // --------------------------------------------------------------------------------
 
 void toplevel (void);

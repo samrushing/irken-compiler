@@ -863,7 +863,7 @@ vm_go (void)
     &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
     &&l_dlopen, &&l_dlsym0, &&l_dlsym, &&l_csize, &&l_cref2int, &&l_int2cref,
-    &&l_ob2int, &&l_obptr2int, &&l_errno, &&l_meta
+    &&l_ob2int, &&l_obptr2int, &&l_errno, &&l_meta, &&l_hash
   };
 
   assert ((sizeof (dispatch_table) / sizeof (void *)) == (sizeof (irk_opcodes) / sizeof (opcode_info_t)));
@@ -1572,6 +1572,16 @@ vm_go (void)
   REG1 = bytecode_literals[vm_metadata_index];
   pc += 2;
   DISPATCH();
+ l_hash: {
+    // HASH target d k0 k1 size
+    REG1 = TAG_INTEGER (
+      (irk_int) hash_item (
+        UNTAG_INTEGER (REG2), UNTAG_INTEGER (REG3),
+        UNTAG_INTEGER (REG4), UNTAG_INTEGER (REG5)
+      ));
+    pc += 6;
+    DISPATCH();
+  }
 }
 
 void
