@@ -476,9 +476,17 @@ void prof_dump (void)
 ;;  in a call to `lookup_field()`.
 
 (define (build-ambig-table)
-  ;; we insert one bogus entry to handle a problem with the perfect hash algorithm
-  ;;  when there are exactly two ambiguous pairs.
-  (let ((table (tree/insert (tree/empty) magic-cmp (:tuple 1013 1013) 1013)))
+  ;; When the table is really small, the perfect hash generator's lower bits
+  ;;   are unable to fill it, causing it to go in an infinite loop.  We pad
+  ;;   the table with enough elements to have a size of at least seven.
+  (define (pad-table table)
+    (let ((size (tree/size table)))
+      (when (< size 7)
+        (for-range i (- 7 size)
+          (let ((v (+ 1010 i)))
+            (tree/insert! table magic-cmp (:tuple v v) v))))
+      table))
+  (let ((table (tree/empty)))
     (for-map sig index the-context.records.map
       (let ((ambs '()))
         (for-range i (length sig)
@@ -494,7 +502,7 @@ void prof_dump (void)
               (:tuple i label-code)
               -> (tree/insert! table magic-cmp (:tuple index label-code) i))))
         ))
-    table))
+    (pad-table table)))
 
 (define (emit-datatype-table o)
   (o.write (format "// datatype table"))
