@@ -17,6 +17,6 @@ def system (cmd):
     if 0 != os.system (cmd):
         raise CommandFailed (cmd)
 
-system ('self/compile self/compile.scm -b -q')
+system ('IRKENLIB=. self/compile self/compile.scm -b -q')
 system ('cp self/compile.byc self/bootstrap.byc')
-system ('self/compile ffi/gen/genffi.scm -b -q')
+system ('IRKENLIB=. self/compile ffi/gen/genffi.scm -b -q')
