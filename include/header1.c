@@ -28,10 +28,10 @@ get_typecode (object * ob)
     if (IS_INTEGER(ob)) {
       return TC_INT;
     } else {
-      return (irk_int)ob & 0xff;
+      return (irk_int)ob & TAGMASK;
     }
   } else {
-    return (irk_int)*((irk_int *)ob) & 0xff;
+    return (irk_int)*((irk_int *)ob) & TAGMASK;
   }
 }
 
@@ -48,7 +48,7 @@ get_case (object * ob)
       return (irk_int) ob;
     }
   } else {
-    return (irk_int)*((irk_int *)ob) & 0xff;
+    return (irk_int)*((irk_int *)ob) & TAGMASK;
   }
 }
 
@@ -61,7 +61,7 @@ get_case_noint (object * ob)
   if (is_immediate (ob)) {
     return (irk_int) ob;
   } else {
-    return (irk_int) * ((irk_int*) ob) & 0xff;
+    return (irk_int) * ((irk_int*) ob) & TAGMASK;
   }
 }
 
@@ -79,7 +79,7 @@ inline
 irk_int
 get_case_tup (object * ob)
 {
-  return (irk_int)*((irk_int *)ob) & 0xff;
+  return (irk_int)*((irk_int *)ob) & TAGMASK;
 }
 
 static
@@ -87,7 +87,7 @@ irk_int
 get_tuple_size (object * ob)
 {
   header * h = (header *) ob;
-  return (*h)>>8;
+  return (*h)>>TAGSIZE;
 }
 
 // for runtime reflection.
@@ -135,11 +135,11 @@ dump_object (object * ob, int depth)
     int tc = is_immediate (ob);
     switch (tc) {
     case TC_CHAR:
-      if ((irk_int)ob>>8 == 257) {
+      if ((irk_int)ob>>TAGSIZE == 257) {
 	// deliberately out-of-range character
 	fprintf (stdout, "#\\eof");
       } else {
-	char ch = ((char)((irk_int)ob>>8));
+	char ch = ((char)((irk_int)ob>>TAGSIZE));
 	switch (ch) {
 	case '\000': fprintf (stdout, "#\\nul"); break;
 	case ' '   : fprintf (stdout, "#\\space"); break;
@@ -151,7 +151,7 @@ dump_object (object * ob, int depth)
       }
       break;
     case TC_BOOL:
-      fprintf (stdout, ((irk_int)ob >> 8) & 0xff ? "#t" : "#f");
+      fprintf (stdout, ((irk_int)ob >> TAGSIZE) & TAGMASK ? "#t" : "#f");
       break;
     case TC_NIL:
       fprintf (stdout, "()");
@@ -164,12 +164,12 @@ dump_object (object * ob, int depth)
       break;
     case TC_USERIMM:
       // a user immediate unit-type...
-      fprintf (stdout, "<u%" PRIuPTR ">", (((irk_int)ob)>>8));
+      fprintf (stdout, "<u%" PRIuPTR ">", (((irk_int)ob)>>TAGSIZE));
       break;
     case 0: {
       // structure
       header h = (header) (ob[0]);
-      int tc = h & 0xff;
+      int tc = h & TAGMASK;
       switch (tc) {
       case TC_SAVE: {
 	// XXX fix me - now holds saved registers
@@ -638,7 +638,7 @@ static object *
 allocate (irk_int tc, irk_int size)
 {
   object * save = freep;
-  *freep = (object*) (size<<8 | (tc & 0xff));
+  *freep = (object*) (size<<TAGSIZE | (tc & TAGMASK));
 #if 0
   // at least on the g5, this technique is considerably faster than using memset
   //   in gc_flip() to 'pre-clear' the heap... probably a cache effect...
@@ -663,7 +663,7 @@ static object *
 alloc_no_clear (irk_int tc, irk_int size)
 {
   object * save = freep;
-  *freep = (object*) (size<<8 | (tc & 0xff));
+  *freep = (object*) (size<<TAGSIZE | (tc & TAGMASK));
   freep += size + 1;
   return save;
 }
@@ -1019,7 +1019,7 @@ irk_copy_tuple (object * ob)
     return ob;
   } else {
     header h = (header) (ob[0]);
-    int tag  = h & 0xff;
+    int tag  = h & TAGMASK;
     irk_int len = GET_TUPLE_LENGTH (ob[0]);
     //DO(ob);
     object * r = allocate (tag, len);

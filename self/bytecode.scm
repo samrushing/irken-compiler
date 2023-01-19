@@ -126,7 +126,7 @@
                    (raise (:IntegerTooBig n))
                    r)))))
 
-    (define (UITAG n) (+ TC_USERIMM (<< n 8)))
+    (define (UITAG n) (+ TC_USERIMM (<< n tagsize)))
     (define (UOTAG n) (+ TC_USEROBJ (<< n 2)))
 
     ;; hacks for datatypes known by the runtime

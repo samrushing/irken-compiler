@@ -75,19 +75,21 @@
     (lambda ()
       (format "L" (int (counter.inc))))))
 
+(define tagsize 16)
+
 (define (encode-user-immediate dtname altname)
   (match (alist/lookup the-context.datatypes dtname) with
     (maybe:no) -> (raise (:NoSuchDatatype "NoSuchDatatype" dtname))
     (maybe:yes dt)
     -> (let ((alt (dt.get altname)))
-         (+ TC_USERIMM (<< alt.index 8)))))
+         (+ TC_USERIMM (<< alt.index tagsize)))))
 
 (define encode-immediate
   (literal:int n)              -> (logior 1 (<< n 1))
-  (literal:char ch)            -> (logior 2 (<< (char->ascii ch) 8))
+  (literal:char ch)            -> (logior 2 (<< (char->ascii ch) tagsize))
   (literal:undef)              -> #x0e
-  (literal:bool #t)            -> #x106
-  (literal:bool #f)            -> #x006
+  (literal:bool #t)            -> (logior 6 (<< 1 tagsize))
+  (literal:bool #f)            -> (logior 6 (<< 0 tagsize))
   (literal:vector ())          -> #x12
   (literal:cons 'list 'nil ()) -> TC_NIL
   (literal:cons dt alt ())     -> (encode-user-immediate dt alt)
@@ -255,7 +257,7 @@ void prof_dump (void)
 	-> (let ((args0 (map (partial (walk _ litnum)) args))
 		 (nargs (length args))
                  (oindex0 (+ 1 oindex)))
-	     (push-val (format "(" (int nargs) "<<8)|TC_VECTOR"))
+	     (push-val (format "(" (int nargs) "<<TAGSIZE)|TC_VECTOR"))
 	     (for-each push-val args0)
 	     (format "UPTR(" (int litnum) "," (int oindex0) ")"))
         (literal:record tag fields)
@@ -266,7 +268,7 @@ void prof_dump (void)
                              fields))
                  (nargs (length args0))
                  (oindex0 (+ 1 oindex)))
-             (push-val (format "(" (int nargs) "<<8)|UOTAG(" (int tag) ")"))
+             (push-val (format "(" (int nargs) "<<TAGSIZE)|UOTAG(" (int tag) ")"))
              (for-each push-val args0)
              (format "UPTR(" (int litnum) "," (int oindex0) ")"))
 	(literal:symbol sym)
@@ -314,7 +316,7 @@ void prof_dump (void)
        the-context.symbols)
       ;; XXX NOTE: this does not properly use TC_EMPTY_VECTOR
       (o.write (format "irk_int irk_internal_symbols[] = {("
-                       (int (length symptrs)) "<<8)|TC_VECTOR,\n\t" (join "," (sprinkle-newlines symptrs)) "};"))
+                       (int (length symptrs)) "<<TAGSIZE)|TC_VECTOR,\n\t" (join "," (sprinkle-newlines symptrs)) "};"))
       (o.write (format "object * irk_internal_symbols_p = (object*) &irk_internal_symbols;"))
       )
     (o.indent)

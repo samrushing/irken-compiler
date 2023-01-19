@@ -122,8 +122,8 @@ define internal fastcc void @insn_varset(i64 %depth, i64 %index, i8** %val) {
 
 define internal fastcc i8** @allocate(i64 %tc, i64 %size) {
   %1 = load i8**, i8*** @freep
-  %2 = shl i64 %size, 8
-  %3 = and i64 %tc, 255
+  %2 = shl i64 %size, 16
+  %3 = and i64 %tc, 65535
   %4 = or i64 %2, %3
   %5 = inttoptr i64 %4 to i8*
   store i8* %5, i8** %1
@@ -149,7 +149,7 @@ define internal fastcc i64 @get_case(i8** %ob) {
 ; <label>:7
   %8 = bitcast i8** %ob to i64*
   %9 = load i64, i64* %8
-  %10 = and i64 %9, 255
+  %10 = and i64 %9, 65535
   ret i64 %10
 }
 
@@ -328,8 +328,8 @@ define internal fastcc i8** @insn_close (void()* %fun) {
 define internal fastcc i8** @irk_makei (i8** %tag, i8** %val) {
   %tag0 = call fastcc i64 @insn_unbox (i8** %tag)
   %val0 = call fastcc i64 @insn_unbox (i8** %val)
-  %1 = shl i64 %val0, 8
-  %2 = and i64 %tag0, 255
+  %1 = shl i64 %val0, 16
+  %2 = and i64 %tag0, 65535
   %3 = or i64 %1, %2
   %4 = inttoptr i64 %3 to i8**
   ret i8** %4
@@ -337,7 +337,7 @@ define internal fastcc i8** @irk_makei (i8** %tag, i8** %val) {
 
 define internal fastcc i8** @irk_get_char (i8** %char) {
   %1 = ptrtoint i8** %char to i64
-  %2 = ashr i64 %1, 8
+  %2 = ashr i64 %1, 16
   %3 = call fastcc i8** @insn_box (i64 %2)
   ret i8** %3
 }
@@ -357,7 +357,7 @@ define internal fastcc i8** @irk_string_ref(i8**, i8**) {
   %6 = getelementptr inbounds %struct._string, %struct._string* %5, i64 0, i32 2, i64 %4
   %7 = load i8, i8* %6
   %8 = zext i8 %7 to i64
-  %9 = shl nuw nsw i64 %8, 8
+  %9 = shl nuw nsw i64 %8, 16
   %10 = or i64 %9, 2
   %11 = inttoptr i64 %10 to i8**
   ret i8** %11
@@ -377,7 +377,7 @@ define internal fastcc i8** @irk_string_set(i8**, i8**, i8**) {
   %5 = ashr i64 %4, 1
   %6 = bitcast i8** %0 to %struct._string*
   %7 = ptrtoint i8** %2 to i64
-  %8 = lshr i64 %7, 8
+  %8 = lshr i64 %7, 16
   %9 = trunc i64 %8 to i8
   %10 = getelementptr inbounds %struct._string, %struct._string* %6, i64 0, i32 2, i64 %5
   store i8 %9, i8* %10
@@ -392,8 +392,8 @@ define internal fastcc i8** @irk_string_set(i8**, i8**, i8**) {
 
 define internal fastcc i8** @irk_magic_cmp(i8**, i8**) {
   %3 = tail call i64 @magic_cmp(i8** %0, i8** %1)
-  %4 = shl i64 %3, 8
-  %5 = add i64 %4, 278
+  %4 = shl i64 %3, 16
+  %5 = add i64 %4, 65558
   %6 = inttoptr i64 %5 to i8**
   ret i8** %6
 }
@@ -414,7 +414,7 @@ define internal fastcc i8** @irk_int_cmp(i8**, i8**) {
   %6 = ashr i64 %5, 1
   %7 = icmp slt i64 %4, %6
   %8 = icmp slt i64 %6, %4
-  %9 = select i1 %8, i8** inttoptr (i64 534 to i8**), i8** inttoptr (i64 278 to i8**)
+  %9 = select i1 %8, i8** inttoptr (i64 131094 to i8**), i8** inttoptr (i64 65558 to i8**)
   %10 = select i1 %7, i8** inttoptr (i64 22 to i8**), i8** %9
   ret i8** %10
 }
@@ -424,7 +424,7 @@ define internal fastcc i8** @insn_callocate(i64, i64) {
   %4 = add i64 %3, 7
   %5 = lshr i64 %4, 3
   %6 = load i8**, i8*** @freep
-  %7 = shl i64 %5, 8
+  %7 = shl i64 %5, 16
   %8 = or i64 %7, 32
   %9 = inttoptr i64 %8 to i8*
   store i8* %9, i8** %6
@@ -449,7 +449,7 @@ define internal fastcc i8** @irk_string_len(i8**) {
 define internal fastcc i8** @irk_tuple_len(i8**) {
   %2 = bitcast i8** %0 to i64*
   %3 = load i64, i64* %2
-  %4 = ashr i64 %3, 7
+  %4 = ashr i64 %3, 15
   %5 = or i64 %4, 1
   %6 = inttoptr i64 %5 to i8**
   ret i8** %6

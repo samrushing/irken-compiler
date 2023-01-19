@@ -18,6 +18,9 @@ const size_t head_room = 8192;
 object * heap0 = NULL;
 object * heap1 = NULL;
 
+#define TAGSIZE 16
+#define TAGMASK 0xffff
+
 /* Type Tags */
 
 #define TC_INT                  (0<<1) // 00000000 00
@@ -50,19 +53,19 @@ object * heap1 = NULL;
 //   leaving a max of 59 variants in any one type.
 
 // immediate constants
-#define IRK_FALSE		(object *) (0x000 | TC_BOOL)
-#define IRK_TRUE		(object *) (0x100 | TC_BOOL)
-#define IRK_MAYBE		(object *) (0x200 | TC_BOOL)  // just kidding
+#define IRK_FALSE		(object *) (0 << TAGSIZE | TC_BOOL)
+#define IRK_TRUE		(object *) (1 << TAGSIZE | TC_BOOL)
+#define IRK_MAYBE		(object *) (2 << TAGSIZE | TC_BOOL)  // just kidding
 #define IRK_NIL		  	(object *) (0x000 | TC_NIL)
 #define IRK_UNDEFINED		(object *) (0x000 | TC_UNDEFINED)
 
 // XXX make these inline functions rather than macros
 
-#define GET_TYPECODE(p)		(((irk_int)(p))&0xff)
-#define GET_PAYLOAD(p)		(((irk_int)(p))>>8)
-#define GET_TUPLE_LENGTH(p)	(((irk_int)(p))>>8)
-#define GET_ENV_LENGTH(p)	(((irk_int)(p))>>8)
-#define TAG_VALUE(tag,value)	((object)((tag&0xff)|(value<<8)))
+#define GET_TYPECODE(p)		(((irk_int)(p))&TAGMASK)
+#define GET_PAYLOAD(p)		(((irk_int)(p))>>TAGSIZE)
+#define GET_TUPLE_LENGTH(p)	(((irk_int)(p))>>TAGSIZE)
+#define GET_ENV_LENGTH(p)	(((irk_int)(p))>>TAGSIZE)
+#define TAG_VALUE(tag,value)	((object)((tag&TAGMASK)|(value<<TAGSIZE)))
 #define GET_STRING_POINTER(s)   (((irk_string *)(s))->data)
 
 #define IS_INTEGER(p)		(((irk_int)(p)) & 1)
@@ -70,20 +73,20 @@ object * heap1 = NULL;
 #define UNTAG_INTEGER(p)	(((irk_int)(p))>>1)
 
 #define IMMEDIATE(p)		(((irk_int)(p)) & 3)
-#define IS_TYPE(t, p)		(((irk_int)(p)&0xff)==t)
+#define IS_TYPE(t, p)		(((irk_int)(p)&TAGMASK)==t)
 #define IS_CHAR(p)		IS_TYPE (TC_CHAR, p)
 #define IS_BOOL(p)		IS_TYPE (TC_BOOL, p)
 #define IS_NIL(p)		IS_TYPE (TC_NIL, p)
 #define IS_UNDEFINED(p)		IS_TYPE (TC_UNDEFINED, p)
 
-#define GET_CHAR(p)		(((irk_int)(p)>>8))
-#define TO_CHAR(ch)		((object)(irk_int)(((ch)<<8)|TC_CHAR))
+#define GET_CHAR(p)		(((irk_int)(p)>>TAGSIZE))
+#define TO_CHAR(ch)		((object)(irk_int)(((ch)<<TAGSIZE)|TC_CHAR))
 
 #define HOW_MANY(x,n)		(((x)+(n)-1)/(n))
 #define STRING_TUPLE_LENGTH(n)  HOW_MANY (n + sizeof(int32_t), sizeof(object))
-#define STRING_HEADER(n)        STRING_TUPLE_LENGTH(n)<<8|TC_STRING
-#define SYMBOL_HEADER           ((1<<8)|TC_SYMBOL)
-#define CONS_HEADER             ((2<<8)|TC_PAIR)
+#define STRING_HEADER(n)        STRING_TUPLE_LENGTH(n)<<TAGSIZE|TC_STRING
+#define SYMBOL_HEADER           ((1<<TAGSIZE)|TC_SYMBOL)
+#define CONS_HEADER             ((2<<TAGSIZE)|TC_PAIR)
 
 // these make the C output more compact & readable
 #define IRK_TEST(x)		((x) ? IRK_TRUE : IRK_FALSE)
@@ -94,10 +97,10 @@ object * heap1 = NULL;
 
 // code output for literals
 #define UOTAG(n)                (TC_USEROBJ+((n)<<2))
-#define UITAG(n)                (TC_USERIMM+((n)<<8))
+#define UITAG(n)                (TC_USERIMM+((n)<<TAGSIZE))
 #define UPTR(n,o)               ((irk_int)(constructed_##n+o))
 #define UPTR0(n)                ((irk_int)(&constructed_##n))
-#define UOHEAD(l,n)             ((l<<8)|UOTAG(n))
+#define UOHEAD(l,n)             ((l<<TAGSIZE)|UOTAG(n))
 #define INTCON(p)		((irk_int)TAG_INTEGER(p))
 
 // here we want something that looks like a pointer, but is unlikely,
@@ -173,7 +176,7 @@ typedef struct _pair {
   object * cdr;
 } irk_pair;
 
-#define GET_TYPECODE(p) (((irk_int)(p))&0xff)
+#define GET_TYPECODE(p) (((irk_int)(p))&TAGMASK)
 
 static int
 is_int (object * ob)
@@ -184,7 +187,7 @@ is_int (object * ob)
 static irk_int
 is_immediate (object * ob)
 {
-  irk_int tc = ((irk_int) ob) & 0xff;
+  irk_int tc = ((irk_int) ob) & TAGMASK;
   if (tc & 3) {
     return tc;
   } else {

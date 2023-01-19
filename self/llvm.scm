@@ -696,7 +696,7 @@
     (define (build-args args)
       (format (join (lambda (x) (format "i8** %r" (int x))) ", " args)))
 
-    (define (UITAG n) (+ TC_USERIMM (<< n 8)))
+    (define (UITAG n) (+ TC_USERIMM (<< n tagsize)))
     (define (UOTAG n) (+ TC_USEROBJ (<< n 2)))
 
     ;; hacks for datatypes known by the runtime
@@ -833,6 +833,7 @@
       		  (raise (:CPSNotImplemented x)))
       )
 
+    (verbose (printf "  " (sym name) "\n"))
     (when the-context.options.trace
 	  (oformat "@." cname " = private unnamed_addr constant ["
 		   (int (+ 1 (string-length cname))) " x i8] c\""
@@ -940,14 +941,14 @@
 	'list 'nil   -> TC_NIL
 	'bool 'true  -> immediate-true
 	'bool 'false -> immediate-false
-	_ _          -> (+ TC_USERIMM (<< index 8))))
+	_ _          -> (+ TC_USERIMM (<< index tagsize))))
 
     (define (uohead tag len)
-      (+ tag (<< len 8)))
+      (+ tag (<< len tagsize)))
 
     (define (vector-header name n)
       (format name " = global [" (int (+ 1 n)) " x i64*] [\n"
-              "  i64* inttoptr (i64 " (int (+ TC_VECTOR (<< n 8))) " to i64*) ,\n"))
+              "  i64* inttoptr (i64 " (int (+ TC_VECTOR (<< n tagsize))) " to i64*) ,\n"))
 
     (define (lit-ref i)
       (match (info-map::get i) with
@@ -1025,7 +1026,7 @@
                    (lltype (format "{i64, i32, [" (int slen) " x i8]}")))
                (info-map::add i (:tuple lltype 0))
                (oformat "@lit." (int i) " = local_unnamed_addr global "
-                        lltype " {i64 " (int (+ TC_STRING (<< tlen 8)))
+                        lltype " {i64 " (int (+ TC_STRING (<< tlen tagsize)))
                         ", i32 " (int slen) ", [" (int slen) " x i8] c\"" (llvm-string s) "\" }"))
           (literal:symbol sym)
           -> (let ((oindex0 oindex)
@@ -1033,7 +1034,7 @@
                    (sindex (cmap->index lits (literal:string (symbol->string sym)))))
                (info-map::add i (:tuple lltype 0))
                (oformat "@lit." (int i) " = local_unnamed_addr global "
-                        lltype " {i64 " (int (+ TC_SYMBOL (<< 2 8)))
+                        lltype " {i64 " (int (+ TC_SYMBOL (<< 2 tagsize)))
                         ", i64 " (int (- (+ 1 sindex)))
                         ", i64 " (int (logior 1 (<< symbol-counter 1))) "}"
                         )
@@ -1145,10 +1146,15 @@
            "  ret i8** %1\n}"))
 
 (define (emit-llvm o cname cps)
+  (verbose (printf "cps->llvm...\n") (flush))
   (cps->llvm cps o 'toplevel cname '() #t)
+  (verbose (printf "emit constructed literals...\n") (flush))
   (llvm-emit-constructed o)
+  (verbose (printf "emit lookup-field hashtables...\n"))
   (emit-llvm-lookup-field-hashtables o)
+  (verbose (printf "emit metadata...\n"))
   (emit-llvm-get-metadata o)
+  (verbose (printf "emit declarations...\n"))
   (emit-ffi-declarations o)
   )
 

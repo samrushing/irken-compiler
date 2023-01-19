@@ -1186,7 +1186,7 @@ vm_go (void)
   DISPATCH();
  l_makei:
   // MAKEI target tag payload
-  REG1 = (object*)((UNTAG_INTEGER(REG3)<<8) | (UNTAG_INTEGER(REG2) & 0xff));
+  REG1 = (object*)((UNTAG_INTEGER(REG3)<<TAGSIZE) | (UNTAG_INTEGER(REG2) & TAGMASK));
   pc += 4;
   DISPATCH();
  l_exit:
@@ -1592,8 +1592,11 @@ toplevel (void) {
     fprintf (stderr, "failed to read bytecode file: %s\n", irk_argv[1]);
   } else {
     object * result = vm_go();
-    //print_object (result);
-    //fprintf (stdout, "\n");
+    if ((result != (object*) IRK_UNDEFINED) && !IS_INTEGER(result)) {
+      // only print the result object if it's "interesting".
+      print_object (result);
+      fprintf (stdout, "\n");
+    }
     if (is_int (result)) {
       exit ((int)(intptr_t)UNTAG_INTEGER(result));
     } else {
