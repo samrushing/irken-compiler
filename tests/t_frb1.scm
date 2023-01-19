@@ -1,9 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/core.scm")
-(include "lib/pair.scm")
-(include "lib/string.scm")
-(include "lib/frb.scm")
+(require "lib/basis.scm")
 
 (define (t0)
 

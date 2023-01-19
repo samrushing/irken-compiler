@@ -1,6 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
+(require "lib/basis.scm")
 
 (libc/strlen (cstring "howdythere\x00"))
