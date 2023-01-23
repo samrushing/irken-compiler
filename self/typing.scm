@@ -98,7 +98,8 @@
       (printf "node id=" (int (noderec->id exp)) "\n")
       (let ((ut0 (apply-subst t0))
 	    (ut1 (apply-subst t1)))
-	(printf "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n")))
+	(printf "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n")
+        (printf "\n  " (src-repr (noderec->src exp) the-context.options.src-limit) "\n")))
 
     (define (type-error t0 t1)
       (print-type-error t0 t1)
@@ -564,7 +565,7 @@
       '%rmake       -> (:scheme '() (arrow (rproduct (rdefault (rabs))) '()))
       '%ensure-heap -> (:scheme '() (arrow undefined-type (list int-type)))
       '%rextend     -> (match params with
-                         (sexp:symbol label)
+                         (sexp:symbol label _)
                          -> (let ((plabel (make-label label)))
                               ;; forall('a,'b).({lab=(abs) 'a} 'b -> {lab=(pre 'b) 'a})
                               (:scheme (list T0 T1)
@@ -575,7 +576,7 @@
                               )
                          _ -> (prim-error name))
       '%raccess     -> (match params with
-			 (sexp:symbol label)
+			 (sexp:symbol label _)
 			 -> (:scheme (list T0 T1)
 				     (arrow T0
 					    (list (rproduct (rlabel (make-label label)
@@ -583,7 +584,7 @@
 								    T1)))))
 			 _ -> (prim-error name))
       '%rset        -> (match params with
-			 (sexp:symbol label)
+			 (sexp:symbol label _)
 			 -> (:scheme (list T0 T1)
 				     (arrow undefined-type
 					    (list (rproduct (rlabel (make-label label)
@@ -600,7 +601,7 @@
 			      (maybe:yes dt) -> (dt.get-alt-scheme altname))
 			 _ -> (prim-error name))
       '%vcon        -> (match params with
-			 (sexp:list ((sexp:symbol label) (sexp:int arity)))
+			 (sexp:list ((sexp:symbol label _) (sexp:int arity)))
 			 -> (let ((plabel (make-label label)))
 			      (remember-variant-label label)
 			      (match arity with
@@ -704,7 +705,7 @@
 
   (define get-sref
     ;; structname.field0.field1.field2 ...
-    (sexp:attr (sexp:symbol sname) fname)
+    (sexp:attr (sexp:symbol sname _) fname)
     -> (:tuple (lookup-field fname (lookup-struct-fields sname)) sname)
     (sexp:attr sub fname)
     -> (let (((ref sname) (get-sref sub)))
@@ -730,7 +731,7 @@
 
   ;; XXX do we need to scan the resulting type for tvars to add to gens?
   (define lookup-ffi-scheme
-    (sexp:symbol name)
+    (sexp:symbol name _)
     -> (match (ffi-info.sigs::get name) with
          (maybe:yes (csig:fun _ rtype argtypes))
          -> (:scheme '() (arrow (ffi-type-frob-int (ctype->irken-type rtype))

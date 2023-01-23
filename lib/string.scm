@@ -302,6 +302,41 @@
       _            -> (ds2i 0 digits)
       )))
 
+;; originally from lisp_reader.scm
+(define hex-map
+  (alist/make
+   (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
+   (#\a 10) (#\b 11) (#\c 12) (#\d 13) (#\e 14) (#\f 15)
+   (#\A 10) (#\B 11) (#\C 12) (#\D 13) (#\E 14) (#\F 15)
+   ))
+
+(define dec-map
+  (alist/make
+   (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
+   ))
+
+(define oct-map
+  (alist/make
+   (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7)
+   ))
+
+;; XXX this currently does not check that the literal will fit in an irken integer!
+
+;; maybe parse integer in base <b> from string <s>
+(define (parse-integer b s)
+  (let ((neg? (eq? (string-ref s 0) #\-))
+	(start (if neg? 1 0))
+        (n (string-length s)))
+    (let loop ((i start)
+	       (r 0))
+      (if (= i n)
+	  (result:ok (if neg? (- 0 r) r))
+	  (match (alist/lookup hex-map (string-ref s i)) with
+	    (maybe:no)        -> (result:err (:BadInteger s))
+	    (maybe:yes digit) -> (loop (+ i 1) (+ (* r b) digit)))
+	  ))))
+
+
 ;; pre-compute 0..100?
 (define (int->string n)
   (if (= 0 n)

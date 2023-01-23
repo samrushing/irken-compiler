@@ -39,20 +39,22 @@
      (cint:width 32) #t -> 'i256
      (cint:width 32) #f -> 'u256
      _ _ -> (raise (:AutoFFI/UnsupportedCint cint))
-     )))
+     )
+   null-src
+   ))
 
 (define ctype->sexp
-  (ctype:name name)    -> (sexp:symbol name)
+  (ctype:name name)    -> (sexp:symbol name null-src)
   (ctype:int x s?)     -> (cint->sexp x s?)
-  (ctype:array size t) -> (sexp (sexp:symbol 'cref) (ctype->sexp t))
-  (ctype:pointer t)    -> (sexp (sexp:symbol 'cref) (ctype->sexp t))
-  (ctype:struct name)  -> (sexp (sexp:symbol 'struct) (sexp:symbol name))
-  (ctype:union name)   -> (sexp (sexp:symbol 'union) (sexp:symbol name))
+  (ctype:array size t) -> (sexp (sym 'cref) (ctype->sexp t))
+  (ctype:pointer t)    -> (sexp (sym 'cref) (ctype->sexp t))
+  (ctype:struct name)  -> (sexp (sym 'struct) (sym name))
+  (ctype:union name)   -> (sexp (sym 'union) (sym name))
   )
 
 ;; special-case: all integer arguments/return-values become 'int
 ;; (define argtype->sexp
-;;   (ctype:int _ s?) -> (sexp:symbol 'int)
+;;   (ctype:int _ s?) -> (sexp:symbol 'int null-src)
 ;;   arg              -> (ctype->sexp arg)
 ;;   )
 
@@ -63,7 +65,8 @@
   (map (lambda (x)
          (sexp:symbol
           (string->symbol
-           (format "arg" (int x)))))
+           (format "arg" (int x)))
+          null-src))
        (range n)))
 
 ;; because of the subtleties of transform.scm, the macros cannot expand
@@ -95,7 +98,7 @@
       (string->symbol (format (sym interface) "/" (sym name))))
 
     (define (iface-includes)
-      (map (lambda (path) (sexp (sexp:symbol 'cinclude) (sexp:string path)))
+      (map (lambda (path) (sexp (sym 'cinclude) (sexp:string path)))
            info.includes))
 
     (when first-time?
@@ -105,7 +108,7 @@
       (match the-context.options.backend with
         ;; bytecode needs a runtime call to ``require-ffi``
         (backend:bytecode)
-        -> (push! forms (sexp (sexp:symbol 'require-ffi) (sexp (sexp:symbol 'quote) (sexp:symbol interface))))
+        -> (push! forms (sexp (sym 'require-ffi) (sexp (sym 'quote) (sym interface))))
         (backend:c)
         -> (set! forms (append (iface-includes) forms))
         (backend:llvm)
@@ -119,7 +122,7 @@
                ;; XXX consider using a zero placeholder for all constants when emitting
                ;;  bytecode, to avoid needless differences in bytecode compiled on different
                ;;  platforms.
-               (sexp (sexp:symbol 'define) (sexp:symbol k) (sexp:int v)))))
+               (sexp (sym 'define) (sym k) (int v)))))
 
       (match the-context.options.backend with
         ;; with the bytecode backend, we need to set! the values after loading the ffi info,
@@ -128,9 +131,9 @@
         -> (info.cons::iterate
             (lambda (k v)
               (push! forms
-                    (sexp (sexp:symbol 'set!)
-                          (sexp:symbol k)
-                          (sexp (sexp:symbol 'fetch-ffi-constant) (sexp:symbol k) (sexp:int v))))))
+                    (sexp (sym 'set!)
+                          (sym k)
+                          (sexp (sym 'fetch-ffi-constant) (sym k) (int v))))))
         _ -> #u
         )
 
@@ -141,29 +144,29 @@
            (csig:fun name rtype argtypes)
            -> (let ((ztname (zero-terminate (symbol->string name))))
                 (push! forms
-                      (sexp (sexp:symbol 'define)
-                            (sexp:symbol (iface-prefix visible-name))
-                            (sexp (sexp:symbol 'build-ffi-fun)
-                                  (sexp:symbol interface)
-                                  (sexp:symbol name)
-                                  (sexp:string ztname)
+                      (sexp (sym 'define)
+                            (sym (iface-prefix visible-name))
+                            (sexp (sym 'build-ffi-fun)
+                                  (sym interface)
+                                  (sym name)
+                                  (string ztname)
                                   (argtype->sexp rtype)
-                                  (sexp:char (ctype->rtype-code rtype))
-                                  (sexp:int (length argtypes))
+                                  (char (ctype->rtype-code rtype))
+                                  (int (length argtypes))
                                   (sexp:list (map argtype->sexp argtypes))
                                   (sexp:list (argnames (length argtypes))))
                             )))
            (csig:obj name obtype)
            -> (let ((ztname (zero-terminate (symbol->string name))))
                 (push! forms
-                      (sexp (sexp:symbol 'define)
-                            (sexp:symbol (iface-prefix visible-name))
-                            (sexp (sexp:symbol 'build-ffi-ob)
-                                  (sexp:symbol interface)
-                                  (sexp:symbol name)
-                                  (sexp:string ztname)
+                      (sexp (sym 'define)
+                            (sym (iface-prefix visible-name))
+                            (sexp (sym 'build-ffi-ob)
+                                  (sym interface)
+                                  (sym name)
+                                  (string ztname)
                                   (ctype->sexp obtype)
-                                  (sexp:char (ctype->code obtype))
+                                  (char (ctype->code obtype))
                                   )))
                 )
            )))

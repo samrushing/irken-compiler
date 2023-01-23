@@ -156,8 +156,8 @@ Usage: compile <irken-src-file> [options]
 	(_ (optimize-nvcase node1))
         (noden (do-n-rounds node1 the-context.options.opt-rounds))
 	;; try to free up some memory
-	(_ (set! node0 (node/sequence '())))
-	(_ (set! node1 (node/sequence '())))
+	(_ (set! node0 (node/sequence '() (src:nil))))
+	(_ (set! node1 (node/sequence '() (src:nil))))
 	(_ (set! the-context.funs (tree/empty)))
 	(_ (find-tail noden))
 	(_ (find-leaves noden))

@@ -97,41 +97,41 @@
 
 (define parse-ctype
   ;; many integer types
-  (sexp:symbol 'int)       -> (ctype:int (cint:int) #t)
-  (sexp:symbol 'uint)      -> (ctype:int (cint:int) #f)
-  (sexp:symbol 'short)     -> (ctype:int (cint:short) #t)
-  (sexp:symbol 'ushort)    -> (ctype:int (cint:short) #f)
-  (sexp:symbol 'long)      -> (ctype:int (cint:long) #t)
-  (sexp:symbol 'ulong)     -> (ctype:int (cint:long) #f)
-  (sexp:symbol 'longlong)  -> (ctype:int (cint:longlong) #t)
-  (sexp:symbol 'ulonglong) -> (ctype:int (cint:longlong) #f)
-  (sexp:symbol 'i8)        -> (ctype:int (cint:width 1) #t)
-  (sexp:symbol 'u8)        -> (ctype:int (cint:width 1) #f)
-  (sexp:symbol 'i16)       -> (ctype:int (cint:width 2) #t)
-  (sexp:symbol 'u16)       -> (ctype:int (cint:width 2) #f)
-  (sexp:symbol 'i32)       -> (ctype:int (cint:width 4) #t)
-  (sexp:symbol 'u32)       -> (ctype:int (cint:width 4) #f)
-  (sexp:symbol 'i64)       -> (ctype:int (cint:width 8) #t)
-  (sexp:symbol 'u64)       -> (ctype:int (cint:width 8) #f)
-  (sexp:symbol 'i256)      -> (ctype:int (cint:width 32) #t)
-  (sexp:symbol 'u256)      -> (ctype:int (cint:width 32) #f)
-  (sexp:list ((sexp:symbol 'int) (sexp:list ((sexp:int size) (sexp:int signed?)))))
+  (sexp:symbol 'int _)       -> (ctype:int (cint:int) #t)
+  (sexp:symbol 'uint _)      -> (ctype:int (cint:int) #f)
+  (sexp:symbol 'short _)     -> (ctype:int (cint:short) #t)
+  (sexp:symbol 'ushort _)    -> (ctype:int (cint:short) #f)
+  (sexp:symbol 'long _)      -> (ctype:int (cint:long) #t)
+  (sexp:symbol 'ulong _)     -> (ctype:int (cint:long) #f)
+  (sexp:symbol 'longlong _)  -> (ctype:int (cint:longlong) #t)
+  (sexp:symbol 'ulonglong _) -> (ctype:int (cint:longlong) #f)
+  (sexp:symbol 'i8 _)        -> (ctype:int (cint:width 1) #t)
+  (sexp:symbol 'u8 _)        -> (ctype:int (cint:width 1) #f)
+  (sexp:symbol 'i16 _)       -> (ctype:int (cint:width 2) #t)
+  (sexp:symbol 'u16 _)       -> (ctype:int (cint:width 2) #f)
+  (sexp:symbol 'i32 _)       -> (ctype:int (cint:width 4) #t)
+  (sexp:symbol 'u32 _)       -> (ctype:int (cint:width 4) #f)
+  (sexp:symbol 'i64 _)       -> (ctype:int (cint:width 8) #t)
+  (sexp:symbol 'u64 _)       -> (ctype:int (cint:width 8) #f)
+  (sexp:symbol 'i256 _)      -> (ctype:int (cint:width 32) #t)
+  (sexp:symbol 'u256 _)      -> (ctype:int (cint:width 32) #f)
+  (sexp:list ((sexp:symbol 'int _) (sexp:list ((sexp:int size) (sexp:int signed?)))))
   -> (ctype:int (cint:width size) (if (= signed? 1) #t #f))
-  (sexp:list ((sexp:symbol '*) sub))
+  (sexp:list ((sexp:symbol '* _) sub))
   -> (ctype:pointer (parse-ctype sub))
-  (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
+  (sexp:list ((sexp:symbol 'struct _) (sexp:symbol name _)))
   -> (ctype:struct name)
-  (sexp:list ((sexp:symbol 'union) (sexp:symbol name)))
+  (sexp:list ((sexp:symbol 'union _) (sexp:symbol name _)))
   -> (ctype:union name)
-  (sexp:list ((sexp:symbol 'array) sub (sexp:list ((sexp:int size)))))
+  (sexp:list ((sexp:symbol 'array _) sub (sexp:list ((sexp:int size)))))
   -> (ctype:array size (parse-ctype sub))
   ;; new array form (i.e. ctype2-repr)
-  (sexp:list ((sexp:symbol 'array) (sexp:int size) sub))
+  (sexp:list ((sexp:symbol 'array _) (sexp:int size) sub))
   -> (ctype:array size (parse-ctype sub))
   ;; temporary, all function types are void
-  (sexp:list ((sexp:symbol 'fun) . _))
+  (sexp:list ((sexp:symbol 'fun _) . _))
   -> (ctype:name 'void)
-  (sexp:symbol name)
+  (sexp:symbol name _)
   -> (ctype:name name)
   x -> (error1 "malformed type" (repr x))
   )
@@ -139,23 +139,23 @@
 (define (parse-spec info forms)
 
   (define parse-field
-    (sexp:list ((sexp:int size) (sexp:symbol name) ftype))
+    (sexp:list ((sexp:int size) (sexp:symbol name _) ftype))
     -> (cfield:t size name (parse-ctype ftype))
     x -> (error1 "malformed field" (repr x))
     )
 
   (define parse-struct
-    'struct ((sexp:symbol name) (sexp:int size) . fields)
+    'struct ((sexp:symbol name _) (sexp:int size) . fields)
     -> (info.structs::add name (cdef:struct size name (map parse-field fields)))
-    'union ((sexp:symbol name) (sexp:int size) . fields)
+    'union ((sexp:symbol name _) (sexp:int size) . fields)
     -> (info.unions::add name (cdef:union size name (map parse-field fields)))
     kind x -> (error1 "malformed struct" (:pair kind x))
     )
 
   (define arrow-type?
-    ()                    -> #f
-    ((sexp:symbol '->) _) -> #t
-    (hd . tl)             -> (arrow-type? tl)
+    ()                      -> #f
+    ((sexp:symbol '-> _) _) -> #t
+    (hd . tl)               -> (arrow-type? tl)
     )
 
   ;; convert all integer arguments to 'int' type.
@@ -183,22 +183,22 @@
     )
 
   (define parse-sig
-    ((sexp:symbol name) sig)
+    ((sexp:symbol name _) sig)
     -> (info.sigs::add name (parse-sig* name sig))
-    ((sexp:list ((sexp:symbol name0) (sexp:symbol name1))) sig)
+    ((sexp:list ((sexp:symbol name0 _) (sexp:symbol name1 _))) sig)
     -> (let ((sig0 (parse-sig* name1 sig)))
          (info.sigs::add name0 sig0))
     x -> (error1 "malformed sig" (repr (sexp:list x)))
     )
 
   (define parse-con
-    ((sexp:symbol name) (sexp:int val))
+    ((sexp:symbol name _) (sexp:int val))
     -> (info.cons::add name val)
     x -> (error1 "malformed constant" x)
     )
 
   (define parse-tdef
-    ((sexp:symbol name) t)
+    ((sexp:symbol name _) t)
     -> (info.tdefs::add name (parse-ctype t))
     x -> (error1 "malformed tdef" x)
     )
@@ -213,23 +213,23 @@
     )
 
   (define parse-form
-    (sexp:list ((sexp:symbol 'struct) . rest))
+    (sexp:list ((sexp:symbol 'struct _) . rest))
     -> (parse-struct 'struct rest)
-    (sexp:list ((sexp:symbol 'union) . rest))
+    (sexp:list ((sexp:symbol 'union _) . rest))
     -> (parse-struct 'union rest)
-    (sexp:list ((sexp:symbol 'sig) . rest))
+    (sexp:list ((sexp:symbol 'sig _) . rest))
     -> (parse-sig rest)
-    (sexp:list ((sexp:symbol 'con) . rest))
+    (sexp:list ((sexp:symbol 'con _) . rest))
     -> (parse-con rest)
-    (sexp:list ((sexp:symbol 'tdef) . rest))
+    (sexp:list ((sexp:symbol 'tdef _) . rest))
     -> (parse-tdef rest)
-    (sexp:list ((sexp:symbol 'includes) . rest))
+    (sexp:list ((sexp:symbol 'includes _) . rest))
     -> (set! info.includes (parse-string-list '() rest))
-    (sexp:list ((sexp:symbol 'cflags) . rest))
+    (sexp:list ((sexp:symbol 'cflags _) . rest))
     -> (set! info.cflags (parse-string-list '() rest))
-    (sexp:list ((sexp:symbol 'lflags) . rest))
+    (sexp:list ((sexp:symbol 'lflags _) . rest))
     -> (set! info.lflags (parse-string-list '() rest))
-    (sexp:list ((sexp:symbol 'dll) (sexp:string dll)))
+    (sexp:list ((sexp:symbol 'dll _) (sexp:string dll)))
     -> (set! info.dll dll)
     x -> (error1 "malformed spec file" (repr x))
     )
@@ -446,7 +446,7 @@
 (define expand-cref
   ref0 ()
   -> ref0
-  ref0 ((sexp:symbol fname) . tl)
+  ref0 ((sexp:symbol fname _) . tl)
   -> (expand-cref (cref-field fname ref0) tl)
   ref0 ((sexp:int index) . tl)
   -> (expand-cref (cref-aref index ref0) tl)
@@ -566,7 +566,7 @@
   )
 
 (define sexp->ref
-  (sexp:attr (sexp:symbol sname) fname)
+  (sexp:attr (sexp:symbol sname _) fname)
   -> (let ((ref0 {off=0 ctype=(ctype:struct sname)}))
        (cref-field fname ref0))
   (sexp:attr sub fname)
@@ -578,11 +578,11 @@
 ;; compute the size/offset of a type at runtime (VM).
 
 (define sexp->sizeoff
-  (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
+  (sexp:list ((sexp:symbol 'struct _) (sexp:symbol name _)))
   -> (ctype->size (ctype:struct name))
-  (sexp:list ((sexp:symbol 'union) (sexp:symbol name)))
+  (sexp:list ((sexp:symbol 'union _) (sexp:symbol name _)))
   -> (ctype->size (ctype:union name))
-  (sexp:symbol tdef)
+  (sexp:symbol tdef _)
   -> (ctype->size (ctype:name tdef))
   exp
   -> (let ((ref (sexp->ref exp)))
@@ -600,7 +600,7 @@
   ;;   seven times.
   ;; this will be replaced by the VM with the contents of the sizeoff table.
 
-  (define sizeoff-table (literal #((sexp:symbol &&sizeoff-sentinel&&))))
+  (define sizeoff-table (literal #((sexp:symbol &&sizeoff-sentinel&& null-src))))
 
   (define (update-sizeoff-table)
 

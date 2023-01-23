@@ -124,14 +124,24 @@
     (let ((var (vars-get-var name)))
       (set! var.sets (+ 1 var.sets))))
 
-  (define (walk node)
+  (define (walk0 node)
     (match (noderec->t node) with
       (node:varref name) -> (add-ref name)
       (node:varset name) -> (add-set name)
       _ -> #u)
     (for-each walk (noderec->subs node)))
 
-  (walk node))
+  (define (walk node)
+    (try
+     (walk0 node)
+     except
+     (:NoSuchVariable name) ;; this is a first-point-of-failure kinda thing.
+     -> (let ((src (noderec->src node)))
+          (printf "Unknown Variable " (bold (sym name)) ":\n"
+                  (src-repr src the-context.options.src-limit) "\n")
+          (%exit #f -1))))
+  (walk node)
+  )
 
 (define (find-free-refs node)
 
@@ -257,7 +267,7 @@
               (set-multiplier name calls))
             result))
 
-        (define (walk node)
+        (define (walk0 node)
           (let/cc return
             (set-node-subs! node (map walk (noderec->subs node)))
             (match (noderec->t node) with
@@ -270,6 +280,8 @@
                         (maybe:yes (:pair name fun))
                         -> (when (safe-to-inline name fun)
                              (let ((r (inline-application fun rands)))
+                               ;; mark src with inlined info...
+                               (wrap-src name (noderec->src node) r)
                                ;; record the new variables...
                                (add-vars r)
                                (return (walk r)))))
@@ -285,10 +297,26 @@
             node
             ))
 
+        (define (walk node)
+          (try
+           (walk0 node)
+           except
+           (:OptimizeError msg _)
+           -> (begin (printf "Error during optimization: " msg "\n"
+                             (src-repr (noderec->src node) the-context.options.src-limit)
+                             "\n")
+                     (error "compiler error"))
+           ))
+
         ;; build a map to all functions
         (build-fenv node)
         ;; descend
         (walk node)
+        ))
+
+    (define (wrap-src name src body)
+      (for (n d) (make-node-generator body)
+        (set-node-src! n (src:inline name (noderec->src n) src))
         ))
 
     (define (instantiate fun)
@@ -353,7 +381,7 @@
 	(match (noderec->t fun) with
 	  (node:function name formals)
           -> (if (not (= n (length formals)))
-                 (error1 "inline: bad arity" name)
+                 (raise (:OptimizeError "inline: bad arity" fun))
                  (begin
                    ;;(printf "inlining function " (sym name) " has " (int n) " formals\n")
                    ;; go through the arguments, deciding if each one is simple or complex.
@@ -373,9 +401,9 @@
                                   (if (> avar.sets 0)
                                       (push! complex i)
                                       (push! simple i)))
-                             _ -> (if (not (makes-funcalls? rand))
-                                      (push! simple i)
-                                      (push! complex i))
+                             _ -> (if (makes-funcalls? rand)
+                                      (push! complex i)
+                                      (push! simple i))
                              ))))
                    ;;(print-string "   simple, complex=") (print simple) (printn complex) (newline)
                    (let ((body (instantiate fun)) ;; alpha converted copy of the function
@@ -394,13 +422,13 @@
                                           (format "_i" (int (rename-counter.inc))))))
                                (push! names name)
                                (push! inits (nth rands i))
-                               (push! substs (:pair (nth formals i) (node/varref name)))
+                               (push! substs (:pair (nth formals i) (node/varref name (src:nil))))
                                ))
                            ;;(print-string "substs = ") (printn substs)
                            (let ((body (substitute body substs)))
                              (node/let (reverse names) (reverse inits) body)))
                          ))))
-	  _ -> (error1 "inline-application - inlining non-function?" fun)
+	  _ -> (raise (:OptimizeError "inline-application - inlining non-function?" fun))
 	  )))
 
     (define (substitute body substs)
@@ -423,8 +451,13 @@
 		      (maybe:no) -> node)
 		 (node:varset name)
 		 -> (match (lookup name) with
-		      (maybe:yes val) -> (node/varset (varref->name (noderec->t val)) (car (noderec->subs node)))
-		      (maybe:no) -> node)
+		      (maybe:yes val)
+                      -> (node/varset
+                          (varref->name (noderec->t val))
+                          (car (noderec->subs node)) (noderec->src node))
+		      (maybe:no)
+                      -> node
+                      )
 		 _ -> node)))
 	  (set-node-subs! node0 (map walk (noderec->subs node0)))
           (set-node-size! node0 (sum-size (noderec->subs node0)))
@@ -567,7 +600,8 @@
 		     -> (return
 			 (simpleopt
 			  (node/sequence
-			   (append (append (slice subs0 0 i) subs1) (slice subs0 (+ 1 i) n)))))
+			   (append (append (slice subs0 0 i) subs1) (slice subs0 (+ 1 i) n))
+                           (src:nil))))
 		     _ -> #u))
 	       #u))
 

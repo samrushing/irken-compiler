@@ -289,20 +289,20 @@
 
     (define get-sizeoff
       ;; XXX handle all 'sorta known' sizes like pointer, int, char, etc.
-      (sexp:symbol 'char) -> 1
-      (sexp:symbol 'i8)   -> 1
-      (sexp:symbol 'u8)   -> 1
-      (sexp:symbol 'i16)  -> 2
-      (sexp:symbol 'u16)  -> 2
-      (sexp:symbol 'i32)  -> 4
-      (sexp:symbol 'u32)  -> 4
-      (sexp:symbol 'i64)  -> 8
-      (sexp:symbol 'u64)  -> 8
-      (sexp:list ((sexp:symbol 'cref) _)) -> 50 ;; (cref 'a) == pointer
-      (sexp:symbol 'short)                -> 51
-      (sexp:symbol 'int)                  -> 52
-      (sexp:symbol 'long)                 -> 53
-      (sexp:symbol 'longlong)             -> 54
+      (sexp:symbol 'char _) -> 1
+      (sexp:symbol 'i8 _)   -> 1
+      (sexp:symbol 'u8 _)   -> 1
+      (sexp:symbol 'i16 _)  -> 2
+      (sexp:symbol 'u16 _)  -> 2
+      (sexp:symbol 'i32 _)  -> 4
+      (sexp:symbol 'u32 _)  -> 4
+      (sexp:symbol 'i64 _)  -> 8
+      (sexp:symbol 'u64 _)  -> 8
+      (sexp:list ((sexp:symbol 'cref _) _)) -> 50 ;; (cref 'a) == pointer
+      (sexp:symbol 'short _)                -> 51
+      (sexp:symbol 'int _)                  -> 52
+      (sexp:symbol 'long _)                 -> 53
+      (sexp:symbol 'longlong _)             -> 54
       sexp
       -> (+ 55 (cmap/add sizeoff-map sexp))
       )
@@ -368,7 +368,7 @@
          (tree/insert! the-context.ambig-rec int-cmp code #u))
 
        (define prim-record-get
-         (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
+         (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg)
          -> (let ((label-code (lookup-label-code label)))
               (match (guess-record-type sig) with
                 (maybe:yes sig0)
@@ -381,7 +381,7 @@
          _ _ -> (primop-error))
 
        (define prim-record-set
-         (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg arg-reg)
+         (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg arg-reg)
          -> (let ((label-code (lookup-label-code label)))
               (match (guess-record-type sig) with
                 (maybe:yes sig0)
@@ -424,7 +424,7 @@
        ;; this is a limited-remit function needed only to 'fill in' missing
        ;;   params for a handful of FFI-related primops.
        (define irken-type->sexp
-         (type:pred sym () _)   -> (sexp:symbol sym)
+         (type:pred sym () _)   -> (sexp:symbol sym null-src)
          (type:pred sym subs _) -> (sexp1 sym (map irken-type->sexp subs))
          x                      -> (raise (:Types/IrkenType2Sexp (type-repr x)))
          )
@@ -451,7 +451,7 @@
          (char->int (ctype->code (irken-type->ctype type))))
 
        (define prim-cget-int
-         ;;(sexp:symbol itype) (src)
+         ;;(sexp:symbol itype _) (src)
          _ (src)
          ;; CGET target src code
          -> (begin
@@ -462,7 +462,7 @@
          )
 
        (define prim-cset-int
-         ;;(sexp:symbol itype) (src dst)
+         ;;(sexp:symbol itype _) (src dst)
          _ (dst src)
          ;; CSET dst code val
          -> (begin

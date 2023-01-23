@@ -326,9 +326,9 @@
     (define do-platform
       acc ()
       -> acc
-      acc ((sexp:symbol 'else) exp)
+      acc ((sexp:symbol 'else _) exp)
       -> (W acc exp)
-      acc ((sexp:symbol platform) exp . rest)
+      acc ((sexp:symbol platform _) exp . rest)
       -> (match *platform* with
            (maybe:yes name)
            -> (if (eq? platform name) (W acc exp) (do-platform acc rest))
@@ -339,7 +339,7 @@
       )
 
     (define W
-      acc (sexp:list ((sexp:symbol '%platform) . exps))
+      acc (sexp:list ((sexp:symbol '%platform _) . exps))
       -> (do-platform acc exps)
       acc (sexp:list items)
       -> (list:cons (sexp:list (W* '() items)) acc)
@@ -355,18 +355,18 @@
     exp -> (raise (:GenFFI/Error "expected string" exp))
     )
   (define sexp->symbol
-    (sexp:symbol s) -> s
+    (sexp:symbol s _) -> s
     exp -> (raise (:GenFFI/Error "expected symbol" exp))
     )
   (define sexp-starting-with
-    sym0 (sexp:list ((sexp:symbol sym1) . subs))
+    sym0 (sexp:list ((sexp:symbol sym1 _) . subs))
     -> (if (eq? sym0 sym1)
            (maybe:yes subs) ;; subs := (list sexp)
            (maybe:no))
     _ _ -> (maybe:no)
     )
   (match (scan-for-meta exp) with
-    (sexp:list ((sexp:symbol iface) . lists)) ;; lists := (list sexp)
+    (sexp:list ((sexp:symbol iface _) . lists)) ;; lists := (list sexp)
     -> (let ((includes '())
              (cflags '())
              (lflags '())

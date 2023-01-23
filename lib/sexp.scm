@@ -4,7 +4,7 @@
 
 (datatype sexp
   (:list (list sexp))
-  (:symbol symbol)
+  (:symbol symbol src)
   (:string string)
   (:char char)
   (:bool bool)
@@ -19,6 +19,34 @@
 (datatype field
   (:t symbol sexp)
   )
+
+;; metadata about the source location of an s-expression.
+
+(datatype src
+  (:nil)                                 ;; no src information
+  (:base {path=string line=int pos=int}) ;; original src location
+  (:inline symbol src src)               ;; inlined function (second `src` is closer to the origin)
+  (:macro symbol src src)                ;; macro expansion (ditto)
+  )
+
+(define (src-repr src limit)
+  (define R
+    acc (src:nil)
+    -> (reverse (list:cons "<no-src-location>" acc))
+    acc (src:base r)
+    -> (list:cons (format r.path ":" (int r.line) ":" (int r.pos)) acc)
+    acc (src:inline fun src0 src1)
+    -> (R (list:cons (format "[inlined from " (sym fun) "]") (R acc src0)) src1)
+    acc (src:macro mac src0 src1)
+    -> (R (list:cons (format "[macro expanded from " (sym mac) "]") (R acc src0)) src1)
+    )
+  (let ((lines (R '() src)))
+    (if (> (length lines) limit)
+        (format (join "\n  " (take lines limit)) "\n  ...\n")
+        (format (join "\n  " lines) "\n")))
+  )
+
+(define null-src (src:nil))
 
 ;; ----- sexp format macro ------
 
@@ -36,7 +64,8 @@
   (sexpf (<int> n))         -> (sexp:int n)
   (sexpf (<char> ch))       -> (sexp:char ch)
   (sexpf (<bool> b))        -> (sexp:bool b)
-  (sexpf (<sym> s))         -> (sexp:symbol s)
+  (sexpf (<sym> s))         -> (sexp:symbol s null-src)
+  (sexpf (<symsrc> s src))  -> (sexp:symbol s src)
   (sexpf (<string> s))      -> (sexp:string s)
   (sexpf (<list> exp))      -> (sexp:list exp) ;; exp is (list sexp)
   (sexpf (<rec> field ...)) -> (sexp:record (sexprec field ...))
@@ -63,8 +92,11 @@
 ;; ------------------------------
 
 (define sexp->symbol
-  (sexp:symbol s) -> s
+  (sexp:symbol s _) -> s
   x -> (error1 "sexp->symbol" x))
+
+(define (make-sexp-symbol s)
+  (sexp:symbol s null-src))
 
 (define sexp->int
   (sexp:int n) -> n
@@ -79,12 +111,28 @@
   (field:t sa va) (field:t sb vb)
   -> (symbol<? sa sb))
 
-(define (sexp=? a b)
-  (eq? (cmp:=) (magic-cmp a b)))
+(define sexp=?
+  (sexp:symbol s0 _)   (sexp:symbol s1 _)   -> (eq? s0 s1)
+  (sexp:char ch0)      (sexp:char ch1)      -> (eq? ch0 ch1)
+  (sexp:bool b0)       (sexp:bool b1)       -> (eq? b0 b1)
+  (sexp:int n0)        (sexp:int n1)        -> (= n0 n1)
+  (sexp:undef)         (sexp:undef)         -> #t
+  (sexp:cons dt0 c0)   (sexp:cons dt1 c1)   -> (and (eq? dt0 dt1) (eq? c0 c1))
+  (sexp:string s0)     (sexp:string s1)     -> (string=? s0 s1)
+  (sexp:vector v0)     (sexp:vector v1)     -> (every2? sexp=? v0 v1)
+  (sexp:record fl0)    (sexp:record fl1)    -> (every2? field=? fl0 fl1)
+  (sexp:attr lhs0 a0)  (sexp:attr lhs1 a1)  -> (and (eq? a0 a1) (sexp=? lhs0 lhs1))
+  (sexp:list l0)       (sexp:list l1)       -> (every2? sexp=? l0 l1)
+  _ _                                       -> #f
+  )
 
 (define (sexp1 sym rest)
   ;; build an s-expression with <sym> at the front followed by <rest>
-  (sexp:list (list:cons (sexp:symbol sym) rest)))
+  (sexp:list (list:cons (sexp:symbol sym null-src) rest)))
+
+(define (sexp1src sym src rest)
+  ;; build an s-expression with <sym> at the front followed by <rest>
+  (sexp:list (list:cons (sexp:symbol sym src) rest)))
 
 (define repr-field
   (field:t '... _)   -> "..."
@@ -101,9 +149,9 @@
   )
 
 (define repr
-  (sexp:list ((sexp:symbol 'quote) x)) -> (format "'" (repr x))
+  (sexp:list ((sexp:symbol 'quote _) x)) -> (format "'" (repr x))
   (sexp:list l)     -> (format "(" (join repr " " l) ")")
-  (sexp:symbol s)   -> (format (sym s))
+  (sexp:symbol s _) -> (format (sym s))
   (sexp:string s)   -> (repr-string s)
   (sexp:char ch)    -> (repr-char ch)
   (sexp:bool #t)    -> "#t"
@@ -124,7 +172,7 @@
 			   (pp-size val)))
 (define pp-size
   (sexp:list l)     -> (foldr binary+ (+ 1 (length l)) (map pp-size l))
-  (sexp:symbol s)   -> (string-length (symbol->string s))
+  (sexp:symbol s _) -> (string-length (symbol->string s))
   (sexp:string s)   -> (+ 2 (string-length s)) ;; escaped backslashes!
   (sexp:char ch)    -> (string-length (repr (sexp:char ch)))
   (sexp:bool _)     -> 2

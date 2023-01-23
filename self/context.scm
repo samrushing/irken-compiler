@@ -23,6 +23,7 @@
    no-range-check       = #f
    opt-rounds           = 5
    inline-threshold     = 13
+   src-limit            = 10
    backend              = (backend:c)
    include-dirs		= (list "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    libraries            = '()
@@ -61,7 +62,7 @@
 
 (define (vars-get-var name)
   (match (tree/member the-context.vars symbol-index-cmp name) with
-    (maybe:no) -> (error1 "vars-get-var: no such var" name)
+    (maybe:no) -> (raise (:NoSuchVariable name))
     (maybe:yes v) -> v))
 
 (define (vars-get-flag name flag)
@@ -88,35 +89,36 @@
 (define VFLAG-NFLAGS    9)
 
 ;; urgh, needs to be an object
-(define (add-var name)
+(define (add-var name src)
   (match (tree/member the-context.vars symbol-index-cmp name) with
     (maybe:no) -> (set! the-context.vars
 			(tree/insert the-context.vars
-				     symbol-index-cmp name {flags=0 calls=0 refs=0 sets=0 mult=0}))
+				     symbol-index-cmp name {flags=0 calls=0 refs=0 sets=0 mult=0 src=src}))
     ;; <fix> then <function>, shows up twice, ignore.
     (maybe:yes _) -> #u))
 
 (define (add-vars root)
 
-  (define (add name)
-    (add-var name))
-
   (define (search exp)
-    (match (noderec->t exp) with
-      ;; only these three bind names.
-      (node:fix names)		   -> (for-each add names)
-      (node:let names)		   -> (for-each add names)
-      (node:function name formals) -> (begin (for-each add formals)
-					     (add name))
-      _ -> #u)
+    (let ((src (noderec->src exp)))
+      (define (add name)
+        (add-var name src))
+      (match (noderec->t exp) with
+        ;; only these three bind names.
+        (node:fix names)             -> (for-each add names)
+        (node:let names)             -> (for-each add names)
+        (node:function name formals) -> (begin (for-each add formals)
+					       (add name))
+        _ -> #u)
     (for-each search (noderec->subs exp)))
+    )
 
   (search root)
   )
 
 (define (build-vars root)
   (add-vars root)
-  (add-var 'top))
+  (add-var 'top null-src))
 
 (define (lookup-label-code label)
   (cmap->index the-context.labels label))

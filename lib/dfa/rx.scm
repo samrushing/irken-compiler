@@ -60,7 +60,7 @@
   )
 
 (define rx->sexp
-  (rx:eps)               -> (sexp:symbol 'eps)
+  (rx:eps)               -> (sexp:symbol 'eps null-src)
   (rx:sym s)             -> (charset->sexp s)
   (rx:cat a (rx:star b)) -> (if (magic=? a b)
                                 (sexp (sym '+) (rx->sexp a))

@@ -93,16 +93,19 @@
 
 (defmacro +
   (+ x)       -> x
-  (+ a b ...) -> (binary+ a (+ b ...)))
+  (+ a b ...) -> (binary+ a (+ b ...))
+  )
 
 (defmacro -
   (- a)         -> (binary- 0 a)
   (- a b)	-> (binary- a b)
-  (- a b c ...) -> (- (binary- a b) c ...))
+  (- a b c ...) -> (binary- a (+ b c ...))
+  )
 
 (defmacro *
   (* x) -> x
-  (* a b ...) -> (binary* a (* b ...)))
+  (* a b ...) -> (binary* a (* b ...))
+  )
 
 (define (/ a b)
   (if (= b 0)
@@ -416,6 +419,7 @@
 ;; haskell maybe /ml option
 (datatype maybe (:yes 'a) (:no))
 (datatype bool (:true) (:false))
+(datatype result (:ok 'a) (:err 'b))
 ;;(datatype symbol (:t string int))
 
 ;; useful for polyvariant pairs

@@ -53,8 +53,8 @@
 (define rule->code (rule:t _ code) -> code)
 (define rule->pats (rule:t pats _) -> pats)
 
-(define match-error (sexp (sexp:symbol '%match-error) (sexp:bool #f)))
-(define match-fail  (sexp (sexp:symbol '%fail) (sexp:bool #f)))
+(define match-error (sexp (sym '%match-error) (sexp:bool #f)))
+(define match-fail  (sexp (sym '%fail) (sexp:bool #f)))
 
 (define match-counter (make-counter 0))
 (define (new-match-var)
@@ -72,16 +72,16 @@
       )
 
     (define kind
-      (sexp:symbol s)	   -> (pattern:variable s)
+      (sexp:symbol s _)    -> (pattern:variable s)
       (sexp:record fields) -> (parse-record-fields '() fields)
       ;;(sexp:vector subs)   -> (pattern:vector (map kind subs))
       (sexp:bool b)	   -> (pattern:constructor 'bool (if b 'true 'false) '())
       (sexp:list l)
       -> (match l with
 	   () -> (pattern:constructor 'list 'nil '())
-	   ((sexp:symbol 'quote) (sexp:symbol s)) -> (pattern:literal (sexp:symbol s))
+	   ((sexp:symbol 'quote _) (sexp:symbol s src)) -> (pattern:literal (sexp:symbol s src))
 	   ((sexp:cons dt alt) . args) -> (pattern:constructor dt alt (map kind args))
-	   ((sexp:symbol '.) last) -> (kind last)
+	   ((sexp:symbol '. _) last) -> (kind last)
 	   (hd . tl) -> (pattern:constructor 'list 'cons (list (kind hd) (kind (sexp:list tl))))
 	   ;;_ -> (error1 "malformed pattern" (format (join repr " " l)))
            )
@@ -95,7 +95,7 @@
 	       (l body))
       (match l with
 	() -> (reverse rules)
-	((sexp:symbol '->) code . tl)
+	((sexp:symbol '-> _) code . tl)
 	-> (loop '() (list:cons (rule:t (reverse patterns) (expander code)) rules) tl)
 	(pat . tl)
 	-> (loop (list:cons (parse-pattern pat) patterns) rules tl))))
@@ -164,9 +164,9 @@
       (pattern:variable var1)
       ;; record a subst to be applied during node building (unless it's a wildcard pattern)
       -> (if (not (eq? var1 '_))
-	     (sexp (sexp:symbol 'let-subst)
-		   (sexp (sexp:symbol var1)
-			 (sexp:symbol var0)) code)
+	     (sexp (sym 'let-subst)
+		   (sexp (sym var1) (sym var0))
+                   code)
 	     code)
       _ -> (impossible)
       ))
@@ -217,9 +217,9 @@
 	    (bindings
 	     (map-range
 		 i (length vars0)
-		 (sexp (sexp:symbol (nth vars0 i))
-		       (sexp:attr (sexp:symbol var0) (nth sig0 i))))))
-	(sexp (sexp:symbol 'let)
+		 (sexp (sym (nth vars0 i))
+		       (sexp:attr (sexp:symbol var0 null-src) (nth sig0 i))))))
+	(sexp (sym 'let)
 	      (sexp:list bindings)
 	      (compile-match (append vars0 (cdr vars))
 			     rules0
@@ -254,11 +254,11 @@
 	-> (let ((lit (pattern->literal (car (rule->pats (car rules0)))))
 		 (comp-fun
 		  (match lit with
-		    (sexp:string _) -> (sexp:symbol 'string=?)
-		    _ -> (sexp:symbol 'eq?))))
+		    (sexp:string _) -> (sexp:symbol 'string=? null-src)
+		    _ -> (sexp:symbol 'eq? null-src))))
 	     (loop groups
-		   (fatbar (sexp (sexp:symbol 'if)
-				 (sexp comp-fun (sexp:symbol (car vars)) (sexp1 'quote (list lit)))
+		   (fatbar (sexp (sym 'if)
+				 (sexp comp-fun (sym (car vars)) (sexp1 'quote (list lit)))
 				 (compile-match (cdr vars) (map remove-first-pat rules0) match-fail)
 				 match-fail)
 			   default))))))
@@ -344,20 +344,23 @@
                   ;; ((:tag var0 var1 ...) (match ...))
                   (sexp
                    (sexp:list
-                    (list:cons (sexp:cons 'nil tag) (map sexp:symbol vars1)))
+                    (list:cons (sexp:cons 'nil tag) (map make-sexp-symbol vars1)))
                    ;; we don't reverse rules1 because we popped it off a reversed stack already
                    (compile-match (append vars0 (cdr vars)) rules1 default0))))))
       (let ((result
 	     (match mdt with
 	       (maybe:yes dt)
 	       -> (begin (if (< nalts (dt.get-nalts))
-			     (push! cases (sexp (sexp:symbol 'else) default0)))
-			 (sexp:list (append (list (sexp:symbol 'vcase) (sexp:symbol dt.name) (sexp:symbol (car vars)))
+			     (push! cases (sexp (sym 'else) default0)))
+			 (sexp:list (append (list (sexp:symbol 'vcase null-src)
+                                                  (sexp:symbol dt.name null-src)
+                                                  (sexp:symbol (car vars) null-src))
 					    (reverse cases))))
 	       (maybe:no)
 	       -> (begin (if (not (eq? default match-error))
-			     (push! cases (sexp (sexp:symbol 'else) match-fail)))
-			 (sexp:list (append (list (sexp:symbol 'vcase) (sexp:symbol (car vars)))
+			     (push! cases (sexp (sexp:symbol 'else null-src) match-fail)))
+			 (sexp:list (append (list (sexp:symbol 'vcase null-src)
+                                                  (sexp:symbol (car vars) null-src))
 					    (reverse cases)))))
 	     ))
 	(if (not (eq? default match-error))

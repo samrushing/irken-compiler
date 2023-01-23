@@ -115,6 +115,7 @@
 	  "-n"    -> (set! options.noletreg #t)
 	  "-q"    -> (set! options.quiet #t)
 	  "-nr"   -> (set! options.no-range-check #t)
+          "-sl"   -> (begin (inc! i) (set! options.src-limit (string->int argv[i])))
           ;; XXX make these mutually exclusive?
 	  "-llvm" -> (set! options.backend (backend:llvm))
           "-b"    -> (set! options.backend (backend:bytecode))
@@ -144,7 +145,7 @@ Usage: compile <irken-src-file> [options]
  -m     : debug macro expansion
  -dt    : debug typing
  -types : dump all type signatures (do not compile)
- -dump  : comma-separated list from (sexp,expand,ast,typed,cps)
+ -dump  : comma-separated list from (sexp,expand,ast,opt,typed,cps)
  -ni    : no inlining
  -p     : generate profile-printing code (C backend only)
  -n     : disable letreg optimization
@@ -202,8 +203,8 @@ default flags:
 	(_ (optimize-nvcase node1))
         (noden (do-n-rounds node1 the-context.options.opt-rounds))
 	;; try to free up some memory
-	(_ (set! node0 (node/sequence '())))
-	(_ (set! node1 (node/sequence '())))
+	(_ (set! node0 (node/sequence '() (src:nil))))
+	(_ (set! node1 (node/sequence '() (src:nil))))
 	(_ (set! the-context.funs (tree/empty)))
 	(_ (find-tail noden))
 	(_ (find-leaves noden))

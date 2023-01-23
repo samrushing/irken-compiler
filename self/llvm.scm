@@ -178,8 +178,8 @@
 
     (define (emit-primop name params type args target)
       (match name params args with
-	'%llarith (sexp:symbol op) (arg0 arg1)             -> (emit-arith op arg0 arg1 target)
-	'%llicmp  (sexp:symbol op) (arg0 arg1)             -> (emit-icmp op arg0 arg1 target)
+	'%llarith (sexp:symbol op _) (arg0 arg1)           -> (emit-arith op arg0 arg1 target)
+	'%llicmp  (sexp:symbol op _) (arg0 arg1)           -> (emit-icmp op arg0 arg1 target)
 	'%lleq    _                (arg0 arg1)             -> (emit-icmp 'eq arg0 arg1 target)
 	'%dtcon   (sexp:cons dtname altname) args          -> (emit-dtcon dtname altname args target)
 	'%nvget   (sexp:list (_ (sexp:int index) _)) (reg) -> (emit-nvget target reg index)
@@ -187,16 +187,16 @@
 	'%array-ref _ (vec index)                          -> (emit-array-ref vec index target)
 	'%array-set _ (vec index val)                      -> (emit-array-set vec index val target)
 
-	'%record-get (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec)
+	'%record-get (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec)
 	-> (emit-record-get label sig rec target)
 
-	'%record-set (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec arg)
+	'%record-set (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec arg)
 	-> (emit-record-set label sig rec arg target)
 
 	'%llvm-call (sexp:list ((sexp:string name) sig)) args
 	-> (emit-llvm-call name args target 'fastcc)
 
-	'%llvm-call (sexp:list ((sexp:string name) sig (sexp:symbol cconv))) args
+	'%llvm-call (sexp:list ((sexp:string name) sig (sexp:symbol cconv _))) args
 	-> (emit-llvm-call name args target cconv)
 
         '%llvm-get (sexp:list ((sexp:string name) sig (sexp:bool external?))) args
@@ -456,7 +456,7 @@
     ;; XXX next step: we need to emit declarations for each foreign function called.
     (define (emit-ffi2 params args target)
       (match params with
-        (sexp:symbol name)
+        (sexp:symbol name _)
         -> (match (ffi-info.sigs::get name) with
              (maybe:yes (csig:fun name rtype argtypes0))
              -> (let ((args1 (map2 irken->ctype argtypes0 args))

@@ -589,13 +589,13 @@
             ))
 
         (define prim-record-get
-          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
+          (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg)
           -> (let ((refexp (record-slot-exp sig label rec-reg)))
                (oformat "O r" (int k.target) " = " refexp ";"))
           _ _ -> (primop-error))
 
         (define prim-record-set
-          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg arg-reg)
+          (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg arg-reg)
           -> (let ((refexp (record-slot-exp sig label rec-reg)))
                (oformat refexp " = r" (int arg-reg) ";")
                (when (>= k.target 0)
@@ -605,7 +605,7 @@
         (define prim-record-ext
           (sexp:list ((sexp:int otag) (sexp:int ntag)
                       (sexp:list osig) (sexp:list nsig)
-                      (sexp:symbol nfield)))
+                      (sexp:symbol nfield _)))
           (src-reg arg-reg)
           -> (let ((mosig (guess-record-type osig))
                    (mnsig (guess-record-type nsig)))
@@ -615,7 +615,7 @@
                ;; copy old fields
                (for-list fs osig
                  (match fs with
-                   (sexp:symbol f)
+                   (sexp:symbol f _)
                    -> (oformat (record-slot-exp* mnsig f k.target) " = "
                                (record-slot-exp* mosig f src-reg) ";")
                    _ -> (raise (:Impossible))
@@ -674,7 +674,7 @@
 
         (define (prim-ffi2 parm args)
           (match parm with
-            (sexp:symbol name)
+            (sexp:symbol name _)
             -> (match (ffi-info.sigs::get name) with
                  (maybe:yes (csig:fun name rtype argtypes))
                  -> (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
@@ -784,7 +784,7 @@
 
         (define sref->c
           ;; structname.field0.field1.field2...
-          (sexp:attr (sexp:symbol sname) fname) src
+          (sexp:attr (sexp:symbol sname _) fname) src
           -> (format "((((struct " (sym sname) "*)" src "))->" (sym fname) ")")
           (sexp:attr sub fname) src
           -> (format "(" (sref->c sub src) "." (sym fname) ")")

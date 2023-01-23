@@ -146,7 +146,7 @@
   ;; can we disambiguate this record signature?
   (let ((sig (map (lambda (x) ;; remove sexp wrapping
 		    (match x with
-		      (sexp:symbol field) -> field
+		      (sexp:symbol field _) -> field
 		      _ -> (impossible))) sig))
 	(sig (filter (lambda (x) (not (eq? x '...))) sig)))
     (let ((candidates '()))

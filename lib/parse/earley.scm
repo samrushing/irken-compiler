@@ -44,7 +44,7 @@
   (parse:nt kind subs)
   -> (sexp1 kind (map parse->sexp subs))
   (parse:t tok)
-  -> (sexp:list (list (sexp:symbol tok.kind) (sexp:string tok.val)))
+  -> (sexp:list (list (sexp:symbol tok.kind null-src) (sexp:string tok.val)))
   )
 
 (define (token-repr tok)
@@ -347,7 +347,7 @@
   ;;   (p IDENT))
 
   (define p-term
-    (sexp:symbol name)
+    (sexp:symbol name _)
     -> (if (upper? (string-ref (symbol->string name) 0))
            (prod:t name)
            (prod:nt name))
@@ -355,19 +355,19 @@
     )
 
   (define p-alt
-    (sexp:list terms)  -> (map p-term terms)
-    (sexp:symbol term) -> (list (p-term (sexp:symbol term)))
-    exp                -> (raise (:Parser/Error "p-alt" exp))
+    (sexp:list terms)    -> (map p-term terms)
+    (sexp:symbol term s) -> (list (p-term (sexp:symbol term s)))
+    exp                  -> (raise (:Parser/Error "p-alt" exp))
     )
 
   (define p-rule
-    (sexp:list ((sexp:symbol nt) . alts))
+    (sexp:list ((sexp:symbol nt _) . alts))
     -> (:tuple nt (map p-alt alts))
     exp -> (raise (:Parser/Error "p-rule" exp))
     )
 
   (define p-grammar
-    (sexp:list ((sexp:symbol 'grammar) . rules))
+    (sexp:list ((sexp:symbol 'grammar _) . rules))
     -> (let ((rules0 (map p-rule rules)))
          (foldr (lambda (rule acc)
                   (match rule with

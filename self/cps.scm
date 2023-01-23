@@ -636,7 +636,7 @@
 
     (define (c-vcon params args lenv k)
       (match params with
-	(sexp:list ((sexp:symbol label) _))
+	(sexp:list ((sexp:symbol label _) _))
 	-> (let ((tag (alist/get the-context.variant-labels label "unknown variant label?"))
 		 (nargs (length args)))
 	     (if (> nargs 0)
@@ -662,7 +662,7 @@
 		 (fields '()))
         ;; (%rextend field0 (%rextend field1 (%rmake) ...)) => {field0=x field1=y}
 	(match (noderec->t exp) with
-	  (node:primapp '%rextend (sexp:symbol field)) ;; add another field
+	  (node:primapp '%rextend (sexp:symbol field _)) ;; add another field
 	  -> (match (noderec->subs exp) with
 	       (exp0 val) -> (loop exp0 (list:cons (:pair field val) fields))
 	       _	  -> (error1 "malformed %rextend" exp))
@@ -701,9 +701,9 @@
              (c-primargs (list exp new-value)
                          '%record-ext
                          (sexp (int otag) (int ntag)
-                               (sexp:list (map sexp:symbol osig))
-                               (sexp:list (map sexp:symbol nsig))
-                               (sexp:symbol new-field))
+                               (sexp:list (map make-sexp-symbol osig))
+                               (sexp:list (map make-sexp-symbol nsig))
+                               (sym new-field))
                          (noderec->type exp)
                          lenv k))))
 
