@@ -458,7 +458,7 @@
       (match params with
         (sexp:symbol name _)
         -> (match (ffi-info.sigs::get name) with
-             (maybe:yes (csig:fun name rtype argtypes0))
+             (maybe:yes (csig:fun name rtype argtypes0 var?))
              -> (let ((args1 (map2 irken->ctype argtypes0 args))
                       (lrtype (ctype->llvm rtype))
                       (id0 (ID)))
@@ -1103,7 +1103,7 @@
   (ffifuns::iterate
    (lambda (name)
      (match (ffi-info.sigs::get name) with
-       (maybe:yes (csig:fun name rtype argtypes0))
+       (maybe:yes (csig:fun name rtype argtypes0 var?))
        -> (let ((argtypes1 (map ctype->llvm argtypes0))
                 (lrtype (ctype->llvm rtype)))
             (o.write (format "declare " lrtype " @" (sym name) " (" (join ", " argtypes1) ")")))

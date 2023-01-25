@@ -156,17 +156,31 @@
     (define (emit-return reg)
       (LINSN 'ret reg))
 
+    ;; ugh, this is a bit of a kludge.
+    ;; there are 3 args inserted in front of the actual args, and there's
+    ;;   one 'bogus' arg (the '... pred).
+    (define (fixed-args sig)
+      (match sig with
+        (type:pred 'arrow (rtype . argtypes) _)
+        -> (- (length argtypes) 4) ;; we know it ends with '...
+        _ -> 0
+        ))
+
     ;; %%cexp is really more like 'builtin primapp' here. [consider renaming]
 
     (define (emit-cexp sig type template args target)
       ;; Note: is it bad that you can use this to call any insn?
-      (let ((opcode (string->symbol template))
-            (info (name->info opcode)))
-        (list (stream:insn
-               (string->symbol template)
-               (if info.target
-                   (cons target args)
-                   args)))
+      (let ((opcode (string->symbol template)))
+        (if (and (eq? opcode 'ffi) (variadic? sig))
+            (let ((nfixed (fixed-args sig))
+                  (args0 (list:cons nfixed (list:cons target args))))
+              (printf "sig = " (type-repr sig) "\n")
+              (printf "type = " (type-repr type) "\n")
+              (printf "nfixed = " (int nfixed) "\n")
+              (printn args0)
+              (list (stream:insn 'ffiv args0)))
+            (let ((info (name->info opcode))) ;; handle 'ffi and others...
+              (list (stream:insn opcode (if info.target (cons target args) args)))))
         ))
 
     (define (move src dst)

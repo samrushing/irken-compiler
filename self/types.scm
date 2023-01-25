@@ -29,6 +29,14 @@
     -> (eq? name0 name)
     _ -> #f))
 
+;; only for FFI!
+(define variadic?
+  (type:pred 'arrow (arg . args) _)
+  -> (any? (lambda (x) (is-pred? x '...)) args)
+  _
+  -> #f
+  )
+
 (define type<? magic<?)
 
 ;; singleton base types

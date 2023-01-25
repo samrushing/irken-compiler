@@ -141,7 +141,7 @@
       (info.sigs::iterate
        (lambda (visible-name v)
          (match v with
-           (csig:fun name rtype argtypes)
+           (csig:fun name rtype argtypes var?)
            -> (let ((ztname (zero-terminate (symbol->string name))))
                 (push! forms
                       (sexp (sym 'define)
@@ -154,7 +154,8 @@
                                   (char (ctype->rtype-code rtype))
                                   (int (length argtypes))
                                   (sexp:list (map argtype->sexp argtypes))
-                                  (sexp:list (argnames (length argtypes))))
+                                  (sexp:list (argnames (length argtypes)))
+                                  )
                             )))
            (csig:obj name obtype)
            -> (let ((ztname (zero-terminate (symbol->string name))))

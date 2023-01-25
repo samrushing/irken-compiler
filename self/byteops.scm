@@ -78,8 +78,9 @@
     (OI 'putcc   3      #f     #t)   ;; target k val
     ;; (OI 'irk     3      #t     #t)   ;; target closure nargs arg0 ...
     ;; (OI 'getc    1      #f     #t)   ;; target
-    ;;(OI 'dlsym   2      #f     #t)   ;; target name
+    ;; (OI 'dlsym   2      #f     #t)   ;; target name
     (OI 'ffi     4      #t     #t)   ;; target fun nargs arg0 ...
+    (OI 'ffiv    5      #t     #t)   ;; nfixed target fun nargs arg0 ...
     (OI 'smake   2      #f     #t)   ;; target size
     (OI 'sfromc  3      #f     #t)   ;; target src len
     (OI 'slen    2      #f     #t)   ;; target string

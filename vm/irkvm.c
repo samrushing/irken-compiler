@@ -565,7 +565,7 @@ vm_read_file (irk_string * path, object ** result)
 }
 
 irk_int
-vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
+vm_do_ffi (object * vm_regs, irk_int pc, int nfixed, irk_int nargs, object * result)
 {
   // FFI target pfun rtype nargs arg0 ...
   ffi_cif cif;
@@ -575,8 +575,19 @@ vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
   void * vals[nargs];
   void * pvals[nargs];
   int good = 1;
+
+  // vm_do_ffi is used for both the FFI and FFIV insns.
+  // for FFIV an additional arg is included at the front, such that the
+  // remaining arguments are in identical positions but shifted by one.
+
+  irk_int pc0 = pc;
+  if (nfixed >= 0) {
+    // FFIV - adjust program counter
+    pc0 += 1;
+  }
+
   for (int i=0; i < nargs; i++) {
-    object * ob = vm_regs[bytecode[pc+5+i]];
+    object * ob = vm_regs[bytecode[pc0+5+i]];
     switch (get_case (ob)) {
     case TC_INT:
       // Note: we can't use sint here, because it is not a synonym for 'intptr_t',
@@ -623,7 +634,7 @@ vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
   if (good) {
     ffi_type * rtype;
     // parse rtype
-    unsigned char rcode = (unsigned char) GET_CHAR (vm_regs[bytecode[pc+3]]);
+    unsigned char rcode = (unsigned char) GET_CHAR (vm_regs[bytecode[pc0+3]]);
     switch (rcode) {
     case 'i':
       rtype = &ffi_type_pointer;
@@ -642,8 +653,14 @@ vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
       fprintf (stderr, "unknown return type\n");
       return -1;
     }
-    if (FFI_OK == ffi_prep_cif (&cif, FFI_DEFAULT_ABI, nargs, rtype, args)) {
-      void * pfun = (void*) get_foreign (vm_regs[bytecode[pc+2]]);
+    ffi_status prep_result = 0;
+    if (nfixed < 0) {
+      prep_result = ffi_prep_cif (&cif, FFI_DEFAULT_ABI, nargs, rtype, args);
+    } else {
+      prep_result = ffi_prep_cif_var (&cif, FFI_DEFAULT_ABI, nfixed, nargs, rtype, args);
+    }
+    if (prep_result == FFI_OK) {
+      void * pfun = (void*) get_foreign (vm_regs[bytecode[pc0+2]]);
       if (pfun) {
         ffi_arg rc;
         ffi_call (&cif, pfun, &rc, pvals);
@@ -858,7 +875,7 @@ vm_go (void)
     &&l_pop0, &&l_epop, &&l_tron, &&l_troff, &&l_gc, &&l_imm, &&l_make,
     &&l_makei, &&l_exit, &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref,
     &&l_vset, &&l_vmake, &&l_alloc, &&l_rref, &&l_rset, &&l_getcc,
-    &&l_putcc, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
+    &&l_putcc, &&l_ffi, &&l_ffiv, &&l_smake, &&l_sfromc, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist, &&l_argv,
     &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
@@ -1300,7 +1317,7 @@ vm_go (void)
     irk_int nargs = UNTAG_INTEGER (REG4);
     // XXX concerned that passing vm_regs defeats the register decl above.
     object result;
-    irk_int success = vm_do_ffi ((object *) vm_regs, pc, nargs, &result);
+    irk_int success = vm_do_ffi ((object *) vm_regs, pc, -1, nargs, &result);
     if (success == 0) {
       REG1 = result;
     } else {
@@ -1308,6 +1325,22 @@ vm_go (void)
       return TAG_INTEGER ((unsigned)-1);
     }
     pc += nargs + 5;
+  }
+  DISPATCH();
+ l_ffiv: {
+    // FFIV nfixed target pfun rtype nargs arg0 ...
+    irk_int nfixed = BC1;
+    irk_int nargs = UNTAG_INTEGER (REG5);
+    // XXX concerned that passing vm_regs defeats the register decl above.
+    object result;
+    irk_int success = vm_do_ffi ((object *) vm_regs, pc, (int)nfixed, nargs, &result);
+    if (success == 0) {
+      REG2 = result;
+    } else {
+      fprintf (stderr, "op_ffiv failed\n");
+      return TAG_INTEGER ((unsigned)-1);
+    }
+    pc += nargs + 6;
   }
   DISPATCH();
  l_smake: {

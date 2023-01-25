@@ -84,13 +84,13 @@
 
 ;; c function/object signature
 (datatype csig
-  (:fun symbol ctype (list ctype)) ;; name return-type arg-types
-  (:obj symbol ctype)              ;; name type
+  (:fun symbol ctype (list ctype) bool) ;; name return-type arg-types variadic?
+  (:obj symbol ctype)                   ;; name type
   )
 
 (define csig-print
-  (csig:fun name rtype argtypes)
-  -> (printf "(" (sym name) " " (join ctype-repr " " argtypes) " -> " (ctype-repr rtype) ")\n")
+  (csig:fun name rtype argtypes var?)
+  -> (printf "(" (sym name) " " (join ctype-repr " " argtypes) " -> " (ctype-repr rtype) " " (bool var?) ")\n")
   (csig:obj name otype)
   -> (printf "(" (sym name) " " (ctype-repr otype) ")\n")
   )
@@ -155,7 +155,13 @@
   (define arrow-type?
     ()                      -> #f
     ((sexp:symbol '-> _) _) -> #t
-    (hd . tl)               -> (arrow-type? tl)
+    (_ . tl)                -> (arrow-type? tl)
+    )
+
+  (define variadic?
+    ()                         -> #f
+    ((sexp:symbol '... _) . _) -> #t
+    (_ . tl)                   -> (variadic? tl)
     )
 
   ;; convert all integer arguments to 'int' type.
@@ -172,10 +178,10 @@
                  (rtype (nth sig (- siglen 1)))
                  (args (slice sig 0 (- siglen 2))))
              (csig:fun name
-                       (parse-ctype rtype)
-                       ;;(map frob-int-arg (map parse-ctype args))
-                       (map parse-ctype args)
-                       ))
+                   (parse-ctype rtype)
+                   (map parse-ctype args)
+                   (variadic? sig)
+                   ))
            (csig:obj name (parse-ctype (sexp:list sig))))
     name sig
     -> (csig:obj name (parse-ctype sig))
@@ -543,6 +549,9 @@
   )
 
 (%backend bytecode
+
+  ;; note that we insert 3 args in front of the actual args.  if you change this,
+  ;;  be sure to change the definition of `fixed-args` in `bytecode.scm`.
 
   (defmacro build-ffi-fun
     (build-ffi-fun iface name ztname rtype rcode nargs (argtype0 ...) (formal0 ...))

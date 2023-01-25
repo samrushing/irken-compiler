@@ -676,7 +676,7 @@
           (match parm with
             (sexp:symbol name _)
             -> (match (ffi-info.sigs::get name) with
-                 (maybe:yes (csig:fun name rtype argtypes))
+                 (maybe:yes (csig:fun name rtype argtypes var?))
                  -> (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
                           (argt0 (map ctype->irken-type argtypes))
                           (args2 (map2 wrap-in argt0 args0))

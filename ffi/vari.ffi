@@ -1,0 +1,11 @@
+;; -*- Mode: lisp -*-
+
+;; testing variadic support
+
+(vari
+ (includes "sys/fcntl.h")
+ (verbatim
+  (sig open ((* char) int ... -> int))
+  ))
+
+
