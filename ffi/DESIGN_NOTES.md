@@ -1,6 +1,12 @@
 
 The Goal: An FFI that can be safely and efficiently used by the three backends.
 
+This File
+---------
+
+This is a file of notes that I took down while designing the FFI for Irken.
+
+
 Possible Approaches
 -------------------
 

@@ -1,8 +1,41 @@
+
+Irken's Foreign Function Interface (FFI)
+----------------------------------------
+
+The FFI makes it possible to call C libraries from Irken, in any of the
+supported backends.  This facility bends over backwards to try to make
+this as easy as possible.  If you're lucky, you'll never need to know how
+it all works.
+
+Steps to make a foreign-function call:
+
+1. write a simple spec file (e.g. `mylib.ffi`).  This just tells
+   `genffi` which options to pass to the compiler and linker, and
+   which functions, enums, structs, constants, etc... you are
+   want to use.
+
+2. generate[^1] a detailed interface which the Irken compiler can use:
+
+    ```$ ffi/gen/genffi -gen mylib.ffi```
+
+3. install the generated file (`mylib_ffi.scm`) where the compiler can find it:
+
+    ```$ cp mylib_ffi.scm /usr/local/lib/irken/ffi/```
+
+4. add a `(require-ffi 'mylib)` form to your source.
+
+5. call your function:
+
+    ```(mylib/myfunction "testing" 1 2 3)```
+
+[^1]: you may need to compile it - `irken ffi/gen/genffi.scm`.
+
+
 FFI Generator
 -------------
 
-The purpose of this tool is to automatically (as much as possible)
-generate interfaces for C APIs.
+The purpose of the `genffi` tool is to automatically generate (as much as possible)
+interfaces for C APIs.
 
 There are many pitfalls in this forbidden land.  Often the API advertised
 by the documentation does not match the actual function signatures.  One
@@ -28,6 +61,7 @@ sample.ffi:
 
     (mylib
       (includes "myheader.h" "other-header.h")
+      (dll "libmine.so")
       (constants MYLIB_YES MYLIB_NO)
       (sigs my_fun1 my_fun2)
       (struct my_struct1)
@@ -46,6 +80,11 @@ to allocate and/or access.
 
 An `enum` section will cause `genffi` to emit a constant record for each
 value in the enum.
+
+The `dll` entry is only needed if you want to dynamically load the library
+in order to use it with the VM (bytecode backend).  Note: the location and naming
+of this library is somewhat platform-dependent.  You may need to carefully
+read the man page for `dlopen(3)` on your platform.
 
 Normal Usage
 ------------
@@ -74,6 +113,14 @@ You need to tell the compiler and the runtime that you are using the interface:
 You should now be able to call your functions:
 
     (mylib/my_fun3 name width height)
+
+Varargs functions
+-----------------
+
+Varargs functions do not mesh well with Irken's type system, but they
+mostly work without issue (though with reduced type safety).  Calling
+a variadic function in the VM is a bit trickier, the `%%ffi` form must
+be built manually.  See `posix/open` in `lib/io.scm` for an example.
 
 When Trouble Strikes
 --------------------
