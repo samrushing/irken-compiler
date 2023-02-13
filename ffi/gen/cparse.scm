@@ -685,10 +685,16 @@
             ;; (printf "expression too complex to evaluate: " (repr (parse->sexp exp0)) "\n")
             0)))
 
+    (define (p-int s)
+      ;; filter out suffixes like 'U' and 'L'
+      (let ((digs0 (string->list s))
+            (digs1 (filter digit? digs0)))
+        (string->int (list->string digs1))))
+
     ;; we evaluate simple arithmetic expressions involving *,/,%,+,-,<<, and >>.
     (define eval-exp
       (parse:t {kind='Constant val=num})
-      -> (string->int num)
+      -> (p-int num)
       (parse:nt rule (one))
       -> (eval-exp one)
       (parse:nt 'primaryExpression ((parse:t {kind='LeftParen val=_}) one (parse:t {kind='RightParen val=_})))
