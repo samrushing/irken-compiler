@@ -24,7 +24,7 @@
 (require "lib/alist.scm")
 (require "lib/ctype.scm") ;; needed by os & io.
 (require "lib/sexp.scm")
-(require "lib/lisp_reader.scm") ;; needed by ctype
+(require "lib/read.scm")
 (require "lib/stdio.scm")
 (require "lib/frb.scm")
 (require "lib/getopt.scm")
@@ -84,12 +84,12 @@
   (declarator:t type _) -> (declarator:t type (maybe:no)))
 
 (define remove-argnames
-  (ctype2:function rtype args) -> (ctype2:function rtype (map remove-declname args))
+  (ctype2:function rtype args var?) -> (ctype2:function rtype (map remove-declname args) var?)
   t -> t
   )
 (define remove-voidargs
-  (ctype2:function rtype ((declarator:t (ctype2:name 'void) _)))
-  -> (ctype2:function rtype '())
+  (ctype2:function rtype ((declarator:t (ctype2:name 'void) _)) var?)
+  -> (ctype2:function rtype '() var?)
   t -> t
   )
 (define (sanitize-sig t)
@@ -541,9 +541,10 @@
 
   (define (write-sig type name)
     (match (sanitize-sig type) with
-      (ctype2:function rtype args)
+      (ctype2:function rtype args var?)
       -> (W (format " ("
                     (join declarator-repr " " args)
+                    (if var? " ..." "")
                     " -> "
                     (ctype2-repr rtype)
                     "))\n"))
