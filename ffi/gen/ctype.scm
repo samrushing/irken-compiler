@@ -23,7 +23,7 @@
   (:struct symbol (maybe (list declarator)))
   (:union  symbol (maybe (list declarator)))
   (:enum symbol (maybe (list enum-pair)))
-  (:function ctype2 (list declarator)) ;; XXX add a bool to indicate '...'
+  (:function ctype2 (list declarator) bool) ;; bool: variadic?
   )
 
 ;; a 'declarator' is a combination of name and type.  sometimes the
@@ -52,7 +52,10 @@
   (ctype2:union name (maybe:yes slots))  -> (format "(union " (sym name) " (" (join declarator-repr " " slots) "))")
   (ctype2:enum name (maybe:no))          -> (format "(enum " (sym name) ")")
   (ctype2:enum name (maybe:yes pairs))   -> (format "(enum " (sym name) " (" (join enum-pair-repr " " pairs) "))")
-  (ctype2:function type args)            -> (format "(fun " (join declarator-repr " " args) " -> " (ctype2-repr type) ")")
+  (ctype2:function type args var?)       -> (format "(fun "
+                                                    (join declarator-repr " " args)
+                                                    (if var? " ..." "")
+                                                    " -> " (ctype2-repr type) ")")
   )
 
 (define declarator-repr
@@ -85,7 +88,7 @@
   (ctype2:union name (maybe:yes slots))  -> (sexp (sym 'union) (sym name) (list (map declarator->sexp slots)))
   (ctype2:enum name (maybe:no))          -> (sexp (sym 'enum) (sym name))
   (ctype2:enum name (maybe:yes pairs))   -> (sexp (sym 'enum) (sym name) (list (map enum-pair->sexp pairs)))
-  (ctype2:function type args)            -> (sexp (sym 'fun) (list (map declarator->sexp args)) (sym '->) (ctype2->sexp type))
+  (ctype2:function type args var?)       -> (sexp (sym 'fun) (list (map declarator->sexp args)) (sym '->) (ctype2->sexp type) (bool var?))
   )
 
 (define declarator->sexp
@@ -118,8 +121,8 @@
   ;; arrays and function pointers: special cases.
   (declarator:t (ctype2:array size t) (maybe:yes name))
   -> (format (ctype2->c t) " " (sym name) "[" (int size) "]")
-  (declarator:t (ctype2:pointer (ctype2:function rtype args)) (maybe:yes name))
-  -> (format (ctype2->c rtype) "(*" (sym name) ")(" (join declarator->c ", " args) ")")
+  (declarator:t (ctype2:pointer (ctype2:function rtype args var?)) (maybe:yes name))
+  -> (format (ctype2->c rtype) "(*" (sym name) ")(" (join declarator->c ", " args) (if var? ", ..." "") ")")
   (declarator:t type (maybe:yes name))
   -> (format (ctype2->c type) " " (sym name))
   (declarator:t type (maybe:no))
@@ -141,8 +144,8 @@
   (ctype2:enum name (maybe:no))   -> (format "enum " (sym name))
   (ctype2:enum name (maybe:yes pairs))
   -> (format "enum " (sym name) " {\n  " (join enum-pair-repr ",\n  " pairs) "}")
-  (ctype2:function rtype args) ;; unnamed function pointer.
-  -> (format (ctype2->c rtype) "(*)(" (join declarator->c ", " args) ")")
+  (ctype2:function rtype args var?) ;; unnamed function pointer.
+  -> (format (ctype2->c rtype) "(*)(" (join declarator->c ", " args) (if var? ", ..." "") ")")
   )
 
 ;; imperative walker: call <p> on all subtypes of <type>
@@ -155,7 +158,7 @@
       (ctype2:array _ sub)                -> (W sub)
       (ctype2:struct _ (maybe:yes slots)) -> (WD slots)
       (ctype2:union _ (maybe:yes slots))  -> (WD slots)
-      (ctype2:function rtype args)        -> (begin (W rtype) (WD args))
+      (ctype2:function rtype args var?)   -> (begin (W rtype) (WD args))
       _ -> #u))
   (define (WD decls)
     (for-list decl decls
@@ -173,7 +176,7 @@
          (ctype2:array n sub)                   -> (ctype2:array n (M sub))
          (ctype2:struct name (maybe:yes slots)) -> (ctype2:struct name (maybe:yes (MD slots)))
          (ctype2:union name (maybe:yes slots))  -> (ctype2:union name (maybe:yes (MD slots)))
-         (ctype2:function rtype args)           -> (ctype2:function (M rtype) (MD args))
+         (ctype2:function rtype args var?)      -> (ctype2:function (M rtype) (MD args) var?)
          _                                      -> type)))
   (define (MD decls)
     (map (lambda (decl)
@@ -203,7 +206,7 @@
          (ctype2:array n sub)                   -> (ctype2:array n (M path sub))
          (ctype2:struct name (maybe:yes slots)) -> (ctype2:struct name (maybe:yes (MD path slots)))
          (ctype2:union name (maybe:yes slots))  -> (ctype2:union name (maybe:yes (MD path slots)))
-         (ctype2:function rtype args)           -> (ctype2:function (M path rtype) (MD path args))
+         (ctype2:function rtype args var?)      -> (ctype2:function (M path rtype) (MD path args) var?)
          _                                      -> type)))
   ;; whenever we descend through a declarator, push that name onto the path.
   (define (MD path0 decls)

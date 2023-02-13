@@ -406,19 +406,20 @@
       ;; x()
       type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftParen val=_}) (parse:t {kind='RightParen val=_}))
       -> (let (((type0 name0) (p-directDeclarator type dD)))
-           (:tuple (ctype2:function type0 (list:nil)) name0))
+           (:tuple (ctype2:function type0 (list:nil) #f) name0))
       ;; x(int,int)
       type ((parse:nt 'directDeclarator ((parse:t {kind='Identifier val=name}))) (parse:t {kind='LeftParen val=_}) pTL (parse:t {kind='RightParen val=_}))
-      -> (:tuple (ctype2:function type (p-parameterTypeList pTL)) (string->symbol name))
+      -> (let (((params var?) (p-parameterTypeList pTL)))
+           (:tuple (ctype2:function type params var?) (string->symbol name)))
       ;; (*x)(int,int)
       type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftParen val=_}) pTL (parse:t {kind='RightParen val=_}))
       -> (let (((type0 name0) (p-directDeclarator type dD))
-               (params (p-parameterTypeList pTL)))
+               ((params var?) (p-parameterTypeList pTL)))
            (match type0 with
              (ctype2:pointer sub)
-             -> (:tuple (ctype2:pointer (ctype2:function sub params)) name0)
+             -> (:tuple (ctype2:pointer (ctype2:function sub params var?)) name0)
              _
-             -> (:tuple (ctype2:function type0 params) name0)
+             -> (:tuple (ctype2:function type0 params var?) name0)
              ))
       type x -> (begin
                   (printf "unhandled directDeclarator " (repr (parse->sexp (parse:nt 'directDeclarator x))) "\n")
@@ -445,7 +446,8 @@
       ;; (LeftParen parameterTypeList RightParen)
       ;; (LeftParen parameterTypeList RightParen directAbstractDeclarator-0)
       type ((parse:t {kind='LeftParen val=_}) (parse:nt 'parameterTypeList pTL) (parse:t {kind='RightParen val=_}) . ignore)
-      -> (ctype2:function type (p-parameterTypeList (parse:nt 'parameterTypeList pTL)))
+      -> (let (((ptl var?) (p-parameterTypeList (parse:nt 'parameterTypeList pTL))))
+           (ctype2:function type ptl var?))
       ;; (LeftBracket RightBracket)
       type ((parse:t {kind='LeftBracket val=_}) (parse:t {kind='RightBracket val=_}) . ignore)
       -> (ctype2:array 0 type)
@@ -506,9 +508,9 @@
     ;; --- parameter lists ---
     (define p-parameterTypeList
       (parse:nt 'parameterTypeList (pL))
-      -> (p-parameterList '() pL)
+      -> (:tuple (p-parameterList '() pL) #f)
       (parse:nt 'parameterTypeList (pL Comma Ellipsis))
-      -> (p-parameterList '() pL)
+      -> (:tuple (p-parameterList '() pL) #t)
       x
       -> (impossiblex x)
       )

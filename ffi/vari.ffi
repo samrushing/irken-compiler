@@ -3,9 +3,7 @@
 ;; testing variadic support
 
 (vari
- (includes "sys/fcntl.h")
+ (includes "sys/stdio.h")
  (verbatim
-  (sig open ((* char) int ... -> int))
+  (sig printf ((* char) ... -> int))
   ))
-
-

@@ -88,11 +88,11 @@
   (:obj symbol ctype)                   ;; name type
   )
 
-(define csig-print
+(define csig-repr
   (csig:fun name rtype argtypes var?)
-  -> (printf "(" (sym name) " " (join ctype-repr " " argtypes) " -> " (ctype-repr rtype) " " (bool var?) ")\n")
+  -> (format "(" (sym name) " " (join ctype-repr " " argtypes) (if var? " ..." "") " -> " (ctype-repr rtype) ")")
   (csig:obj name otype)
-  -> (printf "(" (sym name) " " (ctype-repr otype) ")\n")
+  -> (format "(" (sym name) " " (ctype-repr otype) ")")
   )
 
 (define parse-ctype
@@ -175,8 +175,9 @@
     name (sexp:list sig)
     -> (if (arrow-type? sig)
            (let ((siglen (length sig))
+                 (var? (variadic? sig))
                  (rtype (nth sig (- siglen 1)))
-                 (args (slice sig 0 (- siglen 2))))
+                 (args (slice sig 0 (- siglen (if var? 3 2)))))
              (csig:fun name
                    (parse-ctype rtype)
                    (map parse-ctype args)
@@ -281,7 +282,7 @@
   (printf "lflags: " (join " " ffi-info.lflags) "\n")
   (printf "dll: " (string ffi-info.dll) "\n")
   (printf "sigs:\n")
-  (map csig-print (ffi-info.sigs::values))
+  (printf (join csig-repr " " (ffi-info.sigs::values)) "\n")
   (printf "defs:\n")
   (map cdef-print (ffi-info.structs::values))
   (map cdef-print (ffi-info.unions::values))

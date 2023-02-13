@@ -9,6 +9,8 @@
   (sigs
    fopen fwrite fread fgetc fclose fflush fdopen putchar getchar
    stdin stdout stderr
+   ;; variadic
+   printf fprintf
    ))
 
 

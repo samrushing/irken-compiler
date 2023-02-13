@@ -29,10 +29,17 @@
     -> (eq? name0 name)
     _ -> #f))
 
+(define is-tvar?
+  (type:tvar _ _) -> #t
+  _ -> #f
+  )
+
 ;; only for FFI!
 (define variadic?
+  (type:pred 'arrow (arg) _)
+  -> #f
   (type:pred 'arrow (arg . args) _)
-  -> (any? (lambda (x) (is-pred? x '...)) args)
+  -> (is-pred? (last args) '...)
   _
   -> #f
   )

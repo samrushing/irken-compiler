@@ -29,7 +29,7 @@
   )
  (verbatim
   ;; we special-case this because it's quasi-variadic.
-  (sig open ((* char) int int -> int))
+  (sig open ((* char) int ... -> int))
   ;; second pointer is sometimes declared as `void*` (Darwin).
   (sig gettimeofday ((* (struct timeval)) (* (struct timezone)) -> int))
   ;; ugh. on freebsd this is a f#*@ing inline. WHY???
