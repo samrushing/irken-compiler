@@ -10,7 +10,7 @@
     exps))
 
 (define (read-string s)
-  (reader "<string>" (string-reader s) #t))
+  (reader "<string>" (string-reader s)))
 
 (define (read2 path read-char parse-ints?)
 
@@ -108,7 +108,8 @@
 	    (match parts with
 	      ;; c b a
 	      (base)        -> (sexp:symbol (string->symbol base) (make-src))
-	      (attr . rest) -> (sexp (sym '%%attr) (loop rest) (sym (string->symbol attr)))
+	      ;;(attr . rest) -> (sexp (sym '%%attr) (loop rest) (sym (string->symbol attr)))
+	      (attr . rest) -> (sexp:attr (loop rest) (string->symbol attr))
 	      ()            -> (impossible)
 	      ))))
 

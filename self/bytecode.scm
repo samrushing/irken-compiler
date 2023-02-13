@@ -924,7 +924,11 @@
            _ -> 0))))
 
     (define sizeoff-sentinel
-      (literal:vector (list (literal:cons 'sexp 'symbol (list (literal:symbol '&&sizeoff-sentinel&&))))))
+      (literal:vector
+       (list (literal:cons
+              'sexp 'symbol
+              (list (literal:symbol '&&sizeoff-sentinel&&)
+                    (literal:cons 'src 'nil '()))))))
 
     (define (get-sizeoff-sentinel-index)
       (if (cmap/present? the-context.literals sizeoff-sentinel)
