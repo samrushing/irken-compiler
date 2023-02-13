@@ -75,21 +75,19 @@
     (lambda ()
       (format "L" (int (counter.inc))))))
 
-(define tagsize 16)
-
 (define (encode-user-immediate dtname altname)
   (match (alist/lookup the-context.datatypes dtname) with
     (maybe:no) -> (raise (:NoSuchDatatype "NoSuchDatatype" dtname))
     (maybe:yes dt)
     -> (let ((alt (dt.get altname)))
-         (+ TC_USERIMM (<< alt.index tagsize)))))
+         (+ TC_USERIMM (<< alt.index TAGSIZE)))))
 
 (define encode-immediate
   (literal:int n)              -> (logior 1 (<< n 1))
-  (literal:char ch)            -> (logior 2 (<< (char->ascii ch) tagsize))
+  (literal:char ch)            -> (logior 2 (<< (char->ascii ch) TAGSIZE))
   (literal:undef)              -> #x0e
-  (literal:bool #t)            -> (logior 6 (<< 1 tagsize))
-  (literal:bool #f)            -> (logior 6 (<< 0 tagsize))
+  (literal:bool #t)            -> (logior 6 (<< 1 TAGSIZE))
+  (literal:bool #f)            -> (logior 6 (<< 0 TAGSIZE))
   (literal:vector ())          -> #x12
   (literal:cons 'list 'nil ()) -> TC_NIL
   (literal:cons dt alt ())     -> (encode-user-immediate dt alt)

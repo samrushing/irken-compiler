@@ -696,7 +696,7 @@
     (define (build-args args)
       (format (join (lambda (x) (format "i8** %r" (int x))) ", " args)))
 
-    (define (UITAG n) (+ TC_USERIMM (<< n tagsize)))
+    (define (UITAG n) (+ TC_USERIMM (<< n TAGSIZE)))
     (define (UOTAG n) (+ TC_USEROBJ (<< n 2)))
 
     ;; hacks for datatypes known by the runtime
@@ -941,14 +941,14 @@
 	'list 'nil   -> TC_NIL
 	'bool 'true  -> immediate-true
 	'bool 'false -> immediate-false
-	_ _          -> (+ TC_USERIMM (<< index tagsize))))
+	_ _          -> (+ TC_USERIMM (<< index TAGSIZE))))
 
     (define (uohead tag len)
-      (+ tag (<< len tagsize)))
+      (+ tag (<< len TAGSIZE)))
 
     (define (vector-header name n)
       (format name " = global [" (int (+ 1 n)) " x i64*] [\n"
-              "  i64* inttoptr (i64 " (int (+ TC_VECTOR (<< n tagsize))) " to i64*) ,\n"))
+              "  i64* inttoptr (i64 " (int (+ TC_VECTOR (<< n TAGSIZE))) " to i64*) ,\n"))
 
     (define (lit-ref i)
       (match (info-map::get i) with
@@ -1026,7 +1026,7 @@
                    (lltype (format "{i64, i32, [" (int slen) " x i8]}")))
                (info-map::add i (:tuple lltype 0))
                (oformat "@lit." (int i) " = local_unnamed_addr global "
-                        lltype " {i64 " (int (+ TC_STRING (<< tlen tagsize)))
+                        lltype " {i64 " (int (+ TC_STRING (<< tlen TAGSIZE)))
                         ", i32 " (int slen) ", [" (int slen) " x i8] c\"" (llvm-string s) "\" }"))
           (literal:symbol sym)
           -> (let ((oindex0 oindex)
@@ -1034,7 +1034,7 @@
                    (sindex (cmap->index lits (literal:string (symbol->string sym)))))
                (info-map::add i (:tuple lltype 0))
                (oformat "@lit." (int i) " = local_unnamed_addr global "
-                        lltype " {i64 " (int (+ TC_SYMBOL (<< 2 tagsize)))
+                        lltype " {i64 " (int (+ TC_SYMBOL (<< 2 TAGSIZE)))
                         ", i64 " (int (- (+ 1 sindex)))
                         ", i64 " (int (logior 1 (<< symbol-counter 1))) "}"
                         )

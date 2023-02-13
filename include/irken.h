@@ -18,6 +18,10 @@ const size_t head_room = 8192;
 object * heap0 = NULL;
 object * heap1 = NULL;
 
+/* Note: it is non-trivial to change the value of TAGSIZE.
+ * nevertheless, if you try, make sure to change the value in
+ * lib/core.scm.
+ */
 #define TAGSIZE 16
 #define TAGMASK 0xffff
 

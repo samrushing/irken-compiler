@@ -15,10 +15,10 @@
     (cond ((= 1 (logand #x1 raw0)) ;; integer
            (:tuple (>> raw0 1) 0 0))
           ((> (logand #x3 raw0) 0) ;; immediate
-           (:tuple (>> raw0 tagsize) 0 (logand #xff raw0)))
+           (:tuple (>> raw0 TAGSIZE) 0 (logand #xff raw0)))
           (else
            (let ((raw1 (~~object*->int o))) ;; tuple
-             (:tuple 0 (>> raw1 tagsize) (logand #xff raw1))))
+             (:tuple 0 (>> raw1 TAGSIZE) (logand #xff raw1))))
           )))
 
 ;; note: these match the defines in `include/irken.h`
