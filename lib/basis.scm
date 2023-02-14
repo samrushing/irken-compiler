@@ -14,7 +14,6 @@
 (require "lib/stdio.scm")
 (%backend bytecode (require "lib/vmffi.scm"))
 (require "lib/ctype.scm") ;; needed by os & io.
-;;(require "lib/lisp_reader.scm") ;; needed by ctype
 (require "lib/read.scm")
 (require "lib/os.scm")
 (require "lib/io.scm")
