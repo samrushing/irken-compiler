@@ -12,3 +12,5 @@
 (sig fdopen (int (* char) -> (* FILE)))
 (sig putchar (int -> int))
 (sig getchar ( -> int))
+(sig fprintf ((* FILE) (* char) ... -> int))
+(sig printf ((* char) ... -> int))
