@@ -13,7 +13,17 @@ def getenv_or (name, default):
         return default
 
 gcc = getenv_or ('CC', 'clang')
-cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -I./include')
+default_cflags = '-std=c99 -O3 -I./include'
+
+plat = os.uname()
+
+if plat[4] in ('x86_64', 'amd64', 'x86'):
+    # on intel hardware we want to free up a register.
+    # NOTE: if you add this flag on an m1/m2 mac, it will
+    #   silently change the default target to x86_64!
+    default_cflags += ' -fomit-frame-pointer'
+
+cflags = getenv_or ('CFLAGS', default_cflags)
 
 class CommandFailed (Exception):
     pass
@@ -66,11 +76,19 @@ def sys_in_dir (where, what):
     with WorkInDir (where):
         system (what)
 
+try:
+    import target
+    llvm_triple = target.get_triple()
+except:
+    print ("Failed to get target triple for LLVM backend...")
+    llvm_triple = ''
+
 open ('self/flags.scm', 'w').write (
 """
 (define CC "%s")
 (define CFLAGS "%s")
-""" % (gcc, cflags))
+(define LLVM_TRIPLE "%s")
+""" % (gcc, cflags, llvm_triple))
 
 print ('copying the bootstrap compiler')
 copy ('self/bootstrap.byc', 'self/compile.byc')
