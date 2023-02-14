@@ -1,6 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(define (graph->svg G m n S solution)
+(define (graph->svg G m n S solution seed)
 
   ;; translate & scale
   (define (T n)
@@ -72,7 +72,7 @@
   (polyline* (list {x=0 y=0} {x=m y=0} {x=m y=n} {x=0 y=n} {x=0 y=0}))
   (printf "<text x=\"40\" y=\"" (int (+ 20 (T n))) "\" class=\"small\">"
           (int m) "x" (int n)
-          " seed " (int *random-seed*) "</text>\n")
+          " seed " (int seed) "</text>\n")
   ;; draw the solution (if present)
   (when (not (null? solution))
     (printf "<polyline fill=\"none\" stroke=\"red\" points=\"")

@@ -32,7 +32,7 @@
 
 (define (get-seed)
   (when (= 0 *random-seed*)
-    (set! *random-seed* (logand #xffffffff (read-cycle-counter))))
+    (set! *random-seed* (random)))
   *random-seed*)
 
 (define (make-maze m n seed bias)

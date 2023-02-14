@@ -110,7 +110,7 @@
             (b85 (graph->base85 maze w h))
             (b64 (graph->base64 maze w h))
             (hex (graph->hex maze w h))
-            (else (graph->svg maze w h s solution)))
+            (else (graph->svg maze w h s solution seed)))
       )
     ))
 
