@@ -25,9 +25,6 @@
   () -> (error "cdr")
   (_ . y) -> y)
 
-;; I'm planning on downcasing these two eventually.  I was thinking of
-;;  such macros in C-like terms - i.e., warn the user that they're macros,
-;;  but it just annoyingly sticks out.
 (defmacro list
   (list)         -> (list:nil)
   (list x y ...) -> (list:cons x (list y ...)))
@@ -132,7 +129,7 @@
   )
 
 (define nth
-  ()       _ -> (error "list index out of range")
+  ()       _ -> (raise (:ListIndexError))
   (hd . _) 0 -> hd
   (_ . tl) n -> (nth tl (- n 1))
   )
@@ -140,11 +137,11 @@
 (define take
   xs       0 -> (list:nil)
   (x . xs) n -> (list:cons x (take xs (- n 1)))
-  ()       _ -> (error "list index out of range")
+  ()       _ -> (raise (:ListIndexError))
   )
 
 (define drop
-  ()       _ -> (error "list index out of range")
+  ()       _ -> (raise (:ListIndexError))
   xs       0 -> xs
   (_ . xs) n -> (drop xs (- n 1))
   )
@@ -168,7 +165,7 @@
   (let loop ((i 0)
 	     (l l))
     (match l with
-      ()	-> (error "list index out of range")
+      ()	-> (raise (:ListIndexError))
       (hd . tl) -> (if (eq? hd v)
 		       i
 		       (loop (+ i 1) tl)))))
