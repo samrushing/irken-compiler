@@ -10,8 +10,8 @@
   (libc/abort))
 
 (define (tmpnam)
-  (let ((buf* (make-char-buffer L_tmpnam))
-        (r* (libc/tmpnam buf*)))
+  (let ((buf* (malloc char L_tmpnam))
+        (r* (libc/tmpnam (%c-aref char buf* 0))))
     (if (not (cref-null? r*))
         (let ((r (get-cstring buf*)))
           (free buf*)
