@@ -891,11 +891,11 @@
 
     (define (build-sizeoff-literal)
       (let ((r '()))
-        (printf "build sizeoff vector...")
+        ;;(printf "build sizeoff vector...")
         (for-range i sizeoff-map.count
-          (printf "  " (int i) " " (repr (cmap->item sizeoff-map i)) "\n")
+          ;;(printf "  " (int i) " " (repr (cmap->item sizeoff-map i)) "\n")
           (push! r (unsexp (cmap->item sizeoff-map i))))
-        (printf "done...\n")
+        ;;(printf "done...\n")
         (reverse r)))
 
     (define (walk-literal lit p)
