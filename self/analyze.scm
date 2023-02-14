@@ -888,8 +888,16 @@
        )))))
 
 (define (do-n-rounds node n)
-  (if (= n 0)
-      node
-      (begin
-        (notquiet (printf "opt " (int n) " ...\n"))
-        (do-n-rounds (do-one-round node) (- n 1)))))
+  (let loop ((n0 n)
+             (node0 node)
+             (lastsize (noderec->size node)))
+    (let ((delta (- lastsize (noderec->size node0))))
+      ;; we stop at `n` _or_ if we reach a fixpoint.
+      (if (or (= n0 0) (and (< n0 n) (= delta 0)))
+          node0
+          (begin
+            (notquiet (printf "opt " (int n0) " ...\n"))
+            (loop (- n0 1)
+                  (do-one-round node0)
+                  (noderec->size node0)
+                  ))))))
