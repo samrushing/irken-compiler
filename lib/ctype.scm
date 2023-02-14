@@ -45,7 +45,7 @@
   )
 
 (define ctype-repr
-  (ctype:name name)    -> (format "(type " (symbol->string name) ")")
+  (ctype:name name)    -> (symbol->string name)
   (ctype:int cint s?)  -> (cint-repr cint s?)
   (ctype:array size t) -> (format "(array " (int size) " " (ctype-repr t) ")")
   (ctype:pointer t)    -> (format "(* " (ctype-repr t) ")")
@@ -194,6 +194,8 @@
     -> (info.sigs::add name (parse-sig* name sig))
     ((sexp:list ((sexp:symbol name0 _) (sexp:symbol name1 _))) sig)
     -> (let ((sig0 (parse-sig* name1 sig)))
+         ;; add both names
+         (info.sigs::add name1 sig0)
          (info.sigs::add name0 sig0))
     x -> (error1 "malformed sig" (repr (sexp:list x)))
     )
@@ -303,11 +305,11 @@
     ;;(printf "loading ffi spec for " (sym name) "\n")
     ;;(printf "  from " path0 "\n")
     (%backend bytecode
-      (let ((fparts0 (%%cexp (string -> (list string)) "readf" path0)))
+      (let ((fparts0 (%%vminsn (string -> (list string)) 'readf path0)))
         (if (null? fparts0)
             ;; VM failed to read the file.  Try local copy (bootstrapping).
             (let ((path1 (format "ffi/" (sym name) "_ffi.scm"))
-                  (fparts1 (%%cexp (string -> (list string)) "readf" path1)))
+                  (fparts1 (%%vminsn (string -> (list string)) 'readf path1)))
               (if (null? fparts1)
                   ;; give up
                   (raise (:NoFFI "unable to read FFI" name))
@@ -532,12 +534,12 @@
 
   (defmacro build-ffi-fun
     (build-ffi-fun iface name ztname rtype rcode nargs argtypes (formal0 ...))
-    -> (lambda (formal0 ...) (%ffi2 name formal0 ...))
+    -> (lambda (formal0 ...) (%%ffi name formal0 ...))
     )
 
   (defmacro build-ffi-ob
     (build-ffi-ob iface name ztname obtype obcode)
-    -> (%ffi2 name)
+    -> (%%ffi name)
     )
 
   (defmacro fetch-ffi-constant
@@ -558,15 +560,11 @@
     (build-ffi-fun iface name ztname rtype rcode nargs (argtype0 ...) (formal0 ...))
     -> (let (($pfun (vm-get-sym-handle (quote iface) ztname)))
          (lambda (formal0 ...)
-           (%%cexp ((cref void) char int argtype0 ... -> rtype)
-                   "ffi"
-                   $pfun rcode nargs
-                   formal0 ...))))
-
+           (%%ffi name $pfun rcode nargs formal0 ...))))
 
   (defmacro build-ffi-ob
     (build-ffi-ob iface name ztname obtype obcode)
-    -> (%%cexp (string -> (cref obtype)) "dlsym0" ztname))
+    -> (%%vminsn (string -> (cref obtype)) 'dlsym0 ztname))
 
   (defmacro fetch-ffi-constant
     ;; we need to fetch the correct value at runtime.
@@ -610,7 +608,7 @@
   ;;   seven times.
   ;; this will be replaced by the VM with the contents of the sizeoff table.
 
-  (define sizeoff-table (literal #((sexp:symbol &&sizeoff-sentinel&& null-src))))
+  (define sizeoff-table (literal #((sexp:symbol &&sizeoff-sentinel&& (src:nil)))))
 
   (define (update-sizeoff-table)
 
@@ -621,7 +619,7 @@
 
     (for-range i (vector-length sizeoff-table)
       (let ((val (sexp->sizeoff sizeoff-table[i])))
-        (%%cexp (int int -> undefined) "sizeoff" (+ 5 i) val)))
+        (%%vminsn (int int -> undefined) 'sizeoff (+ 5 i) val)))
     )
 
   )
@@ -692,7 +690,7 @@
 (define (get-errno)
   (%backend c (%%cexp (-> int) "errno"))
   (%backend llvm (%llvm-call ("@irk_get_errno" (-> int))))
-  (%backend bytecode (%%cexp (-> int) "errno"))
+  (%backend bytecode (%%vminsn (-> int) 'errno))
   )
 
 (define (raise-system-error)

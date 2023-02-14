@@ -403,7 +403,7 @@ void prof_dump (void)
 
 (%backend bytecode
   (define (hash-item d item size)
-    (%%cexp (int int int int -> int) "hash" d item.k0 item.k1 size))
+    (%%vminsn (int int int int -> int) 'hash d item.k0 item.k1 size))
   )
 
 (define (create-minimal-perfect-hash table)
@@ -439,6 +439,8 @@ void prof_dump (void)
                       (member-eq? slot slots))
                   (begin
                     (set! d (+ 1 d))
+                    (when (> d 10000)
+                      (raise (:PerfectHashFailed table)))
                     (set! item 0)
                     (set! slots (list:nil)))
                   (begin
@@ -478,11 +480,11 @@ void prof_dump (void)
 (define (build-ambig-table)
   ;; When the table is really small, the perfect hash generator's lower bits
   ;;   are unable to fill it, causing it to go in an infinite loop.  We pad
-  ;;   the table with enough elements to have a size of at least seven.
+  ;;   the table with enough elements to have a size of at least seventeen.
   (define (pad-table table)
     (let ((size (tree/size table)))
-      (when (< size 7)
-        (for-range i (- 7 size)
+      (when (< size 17)
+        (for-range i (- 17 size)
           (let ((v (+ 1010 i)))
             (tree/insert! table magic-cmp (:tuple v v) v))))
       table))

@@ -17,7 +17,7 @@
   (%backend llvm
     (%llvm-call ("@irk_make_string" (int -> string) ccc) n))
   (%backend bytecode
-    (%%cexp (int -> string) "smake" n))
+    (%%vminsn (int -> string) 'smake n))
   )
 
 (defmacro string-range-check
@@ -40,9 +40,9 @@
      ("@irk_buffer_copy" (string int int string int -> undefined))
      src src-start n dst dst-start))
   (%backend bytecode
-    (%%cexp
+    (%%vminsn
      (string int int string int -> undefined)
-     "scopy"
+     'scopy
      src src-start n dst dst-start)))
 
 ;; XXX need a %copy-tuple prim. (or %copy-object?)
@@ -74,7 +74,7 @@
   (%backend llvm
     (%llvm-call ("@irk_string_ref" (string int -> char)) s n))
   (%backend bytecode
-    (%%cexp (string int -> char) "sref" s n)))
+    (%%vminsn (string int -> char) 'sref s n)))
 
 (define (string-set! s n c)
   (string-range-check s n)
@@ -84,7 +84,7 @@
   (%backend llvm
     (%llvm-call ("@irk_string_set" (string int char -> undefined)) s n c))
   (%backend bytecode
-    (%%cexp (string int char -> undefined) "sset" s n c)))
+    (%%vminsn (string int char -> undefined) 'sset s n c)))
 
 (define (string-concat l)
   ;; merge a list of strings into one string
@@ -349,7 +349,7 @@
 		  (list:cons (ascii->char (+ 48 (remainder x 10))) r)
 		  )))))
 
-(%backend (c llvm)
+(%backend c
 
   ;; these are now somewhat obsolete because FFI.
   (define (strlen s)

@@ -629,21 +629,28 @@
 
   (define expand-%%cexp
     src (sig template . args)
-    -> (sexp:list (append (list (sexp:symbol '%%cexp src) sig (expand template))
-			  (map expand args)))
-    src x -> (error1 "malformed %%cexp" x))
+    -> (match the-context.options.backend with
+         (backend:c) -> (sexp:list (append (list (sexp:symbol '%%cexp src) sig (expand template)) (map expand args)))
+         _ -> (raise (:SyntaxError "%%cexp cannot be used with this backend" src sig))
+         )
+    src x
+    -> (raise (:SyntaxError "malformed %%cexp" src (sexp:list x)))
+    )
 
-  (define expand-%%ffi
-    src (name sig . args)
-    -> (sexp:list (append (list (sexp:symbol '%%ffi src) name sig)
-			  (map expand args)))
-    src x -> (error1 "malformed %%ffi" x))
+  (define expand-%%vminsn
+    src (sig opcode . args)
+    -> (let ((opcode0
+              (match opcode with
+                (sexp:symbol op _) -> op
+                (sexp:list ((sexp:symbol 'quote _) (sexp:symbol op _))) -> op
+                x -> (raise (:SyntaxError "bad %%vminsn opcode" src x)))))
+         (sexp:list (append (list (sexp:symbol '%%vminsn src) sig (sexp:symbol opcode0 src))
+                            (map expand args))))
+    src x -> (raise (:SyntaxError "malformed %%vminsn" src (sexp:list x)))
+    )
 
   (define (expand-%%sexp src list)
     (sexp:list (list:cons (sexp:symbol '%%sexp src) list)))
-
-  (define (expand-%%ffitype src form)
-    (sexp:list (list:cons (sexp:symbol '%%ffitype src) form)))
 
   (define expand-%%attr
     src (ob (sexp:symbol name _)) -> (sexp:attr (expand ob) name)
@@ -787,9 +794,8 @@
       ('cverbatim expand-cverbatim)
       ('%nvcase expand-%nvcase)
       ('%%cexp expand-%%cexp)
-      ('%%ffi expand-%%ffi)
+      ('%%vminsn expand-%%vminsn)
       ('%%sexp expand-%%sexp)
-      ('%%ffitype expand-%%ffitype)
       ('%%attr expand-%%attr)
       ('%%constructor expand-%%constructor)
       ('%%stringify expand-%%stringify)

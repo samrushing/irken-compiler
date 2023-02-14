@@ -77,7 +77,7 @@
       (match insn with
         (insn:literal lit k)			      -> (emitk (emit-literal lit k.target) k)
         (insn:return target)                          -> (emit-return target)
-        (insn:cexp sig type template args k)          -> (emitk (emit-cexp sig type template args k.target) k)
+        (insn:cexp sig type ats template args k)      -> (emitk (emit-vminsn sig type ats template args k.target) k)
         (insn:move dst var k)                         -> (emitk (emit-move dst var k.target) k)
         (insn:test reg jn k0 k1 k)                    -> (emit-test reg jn k0 k1 k)
         (insn:jump reg target jn free)                -> (emit-jump reg target jn free.val)
@@ -99,7 +99,7 @@
         (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind k.target) k)
         (insn:alloc tag size k)                       -> (emitk (emit-alloc tag size k.target) k)
         (insn:testcexp regs sig tmpl jn k0 k1 k)      -> (impossible)
-        (insn:ffi sig type name args k)               -> (error1 "ffi being redesigned." insn)
+        (insn:ffi sig type ats name args k)           -> (emitk (emit-ffi sig type ats name args k.target) k)
         (insn:label label next)                       -> (emit next)
         ))
 
@@ -156,31 +156,24 @@
     (define (emit-return reg)
       (LINSN 'ret reg))
 
-    ;; ugh, this is a bit of a kludge.
-    ;; there are 3 args inserted in front of the actual args, and there's
-    ;;   one 'bogus' arg (the '... pred).
-    (define (fixed-args sig)
-      (match sig with
-        (type:pred 'arrow (rtype . argtypes) _)
-        -> (- (length argtypes) 4) ;; we know it ends with '...
-        _ -> 0
-        ))
-
-    ;; %%cexp is really more like 'builtin primapp' here. [consider renaming]
-
-    (define (emit-cexp sig type template args target)
+    (define (emit-vminsn sig type ats template args target)
       ;; Note: is it bad that you can use this to call any insn?
-      (let ((opcode (string->symbol template)))
-        (if (and (eq? opcode 'ffi) (variadic? sig))
-            (let ((nfixed (fixed-args sig))
-                  (args0 (list:cons nfixed (list:cons target args))))
-              (printf "sig = " (type-repr sig) "\n")
-              (printf "type = " (type-repr type) "\n")
-              (printf "nfixed = " (int nfixed) "\n")
-              (printn args0)
-              (list (stream:insn 'ffiv args0)))
-            (let ((info (name->info opcode))) ;; handle 'ffi and others...
-              (list (stream:insn opcode (if info.target (cons target args) args)))))
+      (let ((opcode (string->symbol template))
+            (info (name->info opcode)))
+        (list (stream:insn opcode (if info.target (cons target args) args)))))
+
+    (define (emit-ffi csig rtype argtypes name args target)
+      ;;(printf "emit-ffi " (sym name) " csig: " (csig-repr csig) " argtypes: (" (join type-repr " " argtypes) ")\n")
+      (match csig with
+        (csig:fun name frtype fargtypes #t) ;; varargs
+        -> (let ((nfixed (length fargtypes))
+                 (args0 (list:cons nfixed (list:cons (if (= target -1) 99 target) args))))
+             ;;(printf "varargs ffi nfixed = " (int nfixed) " args0 " (join int->string " " args0) "\n")
+             (list (stream:insn 'ffiv args0)))
+        (csig:fun name frtype fargtypes #f)
+        -> (list (stream:insn 'ffi (list:cons (if (= target -1) 99 target) args)))
+        (csig:obj name obtype)
+        -> (list (stream:insn 'dlsym0 (list:cons target args)))
         ))
 
     (define (move src dst)
@@ -523,8 +516,6 @@
          '%putcc       -> (prim-putcc args)
          '%ensure-heap -> (prim-heap args k.free)
          ;; -------------------- FFI --------------------
-         ;; currently done with %%cexp (needs to be fixed)
-         ;; '%ffi2         ->
          '%malloc       -> (prim-malloc parm args)
          '%halloc       -> (prim-halloc parm args)
          '%free         -> (prim-free args)
@@ -818,8 +809,8 @@
     (define (encode-insn name args)
       (let ((info (name->info name)))
         (match (int-cmp (length args) info.nargs) info.varargs with
-          (cmp:<)  _ -> (raise (:BadArity name))
-          (cmp:>) #f -> (raise (:BadArity name))
+          (cmp:<)  _ -> (raise (:Bytecode/BadArity name))
+          (cmp:>) #f -> (raise (:Bytecode/BadArity name))
           _ _        -> (string-concat (map encode-int (cons info.code args)))
           )))
 

@@ -44,7 +44,7 @@
   (%backend llvm
     (%llvm-get ("@irk_internal_symbols_p" (-> (vector symbol)) #f)))
   (%backend bytecode
-    (list->vector (%%cexp (list symbol) "gist")))
+    (list->vector (%%vminsn (list symbol) 'gist)))
   )
 
 (define (initial-symbol-table)

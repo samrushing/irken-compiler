@@ -557,17 +557,21 @@
               (set-node-type! exp0 (parse-type type))
               exp0)
          ((sexp:symbol '%%cexp src) sig template . args)
-         -> (let ((scheme (parse-cexp-sig sig)))
-              (match scheme with
-                (:scheme gens type)
-                -> (node/cexp gens type (join-cexp-template template) (map walk args) src)))
-         ((sexp:symbol '%%ffi _) (sexp:symbol name _) sig . args)
-         -> (let ((scheme (parse-cexp-sig sig)))
-              (match scheme with
-                (:scheme gens type)
-                -> (node/ffi gens type name (map walk args))))
-         ((sexp:symbol '%%ffitype _) ctype)
-         -> (node/literal (ctype->literal (parse-ctype ctype)))
+         -> (match (parse-cexp-sig sig) with
+              (:scheme gens type)
+              -> (node/cexp gens type (join-cexp-template template) (map walk args) src))
+         ;; sneakily change this into a node:cexp for the bytecode backend.
+         ;; [no point in adding a nearly-identical node type just for this]
+         ((sexp:symbol '%%vminsn src) sig (sexp:symbol opcode _) . args)
+         -> (match (parse-cexp-sig sig) with
+              (:scheme gens type)
+              -> (node/cexp gens type (symbol->string opcode) (map walk args) src))
+         ((sexp:symbol '%%ffi _) (sexp:symbol name _) . args)
+         -> (match (ffi-info.sigs::get name) with
+              (maybe:yes sig)
+              -> (node/ffi name sig (map walk args))
+              (maybe:no)
+              -> (raise (:Node/UnknownFFI name)))
          ((sexp:symbol '%%compile-time-meta _) (sexp:list ((sexp:symbol 'quote _) (sexp:symbol name _))))
          -> (node/literal (unsexp (get-compile-time-meta name)))
          ((sexp:symbol '%nvcase _) (sexp:symbol dt _) val-exp (sexp:list tags) (sexp:list arities) (sexp:list alts) ealt)
