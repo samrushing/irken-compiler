@@ -478,9 +478,10 @@ void prof_dump (void)
 ;;  in a call to `lookup_field()`.
 
 (define (build-ambig-table)
-  ;; When the table is really small, the perfect hash generator's lower bits
-  ;;   are unable to fill it, causing it to go in an infinite loop.  We pad
-  ;;   the table with enough elements to have a size of at least seventeen.
+  ;; When the table is really small, the perfect hash generator's
+  ;;   lower bits are unable to fill it, causing it to go in an
+  ;;   infinite loop.  We pad the table with enough elements to have a
+  ;;   size of at least seventeen.
   (define (pad-table table)
     (let ((size (tree/size table)))
       (when (< size 17)
