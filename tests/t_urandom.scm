@@ -1,9 +1,8 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/urandom.scm")
-(include "lib/codecs/hex.scm")
+(require "lib/basis.scm")
+(require "lib/urandom.scm")
+(require "lib/codecs/hex.scm")
 
 (define RNG (urandom-make))
 
