@@ -1172,6 +1172,8 @@
         (llvm-file (file/open-write llpath #t #o644))
         (ollvm (make-writer llvm-file)))
     (notquiet (printf "\n-- LLVM output --\n : " llpath "\n"))
+    (when (> (string-length LLVM_TRIPLE) 0)
+      (ollvm.copy (format "target triple = " (string LLVM_TRIPLE) "\n")))
     (ollvm.copy
      (get-file-contents "include/preamble.ll"))
     (emit-llvm ollvm "toplevel" cps)
