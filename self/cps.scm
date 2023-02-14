@@ -338,7 +338,7 @@
 	(compile #f exp lenv (cont k.free kfun))))
 
     (define (get-cref-type arg)
-      (match (noderec->type arg) with
+      (match (get-node-type arg) with
         (type:pred 'cref (t1) _) -> t1
         _                        -> (impossible)
         ))
@@ -350,20 +350,20 @@
 	  '%fatbar  -> (c-fatbar tail? args lenv k)
 	  '%dtcon   -> (begin (if (> (length args) 0)
 				 (set-flag! VFLAG-ALLOCATES))
-			     (c-primargs args name params (noderec->type exp) lenv k))
+			     (c-primargs args name params (get-node-type exp) lenv k))
 	  '%vcon    -> (c-vcon params args lenv k)
 	  '%rextend -> (c-record-literal exp lenv k)
 	  '%raccess -> (let ((arg0 (nth args 0))
-			     (sig (get-record-sig-sexp (noderec->type arg0))))
+			     (sig (get-record-sig-sexp (get-node-type arg0))))
 			 (c-primargs args '%record-get
 				     (sexp params sig) ;; (field sig)
-				     (noderec->type exp)
+				     (get-node-type exp)
 				     lenv k))
 	  '%rset    -> (let ((arg0 (nth args 0))
-			     (sig (get-record-sig-sexp (noderec->type arg0))))
+			     (sig (get-record-sig-sexp (get-node-type arg0))))
 			 (c-primargs args '%record-set
 				     (sexp params sig) ;; (field sig)
-				     (noderec->type exp)
+				     (get-node-type exp)
 				     lenv k))
           ;; hack: the back end needs to know the type of the lval.
 	  '%c-get-int -> (c-primargs args name params (get-cref-type (nth args 0)) lenv k)
@@ -376,18 +376,22 @@
           '%c-cast     -> (compile tail? (first args) lenv k)
 	  ;; note: discards first argument...
 	  '%exn-handle -> (compile tail? (second args) lenv k)
-	  _ -> (c-primargs args name params (noderec->type exp) lenv k))))
+	  _ -> (c-primargs args name params (get-node-type exp) lenv k))))
 
     (define (c-cexp sig template exp lenv k)
-      ;;(print-string (format "c-cexp: sig = " (type-repr sig) " solved type = " (type-repr (noderec->type exp)) "\n"))
-      (collect-primargs (noderec->subs exp) lenv k
-			(lambda (regs)
-			  (insn:cexp sig (noderec->type exp) template regs k))))
+      ;;(print-string (format "c-cexp: sig = " (type-repr sig) " solved type = " (type-repr (get-node-type exp)) "\n"))
+      (let ((exptype (get-node-type exp))
+            (argtypes (map get-node-type (noderec->subs exp))))
+        (collect-primargs (noderec->subs exp) lenv k
+			  (lambda (regs)
+			    (insn:cexp sig exptype argtypes template regs k)))))
 
-    (define (c-ffi sig name exp lenv k)
-      (collect-primargs (noderec->subs exp) lenv k
-			(lambda (regs)
-			  (insn:ffi sig (noderec->type exp) name regs k))))
+    (define (c-ffi name sig exp lenv k)
+      (let ((exptype (get-node-type exp))
+            (argtypes (map get-node-type (noderec->subs exp))))
+        (collect-primargs (noderec->subs exp) lenv k
+			  (lambda (regs)
+			    (insn:ffi sig exptype argtypes name regs k)))))
 
     ;; collect-primargs is used by primops, simple-conditional, and tr-call.
     ;;   in order to avoid the needless consumption of registers, we re-arrange
@@ -491,7 +495,7 @@
       (match args with
 	() -> (insn:new-env 0 (lenv-top? lenv) '() k)
 	_  -> (let ((nargs (length args))
-		    (types (map (lambda (x) (noderec->type x)) args)))
+		    (types (map (lambda (x) (get-node-type x)) args)))
 		(insn:new-env
 		 nargs
 		 (lenv-top? lenv)
@@ -542,7 +546,7 @@
     (define (c-let-splat tail? formals subs lenv k)
       (let ((body (last subs)) ;; subs = (init0 init1 ... body)
 	    (inits (butlast subs))
-	    (types (map noderec->type inits))
+	    (types (map get-node-type inits))
 	    (nargs (length formals))
 	    (k-body (dead k.free
 			  (compile tail? body (extend-lenv formals lenv)
@@ -694,7 +698,7 @@
     (define (c-record-extension field exp lenv k)
       (match field with
         (:pair new-field new-value)
-        -> (let ((osig (get-record-sig (noderec->type exp)))
+        -> (let ((osig (get-record-sig (get-node-type exp)))
                  (nsig (sort symbol<? (list:cons new-field osig)))
                  (otag (get-record-tag osig))
                  (ntag (get-record-tag nsig)))
@@ -704,7 +708,7 @@
                                (sexp:list (map make-sexp-symbol osig))
                                (sexp:list (map make-sexp-symbol nsig))
                                (sym new-field))
-                         (noderec->type exp)
+                         (get-node-type exp)
                          lenv k))))
 
     (define (record-label-tag label)
@@ -796,7 +800,7 @@
 	     (match (noderec->t n) with
 	       (node:let formals)
 	       -> (for-each
-		   (lambda (x) (type-map::maybe-add (apply-subst (noderec->type x)) (noderec->id x)))
+		   (lambda (x) (type-map::maybe-add (get-node-type x) (noderec->id x)))
 		   (reverse (cdr (reverse (noderec->subs n)))))
 	       _ -> #u)
 	     (loop)
@@ -818,7 +822,7 @@
 (define (print-type-tree root)
   (for (n d x) (make-node-generator root)
        (indent d)
-       (printf (type-repr (noderec->type n)) "\n")))
+       (printf (type-repr (get-node-type n)) "\n")))
 
 ;; --------- printing ----------
 

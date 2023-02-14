@@ -13,6 +13,12 @@
 ;;   something not supported but the compiler.
 
 ;; XXX can this benefit from memoization?
+;;     answer: not really.
+;;     we mostly care about it for apply-subst-to-program, but
+;;     the cost of wholesale apply-subst to the entire program is
+;;     immense (twice the time & space of typing itself!), and not
+;;     really needed.  calling apply-subst on demand in the CPS phase
+;;     (via `get-node-type`) seems to be easy & sufficient.
 
 (define (apply-subst t)
   (define (p t)
@@ -30,6 +36,9 @@
 		   r))
 	    ))))
   (p t))
+
+(define (get-node-type n)
+  (apply-subst (noderec->type n)))
 
 ;; --------- tenv API ---------
 
@@ -849,19 +858,19 @@
 		    _ -> (error1 "type-of-primapp" name)
 		    )))))
 
-  (define (apply-subst-to-program n)
-    ;; This one loop is causing heap allocation to triple while compiling,
-    ;;   and almost certainly adding a lot to the compile time.
-    ;; I think this is because apply-subst is destroying the shared nature
-    ;;   of the tree of types - by deep-copying all types.
-    (set-node-type! n (apply-subst (noderec->type n)))
-    (for-each apply-subst-to-program (noderec->subs n)))
+  ;;(build-graphs node)
+  (type-of node (tenv/make))
+  )
 
-  (let ((t (type-of node (tenv/make))))
-    ;;(printf "applying subst...") (flush)
-    (apply-subst-to-program node)
-    ;;(printf "done.\n")
-    t))
+(define (build-graphs node)
+  (let ((dep-graph (build-dependency-graph node))
+        (strong (strongly dep-graph)))
+    (set! the-context.dep-graph dep-graph) ;; needed by do-trim to find unused things
+    (set! the-context.scc-graph strong)    ;; needed by type-of-fix for re-ordering
+    (when the-context.options.debugtyping
+      (printf "strongly-connected-components:\n")
+      (printf "(" (join (lambda (x) (format "(" (join symbol->string " " x) ")")) " " strong) ")\n"))
+    ))
 
 (define (dump-types n)
 
