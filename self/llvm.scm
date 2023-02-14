@@ -5,13 +5,13 @@
 ;; LLVM backend: targets *only* LP64.  Note that this covers most operating systems
 ;;   that anyone cares about, *except* for Win64, which is LLP64.
 
-;; TODO:
-;;  in order to move toward full JIT capability, we need to remove
-;;  all dependency on generated C code.
-;;  1) we need to generate our *own* constructed literals. [done]
-;;  2) get rid of all external cexp. [done]
-;;  3) ***new!*** generate a table for lookup_field. [done]
-;;  4) maybe remove callocate-related stuff (replaced with FFI)? [done]
+;; --------------------------------------------------
+;; -flto notes [m1 pro]
+;;                           with -flto      without
+;;   clang time to compile    17.824s        13.946s
+;;   irken time to compile     4.893s         4.828s
+;;   binary size:             2367956        2726420
+;; --------------------------------------------------
 
 ;; XXX shouldn't be global (or should be kept in the-context).
 ;; [alternatively, we can make a wrapper for cps->llvm that defines these]
@@ -206,8 +206,6 @@
 
 	'%exit _ (arg)
 	-> (begin
-	     ;;(oformat "store i8** %r" (int arg) ", i8*** @result")
-	     ;;(oformat "tail call void @exit_continuation()")
              (oformat "tail call void @exit_continuation (i8** %r" (int arg) ")")
 	     (oformat "ret void")
 	     )
@@ -278,8 +276,6 @@
         -> (emit-c-get-int type src target)
         '%c-set-int _ (dst src)
         -> (emit-c-set-int type src dst target)
-        '%ffi2 params args
-        -> (emit-ffi2 params args target)
         '%free _ (ref)
         -> (oformat (maybe-target target) " = call i8** @free_foreign (i8** %r" (int ref) ")")
         '%string->cref params (src)
@@ -366,7 +362,7 @@
 
     ;; given an irken object, place it into an llvm variable of the appropriate type.
     ;; returns: the var name/type holding the result, e.g. "i32 %t23"
-    (define (irken->ctype ctype arg)
+    (define (emit-unwrap-ctype ctype arg)
       (let ((id0 (ID)))
         (match ctype with
           (ctype:int cint signed?)
@@ -453,31 +449,39 @@
                  ", " iname "* " dst1)
         (dead-set target)))
 
-    ;; XXX next step: we need to emit declarations for each foreign function called.
-    (define (emit-ffi2 params args target)
-      (match params with
-        (sexp:symbol name _)
-        -> (match (ffi-info.sigs::get name) with
-             (maybe:yes (csig:fun name rtype argtypes0 var?))
-             -> (let ((args1 (map2 irken->ctype argtypes0 args))
-                      (lrtype (ctype->llvm rtype))
-                      (id0 (ID)))
-                  ;;(printf "ffi2 " (sym name) " (" (join ctype-repr ", " argtypes0) ") -> " (ctype-repr rtype) "\n")
-                  (ffifuns::add name) ;; so we can declare it later
-                  (oformat id0 " = call " lrtype " @" (sym name) "(" (join ", " args1) ")")
-                  (oformat (maybe-target target) " = bitcast " (ctype->irken rtype id0) " to i8**")
-                  )
-             (maybe:yes (csig:obj name obtype))
-             -> (let ((lt (ctype->llvm obtype))
-                      (arg (if (string=? lt "i8")
-                               (format lt "* @" (sym name))
-                               (format "i8* bitcast (" lt "* @" (sym name) " to i8*)"))))
-                  (ffifuns::add name)
-                  (oformat "%r" (int target) " = call i8** @make_foreign (" arg ")"))
-             (maybe:no)
-             -> (error1 "ffi2 unknown symbol" name)
+    (define (emit-ffi csig type argtypes name args target)
+      ;;(printf "emit-ffi " (sym name) " argtypes = (" (join type-repr " " argtypes) ")\n")
+      (match csig with
+        (csig:fun name frtype fargtypes var?)
+        -> (let ((nfixed (length fargtypes))
+                 (args1 (map2 emit-unwrap-ctype fargtypes (take args nfixed)))
+                 (nvar (- (length args) nfixed))
+                 (lrtype (ctype->llvm frtype))
+                 (id0 (ID))
+                 (varargs '())
+                 (ellipsis ""))
+             (when var?
+               (for-range i nvar
+                 (let ((arg (nth args (+ nfixed i)))
+                       (arg-type (apply-subst (nth argtypes (+ nfixed i))))
+                       (arg-ctype (irken-type->ctype arg-type))
+                       (unwrapped (emit-unwrap-ctype arg-ctype arg)))
+                   (push! varargs unwrapped)
+                   ))
+               (set! args1 (append args1 (reverse varargs)))
+               (set! ellipsis (format " (" (join ctype->llvm ", " fargtypes) ", ...)"))
+               )
+             (ffifuns::add name) ;; so we can declare it later
+             (oformat id0 " = call " lrtype ellipsis " @" (sym name) "(" (join ", " args1) ")")
+             (oformat (maybe-target target) " = bitcast " (ctype->irken frtype id0) " to i8**")
              )
-        x -> (error1 "bad ffi2 param" x)
+        (csig:obj name obtype)
+        -> (let ((lt (ctype->llvm obtype))
+                 (arg (if (string=? lt "i8")
+                          (format lt "* @" (sym name))
+                          (format "i8* bitcast (" lt "* @" (sym name) " to i8*)"))))
+             (ffifuns::add name)
+             (oformat "%r" (int target) " = call i8** @make_foreign (" arg ")"))
         ))
 
     (define (emit-new-env size top? types target)
@@ -762,11 +766,11 @@
       (insn:primop name params type args k)
       -> (begin (emit-primop name params type args k.target) (walk k.insn))
 
-      (insn:cexp sig type template args k)
+      (insn:cexp sig type ats template args k)
       -> (raise (:LLVMNoCexp "llvm: no cexps"))
 
-      (insn:ffi sig type name args k)
-      -> (raise (:TempNoFFI "llvm: temp no ffi"))
+      (insn:ffi sig type ats name args k)
+      -> (begin (emit-ffi sig type ats name args k.target) (walk k.insn))
 
       (insn:new-env size top? types k)
       -> (begin (emit-new-env size top? types k.target) (walk k.insn))
@@ -1098,6 +1102,11 @@
         (oformat "@irk_internal_symbols_p = global i8** inttoptr (i64 " (int TC_EMPTY_VECTOR) " to i8**)"))
     ))
 
+;; how to do vararg decl:
+;;   declare i32 @open (i8*, i32, ...)
+;; how to do vararg call:
+;;   %t6 = call i32 (i8*, i32, ...) @open(i8* %t2, i32 %t4, i8* %t5)
+
 (define (emit-ffi-declarations o)
   (o.write (format ";; declarations for called foreign functions (FFI)"))
   (ffifuns::iterate
@@ -1106,7 +1115,7 @@
        (maybe:yes (csig:fun name rtype argtypes0 var?))
        -> (let ((argtypes1 (map ctype->llvm argtypes0))
                 (lrtype (ctype->llvm rtype)))
-            (o.write (format "declare " lrtype " @" (sym name) " (" (join ", " argtypes1) ")")))
+            (o.write (format "declare " lrtype " @" (sym name) " (" (join ", " argtypes1) (if var? ", ..." "") ")")))
        (maybe:yes (csig:obj name obtype))
        ;; XXX all external objects can probably be declared 'i8*'
        -> (o.write (format "@" (sym name) " = external global " (ctype->llvm obtype)))
