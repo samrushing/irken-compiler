@@ -201,6 +201,14 @@ default flags:
 	(_ (set! forms1 '()))
 	(_ (rename-variables node1))
 	(_ (optimize-nvcase node1))
+
+        ;;(_ (build-graphs node1))
+        ;; temp: trying to see if we can type earlier
+        ;;(node2 (do-simple-optimizations node1))
+        ;;(_ (if-dump 'xxx (pp-node node2)))
+        ;;(_ (notquiet (printf "typing 1...\n")))
+        ;; (_ (analyze node2))
+        ;; (_ (type-program node2))
         (noden (do-n-rounds node1 the-context.options.opt-rounds))
 	;; try to free up some memory
 	(_ (set! node0 (node/sequence '() (src:nil))))
@@ -210,16 +218,8 @@ default flags:
 	(_ (find-leaves noden))
 	(_ (find-free-refs noden))
         (_ (if-dump 'opt (pp-node noden)))
-	;; build the graph again, so strongly will work.
-        (_ (notquiet (printf "depgraph...\n")))
-        (_ (build-dependency-graph noden))
-        ;;(_ (print-graph the-context.dep-graph))
-        ;; strongly-connected components is needed by the typing phase
-        ;;(_ (print-string "strongly-connected components:\n"))
-        (strong (strongly the-context.dep-graph))
-        (_ (verbose (printn strong)))
-        (_ (set! the-context.scc-graph strong))
-        (_ (notquiet (printf "typing...\n")))
+        (_ (build-graphs noden))
+        (_ (notquiet (printf "typing 2...\n")))
         (_ (type-program noden))
         ;;(type-map (collect-all-types noden))
         ;;(_ (print-type-tree noden))
