@@ -28,10 +28,10 @@
   (:literal literal cont)
   ;; litcon <index> <value> <k>
   (:litcon int symbol cont)
-  ;; cexp <sig> <solved-type> <template> <args> <k>
-  (:cexp type type string (list int) cont)
-  ;; ffi <sig> <solved-type> <name> <args> <k>
-  (:ffi type type symbol (list int) cont)
+  ;; cexp <sig> <solved-type> <argtypes> <template> <args> <k>
+  (:cexp type type (list type) string (list int) cont)
+  ;; ffi <sig> <solved-type> <argtypes> <name> <args> <k>
+  (:ffi csig type (list type) symbol (list int) cont)
   ;; test <reg> <jump-number> <then> <else> <k>
   (:test int int insn insn cont)
   ;; testcexp <regs> <sig> <template> <jump-number> <then> <else> <k>
@@ -179,7 +179,7 @@
 	(node:varref name)		-> (c-varref name lenv k)
 	(node:varset name)		-> (c-varset name (car (noderec->subs exp)) lenv k)
 	(node:cexp gens sig template)	-> (c-cexp sig template exp lenv k)
-	(node:ffi gens sig name)	-> (c-ffi sig name exp lenv k)
+	(node:ffi name sig)	        -> (c-ffi name sig exp lenv k)
 	(node:call)			-> (c-call tail? exp lenv k)
 	(node:primapp name params)	-> (c-primapp tail? name params exp lenv k)
 	(node:nvcase 'nil tags arities) -> (c-pvcase tail? tags arities (noderec->subs exp) lenv k)
@@ -842,9 +842,6 @@
   (insn:trcall d name args)        -> (printf "trcall " (int d) " " (sym name) " " (fintlist args))
   (insn:literal lit k)             -> (printf "lit " (literal->string lit))
   (insn:litcon i kind k)           -> (printf "litcon " (int i) " " (sym kind))
-  (insn:cexp sig typ tem args k)   -> (printf "cexp sig:" (type-repr sig) " type:" (type-repr typ) " "
-                                              (string tem) " args:" (fintlist args))
-  (insn:ffi sig typ name args k)   -> (printf "ffi " (type-repr sig) " " (type-repr typ) " " (sym name) " " (fintlist args))
   (insn:test reg jn then else k)   -> (printf "test " (int reg) "  L" (int jn))
   (insn:jump reg trg jn free)      -> (printf "jmp " (int reg) " trg:" (int trg) " L" (int jn) " free:" (fintlist free.val))
   (insn:close name nreg body k)    -> (printf "close " (sym name) " nreg:" (int nreg))
@@ -866,6 +863,16 @@
   (insn:pvcase tr labels arities jn alts ealt k)
   -> (printf "pvcase " (int tr) " (" (join symbol->string " " labels) ") arities:" (fintlist arities) " L" (int jn))
   (insn:label label next)          -> (printf "L" (int label) ":")
+  (insn:cexp sig typ ats tem args k)
+  -> (printf "cexp sig:" (type-repr sig) " type:" (type-repr typ) " "
+             " argtypes: (" (join type-repr " " ats) ") "
+             (string tem) " args:" (fintlist args))
+  (insn:ffi sig typ ats name args k)
+  -> (printf "ffi rtype: " (type-repr typ)
+             " sig: " (csig-repr sig)
+             " argtypes: (" (join type-repr " " ats)
+             " name: " (sym name)
+             " args: " (fintlist args))
   )
 
 (define (print-cps insn d)
@@ -893,8 +900,8 @@
   (insn:return result)             -> (list result)
   (insn:tail _ c a)                -> (list c a)
   (insn:trcall _ _ args)           -> args
-  (insn:cexp _ _ _ args _)         -> args
-  (insn:ffi _ _ _ args _)          -> args
+  (insn:cexp _ _ _ _ args _)       -> args
+  (insn:ffi _ _ _ _ args _)        -> args
   (insn:test reg _ _ _ _)          -> (list reg)
   (insn:jump reg trg _ _)          -> (list reg trg)
   (insn:varset _ _ v _)            -> (list v)
@@ -930,8 +937,8 @@
   (insn:pvcase _ _ _ _ _ _ k)   -> k
   (insn:literal _ k)            -> k
   (insn:litcon _ _ k)           -> k
-  (insn:cexp _ _ _ _ k)         -> k
-  (insn:ffi _ _ _ _ k)          -> k
+  (insn:cexp _ _ _ _ _ k)       -> k
+  (insn:ffi _ _ _ _ _ k)        -> k
   (insn:varref _ _ k)           -> k
   (insn:varset _ _ _ k)         -> k
   (insn:store _ _ _ _ k)        -> k

@@ -27,7 +27,7 @@
   (:varset symbol)
   (:literal literal)
   (:cexp (list type) type string) ;; generic-tvars type template
-  (:ffi (list type) type symbol)  ;; generic-tvars type name
+  (:ffi symbol csig)              ;; name signature
   (:nvcase symbol (list symbol) (list int))  ;; datatype alts arities
   (:sequence)
   (:if)
@@ -159,8 +159,8 @@
 (define (node/cexp gens type template args src)
   (make-node (node:cexp gens type template) args src))
 
-(define (node/ffi gens type name args)
-  (make-node (node:ffi gens type name) args (src:nil)))
+(define (node/ffi name sig args)
+  (make-node (node:ffi name sig) args (src:nil)))
 
 (define (node/sequence subs src)
   (when (and (eq? src (src:nil)) (not (eq? subs (list:nil))))
@@ -255,7 +255,7 @@
   (node:varset name)             -> (format "varset " (sym name))
   (node:literal lit)             -> (format "literal " (literal->string lit))
   (node:cexp gens type template) -> (format "cexp " (type-repr type) " " template)
-  (node:ffi gens type name)      -> (format "ffi " (type-repr type) " " (sym name))
+  (node:ffi name sig)            -> (format "ffi " (sym name) " " (csig-repr sig))
   (node:sequence)                -> (format "sequence")
   (node:if)                      -> (format "conditional")
   (node:call)                    -> (format "call")
@@ -289,7 +289,7 @@
       (node:varset name)             -> (sexp (sym 'set!) (first subs) (second subs))
       (node:literal lit)             -> (sexp (string (literal->string lit)))
       (node:cexp gens type template) -> (sexp (string (type-repr type)) (string template) (list subs))
-      (node:ffi gens type name)      -> (sexp (sym 'ffi) (string (type-repr type)) (sym name) (list subs))
+      (node:ffi name sig)            -> (sexp (sym 'ffi) (sym name) (string (csig-repr sig)) (list subs))
       (node:sequence)                -> (sexp1 'begin subs)
       (node:if)                      -> (sexp1 'if subs)
       (node:call)                    -> (sexp1 'call subs)
@@ -645,7 +645,7 @@
   (sexp:char c)     -> (literal:cons 'sexp 'char (list (literal:char c)))
   (sexp:bool b)     -> (literal:cons 'sexp 'bool (list (literal:bool b)))
   (sexp:undef)      -> (literal:cons 'sexp 'undef '())
-  (sexp:symbol s _) -> (literal:cons 'sexp 'symbol (list (literal:symbol s)))
+  (sexp:symbol s _) -> (literal:cons 'sexp 'symbol (list (literal:symbol s) (literal:cons 'src 'nil '())))
   (sexp:list l)     -> (literal:cons 'sexp 'list (list (unsexp-list l)))
   (sexp:vector l)   -> (literal:cons 'sexp 'vector (map unsexp l))
   (sexp:attr b n)   -> (literal:cons 'sexp 'attr (list (unsexp b) (literal:symbol n)))

@@ -63,6 +63,17 @@
      free0)
     {free=free1 env=(tree/insert tenv.env symbol-index-cmp name scheme)}))
 
+(define (tenv/dump tenv)
+  (print-string " tenv= {\n")
+  (tree/inorder
+   (lambda (k v)
+     (printf "   " (sym k) " " (scheme-repr v) "\n"))
+   tenv.env)
+  (printf " -- free = ")
+  (tree/inorder (lambda (k _) (printf (type-repr k) " ")) tenv.free)
+  (printf "}\n")
+  )
+
 (define (occurs-free-in-tenv tvar tenv)
   (match (tree/member tenv.free magic-cmp tvar) with
     (maybe:yes _) -> #t
@@ -96,7 +107,7 @@
 
 (define scheme-repr
   (:scheme gens type)
-  -> (format "forall(" (join type-repr "," gens) ")." (type-repr type)))
+  -> (format "forall(" (join type-repr "," gens) ")." (type-repr (apply-subst type))))
 
 (define (type-program node)
 
@@ -201,6 +212,11 @@
     (U t0 t1)
     )
 
+  (define (other-error message node)
+    (printf (bold message) "\n")
+    (printf "\n  " (src-repr (noderec->src node) the-context.options.src-limit) "\n")
+    )
+
   (define (instantiate-type-scheme gens type)
     ;; map from gens->fresh
     (when the-context.options.debugtyping
@@ -243,11 +259,11 @@
     (match (noderec->t exp) with
       (node:literal lit)	    -> (type-of-literal lit exp tenv)
       (node:cexp gens sig _)	    -> (type-of-cexp gens sig exp tenv)
-      (node:ffi gens sig _)	    -> (type-of-cexp gens sig exp tenv)
+      (node:ffi name sig)           -> (type-of-ffi name sig exp tenv)
       (node:if)			    -> (type-of-conditional exp tenv)
       (node:sequence)		    -> (type-of-sequence (noderec->subs exp) tenv)
-      (node:function _ formals)	    -> (type-of-function formals (car (noderec->subs exp)) (noderec->type exp) tenv)
-      (node:varref name)	    -> (type-of-varref name tenv)
+      (node:function name formals)  -> (type-of-function name formals (car (noderec->subs exp)) (noderec->type exp) tenv)
+      (node:varref name)	    -> (type-of-varref name exp tenv)
       (node:varset name)	    -> (type-of-varset name exp tenv)
       (node:call)		    -> (type-of-call exp tenv)
       (node:fix names)		    -> (type-of-fix names exp tenv)
@@ -262,13 +278,9 @@
       (printf "( type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n"))
     (let ((texp0 (noderec->type exp))
           (texp1 (type-of* exp tenv)))
-      ;; XXX the intent of this is to unify with user-assigned types,
-      ;;  but it is breaking polymorphic types somehow. (try poly-append).
-      ;;(when (not (no-type? texp0))
-      ;;  (unify exp texp0 texp1))
       (set-node-type! exp texp1)
       (when the-context.options.debugtyping
-        (printf "type-of* " (int (noderec->id exp)) " " (type-repr texp1) ")\n"))
+        (printf "  type-of* " (int (noderec->id exp)) " " (type-repr (apply-subst texp1)) ")\n"))
       texp1))
 
   (define (type-of-literal lit exp tenv)
@@ -285,7 +297,10 @@
            (:scheme gens type)
            -> (match (instantiate-type-scheme gens type) with
                 (type:pred 'arrow (result-type . arg-types) _)
-                -> (begin
+                -> (let ((nargs0 (length arg-types))
+                         (nargs1 (length l)))
+                     (when (not (= nargs0 nargs1))
+                       (other-error "Bad Arity" exp))
                      (for-range i (length arg-types)
                        (let ((tx (type-of-literal (nth l i) exp tenv)))
                          (unify exp tx (nth arg-types i))))
@@ -354,6 +369,37 @@
                     )))
       type -> type))
 
+  (define (type-of-ffi name sig exp tenv)
+    (match sig with
+      (csig:fun _ frtype fargtypes var?)
+      -> (let ((args (noderec->subs exp))
+               (argtypes (map (lambda (x) (type-of x tenv)) (noderec->subs exp)))
+               (nfixed (length fargtypes)))
+           ;; (printf "type-of-ffi " (sym name)
+           ;;         " csig " (csig-repr sig)
+           ;;         " argtypes (" (join type-repr " " argtypes)
+           ;;         ")\n")
+           ;; %%ffi has 3 extra arguments in bytecode mode.
+           (if (eq? the-context.options.backend (backend:bytecode))
+               (set! argtypes (drop argtypes 3)))
+           ;; unify the <n> fixed (formal) args
+           (for-range i nfixed
+             (let ((type0 (ctype->irken-type (frob-int-arg (nth fargtypes i))))
+                   (type1 (nth argtypes i)))
+               (unify exp type0 type1)))
+           ;; compute the type the extra args (though we unify against no formal arg types)
+           (for-range i (- (length argtypes) nfixed)
+             (let ((arg (nth args (+ nfixed i))))
+               ;; (printf "typing extra arg at position " (int (+ nfixed i)) " of type " (type-repr (noderec->type arg)) "\n")
+               ;; (pp-node arg)
+               (type-of (nth args (+ nfixed i)) tenv)
+               ;; (printf " now has type " (type-repr (noderec->type arg)) "\n")
+               ))
+           (ffi-type-frob-int (ctype->irken-type frtype)))
+      (csig:obj _ obtype)
+      -> (pred 'cref (list (ffi-type-frob-int (ctype->irken-type obtype))))
+      ))
+
   (define (type-of-conditional exp tenv)
     (match (map (lambda (x) (type-of x tenv)) (noderec->subs exp)) with
       (tif tthen telse)
@@ -378,7 +424,9 @@
   (define (optional-type formal tenv)
     (new-tvar))
 
-  (define (type-of-function formals body sig tenv)
+  (define (type-of-function name formals body sig tenv)
+    (when the-context.options.debugtyping
+      (printf "type-of-function " (bold (sym name)) "\n"))
     (let ((arg-types '()))
       (for-list formal formals
         (let ((type (optional-type formal tenv)))
@@ -393,21 +441,27 @@
 
   (define (apply-tenv name tenv)
     ;; (print-string "apply-tenv: ") (printn name)
-    ;; (print-string " tenv= {\n")
-    ;; (tenv/iterate
-    ;;  (lambda (k v)
-    ;;    (printf " " (sym k) " " (scheme-repr v) "\n"))
-    ;;  tenv)
-    ;; (print-string "}\n")
+    ;; (tenv/dump tenv)
     (match (tenv/lookup tenv name) with
-      (maybe:no) -> (error1 "apply-tenv: unbound variable" name)
+      ;;(maybe:no) -> (error1 "apply-tenv: unbound variable" name)
+      (maybe:no)
+      -> (begin
+           (tenv/dump tenv)
+           (error1 "apply-tenv: unbound variable" name))
       (maybe:yes (:scheme gens type))
-      -> (instantiate-type-scheme gens type)))
+      -> (instantiate-type-scheme gens type)
+      ;; -> (let ((r (instantiate-type-scheme gens type)))
+      ;;      (printf "apply-tenv: => " (type-repr (apply-subst r)) "\n")
+      ;;      r
+      ;;      )
+      ))
 
-  (define (type-of-varref name tenv)
-    (let ((t (apply-tenv name tenv)))
-      ;;(printf "varref: " (sym name) " type = " (type-repr t) "\n")
-      t))
+  (define (type-of-varref name exp tenv)
+    ;; (let ((t (apply-tenv name tenv)))
+    ;;   (printf "varref: " (sym name) " type = " (type-repr (apply-subst t)) "\n")
+    ;;   t))
+    (apply-tenv name tenv)
+    )
 
   (define (type-of-varset name exp tenv)
     ;; XXX implement the no-generalize rule for vars that are assigned.
@@ -438,7 +492,7 @@
 	       (init-tvars (list->vector (map-range i n (new-tvar))))
 	       (init-types (make-vector n no-type))
 	       )
-	   ;;(print-string "reordered: ") (printn names0)
+	   ;;(printf "reordered: (" (join symbol->string " " names0) "\n")
 	   (for-list part partition
              ;; build temp tenv for typing the inits
              (let ((temp-tenv
@@ -448,11 +502,11 @@
                      tenv (reverse part))))
                ;; type each init in temp-tenv
                (for-list i part
-                 (let ((ti (type-of inits[i] temp-tenv))
-                       (_ (unify inits[i] ti init-tvars[i]))
-                       ;;(ti (apply-subst ti)))
-                       )
-                   (set! init-types[i] ti)))
+                 (let ((ti (type-of inits[i] temp-tenv)))
+                   (unify inits[i] ti init-tvars[i])
+                   ;;(set! init-types[i] (apply-subst ti)))
+                   (set! init-types[i] ti)
+                   ))
                ;; now extend the environment with type schemes instead
                (for-list i part
                  (let ((scheme (build-type-scheme init-types[i] tenv)))
@@ -665,8 +719,6 @@
       '%llarith    -> (:scheme '() (arrow int-type (list int-type int-type)))
       '%llicmp     -> (:scheme '() (arrow bool-type (list int-type int-type)))
       '%lleq       -> (:scheme (list T0) (arrow bool-type (list T0 T0)))
-      ;; -------------------- FFI --------------------
-      '%ffi2  -> (lookup-ffi-scheme params)
       '%malloc -> (:scheme '() (arrow (pred 'cref
                                             (list (pred 'array (list (parse-type params)))))
                                       (list int-type)))
@@ -742,7 +794,7 @@
   (define lookup-ffi-scheme
     (sexp:symbol name _)
     -> (match (ffi-info.sigs::get name) with
-         (maybe:yes (csig:fun _ rtype argtypes))
+         (maybe:yes (csig:fun _ rtype argtypes var?))
          -> (:scheme '() (arrow (ffi-type-frob-int (ctype->irken-type rtype))
                                 (map ctype->irken-type (map frob-int-arg argtypes))))
          (maybe:yes (csig:obj _ obtype))
