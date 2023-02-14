@@ -70,7 +70,9 @@
     (let ((top (symbol-set-maker '())))
       (g::add 'top top)
       (search root top))
-    (set! the-context.dep-graph g)))
+    (set! the-context.dep-graph g)
+    g
+    ))
 
 (define (transpose g)
   (let ((gt (map-maker symbol-index-cmp)))
