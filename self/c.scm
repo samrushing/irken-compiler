@@ -24,7 +24,7 @@
 			    _ -> (error1 "unknown raw type in %cexp" type))
 	 kind          -> (if (member-eq? kind c-int-types)
 			      (format "unbox(" arg ")")
-			      (error1 "wrap-in:" type))
+			      (error1 "wrap-in:" (type-repr type)))
 	 )))
 
 ;; (buffer (struct sockaddr_t)) => (struct sockaddr_t *)
@@ -153,8 +153,8 @@
       (insn:test reg jn k0 k1 k)                   -> (emit-test reg jn k0 k1 k)
       (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (emit-testcexp regs sig tmpl jn k0 k1 k)
       (insn:jump reg target jn free)               -> (emit-jump reg target jn free.val)
-      (insn:cexp sig type template args k)         -> (begin (emit-cexp sig type template args k.target) (emit k.insn))
-      (insn:ffi sig type name args k)              -> (error1 "no FFI in C backend" name)
+      (insn:cexp sig type ats template args k)     -> (begin (emit-cexp sig type ats template args k.target) (emit k.insn))
+      (insn:ffi sig type ats name args k)          -> (begin (emit-ffi sig type ats name args k.target) (emit k.insn))
       (insn:close name nreg body k)                -> (begin (emit-close name nreg body k.target) (emit k.insn))
       (insn:varref d i k)                          -> (begin (emit-varref d i k.target) (emit k.insn))
       (insn:varset d i v k)                        -> (begin (emit-varset d i v k.target) (emit k.insn))
@@ -247,7 +247,8 @@
 
     ;; XXX consider this: giving access to the set of free registers.
     ;;   would make it possible to do %ensure-heap in a %%cexp.
-    (define (emit-cexp sig type template args target)
+
+    (define (emit-cexp sig type argtypes template args target)
       (let ((exp
 	     (match sig with
 	       (type:pred 'arrow (result-type . arg-types) _)
@@ -263,6 +264,16 @@
 	(if (= target -1)
 	    (o.write (format exp ";"))
 	    (o.write (format "O r" (int target) " = " exp ";")))))
+
+    (define (emit-ffi csig rtype argtypes name args target)
+      ;;(printf "emit-ffi " (sym name) " argtypes: (" (join type-repr " " argtypes) ")\n")
+      (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
+            (args1 (map2 wrap-in argtypes args0))
+            (fcall (wrap-out rtype (format (sym name) "(" (join ", " args1) ")"))))
+        ;;(printf "fcall = " (string fcall) "\n")
+        (if (= target -1)
+            (o.write (format fcall ";"))
+            (o.write (format "O r" (int target) " = " fcall ";")))))
 
     (define (emit-check-heap free size)
       (let ((n (length free)))
@@ -672,25 +683,6 @@
                        (move rv k.target))
           _ -> (primop-error))
 
-        (define (prim-ffi2 parm args)
-          (match parm with
-            (sexp:symbol name _)
-            -> (match (ffi-info.sigs::get name) with
-                 (maybe:yes (csig:fun name rtype argtypes var?))
-                 -> (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
-                          (argt0 (map ctype->irken-type argtypes))
-                          (args2 (map2 wrap-in argt0 args0))
-                          (call0 (format (sym name) "(" (join "," args2) ")"))
-                          (call1 (if (= k.target -1) call0 (wrap-out type call0))))
-                      (if (= k.target -1)
-                          (o.write (format call1 ";"))
-                          (o.write (format "O r" (int k.target) " = " call1 ";"))))
-                 (maybe:yes (csig:obj name obtype))
-                 -> (o.write (format "O r" (int k.target) " = make_foreign ((void*)&" (sym name) ");"))
-                 _ -> (primop-error))
-            _ -> (primop-error)
-            ))
-
         (define (prim-c-aref args)
           (match args type with
             (src index) (type:pred 'cref (subtype) _)
@@ -776,7 +768,7 @@
           (dst src)
           -> (let ((ctype (irken-type->c-type type)))
                ;; XXX check against word size
-               (printf "c-set-int " ctype "\n")
+               ;;(printf "c-set-int " ctype "\n")
                (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNTAG_INTEGER(r" (int src) ");"))
                (when (> k.target 0)
                  (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
@@ -842,7 +834,6 @@
           '%malloc       -> (prim-malloc parm args)
           '%halloc       -> (prim-halloc parm args)
           '%free         -> (prim-free args)
-          '%ffi2         -> (prim-ffi2 parm args)
           '%c-aref       -> (prim-c-aref args)
           '%c-get-int    -> (prim-c-get-int args)
           '%c-set-int    -> (prim-c-set-int args)
