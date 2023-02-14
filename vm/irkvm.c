@@ -1,7 +1,6 @@
 // -*- Mode: C -*-
 
 #include "header1.c"
-
 #include "irken.h"
 #include <stdio.h>
 #include "rdtsc.h"
@@ -309,6 +308,10 @@ scan_bytecode()
       case IRK_OP_FFI:
         nvar = bytecode[i+4];
         nargs = 4 + nvar;
+        break;
+      case IRK_OP_FFIV:
+        nvar = bytecode[i+5];
+        nargs = 5 + nvar;
         break;
       default:
         nargs = code.nargs;
@@ -1319,7 +1322,9 @@ vm_go (void)
     object result;
     irk_int success = vm_do_ffi ((object *) vm_regs, pc, -1, nargs, &result);
     if (success == 0) {
-      REG1 = result;
+      if (BC1 != 99) { // sentinel for dead target
+        REG1 = result;
+      }
     } else {
       fprintf (stderr, "op_ffi failed\n");
       return TAG_INTEGER ((unsigned)-1);
@@ -1335,7 +1340,9 @@ vm_go (void)
     object result;
     irk_int success = vm_do_ffi ((object *) vm_regs, pc, (int)nfixed, nargs, &result);
     if (success == 0) {
-      REG2 = result;
+      if (BC2 != 99) { // sentinel for dead target
+        REG2 = result;
+      }
     } else {
       fprintf (stderr, "op_ffiv failed\n");
       return TAG_INTEGER ((unsigned)-1);
