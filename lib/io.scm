@@ -2,9 +2,24 @@
 
 (require-ffi 'posix)
 
-(define (open path oflag mode)
-  (syscall
-   (posix/open (%string->cref #f (zero-terminate path)) oflag mode)))
+(define (open path oflag mode) : (string int int -> int)
+  (%backend (c llvm)
+    (syscall
+     (%%ffi open (%string->cref #f (zero-terminate path)) oflag
+            ;; this hack forces `mode` to be an integer, which is
+            ;; otherwise impossible to infer because of the variadic
+            ;; nature of open(2). [XXX remove this when type
+            ;; annotations are no longer lost]
+            (logior 0 mode)
+            ;;mode
+            )))
+  (%backend bytecode
+    ;; note: since open(2) is a variadic function, we have to construct the FFI
+    ;;  call manually for the VM backend.
+    (syscall
+     (let ((pfun (vm-get-sym-handle 'posix "open\x00")))
+       (%%ffi open pfun #\i 3 (%string->cref #f (zero-terminate path)) oflag mode))))
+  )
 
 (define (read fd size)
   (let ((buffer (make-string size))
