@@ -381,11 +381,29 @@
 	(match (noderec->t fun) with
 	  (node:function name formals)
           -> (if (not (= n (length formals)))
-                 (raise (:OptimizeError "inline: bad arity" fun))
                  (begin
+                   (printf "formals = " (join symbol->string " " formals) "\n")
+                   (raise (:OptimizeError "inline: bad arity" fun))
+                   )
+                 (let ((fun-type (noderec->type fun)))
+                   ;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+                   ;; this is/was an attemp to propagate user types during inlining.
+                   ;; currently rethinking this by moving typing before optimization.
+                   ;; (if (not (no-type? fun-type))
+                   ;;     ;; if a user-provided type was provided, propagate it to the arguments.
+                   ;;     (match fun-type with
+                   ;;       (type:pred 'arrow (rtype . arg-types) _)
+                   ;;       -> (for-range i (length rands)
+                   ;;            (let ((rand (nth rands i))
+                   ;;                  (rand-type (noderec->type rand))
+                   ;;                  (arg-type (nth arg-types i)))
+                   ;;              (if (and (no-type? rand-type) (not (is-tvar? arg-type)))
+                   ;;                  (set-node-type! rand arg-type))))
+                   ;;       _ -> (raise (:OptimizeError "strange type attached to function" fun))))
                    ;;(printf "inlining function " (sym name) " has " (int n) " formals\n")
                    ;; go through the arguments, deciding if each one is simple or complex.
                    ;; simple args can be substituted directly, complex one require a let.
+                   ;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
                    (for-range i n
                      (let ((formal (nth formals i))
                            (fvar (vars-get-var formal))
@@ -876,9 +894,7 @@
 
 (define (do-one-round node)
   (analyze node)
-  ;;(print-vars)
   (build-dependency-graph node)
-  ;;(print-graph the-context.dep-graph)
   ;; trim, simple, inline, simple
    (do-simple-optimizations
     (do-inlining
