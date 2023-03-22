@@ -731,6 +731,11 @@
       '%llarith    -> (:scheme '() (arrow int-type (list int-type int-type)))
       '%llicmp     -> (:scheme '() (arrow bool-type (list int-type int-type)))
       '%lleq       -> (:scheme (list T0) (arrow bool-type (list T0 T0)))
+      '%divmod -> (:scheme '()
+                           (arrow (rsum (rlabel (make-label 'tuple)
+                                                (rpre (pred 'product (list int-type int-type)))
+                                                (rdefault (rabs))))
+                                  (list int-type int-type)))
       '%malloc -> (:scheme '() (arrow (pred 'cref
                                             (list (pred 'array (list (parse-type params)))))
                                       (list int-type)))

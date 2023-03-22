@@ -107,33 +107,91 @@
   (* a b ...) -> (binary* a (* b ...))
   )
 
-(define (/ a b)
-  (if (= b 0)
-      (raise (:DivideByZero a b))
-      (unsafe-div a b)))
-
+;; these implement the C99/C11+ truncated division/remainder operation.
 (define (unsafe-div a b)
-  (%backend c (%%cexp (int int -> int) "%0/%1" a b))
-  (%backend llvm (%llarith sdiv a b))
+  (%backend c (%%cexp (int int -> int) "%0 / %1" a b))
+  (%backend (llvm arm rv) (%llarith sdiv a b))
   (%backend bytecode (%%vminsn (int int -> int) 'div a b))
+  (%backend amd
+    (match (%divmod #f a b) with
+      (:tuple q r) -> q
+      ))
   )
 
-;; Note: this is incorrect! mod and remainder are not the same
-;;  operation. See http://en.wikipedia.org/wiki/Modulo_operation
-;;  [specifically, the sign of the result can differ]
-
-;; XXX: implement div/mod (and maybe div0/mod0) per r6rs
-;; http://blog.practical-scheme.net/gauche/20100618-integer-divisions
-(define (mod a b)
+(define (unsafe-rem a b)
   (%backend c (%%cexp (int int -> int) "%0 %% %1" a b))
-  (%backend llvm (%llarith srem a b))
+  (%backend (llvm arm rv) (%llarith srem a b)) ;; arm64 actually udiv/msub
   (%backend bytecode (%%vminsn (int int -> int) 'srem a b))
+  (%backend amd
+    (match (%divmod #f a b) with
+      (:tuple q r) -> r
+      ))
   )
 
-(define remainder mod)
+;; See https://en.wikipedia.org/wiki/Modulo for details
+;; this code is from Daan Leijen, "Division and Modulus for Computer Scientists"
+;; https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/divmodnote-letter.pdf
 
-(define (divmod a b)
-  (:tuple (/ a b) (remainder a b)))
+(define (divmod-truncated n d)
+  (%backend (arm amd rv) (%divmod #f n d)) ;; llvm probably also has a divmod prim
+  (%backend (c llvm bytecode)
+    (if (zero? d)
+        (raise (:DivideByZero n))
+        (:tuple (unsafe-div n d) (unsafe-rem n d)))))
+
+;; this matches R6RS div-and-mod
+(define (divmod-euclidean n d)
+  (if (zero? d)
+      (raise (:DivideByZero n))
+      (let ((q (unsafe-div n d))
+            (r (unsafe-rem n d)))
+        (match (int-cmp r 0) (int-cmp d 0) with
+          (cmp:<) (cmp:>) -> (:tuple (- q 1) (+ r d))
+          (cmp:<) _       -> (:tuple (+ q 1) (- r d))
+          _       _       -> (:tuple q r)
+          ))))
+
+(define (divmod-floored n d)
+  (if (zero? d)
+      (raise (:DivideByZero n))
+      (let ((q (unsafe-div n d))
+            (r (unsafe-rem n d)))
+        (match (int-cmp r 0) (int-cmp d 0) with
+          (cmp:>) (cmp:<) -> (:tuple (- q 1) (+ r d))
+          (cmp:<) (cmp:>) -> (:tuple (- q 1) (+ r d))
+          _       _       -> (:tuple q r)
+          ))))
+
+(define divmod divmod-euclidean)
+
+(define (div-euclidean n d)
+  (let (((q r) (divmod-euclidean n d)))
+    q))
+
+(define (mod-euclidean n d)
+  (let (((q r) (divmod-euclidean n d)))
+    r))
+
+(define (div-floored n d)
+  (let (((q r) (divmod-floored n d)))
+    q))
+
+(define (mod-floored n d)
+  (let (((q r) (divmod-floored n d)))
+    r))
+
+;; scheme < R6RS, truncated
+(define (remainder n d)
+  (if (zero? d)
+      (raise (:DivideByZero n))
+      (unsafe-rem n d)))
+
+;; scheme < R6R6, floored
+(define modulo mod-floored)
+
+;; let's call this Irken's decision.
+(define /   div-euclidean)
+(define mod mod-euclidean)
 
 (define (<< a b)
   (%backend c (%%cexp (int int -> int) "%0<<%1" a b))
