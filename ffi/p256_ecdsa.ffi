@@ -1,0 +1,12 @@
+;; -*- Mode: Irken -*-
+
+(p256_ecdsa
+ (includes "p256/p256_ec.h")
+ (cflags "-I .")
+ (lflags "p256/p256_ec.c")
+ (constants)
+ (structs)
+ (sigs p256_ecdsa_sign)
+ )
+
+
