@@ -199,7 +199,7 @@
             (raise (:TLS/Alert (tls-alert-desc:unexpected-message) "unexpected ChangeCipherSpec")))))
 
     (define (unpack-record kind)
-      ;;(printf "unpack record kind = " (int kind) "\n")
+      ;; (printf "unpack record kind = " (int kind) "\n")
       (let ((ctype (int->tls-ctype kind)))
         (match ctype with
           (tls-ctype:hsk)                -> (unpack-hsk)
@@ -300,6 +300,12 @@
   (sexp (sym (string->symbol (named-group->string share.group)))
         (string (string->hex share.kex))))
 
+(define (other-extension->sexp etype data)
+  (match (alist/lookup tlsext-type-rev-alist etype) with
+    (maybe:yes ext) -> (sexp (sym (tlsext-type->name ext)) (string (string->hex data)))
+    (maybe:no)      -> (sexp (sym 'other) (sexp:int etype) (string (string->hex data)))
+    ))
+
 (define extension->sexp
   (tlsext:server-names names)          -> (sexp1 'server-names (map sexp:string names))
   (tlsext:supported-groups groups)     -> (sexp1 'supported-groups (map sexp:int groups))
@@ -313,7 +319,7 @@
   (tlsext:padding len)                 -> (sexp (sym 'padding) (int len))
   (tlsext:alpn protos)                 -> (sexp1 'alpn (map sexp:string protos))
   (tlsext:maxfraglen code)             -> (sexp (sym 'maxfraglen) (int code))
-  (tlsext:other etype data)            -> (sexp (sym 'other) (int etype) (string (string->hex data)))
+  (tlsext:other etype data)            -> (other-extension->sexp etype data)
   )
 
 (define (client-hello->sexp ch)

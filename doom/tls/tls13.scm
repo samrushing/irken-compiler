@@ -8,14 +8,14 @@
 ;; X25519, X448
 ;;
 ;; supported signature algorithms (i.e., cert key types):
-;; RSA (currently unsafe & slow), Ed25519, Ed448
+;; RSA (currently unsafe & slow), Ed25519, Ed448, ecdsa-secp256r1-sha256
 ;;
 ;; supported cipher suites:
 ;; chacha20-poly1305-sha256, aes-256-gcm-sha384
 ;;
 ;; for now, using only libsodium and our own bignum RSA (needs blinding!).
 ;; until ed448 is added to libsodium, use libdecaf.
-;; libraries to consider for ECDSA: micro-ecc/easy-ecc?, crypto++.
+;; for ECDSA: p256_ecdsa using fiat-crypto generated code.
 ;;
 ;; TODO:
 ;;  * HelloRetryRequest [in progress]
@@ -41,7 +41,9 @@
 
 (define kex-priority-list
   (list (named-group:x25519)
-        (named-group:x448)))
+	;; ED448
+        ;; (named-group:x448)
+	))
 
 ;; XXX maybe need a record to hold all these params (and include socket buffer sizes)
 
@@ -68,7 +70,8 @@
         (signer (make-signer skey))
         (extensions-to-push (list:nil))
         (pkts-to-push (list:nil))
-        (ksched (keysched/make sha256-hash aead-chacha20poly1305 #x304)))
+        (ksched (keysched/make sha256-hash aead-chacha20poly1305 #x304))
+        (alert-desc (maybe:no)))
 
     (define (set-state! new)
       ;; (printf "[" (bold (int *thread-id*)) "." (sym (tls-state->name new)) "]\n")
@@ -113,9 +116,6 @@
              (maybe:no)       -> #f)
         _ -> #f
         ))
-
-    ;; (raise (:TLS/Alert (tls-alert-desc:hsk-failure) "no shared group"))
-    ;; (raise (:TLS/Alert (tls-alert-desc:missing-extension) "missing client-shares extension"))
 
     (define (find-sigalg ch)
       (match (find-extension 'sigalgs ch.exts) with
@@ -288,7 +288,9 @@
 
     (define (send-alert desc)
       (let ((pkt (pack-alert (tls-alert-level:fatal) desc)))
+        (set! alert-desc (maybe:yes desc))
         (match state with
+          (tls-state:closed) -> #u
           (tls-state:cnctd) -> (send-encrypted-packet (tls-ctype:alert) pkt 0)
           otherwise         -> (send-packet (tls-ctype:alert) pkt)
           )))
@@ -406,7 +408,12 @@
     (define (sock/close)
       (when (eq? state (tls-state:cnctd))
         (send-alert (tls-alert-desc:close-notify))
-        (set-state! (tls-state:closed))))
+        (set-state! (tls-state:closed))
+        )
+      (sock.close))
+
+    (define (sock/set-closed)
+      (set! state (tls-state:closed)))
 
     (define (sock/get-fd)
       (sock.get-fd))
@@ -430,8 +437,8 @@
      except
      (:TLS/Alert desc msg)
      -> (begin (debugf "sending tls alert: '" (sym (tls-alert-desc->name desc)) "' " msg "\n")
-               (set-state! (tls-state:closed))
                (send-alert desc)
+               (set-state! (tls-state:closed))
                #u)
      (:TLS/ReceivedFatalAlert desc)
      -> (begin (debugf "received tls alert: '" (sym (tls-alert-desc->name desc)) "'\n")
@@ -440,9 +447,13 @@
      (:Doom/EOF s)
      -> (begin (debugf "EOF\n")
                #u)
+     (:OSError n)
+     -> (begin (debugf "OSError " (int n) "\n")
+               #u)
      )
     (when (not (eq? state (tls-state:cnctd)))
-      (raise (:TLS/Failed)))
+      (sock.close)
+      (raise (:TLS/Failed alert-desc)))
     ;; return our doom-tls-socket object
     {recv       = sock/recv
      recv-exact = sock/recv-exact
@@ -451,5 +462,6 @@
      close      = sock/close
      get-fd     = sock/get-fd
      get-info   = sock/get-info
+     set-closed = sock/set-closed
      }
     ))
