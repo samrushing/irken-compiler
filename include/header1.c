@@ -545,12 +545,7 @@ irk_int vm (int argc, char * argv[]);
 
 #include "rdtsc.h"
 
-#ifdef __aarch64__
-// disable llvm.readcyclecounter on arm, where it is expensive and privileged.
-#define USE_CYCLECOUNTER 0
-#else
 #define USE_CYCLECOUNTER 1
-#endif
 
 uint64_t gc_ticks = 0;
 
