@@ -13,6 +13,21 @@
         (obuf* (make-char-buffer osize))
         (zlib_version* (cstring zlib_version)))
 
+    (define (out-loop emit flush)
+      (let ((done? #f)
+            (avail_out 0)
+            (ready 0))
+        (while (not done?)
+          (c-set-int (%c-sref z_stream_s.avail_out Z*) osize)
+          (c-set-ptr (%c-sref z_stream_s.next_out Z*) (%c-cast uchar obuf*))
+          (zlib/deflate Z* flush)
+          (set! avail_out (c-get-int (%c-sref z_stream_s.avail_out Z*)))
+          (set! ready (- osize avail_out))
+          (when (> ready 0)
+            (emit (%cref->string #f obuf* ready)))
+          (set! done? (not (= 0 avail_out)))
+          )))
+
     (when (or (< level 0) (> level Z_BEST_COMPRESSION))
       (raise (:Zlib/BadLevel level)))
 
@@ -20,35 +35,20 @@
       (c-set-ptr (%c-sref z_stream_s.zalloc Z*) NULL)
       (c-set-ptr (%c-sref z_stream_s.zfree Z*) NULL)
       (c-set-ptr (%c-sref z_stream_s.opaque Z*) NULL)
-      (when (not (= Z_OK (zlib/deflateInit_ Z*
-                                            level
-                                            zlib_version*
-                                            (%c-sizeof (struct z_stream_s)))))
+      (when (not
+             (= Z_OK
+                (zlib/deflateInit_ Z* level zlib_version*
+                                   (%c-sizeof (struct z_stream_s)))))
         (zlib/deflateEnd Z*)
         (free Z*)
         (free obuf*)
         (raise (:Zlib/APIFailure 'deflateInit_)))
 
-      (define (out-loop flush)
-        (let ((done? #f)
-              (avail_out 0)
-              (ready 0))
-          (while (not done?)
-            (c-set-int (%c-sref z_stream_s.avail_out Z*) osize)
-            (c-set-ptr (%c-sref z_stream_s.next_out Z*) (%c-cast uchar obuf*))
-            (zlib/deflate Z* flush)
-            (set! avail_out (c-get-int (%c-sref z_stream_s.avail_out Z*)))
-            (set! ready (- osize avail_out))
-            (when (> ready 0)
-              (emit (%cref->string #f obuf* ready)))
-            (set! done? (not (= 0 avail_out)))
-            )))
-
       (for ibuf gen
         (c-set-int (%c-sref z_stream_s.avail_in Z*) (string-length ibuf))
         (c-set-ptr (%c-sref z_stream_s.next_in Z*) (%c-cast uchar (%string->cref #f ibuf)))
-        (out-loop Z_NO_FLUSH))
-      (out-loop Z_FINISH)
+        (out-loop emit Z_NO_FLUSH))
+      (out-loop emit Z_FINISH)
       (zlib/deflateEnd Z*)
       (free Z*)
       (free obuf*)

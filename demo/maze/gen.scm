@@ -144,7 +144,7 @@
                (maybe:no)       -> #u)
         n -> (let ((dir (choose-random-edge n))
                    (next (move current (<< 1 dir))))
-               (queue/add! fifo current)
+               (queue/push! fifo current)
                (remove-wall! current next)
                (set! visited[next] #t)
                (search next))

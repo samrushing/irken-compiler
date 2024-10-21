@@ -381,14 +381,14 @@
   (let ((fifo (queue/make))
         (result '()))
     (for-list rule rules
-      (queue/add! fifo rule))
+      (queue/push! fifo rule))
     (while-queue rule fifo
       (match rule with
         (rule:parse name exp)
         -> (let (((new-alts new-rules) (convert-rule name (exp->alts exp))))
              (push! result (rule:parse name (exp:or new-alts)))
              (for-list new-rule new-rules
-               (queue/add! fifo new-rule)))
+               (queue/push! fifo new-rule)))
         other
         -> #u
         ))

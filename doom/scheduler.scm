@@ -25,10 +25,10 @@
 
 ;; store the thread-id and current exc handler along with the continuation.
 (define (poller/enqueue k)
-  (queue/add! the-poller.runnable (:tuple *thread-id* *the-exception-handler* k)))
+  (queue/push! the-poller.runnable (:tuple *thread-id* *the-exception-handler* k)))
 
 (define (poller/enqueue* thread-id exc-handler k)
-  (queue/add! the-poller.runnable (:tuple thread-id exc-handler k)))
+  (queue/push! the-poller.runnable (:tuple thread-id exc-handler k)))
 
 (define (protect thunk thread-id)
   ;; (printf "starting thread " (int thread-id) "\n")
@@ -81,7 +81,7 @@
   (:tuple *thread-id* *the-exception-handler* k))
 
 (define (poller/schedule save)
-  (queue/add! the-poller.runnable save))
+  (queue/push! the-poller.runnable save))
 
 (define poller/restore
   (:tuple thread-id exn-handler k)

@@ -68,6 +68,9 @@
             )))
       )))
 
+;; note: there's an issue here with incorrect (extra) padding.
+;;       this decoder will not hide its existence.
+;;
 ;; b64 * 4 -> u26 * 1
 ;; 00,11,22,33 -> AABBCC.N
 (define (b64->u26 genb64)

@@ -16,6 +16,14 @@
 
 ;; XXX add help string...
 
+(define optval->sexp
+  (optval:bool b)   -> (sexp:bool b)
+  (optval:string s) -> (sexp:string s)
+  (optval:int n)    -> (sexp:int n)
+  (optval:null)     -> (sexp:undef)
+  (optval:list vs)  -> (sexp:list (map optval->sexp vs))
+  )
+
 (datatype option
  (:flag symbol optval)          ;; name value
  (:arg symbol optval)           ;; name default
@@ -33,6 +41,12 @@
   (option:arg _ d)     -> d
   (option:pos _ _ _ d) -> d
   )
+
+;; for the return value from `process-options`
+(define (args->sexp parsed)
+  (define arg->sexp
+    (:tuple name val) -> (field:t name (optval->sexp val)))
+  (sexp:record (map arg->sexp parsed)))
 
 (define (process-options options-spec arglist)
 

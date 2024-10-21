@@ -7,7 +7,7 @@
         (fifo (queue/make)))
     (define (acquire*)
       (let ((k (getcc)))
-        (queue/add! fifo (poller/make-save k))
+        (queue/push! fifo (poller/make-save k))
         (poller/dispatch)))
     (define (acquire)
       (when (>= held-by 0)

@@ -23,6 +23,10 @@
   x (fqueue:t f b) -> (fqueue/checkf f (list:cons x b))
   )
 
+(define fqueue/cons
+  x (fqueue:t f b) -> (fqueue:t (list:cons x f) b)
+  )
+
 (define fqueue/hd
   (fqueue:t () _)       -> (maybe:no)
   (fqueue:t (hd . _) _) -> (maybe:yes hd)
@@ -41,14 +45,22 @@
 (define (list->fqueue l)
   (list->fqueue* l (fqueue/empty)))
 
+;; returns oldest-first
+(define fqueue->list
+  (fqueue:t hd tl) -> (reverse-onto hd tl)
+  )
+
 ;; -------- imperative interface -------
 
 (define (queue/make)
   {len=0 q=(fqueue/empty)})
 
-;; XXX why is this not called 'push'???
-(define (queue/add! q x)
+(define (queue/push! q x)
   (set! q.q (fqueue/snoc x q.q))
+  (inc! q.len))
+
+(define (queue/push-front! q x)
+  (set! q.q (fqueue/cons x q.q))
   (inc! q.len))
 
 (define (queue/peek q)
@@ -65,7 +77,21 @@
     -> (maybe:no)
     ))
 
-;; todo: queue/iterate (currently not used anywhere).
+;; note: newest first: i.e. (newest ... oldest)
+(define (queue/gen q)
+  (makegen emit
+    (match q.q with
+      (fqueue:t hd tl)
+      -> (begin
+           (for-list item (reverse tl)
+             (emit item))
+           (for-list item hd
+             (emit item)))
+      )))
+
+;; note: oldest first: i.e. (oldest ... newest)
+(define (queue->list q)
+  (fqueue->list q.q))
 
 (defmacro while-queue
   (while-queue item queue body ...)

@@ -148,7 +148,7 @@ set_nonblocking (int fd)
 (define run-queue (queue/make))
 
 (define (enqueue k)
-  (queue/add! run-queue k))
+  (queue/push! run-queue k))
 
 (define (dispatch)
   (match (queue/pop! run-queue) with
