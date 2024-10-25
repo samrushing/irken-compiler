@@ -1,0 +1,157 @@
+# -*- Mode: Markdown -*-
+
+What would be needed for an OCaml-style REPL?
+
+So we could take the byte-code compiler, and have it generate 'something'
+that could then be referenced by another invocation of the compiler in order
+to reference the closures/environments of the previous invocation?
+
+So let's say that we give access to top-level objects only.
+So that provides a type environment etc.
+
+potential issues:
+
+1) alpha renaming, names aren't wot they used to be
+2) the bytecode compiler doesn't generate live code objects, it
+   generates a byc file.  so designing a 'live' code object capability
+   would probably need to be done anyway?  Like, a live 'require' for
+   example.  This is such a different path.  Man it would be sweet to
+   make a JIT version of this rather than bytecode.
+3) if we use the VM, do we use a C-compiled system and attach the VM
+   to it [this is closer to how python works].  Or do we do everything
+   in the VM?
+4) to make this useful we'd want to be able to provide a REPL for things
+   like servers... and that seems to indicate not VM.  The VM is very tiny,
+   so it's not crazy to attach a copy of it along as well.  I remember
+   adding a bytecode allowing VM calls back into compiled code.
+
+SO we'll need a new entry point for the bytecode compiler, and a new
+output style that creates some kind of code object that can then be
+invoked from within the VM.
+
+So, to 'bootstrap' we need to implement this live system and generate
+a byc file containing it.  HOWEVER, would you then load everything AGAIN?
+That seems wasteful.  [this is also true for c-compiled-with-embedded-vm]
+
+With so many possible approaches, we need shorthand names for them.
+
+Naming the Approaches
+---------------------
+
+    * Pure-VM
+      this approach uses only the VM.  The compiler/runtime are all present
+      in a single .byc image.
+
+    * Hybrid-VM
+      A pre-compiled system hosts/loads the repl environment and runs it in
+      the VM.
+
+    * JIT
+      perhaps an entry point for a 'real' code generator?  The compiler emits
+      closures that can interact with the pre-compiled system.  So for example,
+      a call to list:cons references the closure stored at top-level within
+      the pre-compiled system.
+
+Maybe an entry point for a new Irken?
+-------------------------------------
+
+Maybe this is a place to restart the 'gaz' project?  Something descended from
+it could grow into a New Irken.
+
+[revisiting]
+
+The nice thing about starting here is that the language is cleaner and smaller,
+and we already have an evaluator!  It also avoids the self-brain-surgery angle
+of working on the compiler whilst needing it.
+
+
+Using a compiler continuation?
+------------------------------
+
+A bit of a crazy idea here... let's say you accept one line of input code at
+a time.  You compile that, run it, and generate a result or environment.  Then
+the next line comes in.  The simplest thing to do is to recompile all the previous
+lines along with the new line, run it, etc.  But what if there was a way to capture
+the continuation of the compiler after the last line, and simply 'add on' the next
+line? (continue as if it was always there...)
+
+I think this could only work with a completely different compiler design, one that
+was streaming all the way through.  Even then I'm not sure it could be done, at
+least with Irken, because it's a many-pass compiler.
+
+No, I think the only way to approach this is the compile-to-a-typed-environment
+method.
+
+Field Offset Table
+------------------
+
+A problem is created by the global field offset table.  If we want to compile
+multiple code objects separately, we either need different field offset tables
+or we need to merge them all into one.  NOTE pretty sure we have to merge them
+at every step (like dynamic linking), because otherwise we will be unable to
+safely access structs created in earlier code blocks?
+
+In general we need to think about 'code objects' and the ability to load them
+into the VM heap.
+
+[this same problem may arise with symbols]
+
+
+Code Objects
+------------
+
+The current bytecode compiler generates:
+
+    * literals:
+        * all literals
+        * field lookup table
+        * sizeoff index
+        * sizeoff literal (needed for FFI i.e. malloc/halloc/c-aref/c-sref)
+        * metadata index
+    * bytecode (stream of integers)
+
+
+'Embedded' VM
+-------------
+
+Can we have an 'embedded' VM inside a C/LLVM-compiled image?  This might make
+a repl easier (among other advantages).
+
+By 'embedded' I mean a VM that uses the same heap as the hosting image.  The bytecode
+compiler is there as well.  This is close to how CPython works.
+
+So rather than having the VM be a standalone program, it's an almost-FFI-like
+entry point that evaluates its bytecode and then returns some object.  It's
+possible that we could even pass the bytecode in as a legal Irken object (i.e. a
+vector of ints).
+
+What would be super cool is if we could have the bytecode compiler reference
+closures in the hosting image?  e.g. tree/insert, string->symbol etc.
+
+I think this would be possible if we could preserve the type information from
+the hosting image - at least the top-level objects?
+
+This is much more like a JIT though.
+
+How to approach thinking about this.  Maybe step ONE is to get 'multiple code objects'
+working, as in a chain of code objects each referencing the previous env.
+
+If we figure that out (completely as bytecode) then perhaps we can then extend that to
+reference the hosting environment.  In this case we share only the heap.  Actually, this
+means we need to add to the root set anything meant to be preserved?  I guess storing the
+result of the FFI call may be enough?  [I think using the registers as roots would cause
+leaks, since those objects are no longer live].
+
+
+A start on the embedded VM idea
+-------------------------------
+
+To get un-stuck, I'm just going to start putting the code together and
+try to get there piecemeal.
+
+Step one: an embedded version of irkvm.c.
+
+Not sure if I should use %%cexp exclusively, or the FFI, brain hurts.
+
+
+

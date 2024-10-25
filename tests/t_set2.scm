@@ -1,7 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/core.scm")
-(include "lib/pair.scm")
+(require "lib/core.scm")
+(require "lib/pair.scm")
 
 ;; ok, so the object needs to look like this:
 ;; {o=methods ivar0=ival0 ivar1=ival1 ...}
@@ -24,7 +24,7 @@
     (if (self::in x)
 	#u
 	(set! self.list (list:cons x self.list))))
-  
+
   (define (get self)
     self.list)
 

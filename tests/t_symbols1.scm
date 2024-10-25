@@ -1,10 +1,6 @@
-(include "lib/core.scm")
-(include "lib/pair.scm")
-(include "lib/string.scm")
-(include "lib/frb.scm")
-(include "lib/symbol.scm")
+(require "lib/basis.scm")
 
-(eq? 'thingy (string->symbol "thingy"))
+(printn (eq? 'thingy (string->symbol "thingy")))
 (printn the-symbol-table)
 (let ((s0 (string->symbol "abc"))
       (s1 (string->symbol "def"))

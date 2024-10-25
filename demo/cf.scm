@@ -3,7 +3,7 @@
 ;; https://perl.plover.com/classes/cftalk/INFO/gosper.txt
 
 (require "lib/basis.scm")
-(require "demo/bignum.scm")
+(require "lib/bignum.scm")
 
 (define (ratio->cf a b)
   (makegen emit

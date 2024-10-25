@@ -1,7 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
+(require "lib/basis.scm")
 
 (define big-endian?
   (let ((val0* (halloc u32 1))

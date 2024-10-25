@@ -1,7 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
+(require "lib/basis.scm")
 
 (let ((buf (halloc int 20)))
   (for-range j 1000000

@@ -3,7 +3,7 @@
 ;; https://rosettacode.org/wiki/RSA_code
 
 (require "lib/basis.scm")
-(require "demo/bignum.scm")
+(require "lib/bignum.scm")
 
 (define (encrypt msg e n)
   (big (expmod msg e n)))

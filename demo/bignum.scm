@@ -851,6 +851,7 @@
   (big (<mod> a b))      -> (big-mod (big a) (big b))
   (big (<+> a b))        -> (big-add (big a) (big b))
   (big (<+> a b ...))    -> (big-add (big a) (big (+ b ...)))
+  (big (<-> x))          -> (big-negate x)
   (big (<-> a b))        -> (big-sub (big a) (big b))
   (big (<pow> x n))      -> (big-pow (big x) n)
   (big (<=> a b))        -> (big= (big a) (big b))

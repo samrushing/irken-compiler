@@ -32,7 +32,7 @@
     (tree:red (tree:red A B k0 v0) C k1 v1) D k2 v2 -> (tree:red (tree:purple A B k0 v0) (tree:purple C D k2 v2) k1 v1)
     (tree:red A (tree:red B C k1 v1) k0 v0) D k2 v2 -> (tree:red (tree:purple A B k0 v0) (tree:purple C D k2 v2) k1 v1)
                                             A B k v -> (tree:purple A B k v))
-  
+
   (define rbalance
     A (tree:red (tree:red B C k1 v1) D k2 v2) k0 v0 -> (tree:red (tree:purple A B k0 v0) (tree:purple C D k2 v2) k1 v1)
     A (tree:red B (tree:red C D k2 v2) k1 v1) k0 v0 -> (tree:red (tree:purple A B k0 v0) (tree:purple C D k2 v2) k1 v1)
@@ -49,7 +49,7 @@
 		((< k2 k)
 		 (tree:red l (ins r) k2 v2))
 		(else n))
-       
+
        (tree:purple l r k2 v2)
        -> (cond ((< k k2)
 	      (lbalance (ins l) r k2 v2))
@@ -137,5 +137,3 @@
        (loop))
      )
    ))
-
-
