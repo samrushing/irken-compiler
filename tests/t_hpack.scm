@@ -1,26 +1,18 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/cmap.scm")
-(include "lib/counter.scm")
-(include "lib/parse/lexer.scm")
-(include "lib/dfa/charset.scm")
-(include "lib/dfa/rx.scm")
-(include "lib/dfa/deriv.scm")
-(include "lib/dfa/dfa.scm")
-(include "lib/dfa/emit.scm")
-(include "lib/dfa/lexicon.scm")
-(include "lib/parse/earley.scm")
-(include "lib/parse/parser.scm")
+(require "lib/basis.scm")
+(require "lib/cmap.scm")
+(require "lib/counter.scm")
+(require "lib/parse/lexer.scm")
+(require "lib/parse/parser.scm")
 
-(include "lib/json.scm")
-(include "lib/codecs/hex.scm")
+(require "lib/json.scm")
+(require "lib/codecs/hex.scm")
 
 ;; get tests from here:
 ;; https://github.com/http2jp/hpack-test-case
 
-(include "doom/http/hpack.scm")
+(require "doom/http/hpack.scm")
 
 (define json->pairs
   (json:array headers)

@@ -385,7 +385,7 @@
 
 ;; one function, 'unpack'. so we probably don't need a record.
 
-(define (hpack/decoder)
+(define (hpack/decoder max-size)
   (let ((data "")
         (pos -1)
         (byte 0)
@@ -479,8 +479,8 @@
     ))
 
 ;; does h2 allow specifying a standard size before-hand?
-(define (hpack/encoder)
-  (let ((table (make-dynamic-table 4096))
+(define (hpack/encoder max-size)
+  (let ((table (make-dynamic-table max-size))
         (max-vals 5)
         (data '()) ;; XXX use a buffer object
         (never (set/empty)))
@@ -555,17 +555,25 @@
                     (emit-literal val))
                ))))
 
+    ;; try to catch this at dev time, not when a browser refuses to
+    ;;  talk to us.  we want this check to be fast, rather than just
+    ;;  downcasing everything.
+    (define (check-case name)
+      (for-string ch name
+        (when (upper? ch)
+          (error1 "hpack header names must be lowercase!" name))))
+
     (define (pack headers)
       ;; rfc7540 8.1.2.1 Pseudo-Header Fields
       ;;   requires that pseudo-headers precede normal headers.
       (let ((pseudo '())
             (normal '()))
         (for-list header headers
-          (match header with
-            (:tuple name val)
-            -> (if (eq? (string-ref name 0) #\:)
-                   (push! pseudo header)
-                   (push! normal header))))
+          (let (((name val) header))
+            (check-case name)
+            (if (eq? (string-ref name 0) #\:)
+                (push! pseudo header)
+                (push! normal header))))
         (for-list header (append (reverse pseudo) (reverse normal))
           (match header with
             (:tuple name val)

@@ -180,10 +180,40 @@
 (define (unix-sock) (sock/make (AF:UNIX) (SOCK:STREAM)))
 ;; if you need a unix datagram type it out yourself.
 
-(define (sock/set-nonblocking sock)
-  (let ((flags (socket/fcntl sock.fd F_GETFL 0)))
+;; note: since fcntl is a variadic function, we have to construct the FFI
+;;  call manually for the VM backend.
+(define (fcntl/set fd val)
+
+  (%backend (c llvm arm amd)
     (syscall
-     (socket/fcntl sock.fd F_SETFL (logior flags O_NDELAY)))
+     (%%ffi fcntl fd F_SETFL val)))
+
+  (%backend bytecode
+    (syscall
+     (let ((pfun (vm-get-sym-handle 'socket "fcntl\x00")))
+       (%%ffi fcntl pfun #\i 3 fd F_SETFL val)))))
+
+(define (fcntl/get fd)
+  (%backend (c llvm arm amd)
+    (syscall
+     (socket/fcntl fd F_GETFL)))
+  (%backend bytecode
+    (syscall
+     (let ((pfun (vm-get-sym-handle 'socket "fcntl\x00")))
+       (%%ffi fcntl pfun #\i 2 fd F_GETFL)))))
+
+;; (define (sock/set-nonblocking sock)
+;;   (let ((flags (socket/fcntl sock.fd F_GETFL 0)))
+;;     (printf "set-nonblocking " (int sock.fd) " O_NDELAY = " (int O_NDELAY) "\n")
+;;     (syscall
+;;      (socket/fcntl sock.fd F_SETFL (logior flags O_NDELAY)))
+;;     (printf " we set it to: " (int (logior flags O_NDELAY)) "\n")
+;;     (printf "getfl = " (int (socket/fcntl sock.fd F_GETFL 0)) "\n")
+;;     ))
+
+(define (sock/set-nonblocking sock)
+  (let ((flags (fcntl/get sock.fd)))
+    (fcntl/set sock.fd (logior flags O_NDELAY))
     ))
 
 (define (sock/set-reuseaddr sock)
@@ -198,6 +228,14 @@
         (nbytes (syscall (socket/recv sock.fd buf* (- buf.size buf.pos) 0))))
     (set! buf.end (+ buf.end nbytes)) ;; trust recv(2) to not overrun?
     nbytes))
+
+(define (sock/recvfrom sock buf) : (sock buffer -> int)
+  (let ((addr (address/make))
+	(addrlen* (halloc uint))
+	(buf* (%c-cast void (c-aref buf.buf buf.pos)))
+        (nbytes (syscall (socket/recvfrom sock.fd buf* (- buf.size buf.pos) 0 addr.addr addrlen*))))
+    (set! buf.end (+ buf.end nbytes)) ;; trust recv(2) to not overrun?
+    (:tuple addr nbytes)))
 
 (define (sock/send sock buf) : (sock buffer -> int)
   (let ((buf* (%c-cast void (c-aref buf.buf buf.pos)))
@@ -222,7 +260,8 @@
   (syscall (socket/connect sock.fd addr.addr addr.size)))
 
 (define (sock/close sock)
-  (posix/close sock.fd)
-  (set! sock.fd -1)
-  )
+  (when (not (= sock.fd -1))
+    (posix/close sock.fd)
+    (set! sock.fd -1)
+    ))
 

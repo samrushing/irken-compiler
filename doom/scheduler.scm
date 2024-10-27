@@ -161,6 +161,7 @@
 
 (define (poller/wait-and-schedule)
   ;; all the runnable threads have done their bit, now throw it to kevent().
+  ;;(poller/dump)
   (when (and (eq? the-timeq (tree:empty)) (= the-poller.nwait 0))
     (debugf "no more events, exiting.\n")
     (%exit #f 1))
@@ -174,3 +175,19 @@
       (poller/dispatch)
       ))
 
+(define (filters/dump)
+  (let ((result (list:nil)))
+    (for-range i (vector-length the-poller.filters)
+      (push! result (format "(" (int i) ": " (join int->string " " (tree/keys the-poller.filters[i])) ")")))
+    (format "{" (join " " (reverse result)) "}")
+    ))
+
+(define (poller/dump)
+  (printf "poller {\n"
+          "  fd: " (int the-poller.kqfd) "\n"
+          "  [runnable]: " (int the-poller.runnable.len) "\n"
+          "  nwait: " (int the-poller.nwait) "\n"
+          "  filters: " (filters/dump) "\n"
+          "  [ievents]: " (int the-poller.ievents.index) "\n"
+          "  [oevents]: " (int the-poller.oevents.index) "\n"
+          "}\n"))

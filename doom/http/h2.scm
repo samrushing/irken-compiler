@@ -2,6 +2,7 @@
 
 (require "doom/scheduler.scm")
 (require "doom/http/hpack.scm")
+(require "doom/sync.scm")
 
 ;; RFC7540
 
@@ -45,6 +46,7 @@
   (INITIAL_WINDOW_SIZE    #x04)
   (MAX_FRAME_SIZE         #x05)
   (MAX_HEADER_LIST_SIZE   #x06) ;; advisory
+  (NO_RFC7540_PRIORITIES  #x09) ;; rfc9218
   ;;(TLS_RENEG_PERMITTED    #x10)
   )
 
@@ -61,7 +63,7 @@
 
 (define h2-preface "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")
 
-(define (make-h2-conn conn handler) ;; conn := doom-socket.
+(define (make-h2-conn addr conn handler) ;; conn := doom-socket.
 
   (define (ubyte s pos)
     (char->int (string-ref s pos)))
@@ -111,31 +113,64 @@
      enable-push            = #t
      max-concurrent-streams = 100
      initial-window-size    = 65535
-     max-frame-size         = 16384 ;; MUST be 16384 <= size <= 16777215
+     max-frame-size         = 16384  ;; MUST be 16384 <= size <= 16777215
      max-header-list-size   = 102400 ;; rfc says it should be 'unlimited'
+     no-rfc7540-priorities  = #f     ;; we do nothing with this [yet].
      })
 
   (let ((streams (tree/empty)) ;; int -> stream map.
         (priorities (tree/empty))
-        (encoder (hpack/encoder))
-        (decoder (hpack/decoder))
+        (encoder (hpack/encoder 4096))
+        (decoder (hpack/decoder 4096))
+        (decoder2 (hpack/decoder 4096)) ;; XXX temporary - for testing encoding
         (settings (make-settings))
+	(write-cv (cv/make))
+	(write-fifo (queue/make))
+        (write-sem (semaphore/make 10)) ;; don't let the fifo fill up forever
         (done #f))
 
     (define (make-stream)
       {window-size=settings.initial-window-size}
       )
 
+    (define (write-thread)
+      (while (not done)
+        ;; 1) empty the fifo if it has anything in it, send all the data
+        (let ((acc (list:nil)))
+          (while-maybe item (queue/pop! write-fifo)
+            (match item with
+              (:tuple data? save)
+              -> (begin
+                   (when data? (write-sem.release))
+                   (push! acc save)
+                   )))
+          ;;(debugf "write-thread: calling send-rope on list of " (int (length acc)) " items\n")
+          (conn.send-rope (rope/cat (reverse acc)) 0)
+          ;;(conn.send-rope (rope/cat acc) 0)
+          )
+        ;; 2) wait on the write cv
+        ;;(debugf "write-thread: waiting...\n")
+        (when (= write-fifo.len 0)
+          (write-cv.wait))
+        ;; 3) loop
+        ))
+
     (define (update-setting! ident value)
       ;; XXX sanity check values, etc.
-      (match (int->H2-SETTINGS ident) with
-        ;; XXX this won't work - rfc requires unrecognized values to be ignored.
-        (H2-SETTINGS:HEADER_TABLE_SIZE)      -> (set! settings.header-table-size value)
-        (H2-SETTINGS:ENABLE_PUSH)            -> (set! settings.enable-push (> value 0))
-        (H2-SETTINGS:MAX_CONCURRENT_STREAMS) -> (set! settings.max-concurrent-streams value)
-        (H2-SETTINGS:INITIAL_WINDOW_SIZE)    -> (set! settings.initial-window-size value)
-        (H2-SETTINGS:MAX_FRAME_SIZE)         -> (set! settings.max-frame-size value)
-        (H2-SETTINGS:MAX_HEADER_LIST_SIZE)   -> (set! settings.max-header-list-size value)
+      ;; (printf "update-setting: ident = " (int ident) " ; value = " (int value) "\n")
+      (match (alist/lookup H2-SETTINGS-rev-alist ident) with
+        (maybe:yes val)
+        -> (match val with
+             (H2-SETTINGS:HEADER_TABLE_SIZE)      -> (set! settings.header-table-size value)
+             (H2-SETTINGS:ENABLE_PUSH)            -> (set! settings.enable-push (> value 0))
+             (H2-SETTINGS:MAX_CONCURRENT_STREAMS) -> (set! settings.max-concurrent-streams value)
+             (H2-SETTINGS:INITIAL_WINDOW_SIZE)    -> (set! settings.initial-window-size value)
+             (H2-SETTINGS:MAX_FRAME_SIZE)         -> (set! settings.max-frame-size value)
+             (H2-SETTINGS:MAX_HEADER_LIST_SIZE)   -> (set! settings.max-header-list-size value)
+             (H2-SETTINGS:NO_RFC7540_PRIORITIES)  -> (set! settings.no-rfc7540-priorities (= value 0))
+             )
+        (maybe:no)
+        -> #u ;; ignore unknown settings flags.
         )
       ;;(printf " set " (sym (H2-SETTINGS->name (int->H2-SETTINGS ident))) " = " (int value) "\n")
       )
@@ -157,6 +192,13 @@
         (pi32 h 5 stream-id)
         h))
 
+    (define (print-frame f)
+      (debugf (ansi (bold blue) "<-- " (rpad 13 (sym (H2-FRAME->name f.type))))
+              " stream=" (lpad 3 (int f.stream-id))
+              " flags=" (zpad 4 (hex f.flags))
+              " len=" (int (string-length f.payload))
+              "\n"))
+
     (define (read-frames)
       (let ((preface (conn.recv-exact (string-length h2-preface))))
         (when (not (string=? preface h2-preface))
@@ -166,28 +208,29 @@
           (let (((flen ftype flags stream-id) (unpack-frame-header (conn.recv-exact 9)))
                 (payload (if (> flen 0) (conn.recv-exact flen) ""))
                 (frame {type=ftype flags=flags stream-id=stream-id payload=payload}))
-            ;; (print-frame frame)
+            ;;(print-frame frame)
             (dispatch frame)
             ))
         ))
 
-    (define (print-frame f)
-      (printf (ansi (bold blue) "<-- " (rpad 13 (sym (H2-FRAME->name f.type))))
-              " stream=" (lpad 3 (int f.stream-id))
-              " flags=" (zpad 4 (hex f.flags))
-              " len=" (int (string-length f.payload))
-              "\n"))
-
-    ;; XXX implement a FIFO for outgoing frames.
     (define (send-frame type flags stream-id payload)
-      ;; (printf (ansi (bold red) "--> " (rpad 13 (sym (H2-FRAME->name type))))
+      ;; (debugf (ansi (bold red) "--> " (rpad 13 (sym (H2-FRAME->name type))))
       ;;         " stream=" (lpad 3 (int stream-id))
       ;;         " flags=" (zpad 4 (int flags))
       ;;         " len=" (int (string-length payload))
       ;;         "\n")
-      (conn.send (pack-frame-header type flags stream-id (string-length payload)))
-      (conn.send payload)
-      )
+      (assert (<= (string-length payload) settings.max-frame-size))
+      ;; data frames are gated by write-semaphore: note that headers are NOT, because
+      ;;   this can cause HPACK data to be delivered out of order!
+      (when (eq? type (H2-FRAME:DATA))
+        (write-sem.acquire))
+      (queue/push!
+       write-fifo
+       (:tuple (eq? type (H2-FRAME:DATA))
+               (rope (pack-frame-header type flags stream-id (string-length payload))
+	             payload)))
+      ;; (debugf "waiting for cv\n")      
+      (write-cv.wake-one))
 
     (define (send-settings)
       ;; XXX for now, leave everything at its default.
@@ -215,6 +258,8 @@
               (inc! pos 6)
               ))
           (send-frame (H2-FRAME:SETTINGS) H2-FLAGS-SETTINGS-ACK 0 "")
+          (set! encoder (hpack/encoder settings.header-table-size))
+          (set! decoder (hpack/decoder settings.header-table-size))
           )))
 
     (define (handle-window-update f)
@@ -236,26 +281,87 @@
       (for-each print-pair h)
       (printf "}\n"))
 
+    ;; this allows the free-wheeling use of bit-at-a-time generators
+    ;;  with request.send-with-generator.
+    (define (chunk-gen gen size)
+      (makegen emit
+        (let ((buf (list:nil))
+              (nbytes 0))
+          (for chunk gen
+            (when (> (+ nbytes (string-length chunk)) size)
+              (emit (string-concat (reverse buf)))
+              (set! nbytes 0)
+              (set! buf (list:nil)))
+            (push! buf chunk)
+            (inc! nbytes (string-length chunk)))
+          (when (not (eq? buf (list:nil)))
+            (emit (string-concat (reverse buf)))))))
+
     (define (make-request stream-id iheaders)
 
-      (define (send-headers oheaders has-data?)
-        (let ((flags (logior H2-FLAGS-END-HEADERS (if has-data? 0 H2-FLAGS-END-STREAM))))
-          (send-frame (H2-FRAME:HEADERS) flags stream-id (encoder oheaders))))
+      (let ((bytes-sent 0)
+            (status "000")
+            (start-time (timespec->nanoseconds (gettime/monotonic)))
+            (done #f))
 
-      (define (send-data data last?)
-        (send-frame (H2-FRAME:DATA) (if last? H2-FLAGS-END-STREAM 0) stream-id data))
+        (define (send-headers stat oheaders has-data?)
+          (assert (not done))
+          (set! status stat)
+          (let ((flags (logior H2-FLAGS-END-HEADERS (if has-data? 0 H2-FLAGS-END-STREAM)))
+                (encoded (encoder (list:cons (:tuple ":status" status) oheaders))))
+            (send-frame (H2-FRAME:HEADERS) flags stream-id encoded)))
 
-      (define (get-conn)
-        conn)
+        ;; XXX ok, maybe seeing a solution here.  why don't we have the semaphore _only_
+        ;;     apply to DATA frames?  We can add a boolean to the queue tuple.
+        ;;
 
-      {send-headers = send-headers
-       send-data    = send-data
-       ;;recv-data    = recv-data
-       stream-id    = stream-id
-       headers      = iheaders
-       ;; hack to get at TLS data
-       get-conn     = get-conn
-       })
+        (define (send-data data last?)
+          ;; in case <data> is larger than max-frame-size, we need a loop here.
+          (let loop ((pos 0)
+                     (size (string-length data)))
+            (if (> size 0)
+                (if (> size settings.max-frame-size)
+                    (begin
+                      (send-frame (H2-FRAME:DATA) 0 stream-id (substring data pos settings.max-frame-size))
+                      (loop (+ pos settings.max-frame-size) (- size settings.max-frame-size)))
+                    (send-frame (H2-FRAME:DATA) (if last? H2-FLAGS-END-STREAM 0) stream-id (substring data pos (+ pos size)))
+                    )))
+          (inc! bytes-sent (string-length data))
+          (if last? (set! done #t)))
+
+        (define (send-with-generator gen)
+          (for (last? chunk) (notify-last-gen (chunk-gen gen 16384))
+            (send-data chunk last?)))
+
+        (define (get-bytes-sent)
+          bytes-sent)
+
+        (define (get-elapsed-time)
+          (let ((now (timespec->nanoseconds (gettime/monotonic))))
+            (- now start-time)))
+
+        (define (get-info)
+          { ;; info needed for logging
+           addr    = addr
+           bytes   = bytes-sent
+           elapsed = (get-elapsed-time)
+           status  = status
+           sid     = stream-id
+           })
+
+        (define (get-conn)
+          conn)
+
+        {send-headers        = send-headers
+         send-data           = send-data
+         send-with-generator = send-with-generator
+         ;;recv-data         = recv-data
+         stream-id           = stream-id
+         headers             = iheaders
+         get-info            = get-info
+         ;; hack to get at TLS data
+         get-conn            = get-conn
+         }))
 
     (define (handle-headers f)
       (let ((pos 0)
@@ -285,7 +391,7 @@
 
     (define (handle-rst-stream f)
       (let ((code (uu32 f.payload 0)))
-        ;;(printf "    RST_STREAM " (int code) " " (sym (H2-ERROR->name (int->H2-ERROR code))) "\n")
+        (debugf "    RST_STREAM " (int code) " " (sym (H2-ERROR->name (int->H2-ERROR code))) "\n")
         (when (= f.stream-id 0) (set! done #t))
         ))
 
@@ -294,7 +400,7 @@
       (let (((_ last-stream-id) (ustreamid f.payload 0))
             (error-code (uu32 f.payload 4))
             (debug (substring f.payload 8 (string-length f.payload))))
-        ;;(printf "    GOAWAY last-stream-id " (int last-stream-id) " code " (int error-code) " debug '" debug "'\n")
+        (debugf "    GOAWAY last-stream-id " (int last-stream-id) " code " (int error-code) " debug '" debug "'\n")
         (set! done #t)))
 
     (define (handle-priority f)
@@ -341,6 +447,8 @@
         (H2-FRAME:WINDOW_UPDATE) -> (handle-window-update frame)
         (H2-FRAME:CONTINUATION)  -> (handle-continuation frame)
         ))
+
+    (poller/fork write-thread)
 
     read-frames
 
