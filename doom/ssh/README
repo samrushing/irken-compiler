@@ -1,0 +1,23 @@
+Irken/DOOM implementation of the SSH-2 protocol.
+
+Supports:
+
+   (kex-algs (sshD:namelist (list "curve25519-sha256")))
+   (hkey-algs (sshD:namelist (list "ssh-ed25519")))
+   (enc-c2s (sshD:namelist (list "chacha20-poly1305@openssh.com")))
+   (enc-s2c (sshD:namelist (list "chacha20-poly1305@openssh.com")))
+
+[and probably these, not sure why they're commented out]
+
+   ;; (enc-c2s (sshD:namelist (list "aes256-gcm@openssh.com")))
+   ;; (enc-s2c (sshD:namelist (list "aes256-gcm@openssh.com")))
+   ;; (mac-c2s (sshD:namelist (list "hmac-sha2-256-etm@openssh.com")))
+   ;; (mac-s2c (sshD:namelist (list "hmac-sha2-256-etm@openssh.com")))
+
+
+Currently implements the session channel-type, and some rudimentary pty
+support within that.
+
+TODO:
+
+  sftp
