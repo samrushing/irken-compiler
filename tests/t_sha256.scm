@@ -2,6 +2,7 @@
 
 (include "lib/core.scm")
 (include "lib/pair.scm")
+(include "lib/alist.scm")
 (include "lib/string.scm")
 (include "lib/format.scm")
 (include "demo/sha256.scm")

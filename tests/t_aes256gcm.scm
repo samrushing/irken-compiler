@@ -3,14 +3,15 @@
 ;; some test vectors from
 ;; https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/mac/gcmtestvectors.zip
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/crypto/sodium.scm")
-(include "lib/codecs/hex.scm")
+(require "lib/basis.scm")
+(require "lib/crypto/sodium.scm")
+(require "lib/codecs/hex.scm")
 
 (defmacro hexcat
   (hexcat a ...) -> (hex->string (string-concat (list a ...)))
   )
+
+(define *tests-passed* 0)
 
 (define (do-encrypt-test t)
   (let ((k (hexcat t.Key))
@@ -20,6 +21,7 @@
         (result (aead-aes256gcm-encrypt m k nonce ad)))
     (assert (string=? result.ciphertext (hexcat t.CT)))
     (assert (string=? result.mac (hexcat t.Tag)))
+    (inc! *tests-passed*)
     ))
 
 (define (do-decrypt-test t)
@@ -30,6 +32,7 @@
         (mac (hexcat t.Tag))
         (result (aead-aes256gcm-decrypt c k nonce ad mac)))
     (assert (string=? result (hexcat t.PT)))
+    (inc! *tests-passed*)
     ))
 
 (define encrypt-tests
@@ -96,3 +99,5 @@
 
 (for-list test decrypt-tests
   (do-decrypt-test test))
+
+(printf " " (int *tests-passed*) " tests passed.\n")

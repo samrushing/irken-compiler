@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (require "lib/enum.scm")
+(require "lib/codecs/hex.scm")
 
 ;; This is a start on an ASN.1 BER/DER encoder.
 
@@ -77,14 +78,22 @@
   other            s -> (format "(" (sym (asn1string->name other)) "STRING " (string s) ")")
   )
 
+;; handy
+(define (OCTETSTRING s)
+  (ber:STRING (asn1string:OCTET) s))
+
+;; BITSTRING with zero padding
+(define (BITSTRING0 s)
+  (ber:STRING (asn1string:BIT) (string-append "\x00" s)))
+
 (define ber-repr
   (ber:NULL)                 -> "NULL"
   (ber:BOOLEAN b)            -> (if b "TRUE" "FALSE")
   (ber:INTEGER n)            -> (int->string n)
-  (ber:BINTEGER s)           -> (format "(INTEGER " (string->hex s) ")")
+  (ber:BINTEGER s)           -> (format "(INTEGER #x" (string->hex s) ")")
   (ber:STRING kind s)        -> (asn1-string-repr kind s)
   (ber:ENUMERATED n)         -> (format "(ENUMERATED " (int n) ")")
-  (ber:OID vals)             -> (format "(OID " (join int->string "." vals) ")")
+  (ber:OID vals)             -> (format "(OID " (join int->string " " vals) ")")
   (ber:SEQUENCE vals)        -> (format "(SEQUENCE " (join ber-repr " " vals) ")")
   (ber:SET vals)             -> (format "(SET " (join ber-repr " " vals) ")")
   (ber:CONTEXT tag vals)     -> (format "(CONTEXT " (int tag) " " (join ber-repr " " vals) ")")

@@ -198,11 +198,39 @@
      (%cref->string #f (%c-cast char (c-aref pk 0)) pklen))
     ))
 
+(define (ed25519-sk-to-pk sk)
+  (let ((pklen (sodium/crypto_sign_ed25519_publickeybytes))
+        (pk (make-string pklen)))
+    (sodium sodium/crypto_sign_ed25519_sk_to_pk
+            (string->uchar pk)
+            (string->uchar sk))
+    pk))
+
+;; ---- curve25519 ----
+
+;; XXX this is not really necessary, just call scalarmult with {9,0,0,...}
+(define (curve25519-scalarmult-base k)
+  (let ((qlen (sodium/crypto_scalarmult_curve25519_bytes))
+        (q (make-string qlen)))
+    (sodium sodium/crypto_scalarmult_curve25519_base
+            (string->uchar q)
+            (string->uchar k))
+    q))
+
+(define (curve25519-scalarmult n p)
+  (let ((qlen (sodium/crypto_scalarmult_curve25519_bytes))
+        (q (make-string qlen)))
+    (sodium sodium/crypto_scalarmult_curve25519
+            (string->uchar q)
+            (string->uchar n)
+            (string->uchar p))
+    q))
+
 ;; ----
 ;; AEAD
 ;; ----
 
-;; ---- chacha20poly1305 ----
+;; ---- chacha20poly1305 (IETF flavor needed by TLS-1.3)----
 
 (define (aead-chacha20poly1305-encrypt m k nonce ad)
   (let ((m* (string->uchar m))
@@ -254,6 +282,57 @@
    iv-size=12
    mac-size=16
    })
+
+;; ---- chacha20poly1305 (non-IETF flavor needed by ssh)----
+
+(define (chacha20 key data nonce ctr)
+  (let ((dlen (string-length data))
+        (result (make-string dlen)))
+    (assert (= 32 (string-length key)))
+    (assert (= 8 (string-length nonce)))
+    (sodium sodium/crypto_stream_chacha20_xor_ic
+            (string->uchar result)
+            (string->uchar data)
+            dlen
+            (string->uchar nonce)
+            ctr
+            (string->uchar key))
+    result
+    ))
+
+(define (poly1305-key key nonce)
+  (assert (= 32 (string-length key)))
+  (assert (= 8 (string-length nonce)))
+  (let ((result (make-string 32)))
+    (sodium sodium/crypto_stream_chacha20
+            (string->uchar result)
+            32
+            (string->uchar nonce)
+            (string->uchar key))
+    result))
+
+(define (poly1305 key data nonce)
+  (assert (= 32 (string-length key)))
+  (assert (= 8 (string-length nonce)))
+  (let ((dlen (string-length data))
+        (tag (make-string 16))
+        (polykey (poly1305-key key nonce)))
+    (sodium sodium/crypto_onetimeauth_poly1305
+            (string->uchar tag)
+            (string->uchar data)
+            dlen
+            (string->uchar polykey)
+            )
+    tag))
+
+(define (poly1305-verify key data nonce tag)
+  (let ((dlen (string-length data))
+        (polykey (poly1305-key key nonce)))
+    (= 0 (sodium/crypto_onetimeauth_poly1305_verify
+          (string->uchar tag)
+          (string->uchar data)
+          dlen
+          (string->uchar polykey)))))
 
 ;; ---- aes256gcm ----
 

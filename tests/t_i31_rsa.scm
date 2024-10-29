@@ -44,7 +44,7 @@ gibm14Hw3vfegc3dB2YtcvM9xg==
 ")
 
 (define (get-skey)
-  (match ((pem-gen (string-generator skey-pem))) with
+  (match ((pem-read-gen (string-generator skey-pem))) with
     (maybe:yes (:tuple "PRIVATE KEY" ber))
     -> (match (decode-skey (ber->asn1 ber)) with
          (skey:rsa skey) -> skey

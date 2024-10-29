@@ -2,10 +2,7 @@
 
 (require "lib/crypto/sig.scm")
 
-;; rather than using pattern matching directly, think
-;;  about using haskell-style 'monadic' parsing.  this might
-;;  be better for 'regular-language' style stuff like optional
-;;  parts.
+;; -- rfc5280 --
 
 (datatype public-key
   (:rsa big int)    ;; n e
@@ -206,6 +203,18 @@
 
 ;; we actually need a whole mess of parsers/printers for
 ;;  the various x509v3 extensions.
+;; rfc5280 section 4.2:
+;;
+;; Extensions  ::=  SEQUENCE SIZE (1..MAX) OF Extension
+;;    Extension  ::=  SEQUENCE  {
+;;         extnID      OBJECT IDENTIFIER,
+;;         critical    BOOLEAN DEFAULT FALSE,
+;;         extnValue   OCTET STRING
+;;                     -- contains the DER encoding of an ASN.1 value
+;;                     -- corresponding to the extension type identified
+;;                     -- by extnID
+;;         }
+
 (define print-extras
   ()    -> #u
   (iid . rest)
@@ -257,3 +266,16 @@
   (print-pubkey cert.pubkey.key)
   (print-extras cert.extras)
   )
+
+(define (print-x509 x)
+  (printf
+   (bold "cert      "))
+  (print-cert x.cert)
+  (printf
+   (bold "algorithm ") (oid-repr x.algo.oid))
+  (for-list param x.algo.params
+    (pp-ber param 8))
+  (printf
+   "\n" (bold "signature ") (string x.sig) "\n")
+  )
+

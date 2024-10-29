@@ -1,6 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(require "demo/bignum.scm")
+(require "lib/bignum.scm")
 
 ;; this code is a nearly verbatim translation of Thomas Pornin's
 ;;   constant-time i31 code from BearSSL.

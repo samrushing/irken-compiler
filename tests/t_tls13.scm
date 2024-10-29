@@ -58,7 +58,7 @@
 
 (define (read-certs path)
   (with-file file (file/open-read path)
-    (let ((pgen (pem-gen (file-char-generator file)))
+    (let ((pgen (pem-read-gen (file-char-generator file)))
           (result '()))
       (for pem pgen
         (match pem with

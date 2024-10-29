@@ -9,25 +9,43 @@
 
 (define (read-pem-asn1 path)
   (with-file file (file/open-read path)
-    (match ((pem-gen (file-char-generator file))) with
+    (match ((pem-read-gen (file-char-generator file))) with
       (maybe:yes (:tuple kind ber))
       -> (:tuple kind (ber->asn1 ber))
       _
       -> (raise (:SIG/NoPEMFound path))
       )))
 
+;; (define (read-skey path)
+;;   (match (read-pem-asn1 path) with
+;;     (:tuple "RSA PRIVATE KEY" asn1) -> (skey:rsa (decode-rsa-skey asn1))
+;;     (:tuple "PRIVATE KEY" asn1)     -> (decode-skey asn1)
+;;     (:tuple "EC PRIVATE KEY" asn1)  -> (decode-skey asn1)
+;;     (:tuple kind _)                 -> (raise (:SIG/UnexpectedPEM kind))
+;;     ))
+
 (define (read-skey path)
-  (match (read-pem-asn1 path) with
-    (:tuple "RSA PRIVATE KEY" asn1) -> (skey:rsa (decode-rsa-skey asn1))
-    (:tuple "PRIVATE KEY" asn1)     -> (decode-skey asn1)
-    (:tuple kind _)                 -> (raise (:SIG/UnexpectedPEM kind))
-    ))
+  (with-file file (file/open-read path)
+    (let loop ((gen (pem-read-gen (file-char-generator file))))
+      (match (gen) with
+	(maybe:yes (:tuple desc ber))
+	-> (match desc with
+	     "RSA PRIVATE KEY" -> (skey:rsa (decode-rsa-skey (ber->asn1 ber)))
+	     "PRIVATE KEY"     -> (decode-skey (ber->asn1 ber))
+	     "EC PARAMETERS"   -> (loop gen) ;; skip
+	     "EC PRIVATE KEY"  -> (decode-skey (ber->asn1 ber))
+	     _                 -> (raise (:SIG/UnexpectedPEM desc))
+	     )
+	(maybe:no)
+	-> (raise (:SIG/NoPEMFound path))
+	))))
 
 (datatype skey
   (:rsa {n=big e=int d=big p=big q=big dP=big dQ=big qInv=big})
   (:ed25519 string)
-  (:ed448 string)
-  ;; ECDSA
+;; ED448
+;;  (:ed448 string)
+  (:p256 string)
   )
 
 (define decode-pkcs8
@@ -39,6 +57,12 @@
    ((ber:INTEGER 0) (ber:SEQUENCE ((ber:OID oid))) ;; note: no NULL
     (ber:STRING (asn1string:OCTET) encapsulated)))
   -> (:tuple oid encapsulated)
+  (ber:SEQUENCE
+   ((ber:INTEGER 1)
+    (ber:STRING (asn1string:OCTET) privateKey)
+    (ber:CONTEXT 0 ((ber:OID oid)))
+    . _))
+  -> (:tuple oid privateKey)
   x -> (raise (:SIG/ExpectedPKCS8 x))
   )
 
@@ -49,12 +73,22 @@
   x -> (raise (:SIG/UnexpectedASN1 x))
   )
 
+;; RFC 5915
+;; ECPrivateKey ::= SEQUENCE {
+;;   version        INTEGER { ecPrivkeyVer1(1) } (ecPrivkeyVer1),
+;;   privateKey     OCTET STRING,
+;;   parameters [0] ECParameters {{ NamedCurve }} OPTIONAL,
+;;   publicKey  [1] BIT STRING OPTIONAL
+;; }
+
 (define (decode-skey asn1)
   (let (((oid encapsulated) (decode-pkcs8 asn1)))
     (match oid with
       (1 2 840 113549 1 1 1) -> (skey:rsa (decode-rsa-skey (ber->asn1 encapsulated)))
       (1 3 101 112)          -> (skey:ed25519 (decode-eddsa-skey (ber->asn1 encapsulated)))
-      (1 3 101 113)          -> (skey:ed448 (decode-eddsa-skey (ber->asn1 encapsulated)))
+;; ED448
+;;      (1 3 101 113)          -> (skey:ed448 (decode-eddsa-skey (ber->asn1 encapsulated)))
+      (1 2 840 10045 3 1 7)  -> (skey:p256 encapsulated) ;; not encapsulated
       _                      -> (raise (:SIG/UnsupportedPrivateKey oid))
       )))
 
