@@ -7,6 +7,7 @@
   (let ((level 0)
         (buffer '())
         (nbytes 0)
+        (indent-string "  ")
         (total 0))
     (define (push s)
       (push! buffer s)
@@ -14,7 +15,7 @@
       (if (>= nbytes 16384)
           (flush)))
     (define (write-string s)
-      (push (format (repeat level "  ") s "\n")))
+      (push (format (repeat level indent-string) s "\n")))
     (define (flush)
       (when (> nbytes 0)
         (write file.fd (string-concat (reverse buffer)))
@@ -29,8 +30,19 @@
       )
     (define (get-total)
       total)
-    {write=write-string indent=indent dedent=dedent copy=push close=close-file get-total=get-total flush=flush}
+    (define (set-indent-string s)
+      (set! indent-string s))
+    {write=write-string
+     indent=indent dedent=dedent copy=push
+     close=close-file
+     get-total=get-total
+     flush=flush
+     set-indent=set-indent-string}
     ))
+
+(defmacro oformat
+  (oformat item ...) -> (o.write (format item ...))
+  )
 
 (define (make-name-frobber)
   (define safe-name-map
@@ -181,17 +193,20 @@ void prof_dump (void)
 
 ;; with large programs, the constructed initializers can get *really*
 ;;  long... long enough to cause problems even for emacs.
-(define (sprinkle-newlines parts)
+(define (sprinkle-newlines* parts sep)
   (let ((n 0)
         (r '()))
     (for-list part parts
       (cond ((= n 10)
-             (push! r (string-append "\n\t" part))
+             (push! r (string-append sep part))
              (set! n 0))
             (else
              (push! r part)))
       (inc! n))
     (reverse r)))
+
+(define (sprinkle-newlines parts)
+  (sprinkle-newlines* parts "\n\t"))
 
 ;; we support three types of non-immediate literals:
 ;;
@@ -360,6 +375,27 @@ void prof_dump (void)
 	   r)
 	  rest))))
 
+
+(define (nvcase-frob-else tags subs ealt)
+
+  (define split-last
+    ()        acc -> (impossible)
+    (last)    acc -> (:tuple (reverse acc) last)
+    (hd . tl) acc -> (split-last tl (list:cons hd acc))
+    )
+
+  ;; if there's no else clause, we need to pull out the last
+  ;;   branch of the nvcase and make it one, because with llvm switch
+  ;;   the else block is not optional.
+
+  (match ealt with
+    (maybe:yes elsek) -> (:tuple tags subs elsek)
+    (maybe:no)
+    -> (let (((tags0 tagn) (split-last tags '()))
+             ((subs0 subn) (split-last subs '())))
+	 (:tuple tags0 subs0 subn))
+    ))
+
 ;; perfect hash function for ambiguous record field lookups.
 ;; some field-index lookups are unable to be resolved at compile time.
 ;; we use a map (size N) of (tag, label)->index at runtime.
@@ -398,6 +434,13 @@ void prof_dump (void)
     (%%cexp
      (int int int int -> int)
      "hash_item (%0, %1, %2, %3)"
+     d item.k0 item.k1 size))
+  )
+
+(%backend (arm amd rv)
+  (define (hash-item d item size)
+    (%asm-c-call
+     ("hash_item" (int int int int -> int))
      d item.k0 item.k1 size))
   )
 

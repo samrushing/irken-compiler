@@ -48,6 +48,26 @@
 
 (define null-src (src:nil))
 
+(define (guess-location exp)
+  (let/cc return
+
+    (define Wf
+      (field:t name val) -> (W val)
+      )
+
+    (define W
+      (sexp:symbol _ src) -> (return src)
+      (sexp:list l)       -> (for-list x l (W x))
+      (sexp:vector v)     -> (for-list x v (W x))
+      (sexp:record fl)    -> (for-list x fl (Wf x))
+      (sexp:attr lhs a)   -> (W lhs)
+      _ -> #u
+      )
+
+    (W exp)
+    null-src
+    ))
+
 ;; ----- sexp format macro ------
 
 ;; build a (list field)

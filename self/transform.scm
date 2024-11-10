@@ -132,6 +132,7 @@
       result))
 
   ;; scan for forms that make compile-time decisions about how/what code to include.
+  ;; note: these are applied ONLY at the top-level.
   (define (scan-for-meta forms)
     (define loop
       acc () -> (reverse acc)
@@ -710,6 +711,27 @@
     (sexp:record (collect '() forms))
     )
 
+  (define (expand-%%platform src forms)
+
+    (define scan
+      ()
+      -> (raise (:Transform/Error "no else clause in %platform expression, and no platform match."))
+      ((sexp:symbol 'else _) form)
+      -> form
+      ((sexp:list platforms) form . rest)
+      -> (if (member? (sexp:symbol the-context.options.platform null-src) platforms sexp=?)
+	     form
+	     (scan rest))
+      ((sexp:symbol os _) form . rest)
+      -> (if (eq? os the-context.options.platform)
+	     form
+	     (scan rest))
+      _
+      -> (raise (:Transform/Error "malformed %platform expression"))
+      )
+    (scan forms)
+    )
+
   ;; --------------------------------------------------------------------------------
   ;; constant folding. this *really* needs to go into analyze.scm, so that it can
   ;;  benefit from inlining.
@@ -763,8 +785,11 @@
 
   (define backend->name
     (backend:c)        -> 'c
-    (backend:llvm)     -> 'llvm
+    ;;(backend:llvm)     -> 'llvm
     (backend:bytecode) -> 'bytecode
+    (backend:arm)      -> 'arm
+    (backend:amd)      -> 'amd
+    (backend:rv)       -> 'rv
     )
 
   (define expand-datatype->sexp
@@ -806,6 +831,7 @@
       ('%%symbol expand-%%symbol)
       ('%%record expand-%%record)
       ('%%gensym expand-%%gensym)
+      ('%%platform expand-%%platform)
       ('<< expand-<<)
       ('binary- expand-binary-)
       ('binary+ expand-binary+)

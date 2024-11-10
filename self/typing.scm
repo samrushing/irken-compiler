@@ -769,6 +769,11 @@
       '%llvm-call    -> (make-llvm-scheme params)
       ;; for fetching irken objects in external symbols
       '%llvm-get     -> (make-llvm-scheme params)
+      ;; asm backend
+      '%asm-c-call   -> (make-asm-c-call-scheme params)
+      '%arm          -> (make-asm-inline-scheme params)
+      '%amd          -> (make-asm-inline-scheme params)
+      '%rv           -> (make-asm-inline-scheme params)
       ;; -------------------- FFI --------------------
       _ -> (error1 "lookup-primapp" name)))
 
@@ -825,6 +830,16 @@
     ;; after the sig are optional metadata
     (sexp:list ((sexp:string _) sig . _)) -> (parse-cexp-sig sig)
     x -> (error1 "make-llvm-scheme: malformed" (repr x))
+    )
+
+  (define make-asm-c-call-scheme
+    (sexp:list ((sexp:string _) sig . _)) -> (parse-cexp-sig sig)
+    x -> (error1 "make-asm-c-call-scheme: malformed" (repr x))
+    )
+
+  (define make-asm-inline-scheme
+    (sexp:list (sig . _)) -> (parse-cexp-sig sig)
+    x -> (error1 "make-asm-inline-scheme: malformed" (repr x))
     )
 
   ;; each exception is stored in a global table along with a tvar

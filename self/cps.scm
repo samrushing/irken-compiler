@@ -97,38 +97,42 @@
   )
 
 ;; Note: this should match NREG in vm/irkvm.c.
+;; XXX also currently used for the arm64 backend.
 (define *max-bytecode-registers* 20)
 
-(define (make-register-allocator)
-  (match the-context.options.backend with
-    (backend:bytecode)
-    -> (let ((max-reg -1))
-         (define (allocate free)
-           (let loop ((i 0))
-             (if (member? i free =)
-                 (loop (+ i 1))
-                 (if (> i max-reg)
-                     (begin (set! max-reg i)
-                            (if (> i *max-bytecode-registers*)
-                                (begin
-                                  (printf "max reg of " (int i) " out of " (int *max-bytecode-registers*) "\n")
-                                  (raise (:TooManyRegisters "bytecode: ran out of registers!")))
-                                i))
-                     i))))
-         (define (get-max) max-reg)
-         (define (reset) (set! max-reg -1))
-         {alloc=allocate get-max=get-max reset=reset}
-         )
-    _
-    -> (let ((max-reg -1))
-         (define (allocate free)
-           (set! max-reg (+ max-reg 1))
-           max-reg)
-         (define (get-max) max-reg)
-         (define (reset) (set! max-reg -1))
-         {alloc=allocate get-max=get-max reset=reset}
-         )
+(define (make-actual-register-allocator)
+  (let ((max-reg -1))
+    (define (allocate free)
+      (let loop ((i 0))
+        (if (member? i free =)
+            (loop (+ i 1))
+            (if (> i max-reg)
+                (begin (set! max-reg i)
+                       (if (> i *max-bytecode-registers*)
+                           (begin
+                             (printf "max reg of " (int i) " out of " (int *max-bytecode-registers*) "\n")
+                             (raise (:TooManyRegisters "ran out of registers!")))
+                           i))
+                i))))
+    (define (get-max) max-reg)
+    (define (reset) (set! max-reg -1))
+    {alloc=allocate get-max=get-max reset=reset}
     ))
+
+(define (make-bogus-register-allocator)
+  (let ((max-reg -1))
+    (define (allocate free)
+      (set! max-reg (+ max-reg 1))
+      max-reg)
+    (define (get-max) max-reg)
+    (define (reset) (set! max-reg -1))
+    {alloc=allocate get-max=get-max reset=reset}
+    ))
+
+(define (make-register-allocator)
+  (if (member-eq? the-context.options.backend (list (backend:bytecode) (backend:arm) (backend:amd) (backend:rv)))
+      (make-actual-register-allocator)
+      (make-bogus-register-allocator)))
 
 (define (compile exp)
 
@@ -185,7 +189,7 @@
 	(node:nvcase 'nil tags arities) -> (c-pvcase tail? tags arities (noderec->subs exp) lenv k)
 	(node:nvcase dt tags arities)	-> (c-nvcase tail? dt tags (noderec->subs exp) lenv k)
 	(node:fix formals)		-> (c-let-splat tail? formals (noderec->subs exp) lenv k)
-	(node:let formals)		-> (if (safe-for-let-reg exp formals)
+	(node:let formals)		-> (if (safe-for-let-reg exp formals k.free)
 					       (c-let-reg tail? formals (noderec->subs exp) lenv k)
 					       (c-let-splat tail? formals (noderec->subs exp) lenv k))
 	(node:subst _ _)		-> (impossible)
@@ -243,6 +247,9 @@
 	  -> (match (noderec->t test) the-context.options.backend with
 	       (node:cexp _ sig template) (backend:c)
 	       -> (c-simple-conditional tail? test then else sig template lenv k)
+               ;; could do something similar with arm64 backend here...
+               ;;(node:primapp '%llicmp param) (backend:arm)
+               ;; -> (c-simple-conditional ...)
 	       _ _
 	       -> (compile
 		   #f test lenv
@@ -436,10 +443,13 @@
       (collect-primargs args lenv k
 			(lambda (regs) (insn:primop op parm type regs k))))
 
-    (define (safe-for-let-reg exp names)
+    (define (safe-for-let-reg exp names free)
       (and (not the-context.options.noletreg)
 	   (node-get-flag exp NFLAG-LEAF)
-	   (< (length names) 15)
+           ;; don't hog registers near the top of a large expression.
+           ;; XXX need to do some testing to get a good value for this.
+           (< (noderec->size exp) 20)
+	   (< (+ (length free) (length names)) 7)
 	   (not (some?
 		 (lambda (name)
 		   (vars-get-flag name VFLAG-FREEREF))
@@ -838,13 +848,6 @@
 (define (fintlist args)
   (format "(" (join int->string " " args) ")"))
 
-  (define (mname msym)
-    (match msym with
-      (maybe:yes name) -> (symbol->string name)
-      (maybe:no)       -> "lambda"
-      ))
-
-
 (define print-insn
   (insn:return result)             -> (printf "ret " (int result))
   (insn:tail n c args)             -> (printf "tail " (maybe n symbol->string "lambda") " " (int c) " " (int args))
@@ -857,7 +860,7 @@
   (insn:varref d i k)              -> (printf "ref " (int d) "," (int i))
   (insn:varset d i v k)            -> (printf "set " (int d) "," (int i) " val:" (int v))
   (insn:store o a t i k)           -> (printf "stor off:" (int o) " arg:" (int a) " tup:" (int t) " idx:" (int i))
-  (insn:invoke n c a k)            -> (printf "invoke " (maybe n symbol->string "lambda") " cl:" (int c) " args:" (int a))
+  (insn:invoke n c a k)            -> (printf "invoke " (maybe n symbol->string "lambda") " cl:" (int c) " args:" (int a) " free: " (fintlist k.free))
   (insn:new-env n top? types k)    -> (printf "env n:" (int n) " top?:" (bool top?) " " (join type-repr " " types))
   (insn:alloc tag size k)          -> (printf "alloc tag:" (int tag) " size:" (int size))
   (insn:push r k)                  -> (printf "push " (int r))
@@ -879,7 +882,7 @@
   (insn:ffi sig typ ats name args k)
   -> (printf "ffi rtype: " (type-repr typ)
              " sig: " (csig-repr sig)
-             " argtypes: (" (join type-repr " " ats)
+             " argtypes: (" (join type-repr " " ats) ")"
              " name: " (sym name)
              " args: " (fintlist args))
   )
@@ -895,11 +898,16 @@
     )
 
   (let ((k (insn->cont insn)))
-    (printf "\n" (repeat d " ") (if (<= k.target 0) "-" (int->string k.target)) " ")
+    (printf "\n" (repeat d " ") (if (< k.target 0) "-" (int->string k.target)) " ")
+    (printf (rpad 20 (fintlist (sort < k.free))))
     (print-insn insn)
     ;; print sub-expressions
-    (for-list sub (insn->subexps insn)
-      (print-cps sub (+ 1 d)))
+    (let ((index 0))
+      (for-list sub (insn->subexps insn)
+        (printf "\n" (repeat d " ") " <" (int index) ">")
+        (print-cps sub (+ 2 d))
+        (inc! index)
+        ))
     (when (not (null-cont? k))
       (print-cps k.insn d))
     ))
@@ -1010,16 +1018,19 @@
         (for-list sub (reverse (insn->subexps insn))
           (set! refset (set/union int-cmp (W sub refset) refset))
           )
+        ;; note: we remove the target _before_ adding refs, because it's
+        ;; possible to have an insn that _consumes_ a register (therefore live _before_)
+        ;; and then overwrites it as the target.
+        ;; remove the target.
+        (when (>= cont.target 0)
+          (set/delete! refset int-cmp cont.target))
         ;; add any refs of this insn.
         (for-list ref (insn->refs insn)
-          (when (> ref 0)
+          (when (>= ref 0)
             (set/add! refset int-cmp ref)))
         ;; trim the continuation's free set.
         (when (not (null-cont? cont))
           (set! cont.free (trim-free refset cont.free)))
-        ;; remove the target.
-        (when (> cont.target 0)
-          (set/delete! refset int-cmp cont.target))
         ;; fetch refset for jump & fail from our table.
         (match insn with
           (insn:jump reg trg jn free)

@@ -813,7 +813,7 @@
                ;; XXX check against word size
                ;;(printf "c-set-int " ctype "\n")
                (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNTAG_INTEGER(r" (int src) ");"))
-               (when (> k.target 0)
+               (when (>= k.target 0)
                  (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error))
 

@@ -45,17 +45,29 @@
     (for-each (lambda (x) (s::add x)) l)
     s))
 
+(define (v-sym-cmp a b)
+  (let ((r (symbol-index-cmp a b)))
+    (printf "CMP " (cmp-repr r) " "
+            (lpad 5 (int (symbol->index a))) " "
+            (lpad 5 (int (symbol->index b))) " "
+            (sym a) " " (sym b) "\n")
+    r))
+
 (define (build-dependency-graph root)
+  ;;(let ((g (map-maker v-sym-cmp))) ;;symbol-index-cmp)))
   (let ((g (map-maker symbol-index-cmp)))
     (define (search exp current-fun)
       (match (noderec->t exp) with
 	(node:varref name)
 	-> (begin
+             ;;(printf "graph: varref current-fun::add " (sym name) ":" (int (symbol->index name)) "\n")
 	     (current-fun::add name)
 	     )
 	(node:varset name)
-	-> (begin (current-fun::add name)
-		  (search (car (noderec->subs exp)) current-fun))
+	-> (begin
+             ;;(printf "graph: varset current-fun::add " (sym name)  ":" (int (symbol->index name)) "\n")
+             (current-fun::add name)
+	     (search (car (noderec->subs exp)) current-fun))
 	(node:fix names)
 	-> (begin
 	     (for-range
@@ -63,6 +75,12 @@
 		 (let ((name (nth names i))
 		       (init (nth (noderec->subs exp) i))
 		       (fun (symbol-set-maker '())))
+                   ;; (printf "graph: g::add " (sym name)  ":" (int (symbol->index name)) "\n")
+                   ;; (when (= (symbol->index name) 1108)
+                   ;;   (for-list k (g::keys)
+                   ;;     (printf "key " (lpad 8 (int (symbol->index k))) " " (sym k) "\n"))
+                   ;;   (printn the-symbol-table)
+                   ;;   (printf "about to crasho\n"))
 		   (g::add name fun)
 		   (search init fun)))
 	     (search (nth (noderec->subs exp) (length names)) current-fun))

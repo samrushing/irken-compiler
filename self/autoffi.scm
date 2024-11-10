@@ -109,9 +109,7 @@
         ;; bytecode needs a runtime call to ``require-ffi``
         (backend:bytecode)
         -> (push! forms (sexp (sym 'require-ffi) (sexp (sym 'quote) (sym interface))))
-        (backend:c)
-        -> (set! forms (append (iface-includes) forms))
-        (backend:llvm)
+        _
         -> (set! forms (append (iface-includes) forms))
         )
 

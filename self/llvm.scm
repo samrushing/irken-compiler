@@ -5,6 +5,27 @@
 ;; LLVM backend: targets *only* LP64.  Note that this covers most operating systems
 ;;   that anyone cares about, *except* for Win64, which is LLP64.
 
+;; historical note:
+;;
+;; the _original_ version of Irken used the gcc address-of-label extension to
+;; implement function calls as, literally, "goto with arguments".  When LLVM
+;; became popular, it originally supported address-of-label, but it did so in
+;; a very inefficient way, such that compiling Irken-emitted code took forever.
+;; I ended up rewriting the C backend to instead translate continuations into
+;; C functions, and all C calls relied on proper implementation of tail calls.
+;; This is rather clumsy, but effective.
+;; When the LLVM backend was written, it was done as a straightforward translation
+;; of the C backend, and thus gives nearly identical performance results, and
+;; honestly doesn't have much of a reason for existing.
+;;
+;; In the intervening years, LLVM has revisted the problem with address-of-label,
+;; and has now implemented an efficient version, and explictly supports it as
+;; a feature in the IR.  Sooooo... it might be time to revisit the LLVM backend
+;; and return to that original design.
+;;
+;; [I'm writing this because I'm working on an arm64 backend that returns to that
+;; original design, and the issue is fresh in my mind]
+
 ;; --------------------------------------------------
 ;; -flto notes [m1 pro]
 ;;                           with -flto      without
@@ -22,10 +43,6 @@
 
 ;; CPS registers are mapped to LLVM idents like this:
 ;;  r5 -> "%r5"
-
-(defmacro oformat
-  (oformat item ...) -> (o.write (format item ...))
-  )
 
 ;; convert a ctype to its llvm representation (actually, into the int-or-pointer space)
 ;; XXX simplify this, most of the arms are unused.
@@ -115,6 +132,7 @@
 
     (define (emit-icmp op arg0 arg1 trg)
       (let ((ids (make-idents 4)))
+        ;; XXX why are we untagging here?  does it affect comparisons?
 	(oformat ids[0] " = call fastcc i64 @insn_unbox (i8** %r" (int arg0) ")")
 	(oformat ids[1] " = call fastcc i64 @insn_unbox (i8** %r" (int arg1) ")")
 	(oformat ids[2] " = icmp " (sym op) " i64 " ids[0] ", " ids[1])
@@ -628,24 +646,6 @@
               'vector -> (emit-copy-tuple index target)
               _ -> (oformat "%r" (int target) " = call fastcc i8** @insn_getlit (i64 " (int (+ 1 index)) ")")
               )))
-
-    (define split-last
-      ()        acc -> (impossible)
-      (last)    acc -> (:tuple (reverse acc) last)
-      (hd . tl) acc -> (split-last tl (list:cons hd acc))
-      )
-
-    (define (nvcase-frob-else tags subs ealt)
-      ;; if there's no else clause, we need to pull out the last
-      ;;   branch of the nvcase and make it one, because with llvm switch
-      ;;   the else block is not optional.
-      (match ealt with
-	(maybe:yes elsek) -> (:tuple tags subs elsek)
-	(maybe:no)
-	-> (let (((tags0 tagn) (split-last tags '()))
-                 ((subs0 subn) (split-last subs '())))
-	     (:tuple tags0 subs0 subn))
-	))
 
     (define (emit-nvcase test dtname tags jump-num subs ealt k)
       (let (((tags subs elsek) (nvcase-frob-else tags subs ealt)))

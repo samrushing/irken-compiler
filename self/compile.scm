@@ -8,7 +8,7 @@
 (require "self/analyze.scm")
 
 (require "self/c.scm")
-(require "self/llvm.scm")
+;;(require "self/llvm.scm")
 (require "self/bytecode.scm")
 
 (define (find-base path)
@@ -115,9 +115,10 @@
 	  "-n"    -> (set! options.noletreg #t)
 	  "-q"    -> (set! options.quiet #t)
 	  "-nr"   -> (set! options.no-range-check #t)
+          "-np"   -> (set! options.no-peephole #t)
           "-sl"   -> (begin (inc! i) (set! options.src-limit (string->int argv[i])))
           ;; XXX make these mutually exclusive?
-	  "-llvm" -> (set! options.backend (backend:llvm))
+	  ;;"-llvm" -> (set! options.backend (backend:llvm))
           "-b"    -> (set! options.backend (backend:bytecode))
           "-h"    -> (usage)
           "-help" -> (usage)
@@ -154,7 +155,9 @@ Usage: compile <irken-src-file> [options]
  -q     : quiet the compiler
  -nr    : no range check (e.g. vector access)
  -h     : display this usage
- -llvm  : compile using the LLVM backend.
+"
+;; -llvm  : compile using the LLVM backend.
+"
  -b     : compile using the bytecode backend.
 
 default flags:
@@ -178,6 +181,13 @@ default flags:
   (when (< sys.argc 2)
         (usage)
         (raise (:NotEnoughArgs)))
+  (platform-configure
+   (match the-context.options.backend with
+     (backend:arm) -> 'arm
+     (backend:amd) -> 'amd
+     (backend:rv)  -> 'rv
+     _ -> 'amd ;; sensible default
+     ))
   (let ((filearg (get-options sys.argv the-context.options))
         (transform (transformer))
         (path sys.argv[filearg])
@@ -276,10 +286,12 @@ default flags:
          (match the-context.options.backend with
            (backend:c)
            -> (compile-to-c base cps)
-           (backend:llvm)
-           -> (compile-to-llvm base cps)
+           ;; (backend:llvm)
+           ;; -> (compile-to-llvm base cps)
            (backend:bytecode)
            -> (compile-to-bytecode base cps)
+           ;; temporary: the native backends land in the following commits.
+           _ -> (raise (:NotImplemented "native backend"))
            )))
     (when (and (not (null? sources))
                (not the-context.options.nocompile))

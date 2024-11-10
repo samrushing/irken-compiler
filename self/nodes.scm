@@ -599,10 +599,13 @@
          ((sexp:cons dt alt) . rands)
          -> (if (can-haz-literal? (sexp:list l))
                 (node/literal (build-literal (sexp:list l)))
-                ;; this will inline all constructors.  not a good idea with the bytecode
-                ;;  backend because it leads to runaway register allocation.
                 (match the-context.options.backend with
                   (backend:bytecode) -> (node/call (walk (sexp:cons dt alt)) (map walk rands) (src:nil))
+                  (backend:arm)      -> (node/call (walk (sexp:cons dt alt)) (map walk rands) (src:nil))
+                  (backend:amd)      -> (node/call (walk (sexp:cons dt alt)) (map walk rands) (src:nil))
+                  (backend:rv)       -> (node/call (walk (sexp:cons dt alt)) (map walk rands) (src:nil))
+                  ;; this will inline all constructors.  not a good idea with the bytecode
+                  ;;  backend because it leads to runaway register allocation.
                   _                  -> (node/primapp '%dtcon (sexp:cons dt alt) (map walk rands) (src:nil)))
                 )
          ((sexp:symbol name src) . rands)

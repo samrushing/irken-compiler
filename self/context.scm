@@ -1,10 +1,23 @@
 ;; -*- Mode: Irken -*-
 
+;; for uname
+(require "lib/posix.scm")
+
 (datatype backend
   (:c)
-  (:llvm)
+;;  (:llvm)
   (:bytecode)
+  (:arm)
+  (:amd)
+  (:rv)
   )
+
+(define (get-platform)
+  (%backend bytecode (string->symbol (%%vminsn (-> string) 'plat)))
+  (%backend (c llvm arm amd rv)
+    (let ((utsname (uname)))
+      (string->symbol utsname.sysname)
+      )))
 
 (define (make-options)
   {verbose		= #f
@@ -21,10 +34,14 @@
    dump                 = '()
    quiet                = #f
    no-range-check       = #f
+   no-peephole          = #f
    opt-rounds           = 5
    inline-threshold     = 13
    src-limit            = 10
    backend              = (backend:c)
+   platform             = (get-platform)
+   asm-comment          = ";; "
+   asm-underscores      = #f
    include-dirs		= (list "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    libraries            = '()
    })
@@ -57,6 +74,36 @@
     ambig-rec           = (tree/empty)
     }
   )
+
+(define platform->abi
+  ;; windows is COFF I think. TBD.
+  'Darwin -> 'Mach-O
+  _       -> 'ELF
+  )
+
+;; make platform-specific changes
+(define (platform-configure mach)
+  (let ((plat the-context.options.platform))
+    ;; complications: there are actually THREE inputs to this:
+    ;; platform, architecture, and COMPILER.  clang and gcc sometimes differ.
+    (set! the-context.options.asm-comment
+          (match plat mach with
+            _        'rv  -> "# " ;; only tested on Linux so far...
+            'Darwin  'arm -> "// "
+            'FreeBSD 'arm -> "# "
+            'Linux   'arm -> "# "
+            'Darwin  'amd -> "// "
+            'FreeBSD 'amd -> "// "
+            'Linux   'amd -> "// "
+            _        _    -> "# " ;; quasi-universal
+            ))
+    (set! the-context.options.asm-underscores
+          (match (platform->abi the-context.options.platform) with
+            'Mach-O -> #t
+            'ELF    -> #f
+            _       -> #f
+            ))
+    ))
 
 ;; XXX a builtin flags object would be nice...
 
