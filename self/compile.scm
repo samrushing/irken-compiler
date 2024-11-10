@@ -12,6 +12,7 @@
 (require "self/bytecode.scm")
 (require "self/arm.scm")
 (require "self/amd.scm")
+(require "self/rv.scm")
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
@@ -124,6 +125,7 @@
           "-b"    -> (set! options.backend (backend:bytecode))
           "-arm"  -> (set! options.backend (backend:arm))
           "-amd"  -> (set! options.backend (backend:amd))
+          "-rv"   -> (set! options.backend (backend:rv))
           "-h"    -> (usage)
           "-help" -> (usage)
           "-types" -> (set! options.dumptypes #t)
@@ -164,6 +166,7 @@ Usage: compile <irken-src-file> [options]
 "
  -arm   : compile using the arm64 backend.
  -amd   : compile using the amd64 backend.
+ -rv    : compile using the riscv64 backend.
  -b     : compile using the bytecode backend.
 
 default flags:
@@ -300,8 +303,8 @@ default flags:
            -> (compile-to-arm base cps)
            (backend:amd)
            -> (compile-to-amd base cps)
-           ;; temporary: the riscv64 backend lands in the following commit.
-           _ -> (raise (:NotImplemented "native backend"))
+           (backend:rv)
+           -> (compile-to-rv base cps)
            )))
     (when (and (not (null? sources))
                (not the-context.options.nocompile))
