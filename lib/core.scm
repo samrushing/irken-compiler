@@ -383,7 +383,7 @@
 
 (define assert
   #t -> #u
-  #f -> (error "assertion failed.")
+  #f -> (raise (:AssertionError))
   )
 
 (define (id x) x)

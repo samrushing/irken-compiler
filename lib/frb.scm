@@ -198,7 +198,7 @@
 (define (tree/get root cmp key)
   (match (tree/member root cmp key) with
     (maybe:yes val) -> val
-    (maybe:no) -> (raise (:KeyError))
+    (maybe:no) -> (raise (:KeyError key))
     ))
 
 (define tree/min

@@ -2,7 +2,6 @@
 
 ;; XXX get rid of this
 (require "lib/stack.scm")
-
 (require "lib/counter.scm")
 
 ;; See "The Implementation of Functional Programming Languages",
@@ -62,12 +61,18 @@
 
 (define (compile-pattern expander vars exp)
 
+  (define (m-error msg)
+    (raise (:MatchCompilerError msg)))
+
+  (define (m-error1 m1 m2)
+    (raise (:MatchCompilerError (format m1 " : " m2))))
+
   (define (parse-pattern exp)
 
     (define parse-record-fields
       acc ()                        -> (pattern:record acc #f)
       acc ((field:t '... _))        -> (pattern:record acc #t)
-      acc ((field:t '... _) . tl)   -> (error1 "malformed record pattern" (format "... " (join repr-field " " tl) "}"))
+      acc ((field:t '... _) . tl)   -> (m-error1 "malformed record pattern" (format "... " (join repr-field " " tl) "}"))
       acc ((field:t name pat) . tl) -> (parse-record-fields (list:cons (fieldpair:t name (kind pat)) acc) tl)
       )
 
@@ -75,6 +80,7 @@
       (sexp:symbol s _)    -> (pattern:variable s)
       (sexp:record fields) -> (parse-record-fields '() fields)
       ;;(sexp:vector subs)   -> (pattern:vector (map kind subs))
+      ;; we prefer this over pattern:literal because it is a complete datatype.
       (sexp:bool b)	   -> (pattern:constructor 'bool (if b 'true 'false) '())
       (sexp:list l)
       -> (match l with
@@ -83,7 +89,7 @@
 	   ((sexp:cons dt alt) . args) -> (pattern:constructor dt alt (map kind args))
 	   ((sexp:symbol '. _) last) -> (kind last)
 	   (hd . tl) -> (pattern:constructor 'list 'cons (list (kind hd) (kind (sexp:list tl))))
-	   ;;_ -> (error1 "malformed pattern" (format (join repr " " l)))
+	   ;;_ -> (m-error1 "malformed pattern" (format (join repr " " l)))
            )
       x -> (pattern:literal x))
     (kind exp))
@@ -112,16 +118,16 @@
   (define remove-first-pat
     (rule:t (pat . pats) code)
     -> (rule:t pats code)
-    _ -> (error "remove-first-pat: empty pats?"))
+    _ -> (m-error "remove-first-pat: empty pats?"))
 
   (define first-pattern-kind
     (rule:t (pat0 . pats) _) -> (pattern->kind pat0)
-    x -> (error1 "empty pattern list?" x))
-  
+    x -> (m-error "empty pattern list?"))
+
   (define (compare-first-patterns a b)
     (eq? (first-pattern-kind a)
 	 (first-pattern-kind b)))
-  
+
   (define (compile-match vars rules default)
     (match vars rules with
       ;; the 'empty rule'
@@ -141,7 +147,7 @@
                 (set! default (compile-group vars group default)))
 	      default)
 	    ))))
-    
+
   ;; we know the rules are of identical kind
   (define (compile-group vars rules default)
     (match (first-pattern-kind (car rules)) with
@@ -170,7 +176,7 @@
 	     code)
       _ -> (impossible)
       ))
-  
+
   ;; if every rule begins with a variable, we can remove that column
   ;;  from the set of patterns and substitute the var within each body
   (define (variable-rule vars rules default)
@@ -190,7 +196,7 @@
 
   (define pattern->fieldpairs
     (pattern:record fields _) -> fields
-    _ -> (error "not a record pattern"))
+    _ -> (m-error "not a record pattern"))
 
   (define (pattern->record-sig p)
     (map fieldpair->label (pattern->fieldpairs p)))
@@ -204,7 +210,7 @@
       (for-list rule (cdr rules)
         (when (not (equal-sigs? sig0 (pattern->record-sig (car (rule->pats rule)))))
           (printf "record pattern signature mismatch:\n\t" (join rule-repr "\n\t" rules))
-          (error "record pattern mismatch")))
+          (m-error "record pattern mismatch")))
       ;; translate
       (let ((var0 (nth vars 0))
 	    (vars0 (map (lambda (field) (string->symbol (format (sym var0) "_" (sym field)))) sig0))
@@ -236,7 +242,7 @@
 
   (define pattern->literal
     (pattern:literal exp) -> exp
-    _ -> (error "not a literal pattern"))
+    _ -> (m-error "not a literal pattern"))
 
   (define (first-literal=? r0 r1)
     (match r0 r1 with
@@ -280,15 +286,15 @@
 
   (define pattern->dt
     (pattern:constructor dt _ _) -> dt
-    _ -> (error "not a constructor pattern"))
+    _ -> (m-error "not a constructor pattern"))
 
   (define pattern->alt
     (pattern:constructor _ alt _) -> alt
-    _ -> (error "not a constructor pattern"))
+    _ -> (m-error "not a constructor pattern"))
 
   (define pattern->subs
     (pattern:constructor _ _ subs) -> subs
-    _ -> (error "not a constructor pattern"))
+    _ -> (m-error "not a constructor pattern"))
 
   (define rule->constructor-dt
     (rule:t pats _)
@@ -303,7 +309,7 @@
     (let ((by-dt (collect rule->constructor-dt rules))
 	  (keys (alist->keys by-dt)))
       (if (not (= (length keys) 1))
-	  (error1 "more than one datatype in pattern match" keys)
+	  (m-error1 "more than one datatype in pattern match" (format "(" (join symbol->string " " keys) ")"))
 	  (collect rule->constructor-alt rules))))
 
   ;; this handles normal constructors *and* polymorphic variants.
@@ -329,7 +335,7 @@
             -> (let ((subs (pattern->subs (car pats))))
                  (when (not (= (length subs) arity))
                    (printf "arity mismatch in constructor pattern:\n\t" (rule-repr (rule:t pats code)))
-                   (error "arity mismatch in constructor pattern"))
+                   (m-error "arity mismatch in constructor pattern"))
                  (push! rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
                  (for-range i arity
                    (match (nth subs i) with
@@ -378,7 +384,7 @@
       (when (not (all? (lambda (x) (= x arity)) (cdr lengths)))
         (printf "arity mismatch in patterns:\n\t"
                 (join rule-repr "\n\t" rules))
-        (error "arity mismatch in patterns"))
+        (m-error "arity mismatch in patterns"))
       arity))
 
   (let ((rules (parse-match expander exp)))

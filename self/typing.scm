@@ -109,12 +109,18 @@
   (:scheme gens type)
   -> (format "forall(" (join type-repr "," gens) ")." (type-repr (apply-subst type))))
 
-(define (type-program node)
+(define (remember-variant-label label)
+  (match (alist/lookup the-context.variant-labels label) with
+    (maybe:yes _) -> #u
+    (maybe:no) -> (let ((index (alist/length the-context.variant-labels)))
+		    (alist/push the-context.variant-labels label index))))
+
+(define (type-program root-node)
 
   (define (unify exp t0 t1)
 
     (define (print-type-error t0 t1)
-      (printf (join "\n" (get-node-context node (noderec->id exp) 30)) "\n")
+      (printf (join "\n" (get-node-context root-node (noderec->id exp) 30)) "\n")
       (printf "node id=" (int (noderec->id exp)) "\n")
       (let ((ut0 (apply-subst t0))
 	    (ut1 (apply-subst t1)))
@@ -215,6 +221,7 @@
   (define (other-error message node)
     (printf (bold message) "\n")
     (printf "\n  " (src-repr (noderec->src node) the-context.options.src-limit) "\n")
+    (raise (:TypingError message))
     )
 
   (define (instantiate-type-scheme gens type)
@@ -268,7 +275,7 @@
       (node:call)		    -> (type-of-call exp tenv)
       (node:fix names)		    -> (type-of-fix names exp tenv)
       (node:let names)		    -> (type-of-let names exp tenv)
-      (node:primapp name parms)	    -> (type-of-primapp name parms (noderec->subs exp) tenv)
+      (node:primapp name parms)	    -> (type-of-primapp exp name parms (noderec->subs exp) tenv)
       (node:nvcase dt tags arities) -> (type-of-vcase dt tags arities exp tenv)
       (node:subst _ _)              -> (impossible)
       ))
@@ -282,6 +289,16 @@
       (when the-context.options.debugtyping
         (printf "  type-of* " (int (noderec->id exp)) " " (type-repr (apply-subst texp1)) ")\n"))
       texp1))
+
+  ;; (define (type-of exp tenv)
+  ;;   (try
+  ;;    (type-of* exp tenv)
+  ;;    except
+  ;;    (:TypingError msg)
+  ;;    -> (begin
+  ;;         (printf (join "\n" (get-node-context root-node (noderec->id exp) 30)) "\n")
+  ;;         (error msg)
+  ;;         ))
 
   (define (type-of-literal lit exp tenv)
     (match lit with
@@ -378,7 +395,8 @@
            ;; (printf "type-of-ffi " (sym name)
            ;;         " csig " (csig-repr sig)
            ;;         " argtypes (" (join type-repr " " argtypes)
-           ;;         ")\n")
+           ;;         ") nfixed=" (int nfixed)
+           ;;         "\n")
            ;; %%ffi has 3 extra arguments in bytecode mode.
            (if (eq? the-context.options.backend (backend:bytecode))
                (set! argtypes (drop argtypes 3)))
@@ -387,7 +405,7 @@
              (let ((type0 (ctype->irken-type (frob-int-arg (nth fargtypes i))))
                    (type1 (nth argtypes i)))
                (unify exp type0 type1)))
-           ;; compute the type the extra args (though we unify against no formal arg types)
+           ;; compute the type of the extra args (though we unify against no formal arg types)
            (for-range i (- (length argtypes) nfixed)
              (let ((arg (nth args (+ nfixed i))))
                ;; (printf "typing extra arg at position " (int (+ nfixed i)) " of type " (type-repr (noderec->type arg)) "\n")
@@ -589,12 +607,6 @@
 	   )
       _ -> (error1 "malformed pvcase" exp)
       ))
-
-  (define (remember-variant-label label)
-    (match (alist/lookup the-context.variant-labels label) with
-      (maybe:yes _) -> #u
-      (maybe:no) -> (let ((index (alist/length the-context.variant-labels)))
-		      (alist/push the-context.variant-labels label index))))
 
   ;; these are used in type schemes in lookup-primap.  Since they are generalized
   ;;  over, it's ok to use the same tvar repeatedly.
@@ -866,7 +878,7 @@
         -> val-type
 	_ -> (error1 "unify-handlers: expected row sum type" (type-repr val-type)))))
 
-  (define (type-of-primapp name params subs tenv)
+  (define (type-of-primapp exp name params subs tenv)
     ;; special primapps
     (match name with
       ;; we need a map of exception => tvar, then cross-verify with each handle expression.
@@ -874,13 +886,13 @@
       -> (match subs with
 	   (exn-val)
 	   -> (type-of-raise exn-val tenv)
-	   _ -> (error1 "%exn-raise: bad arity" subs))
+	   _ -> (other-error "%exn-raise: bad arity" exp))
       '%exn-handle
       ;; %exn-handle is wrapped around the match expression of the exception handler
       -> (match subs with
 	   (exn-val exn-match)
 	   -> (type-of-handle exn-val exn-match tenv)
-	   _ -> (error1 "%exn-handle: bad arity" subs))
+	   _ -> (other-error "%exn-handle: bad arity" exp))
 
       ;; normal primapps
       _ -> (match (lookup-primapp name params) with
@@ -896,10 +908,10 @@
 		    (type:pred 'arrow (result-type . arg-types) _)
 		    -> (begin
 			 (when (not (= (length arg-types) (length subs)))
-                           (printf "\n\nwrong number of args to primapp '" (sym name) "'\n"
+                           (printf "\n\nwrong number of args to primapp '" (sym name) " params " (repr params) "'\n"
                                    "types: (" (join " " (map type-repr arg-types)) ")\n"
                                    "args: " (join " " (map repr (map noderec->sexp subs))) "\n")
-                           (error "wrong number of args"))
+                           (other-error "wrong number of args" exp))
 			 (for-range
 			     i (length arg-types)
 			     (let ((arg (nth subs i))
@@ -907,11 +919,11 @@
 				   (arg-type (nth arg-types i)))
 			       (unify arg ta arg-type)))
 			 result-type)
-		    _ -> (error1 "type-of-primapp" name)
+		    _ -> (other-error "type-of-primapp: expected arrow type" exp)
 		    )))))
 
   ;;(build-graphs node)
-  (type-of node (tenv/make))
+  (type-of root-node (tenv/make))
   )
 
 (define (build-graphs node)
@@ -922,6 +934,8 @@
     (when the-context.options.debugtyping
       (printf "strongly-connected-components:\n")
       (printf "(" (join (lambda (x) (format "(" (join symbol->string " " x) ")")) " " strong) ")\n"))
+    ;; (printf "SCC:\n")
+    ;; (printn strong)
     ))
 
 (define (dump-types n)
@@ -945,7 +959,7 @@
                  (while (< depth (car funstack))
                    (pop! funstack)))
              (printf (rpad 20 (format (repeat (length funstack) "  ") (strip-alpha name)))
-                     " : " (type-repr* (noderec->type node) #t) "\n"))
+                     " : " (type-repr* (apply-subst (noderec->type node)) #t) "\n"))
         _ -> #u
         )
       )))

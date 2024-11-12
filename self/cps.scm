@@ -566,6 +566,15 @@
 					    (extend-lenv formals lenv)
 					    k-body))))))))
 
+    (define (incomplete-match dtalts alts node)
+      (let ((missing (list:nil)))
+        (for-list dtalt dtalts
+          (when (not (member-eq? dtalt alts))
+            (push! missing dtalt)))
+        (printf "incomplete match:  un-handled cases: " (join symbol->string ", " missing) "\n")
+        (cps-error "incomplete match" node)
+        ))
+
     (define (c-nvcase tail? dtname alt-formals subs lenv k)
       (let ((jump-num (jump-counter.inc)))
 	;; nvcase subs = <value>, <else-clause>, <alt0>, ...
@@ -586,7 +595,7 @@
 		       (ealt1
 			(if (not (= (dt.get-nalts) (length alts)))
 			    (match (noderec->t eclause) with
-			      (node:primapp '%match-error _) -> (cps-error "incomplete match" value)
+			      (node:primapp '%match-error _) -> (incomplete-match (dt.get-alt-names) alt-formals value)
 			      ;; complete match, no ealt
 			      (node:primapp '%complete-match _) -> (maybe:no)
 			      ;; incomplete match with ealt

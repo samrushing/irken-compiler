@@ -246,7 +246,7 @@
 		 (match pair with
 		   (sexp:list (var val))
 		   -> (sexp var (expand val))
-		   _ -> (error1 "malformed binding in LET-SPLAT" pair)))
+		   _ -> (raise (:SyntaxError "malformed binding in LET-SPLAT" src pair))))
 	       bindings)))
          (sexp (symsrc 'let-splat src) (list bindings0) (expand-body body)))
     src x -> (raise (:SyntaxError "malformed LET" src (sexp1 'let x)))
@@ -255,7 +255,7 @@
   ;; avoid macro-expanding let-subst bindings
   (define expand-let-subst
     src (pair . body) -> (sexp (symsrc 'let-subst src) pair (expand-body body))
-    src x -> (error1 "malformed LET-SUBST" x)
+    src x -> (raise (:SyntaxError "malformed LET-SUBST" src (sexp:list x)))
     )
 
   (define expand-lambda
@@ -410,6 +410,9 @@
 
       (define (get-nalts) nalts)
 
+      (define (get-alt-names)
+        (alt-map::keys))
+
       (define (get-scheme)
 	(let ((tvars (get-tvars)))
 	  (:scheme tvars (pred name tvars))))
@@ -451,6 +454,7 @@
 	add=add
 	iterate=iterate
 	get-nalts=get-nalts
+        get-alt-names=get-alt-names
 	get-scheme=get-scheme
 	get-alt-scheme=get-alt-scheme
 	get-tvars=get-tvars

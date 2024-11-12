@@ -141,9 +141,9 @@
   )
 
 (define drop
-  ()       _ -> (raise (:ListIndexError))
   xs       0 -> xs
   (_ . xs) n -> (drop xs (- n 1))
+  ()       _ -> (raise (:ListIndexError))
   )
 
 ;; (a b c d e f) 3 x   -> (a b c x d e f)
