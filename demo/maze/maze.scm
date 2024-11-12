@@ -9,6 +9,7 @@
 
 (require "demo/maze/gen.scm")
 (require "demo/maze/ascii.scm")
+(require "demo/maze/utf8.scm")
 (require "demo/maze/js.scm")
 (require "demo/maze/solve.scm")
 
@@ -26,6 +27,8 @@
    (flag 'hex)
    (flag 'b85)
    (flag 'b64)
+   (flag 'utf8)
+   (flag 'tree)
    (flag 'solve)
    (arg 'seed (int 31415926535))
    (arg 'bias (int 0))
@@ -52,6 +55,8 @@
           "  [-js] javascript output\n"
           "  [-b85] base85 output\n"
           "  [-b64] base64 output\n"
+          "  [-utf8] utf8 output (box chars)\n"
+          "  [-tree] utf8 output of path tree (box chars)\n"
           "  [-hex] HEX output\n"
           "  [-bias] -100..100 % bias horizontal..vertical\n"
           "  [-solve] add the solution to SVG output\n"
@@ -74,6 +79,8 @@
         (js #f)
         (b85 #f)
         (b64 #f)
+        (utf8 #f)
+        (tree #f)
         (solve? #f)
         (bias 0)
         (seed (get-seed))
@@ -88,6 +95,10 @@
       (set! b85 #t))
     (when-maybe v (get-bool-opt opts 'b64)
       (set! b64 #t))
+    (when-maybe v (get-bool-opt opts 'utf8)
+      (set! utf8 #t))
+    (when-maybe v (get-bool-opt opts 'tree)
+      (set! tree #t))
     (when-maybe v (get-bool-opt opts 'solve)
       (set! solve? #t))
     (when-maybe v (get-int-opt opts 'h)
@@ -109,6 +120,8 @@
             (js (graph->js maze w h s solution))
             (b85 (graph->base85 maze w h))
             (b64 (graph->base64 maze w h))
+            (utf8 (graph->utf8 maze w h))
+            (tree (graph->tree maze w h))
             (hex (graph->hex maze w h))
             (else (graph->svg maze w h s solution seed)))
       )

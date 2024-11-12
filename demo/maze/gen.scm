@@ -1,5 +1,9 @@
 ;; -*- Mode: Irken -*-
 
+;; can't use RDTSC any more, so get some real seed.
+(require "lib/urandom.scm")
+(require "lib/mtwist.scm")
+
 ;;  0  1  2  3 ...
 ;; 24 25 26 27 ...
 ;; 48 49 50 51 ...
@@ -10,6 +14,8 @@
 ;; i.e., R is bit 0, L is bit 1...
 
 ;; create a fully-populated grid of walls.
+;; we leave the outer walls missing so the
+;; search procedure cannot wander outside the grid.
 (define (make-grid m n)
   ;; convert from (x,y) to node number.
   (define (coord->node x y) (+ x (* m y)))
@@ -30,14 +36,39 @@
 
 (define *random-seed* 0)
 
+(define urandom-u32
+  (let ((RNG (urandom-make)))
+    (lambda ()
+      (fold
+       (lambda (ch a) (logior (char->int ch) (<< a 8)))
+       0
+       (string->list (RNG 4))))))
+
 (define (get-seed)
   (when (= 0 *random-seed*)
-    (set! *random-seed* (random)))
+    (set! *random-seed* (urandom-u32)))
   *random-seed*)
+
+(define (add-outer-walls G m n)
+  (for-range y n
+    (for-range x m
+      (let ((i (+ x (* m y)))
+            (v G[i]))
+        (define (add n)
+          (set! v (logior v n)))
+        (when (= x 0)       (add #b0010))
+        (when (= y 0)       (add #b1000))
+        (when (= x (- m 1)) (add #b0001))
+        (when (= y (- n 1)) (add #b0100))
+        (set! G[i] v)
+        ))))
 
 (define (make-maze m n seed bias)
   (let ((G (make-grid m n))
         (G0 (DFS G m n seed bias)))
+    ;; most users draw these separately, and leaving them
+    ;;   out shrinks the serialized versions.
+    ;;(add-outer-walls G0 m n)
     G0))
 
 (define (bit-set? n i)
