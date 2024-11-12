@@ -62,8 +62,15 @@
     pos = 0
     end = 0 })
 
+;; we need something here like a datatype to capture valid write modes.
+
 (define (file/open-write path create? mode)
-  { fd = (open path (logior O_TRUNC (if create? (logior O_WRONLY O_CREAT) O_WRONLY)) mode)
+  { fd = (open path (logior* O_TRUNC (if create? (logior O_WRONLY O_CREAT) O_WRONLY)) mode)
+    wbuf = (make-string 16384)
+    pos = 0 })
+
+(define (file/open-append path mode)
+  { fd = (open path (logior* O_APPEND O_WRONLY O_CREAT) mode)
     wbuf = (make-string 16384)
     pos = 0 })
 
@@ -155,10 +162,10 @@
   (make-generator
    (lambda (consumer)
      (let loop ((buf (file/read-buffer ifile)))
-       (if (= 0 (string-length buf))
-           (consumer (maybe:no))
-           (consumer (maybe:yes buf)))
-       (loop (file/read-buffer ifile))))))
+       (when (> (string-length buf) 0)
+         (consumer (maybe:yes buf))
+	 (loop (file/read-buffer ifile))))
+     (forever (consumer (maybe:no))))))
 
 (define (file-char-generator file)
   (make-generator
@@ -169,6 +176,7 @@
            (if (eq? ch #\eof)
                (set! done #t)
                (consumer (maybe:yes ch)))))
+       ;; (file/close file)
        (forever (consumer (maybe:no)))
        ))))
 

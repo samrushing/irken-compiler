@@ -313,6 +313,9 @@
 (define (char< a b)
   (< (char->int a) (char->int b)))
 
+(define (char-cmp a b)
+  (int-cmp (char->int a) (char->int b)))
+
 (define (string-length s)
   (%backend c (%%cexp ((raw string) -> int) "%0->len" s))
   (%backend llvm (%llvm-call ("@irk_string_len" (string -> int)) s))
@@ -432,6 +435,16 @@
   (maybe:no)    -> #f
   )
 
+(define maybe
+  (maybe:yes val) _ -> val
+  (maybe:no)    val -> val
+  )
+
+(define probably
+  (maybe:yes x) -> x
+  (maybe:no) -> (raise (:ProbablyNot))
+  )
+
 ;; ocaml's Obj.magic (i.e., cast to any type)
 ;; aside from evil, this can be used to help narrow
 ;;  down the source of type errors.
@@ -532,6 +545,11 @@
       (emit (:tuple #t last))
       )))
 
+(define (null-gen)
+  (make-generator
+   (lambda (emit)
+     (forever (emit (maybe:no))))))
+
 ;; We use polymorphic variants for exceptions.
 ;; Since we're a whole-program compiler there's no need to declare
 ;; them - though I might could be convinced it's still a good idea.
@@ -593,6 +611,7 @@
   )
 
 (define TAGSIZE 16)
+(define TAGMASK #xffff)
 
 (%backend c
   (define (set-verbose-gc b)

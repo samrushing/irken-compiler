@@ -60,7 +60,6 @@
 
   (let ((DIR* (syscall-null (posix/opendir (cstring path))))
         (result '()))
-    (printn DIR*)
     (let loop ((dirent* (posix/readdir DIR*)))
       (cond ((not (cref-null? dirent*))
              (push! result {kind = (get-file-type dirent*) name = (get-file-name dirent*)})
@@ -69,3 +68,21 @@
     (posix/closedir DIR*)
     (reverse result)
     ))
+
+(define path/join
+  "" ""	-> ""
+  "" x	-> x
+  x  ""	-> x
+  a  b
+  -> (match (string-ref a (- (string-length a) 1)) (string-ref b 0) with
+       #\/ #\/ -> (string-append a (substring b 1 (string-length b)))
+       #\/  _  -> (string-append a b)
+       _   #\/ -> (string-append a b)
+       _    _  -> (format a "/" b)
+       ))
+
+(defmacro path/make
+  (path/make a)         -> a
+  (path/make a b)       -> (path/join a b)
+  (path/make a b c ...) -> (path/join a (path/make b c ...))
+  )

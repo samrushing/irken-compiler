@@ -125,6 +125,15 @@
       (sexp (sexp (sym '%%cons) (sym 'nil) (sym 'tuple)) (string path) (int line) (int pos))
       )
 
+    (define (parse-char-code code)
+      (let ((len (string-length code)))
+        (match (string-ref code 0) with
+          #\u -> (match (parse-integer 16 (substring code 1 len)) with
+                   (result:ok val) -> (sexp:char (int->char val))
+                   (result:err why) -> (ERR "bad character literal" (string code)))
+          _ -> (ERR "bad character literal" (string code))
+          )))
+
     (define (read1)
       (let ((ch (peek)))
 	(match ch with
@@ -149,7 +158,7 @@
 				  (:atom "tab" _ _ _)     -> (sexp:char #\tab)
 				  (:atom "eof" _ _ _)     -> (sexp:char #\eof)
 				  (:atom "nul" _ _ _)     -> (sexp:char #\nul)
-				  (:atom name _ _ _)      -> (ERR "bad character constant: " name)
+                                  (:atom code _ _ _)      -> (parse-char-code code)
 				   ))
 		       ;; Bb
 		       #\X -> (begin (next) (read-integer-literal 16))

@@ -4,6 +4,8 @@
 
 ;; [In honor of the almighty tallest, these should be red/purple trees.]
 
+;; NOTE: this datatype should be renamed to 'map'.
+
 (datatype tree
   (:red   (tree 'a 'b) (tree 'a 'b) 'a 'b)
   (:black (tree 'a 'b) (tree 'a 'b) 'a 'b)
@@ -142,6 +144,12 @@
   (remove-aux root)
   )
 
+;; XXX what happens when <k> is not in the tree?
+;;     need to investigate making a version of delete-check
+;;     that tries to leave the tree untouched in this case.
+;;     the 'bug' is very easy to repro: a tree with a single
+;;     element has its root replaced with the above algorithm.
+
 (define (tree/delete root cmp k)
   (match (tree/delete-check root cmp k) with
     (:tuple result _) -> result))
@@ -151,14 +159,26 @@
   -> (set! root (tree/delete root cmp k))
   )
 
+;; this doesn't work because the delete implementation
+;;   may modify the tree even if the key is not present.
+
+;; (defmacro tree/delete!?
+;;   (tree/delete!? root cmp k)
+;;   -> (let (($result (tree/delete root cmp k)))
+;;        (cond ((not (eq? $result root))
+;;               (set! root $result)
+;;               #t)
+;;              (else
+;;               #f))))
+
+;; ... so we need to probe before delete.  cache effects, yadda yadda.
+
 (defmacro tree/delete!?
-  (tree/delete?! root cmp k)
-  -> (let (($result (tree/delete root cmp k)))
-       (cond ((not (eq? $result root))
-              (set! root $result)
-              #t)
-             (else
-              #f))))
+  (tree/delete!? root cmp k)
+  -> (match (tree/member root cmp k) with
+       (maybe:yes _) -> (begin (set! root (tree/delete root cmp k)) #t)
+       (maybe:no)    -> #f
+       ))
 
 (define tree/black-height
   (tree:empty) acc	   -> acc
