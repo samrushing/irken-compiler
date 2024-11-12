@@ -3,32 +3,16 @@
 ;; this is a modified version of compile.scm that includes only the
 ;;  bytecode backend.
 
-(include "lib/core.scm")
-(include "lib/pair.scm")
-(include "lib/string.scm")
-(include "lib/format.scm")
-(include "lib/symbol.scm")
-(%backend bytecode (include "lib/vmffi.scm"))
-(include "lib/sexp.scm")
-(include "lib/io.scm")
-(include "lib/os.scm")
-(include "lib/stdio.scm")
-(include "lib/alist.scm")
-(include "lib/frb.scm")
-(include "lib/lisp_reader.scm")
-(include "lib/cmap.scm")
-(include "lib/counter.scm")
-(include "lib/stack.scm")
-(include "lib/set.scm")
-(include "lib/enum.scm")
+(require "lib/basis.scm")
+(require "lib/cmap.scm")
+(require "lib/counter.scm")
 
-(include "lib/metadata.scm")
-(include "lib/reflection.scm")
-(include "lib/exception.scm")
-
-(include "self/backend.scm")
-(include "self/autoffi.scm")
-
+(require "self/flags.scm")
+(require "self/context.scm")
+(require "self/analyze.scm")
+(require "self/backend.scm")
+(require "self/autoffi.scm")
+(require "self/bytecode.scm")
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
@@ -103,7 +87,7 @@
 
 (define (usage)
   (printf "
-Usage: compile <irken-src-file> [options]
+Usage: " sys.argv[0] " <irken-src-file> [options]
  -v     : verbose (very!) output
  -I     : add include search directory
  -m     : debug macro expansion
@@ -185,8 +169,6 @@ Usage: compile <irken-src-file> [options]
         (main-compile base noden))
     ))
 
-(include "self/bytecode.scm")
-
 (define (main-compile base node)
   (let ((cps (compile node)))
     (verbose
@@ -217,6 +199,7 @@ Usage: compile <irken-src-file> [options]
      (dump-ffi-info)
      )
     (notquiet (printf "backend...\n"))
+    (generate-metadata)
     (compile-to-bytecode base cps)
     #u
     ))
