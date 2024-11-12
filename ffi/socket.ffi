@@ -9,7 +9,7 @@
    AF_INET AF_INET6 AF_UNIX
    SOCK_STREAM SOCK_DGRAM SOCK_RAW
    EAGAIN EINPROGRESS EWOULDBLOCK
-   EISCONN ENOTCONN
+   EISCONN ENOTCONN ECONNRESET ECONNABORTED
    ;; minimum needed for fcntl() to set non-blocking mode.
    O_NDELAY F_GETFL F_SETFL
    ;; socket options
@@ -19,9 +19,10 @@
    SO_RCVLOWAT SO_SNDTIMEO SO_RCVTIMEO SO_TYPE SO_ERROR SO_NOSIGPIPE
    SO_NREAD SO_NWRITE SO_LINGER_SEC
    )
- (sigs inet_ntop inet_pton socket bind listen accept connect recv send setsockopt getsockopt)
+ (sigs inet_ntop inet_pton socket bind listen accept connect recv recvfrom send sendto setsockopt getsockopt fcntl)
  (verbatim
-  (sig fcntl (int int int -> int))
+  ;; avoiding variadic on macos/arm64.
+  ;;(sig fcntl (int int int -> int))
   ;; this is often a macro *and* a function.
   (sig htons (int -> int))
   )

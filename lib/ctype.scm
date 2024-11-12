@@ -208,7 +208,9 @@
 
   (define parse-tdef
     ((sexp:symbol name _) t)
-    -> (info.tdefs::add name (parse-ctype t))
+    -> (begin
+         (printf "adding tdef for " (sym name) "\n")
+         (info.tdefs::add name (parse-ctype t)))
     x -> (error1 "malformed tdef" x)
     )
 
@@ -283,8 +285,8 @@
   (printf "cflags: " (join " " ffi-info.cflags) "\n")
   (printf "lflags: " (join " " ffi-info.lflags) "\n")
   (printf "dll: " (string ffi-info.dll) "\n")
-  (printf "sigs:\n")
-  (printf (join csig-repr " " (ffi-info.sigs::values)) "\n")
+  (printf "sigs:\n  ")
+  (printf (join csig-repr "\n  " (ffi-info.sigs::values)) "\n")
   (printf "defs:\n")
   (map cdef-print (ffi-info.structs::values))
   (map cdef-print (ffi-info.unions::values))
@@ -298,10 +300,10 @@
      (printf "  " (sym k) " " (ctype-repr v) "\n")))
   )
 
-(define FFI-PATH (getenv-or "IRKENLIB" "/usr/local/lib/irken/ffi/"))
+(define FFI-PATH (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
 
 (define (read-spec name)
-  (let ((path0 (format FFI-PATH (sym name) "_ffi.scm")))
+  (let ((path0 (format FFI-PATH "ffi/" (sym name) "_ffi.scm")))
     ;;(printf "loading ffi spec for " (sym name) "\n")
     ;;(printf "  from " path0 "\n")
     (%backend bytecode
@@ -363,6 +365,26 @@
                  (raise (:OSError x)))
             )
         ))))
+
+;; in the VM we need to make sure all the interfaces are loaded up front
+;;   in order to avoid some malloc(0) calls for objects of unknown size.
+(%backend bytecode
+(define (load-all-ffi-interfaces)
+  ;;(printf "loading ffi interfaces...\n")
+  (match (%%compile-time-meta 'ffi-interfaces) with
+    (sexp:list ifaces)
+    -> (for-list iface ifaces
+         (match iface with
+           (sexp:symbol name _)
+           -> (require-ffi* name)
+           x
+           -> (error1 "bad result from %%compile-time-meta" (repr x))
+           ))
+    x
+    -> (error1 "bad result from %%compile-time-meta" (repr x))
+    ))
+(load-all-ffi-interfaces)
+)
 
 ;; this is meant for *runtime* use.
 ;; XXX this distinction not needed.
@@ -478,7 +500,7 @@
   (ctype:int (cint:long) #f)        -> #\l
   (ctype:int (cint:long) #t)        -> #\L
   (ctype:int (cint:longlong) #f)    -> #\n
-  (ctype:int (cint:longlong) #f)    -> #\N
+  (ctype:int (cint:longlong) #t)    -> #\N
   (ctype:int (cint:width 1) #f)     -> #\B
   (ctype:int (cint:width 1) #t)     -> #\b
   (ctype:int (cint:width 2) #f)     -> #\H
@@ -519,6 +541,7 @@
      'i64       -> #\q
      'string    -> #\s
      'char      -> #\c
+     '*         -> #\p
      x          -> (raise (:StrangeType x))
      )))
 
@@ -580,7 +603,7 @@
   (sexp:attr sub fname)
   -> (let ((ref0 (sexp->ref sub)))
        (cref-field fname ref0))
-  x -> (raise (:SexpRefError x))
+  x -> (raise (:SexpRefError (repr x)))
   )
 
 ;; compute the size/offset of a type at runtime (VM).
@@ -590,6 +613,8 @@
   -> (ctype->size (ctype:struct name))
   (sexp:list ((sexp:symbol 'union _) (sexp:symbol name _)))
   -> (ctype->size (ctype:union name))
+  (sexp:list ((sexp:symbol '* _) _))
+  -> *word-size*
   (sexp:symbol tdef _)
   -> (ctype->size (ctype:name tdef))
   exp
@@ -655,10 +680,18 @@
 
 ;; ---------- utility -----------
 
+;; (cref char) -> string
 (define (get-cstring s*)
   (let ((s0* (%c-aref char s* 0))
         (slen (libc/strlen s0*)))
     (%cref->string #f s0* slen)))
+
+;; (cref char *) -> (cref char) -> string
+(define (get-cstring* char**)
+  (let ((p (c-get-ptr char**))
+        (plen (libc/strlen p)))
+    (%cref->string #f p plen)
+    ))
 
 (define (cref->string s* slen)
   (%cref->string #f s* slen))
@@ -700,6 +733,10 @@
     ;;         " " (string (%cref->string #f msg (libc/strlen msg)))
     ;;         "\n")
     (raise (:OSError errno))))
+
+(define (strerror errno)
+  (let ((msg (libc/strerror errno)))
+    (%cref->string #f msg (libc/strlen msg))))
 
 (define (syscall val)
   (if (< val 0)

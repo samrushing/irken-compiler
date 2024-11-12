@@ -218,8 +218,8 @@
     (match trec.parent with
       (maybe:no)    -> t
       (maybe:yes t0) -> (let ((p (type-find t0)))
-                         (set! trec.parent (maybe:yes p)) ;; path compression
-                         p))))
+                          (set! trec.parent (maybe:yes p)) ;; path compression
+                          p))))
 
 (define (type-union a b)
   (let ((pa (type-find a))
@@ -427,7 +427,6 @@
 
 ;; XXX we need the inverse of the above function for llvm.
 (define irken-type->ctype
-  ;; XXX detect cref, struct, etc
   (type:pred 'char _ _)      -> (ctype:int (cint:char)     #t)
   (type:pred 'uchar _ _)     -> (ctype:int (cint:char)     #f)
   (type:pred 'int _ _)       -> (ctype:int (cint:int)      #t)
@@ -450,6 +449,7 @@
   (type:pred 'u128 _ _)      -> (ctype:int (cint:width 16) #f)
   (type:pred 'i256 _ _)      -> (ctype:int (cint:width 32) #t)
   (type:pred 'u256 _ _)      -> (ctype:int (cint:width 32) #f)
+  (type:pred '* (sub) _)     -> (ctype:pointer (irken-type->ctype sub))
   (type:pred 'cref (sub) _)  -> (ctype:pointer (irken-type->ctype sub))
   (type:pred 'array (sub) _) -> (ctype:pointer (irken-type->ctype sub))
   (type:pred 'struct ((type:pred name _ _)) _) -> (ctype:struct name)

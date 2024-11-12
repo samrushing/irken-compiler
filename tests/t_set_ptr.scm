@@ -1,7 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
+(require "lib/basis.scm")
 
 (let ((int5* (halloc ushort 5))
       (int5** (halloc (* ushort) 5))

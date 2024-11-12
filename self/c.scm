@@ -55,14 +55,50 @@
     'ulonglong -> "unsigned long long"
     x -> (format (sym x)))
 
+
   (match t with
-    (type:pred 'struct (arg) _) -> (format "struct " (irken-type->c-type arg))
+    (type:pred 'struct ((type:pred name () _)) _) -> (typedef-struct-check name)
     (type:pred 'cref   (arg) _) -> (format (irken-type->c-type arg) "*")
     (type:pred 'buffer (arg) _) -> (format (irken-type->c-type arg) "*")
     (type:pred '*      (arg) _) -> (format (irken-type->c-type arg) "*")
     (type:pred name () _)       -> (decode-name name)
     (type:tvar _ _)             -> "void"
     _ -> (error1 "malformed ctype" (type-repr t))
+    ))
+
+;; XXX unused
+(define cint->c
+  (cint:char)      -> "char"
+  (cint:short)     -> "short"
+  (cint:int)       -> "int"
+  (cint:long)      -> "long"
+  (cint:longlong)  -> "long long"
+  (cint:width 8)   -> "int8_t"
+  (cint:width 16)  -> "int16_t"
+  (cint:width 32)  -> "int32_t"
+  (cint:width 64)  -> "int64_t"
+  (cint:width 128) -> "__int128_t" ;; extension
+  x -> (raise (:UnsupportedCIntType x))
+  )
+
+;; XXX unused
+(define ctype->c
+  (ctype:name n)      -> (format (sym n))
+  (ctype:int i #t)    -> (cint->c i)
+  (ctype:int i #f)    -> (format "unsigned " (cint->c i))
+  (ctype:array n t)   -> (format (ctype->c) "[" (int n) "]")
+  (ctype:pointer t)   -> (format (ctype->c t) "*")
+  (ctype:struct name) -> (format "struct " (sym name))
+  (ctype:union name)  -> (format "union " (sym name))
+  )
+
+;; this catches the case where we have renamed
+;;    `typedef struct { ... } typename`
+;; to `struct typename`.
+(define (typedef-struct-check name)
+  (match (ffi-info.tdefs::get name) with
+    (maybe:yes _) -> (format (sym name))
+    (maybe:no)    -> (format "struct " (sym name))
     ))
 
 ;;
@@ -78,6 +114,8 @@
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
     (type:pred 'cref _ _)    -> (format "(make_foreign((void*)" exp "))")
     (type:pred '* _ _)       -> (format "(make_foreign((void*)" exp "))")
+    ;; irken doesn't have any concept of a function that returns NOTHING,
+    ;;   so these are typed as `-> undefined`
     (type:pred 'void _ _)    -> (format "((" exp "), IRK_UNDEFINED)")
     (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
 				    (format "box((irk_int)" exp ")")
@@ -102,19 +140,16 @@
 							  r)
 						 tl))))))
 
-
 (define (emit-c-lookup-field-hashtables o)
   (let ((ambig (build-ambig-table))
         (size (tree/size ambig))
         (table (make-vector size {k0=0 k1=0 v=0}))
         (i 0))
-    (tree/inorder
-     (lambda (k v)
-       (match k with
-         (:tuple tag label)
-         -> (set! table[i] {k0= tag k1=label v=v}))
-       (set! i (+ i 1)))
-     ambig)
+    (for-map k v ambig
+      (match k with
+        (:tuple tag label)
+        -> (set! table[i] {k0=tag k1=label v=v}))
+      (inc! i))
     (let (((G V) (create-minimal-perfect-hash table)))
       (oformat "uint32_t irk_ambig_size = " (int size) ";")
       (o.copy "int32_t G[] = {")
@@ -267,13 +302,21 @@
 
     (define (emit-ffi csig rtype argtypes name args target)
       ;;(printf "emit-ffi " (sym name) " argtypes: (" (join type-repr " " argtypes) ")\n")
-      (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
-            (args1 (map2 wrap-in argtypes args0))
-            (fcall (wrap-out rtype (format (sym name) "(" (join ", " args1) ")"))))
-        ;;(printf "fcall = " (string fcall) "\n")
-        (if (= target -1)
-            (o.write (format fcall ";"))
-            (o.write (format "O r" (int target) " = " fcall ";")))))
+      (match csig with
+        (csig:fun name _ _ _) ;; consider using these ctypes rather than wrap-in,out.
+        -> (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
+                 (args1 (map2 wrap-in argtypes args0))
+                 (fcall (wrap-out rtype (format (sym name) "(" (join ", " args1) ")"))))
+             ;;(printf "fcall = " (string fcall) "\n")
+             (if (= target -1)
+                 (o.write (format fcall ";"))
+                 (o.write (format "O r" (int target) " = " fcall ";"))))
+        (csig:obj name ctype)
+        -> (begin
+             (printf "ffi obj ctype:" (ctype-repr ctype) " rtype: " (type-repr rtype) "\n")
+             (o.write (format "O r" (int target) " = " (wrap-out rtype (format "&" (sym name))) ";"))
+             )
+        ))
 
     (define (emit-check-heap free size)
       (let ((n (length free)))
@@ -777,7 +820,7 @@
         (define sref->c
           ;; structname.field0.field1.field2...
           (sexp:attr (sexp:symbol sname _) fname) src
-          -> (format "((((struct " (sym sname) "*)" src "))->" (sym fname) ")")
+          -> (format "(((" (typedef-struct-check sname) "*)" src ")->" (sym fname) ")")
           (sexp:attr sub fname) src
           -> (format "(" (sref->c sub src) "." (sym fname) ")")
           _ _ -> (impossible)

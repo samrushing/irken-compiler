@@ -331,7 +331,9 @@
       acc ((sexp:symbol platform _) exp . rest)
       -> (match *platform* with
            (maybe:yes name)
-           -> (if (eq? platform name) (W acc exp) (do-platform acc rest))
+           -> (begin
+                (if (string=? (symbol->string platform) name) (W acc exp) (do-platform acc rest))
+                )
            (maybe:no)
            -> (do-platform acc rest))
       acc x
@@ -435,6 +437,16 @@
           #u))
     ))
 
+;; again, we can't just call posix/uname here because we don't have
+;;   access to any FFI yet.
+(define (get-platform)
+  (system "uname -s > /tmp/irken-platform.txt")
+  (let ((f (stdio/open-read "/tmp/irken-platform.txt"))
+        (mline (stdio/read-line f)))
+    (stdio/close f)
+    (system "rm /tmp/irken-platform.txt")
+    mline))
+
 ;; the foo_iface1.c file serves two purposes:
 ;; 1) when fed through 'cc -E', it gives the scanner something
 ;;    to scan for declarations.
@@ -519,7 +531,7 @@
            (:tuple name struct?)
            -> (begin
                 (printf "key->type failed on " (sym name) " struct? " (bool struct?) "\n")
-                (raise (:KeyError key)))
+                (raise (:Toposort/KeyError key)))
            )
       ))
 
@@ -800,8 +812,10 @@
       (set! *typedefs-flag* #t))
     (when-maybe b (get-bool-opt opts 'tmp)
       (set! *keep-temps* #t))
-    (when-maybe plat (get-string-opt opts 'plat)
-      (set! *platform* (maybe:yes (string->symbol plat))))
+    (match (get-string-opt opts 'plat) with
+      (maybe:yes plat) -> (set! *platform* (maybe:yes plat))
+      (maybe:no)       -> (set! *platform* (get-platform))
+      )
     (when-maybe ffipath (get-string-opt opts 'gen)
       (genc1 ffipath)
       #u)

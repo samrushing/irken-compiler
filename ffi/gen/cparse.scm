@@ -165,6 +165,7 @@
     ('float)        -> (ctype2:float #f #f)
     ('double)       -> (ctype2:float #f #t)
     ('long 'double) -> (ctype2:float #t #t)
+    ('__int128)     -> (ctype2:int (cint:width 8) #f) ;; extension
     ;; note: 'long float' is not legal.
     otherwise       -> (grok-int-type syms)
     ))
@@ -269,7 +270,7 @@
         (if (> (length types) 1)
             (grok-num-type (map type->name types))
             (first types)))
-      ;; (printf "collapse-type-list " (join ctype2-repr ", " types) "\n")
+      ;;(printf "collapse-type-list " (join ctype2-repr ", " types) "\n")
       (match (length types) (last types) with
         1 type -> type
         n (ctype2:pointer sub)
@@ -287,7 +288,8 @@
       (ctype2:int (cint:char) #t)  -> 'char
       (ctype2:float _ #f)          -> 'float
       (ctype2:float _ #t)          -> 'double
-      x -> (impossible)
+      (ctype2:name '__int128)      -> '__int128 ;; extension
+      x -> (raise (:UnGrokableIntType (ctype2-repr x)))
       )
     ;; a declaration is essentially:
     ;; type name0=val0, name1=val1, ...;
@@ -684,7 +686,7 @@
        except
        (:ExpTooComplex exp0)
        -> (begin
-            ;; (printf "expression too complex to evaluate: " (repr (parse->sexp exp0)) "\n")
+            (printf "expression too complex to evaluate: " (repr (parse->sexp exp0)) "\n")
             0)))
 
     (define (p-int s)

@@ -469,13 +469,34 @@
          )
 
        (define prim-cset-int
-         ;;(sexp:symbol itype _) (src dst)
+         ;;(sexp:symbol itype _) (dst src)
          _ (dst src)
          ;; CSET dst code val
          -> (begin
               (printf "c-set-int type = " (type-repr type) "\n"
                       "          code = " (char (int->char (irken-type->bytecode type))) "\n")
               (LINSN 'cset dst (irken-type->bytecode type) src))
+         _ _ -> (primop-error)
+         )
+
+       (define prim-cget-ptr
+         ;;(sexp:symbol itype _) (src)
+         _ (src)
+         ;; CGET target src code
+         -> (begin
+              (printf "c-get-int type = " (type-repr type) "\n")
+              (LINSN 'cget target src (char->int #\p)))
+         _ _ -> (primop-error)
+         )
+
+       (define prim-cset-ptr
+         ;;(sexp:symbol itype _) (dst src)
+         _ (dst src)
+         ;; CSET dst code val
+         -> (begin
+              (printf "c-set-ptr type = " (type-repr type) "\n")
+              ;; we know it's a pointer
+              (LINSN 'cset dst (char->int #\p) src))
          _ _ -> (primop-error)
          )
 
@@ -524,6 +545,8 @@
          '%string->cref -> (prim-string->cref args)
          '%c-get-int    -> (prim-cget-int parm args)
          '%c-set-int    -> (prim-cset-int parm args)
+         '%c-get-ptr    -> (prim-cget-ptr parm args)
+         '%c-set-ptr    -> (prim-cset-ptr parm args)
          '%c-sref       -> (prim-c-sref parm args)
          '%c-sizeof     -> (prim-c-sizeof parm)
          '%cref->int    -> (prim-cref->int args)

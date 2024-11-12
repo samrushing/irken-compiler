@@ -40,7 +40,10 @@
           -> (let ((sym-handle0 (vm-dlsym0 name))
                    (sym-handle1
                     (if (cref-null? sym-handle0)
-                        (vm-dlsym (vm-get-lib-handle lib) name)
+                        (let ((r (vm-dlsym (vm-get-lib-handle lib) name)))
+                          (if (cref-null? r)
+                              (raise (:VMFFI/NoSym lib name))
+                              r))
                         sym-handle0)))
                (tree/insert! syms magic-cmp key sym-handle1)
                sym-handle1)

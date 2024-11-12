@@ -76,8 +76,11 @@
    (cat
     (set #\#)
     (? (+ (set #\tab #\space)))
-    (set (#\1 #\9))
-    (* (set (#\0 #\9)))
+    ;; note: gcc sometimes spits out lines like this:
+    ;; # 0 "<builtin>"
+    ;;(set (#\1 #\9))
+    ;;(* (set (#\0 #\9)))
+    (+ (set (#\0 #\9)))
     (? (+ (set #\tab #\space)))
     (? (or (set #\L #\U #\u) (cat (set #\u) (set #\8))))
     (set #\")

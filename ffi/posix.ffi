@@ -3,11 +3,11 @@
 (posix
  (includes
   "sys/utsname.h" "unistd.h" "sys/time.h" "sys/fcntl.h"
-  "time.h" "stdlib.h" "dirent.h" "sys/stat.h")
+  "time.h" "stdlib.h" "dirent.h" "sys/stat.h" "signal.h" "sys/signal.h")
  (structs utsname timeval timezone timespec tm dirent DIR stat)
  (constants
   STDIN_FILENO STDOUT_FILENO STDERR_FILENO
-  O_RDONLY O_WRONLY O_RDWR O_CREAT O_TRUNC
+  O_RDONLY O_WRONLY O_RDWR O_CREAT O_TRUNC O_APPEND
   L_tmpnam
   DT_REG DT_DIR DT_FIFO DT_SOCK DT_CHR DT_BLK DT_LNK
   ;; more portable
@@ -16,11 +16,19 @@
   ;; less portable
   ;; CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_RAW_APPROX CLOCK_UPTIME_RAW
   ;; CLOCK_UPTIME_RAW_APPROX
+
+  ;; stat
+  S_IFIFO S_IFCHR S_IFDIR S_IFBLK S_IFREG S_IFLNK S_IFSOCK
+  ;; signals
+  SIGHUP SIGINT SIGQUIT SIGILL SIGPIPE
+  ;; SIGINFO is not portable.
+  SIG_ERR SIG_DFL SIG_IGN
   )
  (sigs
   getpid
   ;; manual: gettimeofday
-  localtime asctime ctime
+  asctime ctime
+  localtime_r gmtime_r tzset
   clock_gettime ;; better
   read write close unlink
   random srandom initstate setstate
@@ -33,6 +41,9 @@
   ;; second pointer is sometimes declared as `void*` (Darwin).
   (sig gettimeofday ((* (struct timeval)) (* (struct timezone)) -> int))
   ;; ugh. on freebsd this is a f#*@ing inline. WHY???
-  (sig uname ((* (struct utsname)) -> int)))
+  (sig uname ((* (struct utsname)) -> int))
+  ;; useful only for SIG_IGN
+  (sig signal (int int -> int))
+  )
  )
 
