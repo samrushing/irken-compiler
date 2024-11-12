@@ -5,6 +5,8 @@
     (%%cexp (int -> int) "string_tuple_length (%0)" n))
   (%backend (bytecode llvm)
     (how-many (+ n 4) (get-word-size)))
+  (%backend (arm amd rv)
+    (>> (+ n 11) 3)) ;; optimized
   )
 
 (define (make-string n)
@@ -16,6 +18,12 @@
      n))
   (%backend llvm
     (%llvm-call ("@irk_make_string" (int -> string) ccc) n))
+  (%backend arm
+    (%asm-c-call ("arm_make_string" (int -> string)) n))
+  (%backend amd
+    (%asm-c-call ("irk_make_string" (int -> string) #f) n))
+  (%backend rv
+    (%asm-c-call ("rv_make_string" (int -> string) #f) n))
   (%backend bytecode
     (%%vminsn (int -> string) 'smake n))
   )
@@ -38,6 +46,10 @@
   (%backend llvm
     (%llvm-call
      ("@irk_buffer_copy" (string int int string int -> undefined))
+     src src-start n dst dst-start))
+  (%backend (arm amd rv)
+    (%asm-c-call
+     ("irk_buffer_copy" (string int int string int -> undefined) #f)
      src src-start n dst dst-start))
   (%backend bytecode
     (%%vminsn
@@ -107,6 +119,35 @@
     (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
   (%backend llvm
     (%llvm-call ("@irk_string_ref" (string int -> char)) s n))
+  (%backend arm
+    (%arm
+     ((string int -> char)
+      (add (s 0) (a 0) (a 1) (asr 1))
+      (ldrb (w (s 0)) (ind (s 0) (i 12)))
+      (mov (w (s 1)) (i 2))
+      (bfi (s 1) (s 0) (i 16) (i 8))
+      (mov trg (s 1))
+      )
+     s n))
+  (%backend amd
+    (%amd
+     ((string int -> char)
+      (sarq (a 1))
+      (movzbl (ind 12 (a 0) (a 1) 1) (W (s 0)))
+      (shlq (i 16) (s 0))
+      (orq (i 2) (s 0))
+      (movq (s 0) trg))
+     s n
+     ))
+  (%backend rv
+    (%rv
+     ((string int -> char)
+      (srai (a 1) (a 1) (i 1))
+      (add (a 0) (a 0) (a 1))
+      (lbu (a 0) (ind 12 (a 0)))
+      (slli (a 0) (a 0) (i 16))
+      (ori trg (a 0) (i 2)))
+     s n))
   (%backend bytecode
     (%%vminsn (string int -> char) 'sref s n)))
 
@@ -118,7 +159,31 @@
   (%backend llvm
     (%llvm-call ("@irk_string_set" (string int char -> undefined)) s n c))
   (%backend bytecode
-    (%%vminsn (string int char -> undefined) 'sset s n c)))
+    (%%vminsn (string int char -> undefined) 'sset s n c))
+  (%backend arm
+    (%arm
+     ((string int char -> undefined)
+      (lsr (s 0) (a 2) (i 16))
+      (add (s 1) (a 0) (a 1) (asr 1))
+      (strb (w (s 0)) (ind (s 1) (i 12))))
+     s n c))
+  (%backend amd
+    (%amd
+     ((string int char -> undefined)
+      (sarq (a 1))
+      (shrq (i 16) (a 2))
+      (movb (B (a 2)) (ind 12 (a 0) (a 1) 1))
+      )
+     s n c))
+  (%backend rv
+    (%rv
+     ((string int char -> undefined)
+      (srai (a 1) (a 1) (i 1))
+      (srli (a 2) (a 2) (i 16))
+      (add (a 0) (a 0) (a 1))
+      (sb (a 2) (ind 12 (a 0))))
+     s n c))
+  )
 
 ;; merge a list of strings into one string
 (define string-concat
@@ -165,6 +230,8 @@
     (%%cexp ((raw string) (raw string) -> cmp) "irk_string_cmp (%0, %1)" a b))
   (%backend llvm
     (%llvm-call ("@irk_string_cmp" (string string -> cmp) ccc) a b))
+  (%backend (arm amd rv)
+    (%asm-c-call ("irk_string_cmp" (string string -> cmp) #f) a b))
   (%backend bytecode
     (magic-cmp a b)))
 

@@ -3,6 +3,7 @@
 (define (print x)
   (%backend c (%%cexp ('a -> undefined) "dump_object (%0, 0)" x))
   (%backend llvm (%llvm-call ("@irk_dump_object" ('a -> undefined) ccc) x))
+  (%backend (arm amd rv) (%asm-c-call ("irk_dump_object" ('a -> undefined)) x))
   (%backend bytecode (%%vminsn ('a -> undefined) 'printo x))
   )
 
@@ -14,80 +15,85 @@
 (define (print-string s)
   (%backend c (%%cexp (string int -> int) "fwrite (%0, 1, %1, stdout)" s (string-length s)) #u)
   (%backend llvm (%llvm-call ("@irk_write_stdout" (string int -> int) ccc) s (string-length s)) #u)
+  (%backend (arm amd rv) (%asm-c-call ("irk_write_stdout" (string int -> int) #f) s (string-length s)) #u)
   (%backend bytecode (%%vminsn (string -> int) 'prints s) #u)
   )
 
 (define (flush)
   (%backend c (%%cexp (-> int) "fflush (stdout)"))
   (%backend llvm (%llvm-call ("@irk_flush" (-> int) ccc)))
+  (%backend (arm amd rv) (%asm-c-call ("irk_flush" (-> int))))
   ;; not using stdio
   (%backend bytecode #u))
 
 (define (newline)
   (%backend c (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" #\newline))
+  ;; note: these are both 'wrong', in the sense that irk_putc() assumes an irken
+  ;;   character as input, which relies on argument frobbing *not* being applied to characters.
   (%backend llvm (%llvm-call ("@irk_putc" (char -> undefined) ccc) #\newline))
+  (%backend (arm amd rv) (%asm-c-call ("irk_putc" (char -> undefined)) #\newline))
   (%backend bytecode (print-string "\n")))
 
 (define (= a b)
   (%backend c (%%cexp (int int -> bool) "%0==%1" a b))
-  (%backend llvm (%llicmp eq a b))
+  (%backend (llvm arm amd rv) (%llicmp eq a b))
   (%backend bytecode (%%vminsn (int int -> bool) eq a b)))
 
 (define (zero? a)
   (%backend c (%%cexp (int -> bool) "%0==0" a))
-  (%backend (bytecode llvm) (= a 0)))
+  (%backend (bytecode llvm arm amd rv) (= a 0)))
 
 (define (< a b)
   (%backend c (%%cexp (int int -> bool) "%0<%1" a b))
-  (%backend llvm (%llicmp slt a b))
+  (%backend (llvm arm amd rv) (%llicmp slt a b))
   (%backend bytecode (%%vminsn (int int -> bool) 'lt a b))
   )
 
 (define (<= a b)
   (%backend c (%%cexp (int int -> bool) "%0<=%1" a b))
-  (%backend llvm (%llicmp sle a b))
+  (%backend (llvm arm amd rv) (%llicmp sle a b))
   (%backend bytecode (%%vminsn (int int -> bool) 'le a b))
   )
 
 (define (> a b)
   (%backend c (%%cexp (int int -> bool) "%0>%1" a b))
-  (%backend llvm (%llicmp sgt a b))
+  (%backend (llvm arm amd rv) (%llicmp sgt a b))
   (%backend bytecode (%%vminsn (int int -> bool) 'gt a b))
   )
 
 (define (>= a b)
   (%backend c (%%cexp (int int -> bool) "%0>=%1" a b))
-  (%backend llvm (%llicmp sge a b))
+  (%backend (llvm arm amd rv) (%llicmp sge a b))
   (%backend bytecode (%%vminsn (int int -> bool) 'ge a b))
   )
 
 (define (>0 a)
   (%backend c (%%cexp (int -> bool) "%0>0" a))
-  (%backend llvm (%llicmp sgt a 0))
+  (%backend (llvm arm amd rv) (%llicmp sgt a 0))
   (%backend bytecode (%%vminsn (int int -> bool) 'gt a 0))
   )
 
 (define (<0 a)
   (%backend c (%%cexp (int -> bool) "%0<0" a))
-  (%backend llvm (%llicmp slt a 0))
+  (%backend (llvm arm amd rv) (%llicmp slt a 0))
   (%backend bytecode (%%vminsn (int int -> bool) 'lt a 0))
   )
 
 (define (binary+ a b)
   (%backend c (%%cexp (int int -> int) "%0+%1" a b))
-  (%backend llvm (%llarith add a b))
+  (%backend (llvm arm amd rv) (%llarith add a b))
   (%backend bytecode (%%vminsn (int int -> int) 'add a b))
   )
 
 (define (binary- a b)
   (%backend c (%%cexp (int int -> int) "%0-%1" a b))
-  (%backend llvm (%llarith sub a b))
+  (%backend (llvm arm amd rv) (%llarith sub a b))
   (%backend bytecode (%%vminsn (int int -> int) 'sub a b))
   )
 
 (define (binary* a b)
   (%backend c (%%cexp (int int -> int) "%0*%1" a b))
-  (%backend llvm (%llarith mul a b))
+  (%backend (llvm arm amd rv) (%llarith mul a b))
   (%backend bytecode (%%vminsn (int int -> int) 'mul a b))
   )
 
@@ -195,33 +201,53 @@
 
 (define (<< a b)
   (%backend c (%%cexp (int int -> int) "%0<<%1" a b))
-  (%backend llvm (%llarith shl a b))
+  (%backend (llvm arm rv) (%llarith shl a b))
   (%backend bytecode (%%vminsn (int int -> int) 'shl a b))
+  (%backend amd ;; shift has to be in %CL
+    (%amd
+     ((int int -> int)
+      (untag (a 1))
+      (untag (a 0))
+      (movq (a 1) (r rcx))
+      (salq (B (r rcx)) (a 0))
+      (movq (a 0) trg)
+      (tag trg))
+     a b))
   )
 
 (define (>> a b)
   (%backend c (%%cexp (int int -> int) "%0>>%1" a b))
-  (%backend llvm (%llarith ashr a b))
+  (%backend (llvm arm rv) (%llarith ashr a b))
   (%backend bytecode (%%vminsn (int int -> int) 'ashr a b))
+  (%backend amd ;; shift has to be in %CL
+    (%amd
+     ((int int -> int)
+      (untag (a 1))
+      (untag (a 0))
+      (movq (a 1) (r rcx))
+      (sarq (B (r rcx)) (a 0))
+      (movq (a 0) trg)
+      (tag trg))
+     a b))
   )
 
 (define (bit-get n i)
   (%backend c (%%cexp (int int -> bool) "(%0&(1<<%1))>0" n i))
-  (%backend llvm (>0 (logand n (<< 1 i))))
-  (%backend bytecode (>0 (logand n (<< 1 i))))
+  ;; XXX probably a better way on some platforms
+  (%backend (llvm arm amd rv bytecode) (>0 (logand n (<< 1 i))))
   )
 
 (define (bit-set n i)
   (%backend c (%%cexp (int int -> int) "%0|(1<<%1)" n i))
-  (%backend llvm (logior n (<< 1 i)))
-  (%backend bytecode (logior n (<< 1 i)))
+  ;; XXX probably a better way on some platforms
+  (%backend (llvm arm amd rv bytecode) (logior n (<< 1 i)))
   )
 
 ;; any reason I can't use the same characters that C does?
 ;; yeah - '|' is a comment start character in scheme.
 (define (logior a b)
   (%backend c (%%cexp (int int -> int) "%0|%1" a b))
-  (%backend llvm (%llarith or a b))
+  (%backend (llvm arm amd rv) (%llarith or a b))
   (%backend bytecode (%%vminsn (int int -> int) 'or a b))
   )
 
@@ -232,7 +258,7 @@
 
 (define (logxor a b)
   (%backend c (%%cexp (int int -> int) "%0^%1" a b))
-  (%backend llvm (%llarith xor a b))
+  (%backend (llvm arm amd rv) (%llarith xor a b))
   (%backend bytecode (%%vminsn (int int -> int) 'xor a b))
   )
 
@@ -243,14 +269,14 @@
 
 (define (logand a b)
   (%backend c (%%cexp (int int -> int) "%0&%1" a b))
-  (%backend llvm (%llarith and a b))
+  (%backend (llvm arm amd rv) (%llarith and a b))
   (%backend bytecode (%%vminsn (int int -> int) 'and a b))
   )
 
 (define (lognot a)
   (%backend c (%%cexp (int -> int) "~%0" a))
-  (%backend llvm (- -1 a))
-  (%backend bytecode (- -1 a))
+  (%backend (llvm bytecode) (- -1 a)) ;; why not x^-1 here?
+  (%backend (amd arm rv) (logxor a -1))
   )
 
 (define (popcount n)
@@ -258,6 +284,31 @@
     (%%cexp (int -> int) "__builtin_popcount(%0)" n))
   (%backend llvm
     (%llvm-call ("@irk_popcount" (int -> int)) n))
+  (%backend arm
+    (%arm
+     ((int -> int)
+      (untag (a 0))
+      (fmov (r d0) (a 0))
+      (cnt.8b (r v0) (r v0))
+      (uaddlv.8b (r h0) (r v0))
+      (fmov (r w0) (r s0))
+      (mov trg (r x0))
+      (tag trg))
+     n))
+  (%backend amd
+    (%amd
+     ((int -> int)
+      (untag (a 0))
+      (popcnt (a 0) trg)
+      (tag trg))
+     n))
+  (%backend rv
+    (%rv ;; requires Zbb extension
+     ((int -> int)
+      (untag (a 0))
+      (cpop trg (a 0))
+      (tag trg))
+     n))
   (%backend bytecode
     (let loop ((count 0) (n n))
       (if (zero? n)
@@ -309,6 +360,7 @@
 (%backend llvm
   (define (int-cmp a b)
     (%llvm-call ("@irk_int_cmp" (int int -> cmp)) a b)))
+
 (%backend bytecode
   ;; XXX needs an opcode, to be fair.
   ;; XXX any reason to not use 'cmp'???
@@ -316,6 +368,63 @@
     (cond ((< a b) (cmp:<))
           ((> a b) (cmp:>))
           (else (cmp:=)))))
+(%backend arm
+  (define (int-cmp a b)
+    (%arm
+     ((int int -> cmp)
+      ;; note: we do not bother with untagging the ints. [XXX verify that this is ok]
+      ;; note: constants for TC_USERIMM included here, reflecting
+      ;;  the three values for `cmp` datatype.
+      (mov (s 0) (i 22))                ;; s0 <- #0x16 (TC_USERIMM)
+      (movk (s 0) (i 1) (lsl 16))       ;; s0 <- #x10016 (cmp:=)
+      (add (s 1) (s 0) (i 16) (lsl 12)) ;; s1 <- s0 + (16 << 12) (cmp:>)
+      (cmp (a 0) (a 1))                 ;; cmp a, b
+      (csel (s 0) (s 1) (s 0) (cc hi))  ;; s0 <= hi ? s1 : s0
+      (mov (s 1) (i 22))                ;; s1 <- (cmp:<)
+      (csel trg (s 1) (s 0) (cc lo)))   ;; trg <- lo ? s1 : s0
+     a b
+     )))
+(%backend amd
+  (define (int-cmp a b)
+    (%amd
+     ((int int -> cmp)
+      (zero (s 0))
+      (cmpq (a 0) (a 1))
+      (setb (B (s 0)))
+      (shlq (i 16) (s 0))
+      (addq (i #x10016) (s 0))
+      (cmpq (a 1) (a 0))
+      (movq (i 22) (s 1))
+      (cmovaeq (s 0) (s 1))
+      (movq (s 1) trg))
+     a b
+     )))
+
+(%backend rv
+  ;; XXX should do some speed tests on these two...
+  ;; (define (int-cmp a b)
+  ;;   (%asm-c-call ("irk_int_cmp" (int int -> cmp) #f) a b))
+
+  (define (int-cmp a b)
+    (%rv
+     ((int int -> cmp)
+      (bltu  (a 1) (a 0) "@0")
+      (lui   (s 0) (i 16))
+      (addiw (s 1) (s 0) (i 22))
+      (li    (s 0) (i 22))
+      (bgeu  (a 0) (a 1) "@1")
+      (j "@2")
+      (label "@0")
+      (lui   (s 0) (i 32))
+      (addiw (s 1) (s 0) (i 22))
+      (li    (s 0) (i 22))
+      (bltu  (a 0) (a 1) "@2")
+      (label "@1")
+      (mv    (s 0) (s 1))
+      (label "@2")
+      (mv    trg (s 0)))
+     a b))
+  )
 
 (define (magic-cmp a b)
   (%backend c
@@ -326,12 +435,80 @@
     (%llvm-call ("@irk_magic_cmp" ('a 'a -> cmp)) a b))
   (%backend bytecode
     (%%vminsn ('a 'a -> cmp) 'cmp a b))
+  (%backend arm
+    (%arm
+     (('a 'a -> cmp)
+      ;; might need to save/restore 29/30
+      (mov (c 0) (a 0))
+      (mov (c 1) (a 1))
+      (bl "magic_cmp")
+      (mov (w (s 0)) (i 22))
+      (movk (w (s 0)) (i 1) (lsl 16))
+      (add (c 0) (s 0) (c 0) (lsl 16))
+      (mov trg (c 0)))
+     a b))
+  (%backend rv
+    (%rv
+     (('a 'a -> cmp)
+      (mv (c 0) (a 0))
+      (mv (c 1) (a 1))
+      (jal "magic_cmp")
+      (slli (c 0) (c 0) (i 16))
+      (lui (s 0) (i 16))
+      (addiw (s 0) (s 0) (i 22))
+      (add trg (c 0) (s 0)))
+     a b
+     ))
+  (%backend amd
+    (%amd
+     (('a 'a -> cmp)
+      (movq (a 0) (c 0))
+      (movq (a 1) (c 1))
+      (callq (g "magic_cmp"))
+      (shlq (i 16) (r rax))
+      (addq (i #x10016) (r rax))
+      (movq (r rax) trg))
+     a b
+     ))
   )
 
 (define (eq? a b)
   (%backend c (%%cexp ('a 'a -> bool) "%0==%1" a b))
   (%backend llvm (%lleq #f a b))
   (%backend bytecode (%%vminsn ('a 'a -> bool) 'eq a b))
+  (%backend arm
+    (%arm
+     (('a 'a -> bool)
+      (com "eq?")
+      (mov (s 0) (i 6)) ;; 0x0006 (#f)
+      (mov (s 1) (i 6))
+      (movk (s 1) (i 1) (lsl 16)) ;; 0x10006 (#t)
+      (cmp (a 0) (a 1))
+      (csel trg (s 1) (s 0) (cc eq)))
+     a b))
+  (%backend amd
+    (%amd
+     (('a 'a -> bool)
+      (com "eq?")
+      (zero (s 0))
+      (cmpq (a 0) (a 1))
+      (sete (B (s 0)))
+      (shlq (i 16) (s 0))
+      (orq (i 6) (s 0))
+      (movq (s 0) trg))
+     a b
+     ))
+  (%backend rv
+    (%rv
+     (('a 'a -> bool)
+      (beq (a 0) (a 1) "@0")
+      (li  trg (i 6))
+      (j "@1")
+      (label "@0")
+      (lui trg (i 16))
+      (addiw trg trg (i 6))
+      (label "@1"))
+     a b))
   )
 
 (define (not x)
@@ -353,6 +530,29 @@
     (%llvm-call ("@irk_makei" (int int -> char)) #x02 n))
   (%backend bytecode
     (%%vminsn (int int -> char) 'makei #x02 n))
+  (%backend arm
+    (%arm
+     ((int -> char)
+      (lsr (s 0) (a 0) (i 1))
+      (mov trg (i 2))
+      (bfi trg (s 0) (i 16) (i 48)))
+     n))
+  (%backend amd
+    (%amd
+     ((int -> char)
+      (andq (i -2) (a 0))
+      (shlq (i 15) (a 0))
+      (leaq (ind 2 (a 0)) trg)
+      )
+     n))
+  (%backend rv
+    (%rv
+     ((int -> char)
+      (srli (a 0) (a 0) (i 1))
+      (slli (a 0) (a 0) (i 16))
+      (ori  trg (a 0) (i 2))
+      )
+     n))
   )
 
 (define (char->int c)
@@ -362,6 +562,27 @@
     (%llvm-call ("@irk_get_char" (char -> int)) c))
   (%backend bytecode
     (%%vminsn (char -> int) 'unchar c))
+  (%backend arm
+    (%arm
+     ((char -> int)
+      (lsr (s 0) (a 0) (i 15))
+      (orr trg (s 0) (i 1)))
+     c
+     ))
+  (%backend amd
+    (%amd
+     ((char -> int)
+      (movq (a 0) trg)
+      (shrq (i 15) trg)
+      (orq (i 1) trg))
+     c
+     ))
+  (%backend rv
+    (%rv
+     ((char -> int)
+     (srli (a 0) (a 0) (i 15))
+     (ori  trg (a 0) (i 1)))
+     c))
   )
 
 ;; close enough for now.
@@ -378,6 +599,28 @@
   (%backend c (%%cexp ((raw string) -> int) "%0->len" s))
   (%backend llvm (%llvm-call ("@irk_string_len" (string -> int)) s))
   (%backend bytecode (%%vminsn (string -> int) 'slen s))
+  (%backend arm
+    (%arm
+     ((string -> int)
+      (ldrsw trg (ind (a 0) (i 8))) ;; trg = irk_string.len
+      (lsl trg trg (i 1))           ;; trg <<= 1
+      (orr trg trg (i 1)))          ;; trg |= 1
+     s))
+  (%backend amd
+    (%amd
+     ((string -> int)
+      (movq (a 0) (s 0))
+      (movl (ind 8 (s 0)) (W (s 0))) ;; grab 32-bit size
+      (movslq (W (s 0)) (s 0))       ;; sign extend
+      (movq (s 0) trg)
+      (tag trg))
+     s))
+  (%backend rv
+    (%rv
+     ((string -> int)
+      (lw trg (ind 8 (a 0)))
+      (tag trg))
+     s))
   )
 
 (define (make-vector n val)
@@ -386,6 +629,34 @@
     (%make-vector #f n val))
   (%backend bytecode
     (%%vminsn (int 'a -> (vector 'a)) 'vmake n val))
+  (%backend arm
+    (%ensure-heap #f n)
+    (%arm
+     ((int 'a -> (vector 'a))
+      ;; this is an allocating function, we have to save/restore freep.
+      (str_addr (s 0) freep "freep")
+      (mov (c 0) (a 0))
+      (mov (c 1) (a 1))
+      (untag (c 0))
+      (bl "make_vector")
+      (ldr_addr freep "freep")
+      (mov trg (c 0)))
+     n val))
+  (%backend amd
+    (%ensure-heap #f n)
+    (%asm-c-call ("make_vector" (int 'a -> (vector 'a))) n val))
+  (%backend rv
+    (%ensure-heap #f n)
+    (%rv
+     ((int 'a -> (vector 'a))
+      (str_addr freep "freep")
+      (mv (c 0) (a 0))
+      (mv (c 1) (a 1))
+      (untag (c 0))
+      (jal "make_vector")
+      (ldr_addr freep "freep")
+      (mv trg (c 0)))
+     n val))
   )
 
 (define (copy-vector v)
@@ -403,6 +674,12 @@
   (%backend llvm (if (eq? v #()) 0 (%llvm-call ("@irk_tuple_len" ((vector 'a) -> int)) v)))
   (%backend bytecode
     (%%vminsn ((vector 'a) -> int) 'vlen v))
+  (%backend arm
+    (%arm (((vector 'a) -> int) (vlen trg (a 0))) v))
+  (%backend amd
+    (%amd (((vector 'a) -> int) (vlen (a 0) trg)) v))
+  (%backend rv
+    (%rv (((vector 'a) -> int) (vlen trg (a 0))) v))
   )
 
 ;; (make-array (2 3) 0) => #(#(0 0 0) #(0 0 0))
@@ -530,6 +807,16 @@
 
   (define (load filename)
     (%%cexp (string -> (continuation int)) "load_image (%0)" filename))
+  )
+
+(%backend amd
+  ;; XXX: make this work with llvm & bytecode.
+  (define (dump filename thunk)
+    (%asm-c-call ("dump_image" (string (continuation int) -> int)) filename thunk)
+    )
+  (define (load filename)
+    (%asm-c-call ("load_image" (string -> (continuation int))) filename)
+    )
   )
 
 ;; *********************************************************************
@@ -687,6 +974,14 @@
   (define (get-int-size)  4)
   )
 
+(%backend (arm amd rv)
+  (define (set-verbose-gc b)
+    (%asm-c-call ("irk_set_verbose_gc" (bool -> bool) #f) b))
+  ;; these are fixed by the LP64 target
+  (define (get-word-size) 8)
+  (define (get-int-size)  4)
+  )
+
 (%backend bytecode
 
   (define (set-verbose-gc b)
@@ -708,18 +1003,59 @@
   (%backend c (%%cexp (-> sexp) "irk_get_metadata()"))
   (%backend llvm (%llvm-call ("@irk_get_metadata" (-> sexp))))
   (%backend bytecode (%%vminsn (-> sexp) 'meta))
+  (%backend (amd arm rv) (%asm-c-call ("irk_get_metadata" (-> sexp))))
   )
 
 (define (~~object->int ob)
   (%backend c (%%cexp ('a -> int) "unbox(irk_object2int(%0))" ob))
   (%backend llvm (%llvm-call ("@irk_object2int" ('a -> int) ccc) ob))
   (%backend bytecode (%%vminsn ('a -> int) 'ob2int ob))
+  (%backend amd
+    (%amd
+     (('a -> int)
+      (movq (a 0) trg)
+      (tag trg))
+     ob))
+  (%backend arm
+    (%arm
+     (('a -> int)
+      (mov trg (a 0))
+      (tag trg))
+     ob))
+  (%backend rv
+    (%rv
+     (('a -> int)
+      (mv trg (a 0))
+      (tag trg))
+     ob))
   )
 
 (define (~~object*->int ob)
   (%backend c (%%cexp ('a -> int) "unbox(irk_objectptr2int(%0))" ob))
   (%backend llvm (%llvm-call ("@irk_objectptr2int" ('a -> int) ccc) ob))
   (%backend bytecode (%%vminsn ('a -> int) 'obptr2int ob))
+  (%backend amd
+    (%amd
+     (('a -> int)
+      (com "~~object*->int")
+      (movq (ind (a 0)) trg)
+      (tag trg))
+     ob))
+  (%backend arm
+    (%arm
+     (('a -> int)
+      (com "~~object*->int")
+      (ldr trg (ind (a 0)))
+      (tag trg))
+     ob))
+  (%backend rv
+    (%rv
+     (('a -> int)
+      (com "~~object*->int")
+      (ld trg (ind 0 (a 0)))
+      (tag trg))
+     ob
+     ))
   )
 
 (define (read-cycle-counter)
@@ -728,7 +1064,28 @@
   (%backend llvm
     (%llvm-call ("@irk_readcyclecounter" (-> int))))
   (%backend bytecode
-    (raise (:NotImplemented "read-cycle-counter")))
+    (raise (:NotImplementedYet "read-cycle-counter")))
+  ;; this is the 'virtual count register'
+  (%backend arm
+    (%arm
+     ((-> int)
+      (isb)
+      (mrs trg "CNTVCT_EL0")
+      (tag trg)
+      )))
+  (%backend amd
+    (%amd
+     ((-> int)
+      (rdtsc) ;; the OG
+      (shlq (i 32) (r rdx))
+      (orq (r rax) (r rdx))
+      (movq (r rdx) trg)
+      (tag trg))))
+  (%backend rv
+    (%rv
+     ((-> int)
+      (rdcycle trg)
+      (tag trg))))
   )
 
 ;; VM needs to shift all argv right by one.
@@ -743,6 +1100,22 @@
   (%backend c (%%cexp (-> (vector string)) "irk_make_argv()"))
   (%backend llvm (%llvm-call ("@irk_make_argv" (-> (vector string)) ccc)))
   (%backend bytecode (shrink-argv (%%vminsn (-> (vector string)) 'argv)))
+  (%backend arm
+    (%arm
+     ((-> (vector string))
+      (str_addr (s 0) freep "freep")
+      (bl "irk_make_argv")
+      (ldr_addr freep "freep")
+      (mov trg (c 0)))))
+  (%backend rv
+    (%rv
+     ((-> (vector string))
+      (str_addr freep "freep")
+      (jal "irk_make_argv")
+      (ldr_addr freep "freep")
+      (mv trg (c 0)))))
+  (%backend amd
+    (%asm-c-call ("irk_make_argv" (-> (vector string)))))
   )
 
 ;; note: argc is redundant, but convenient.

@@ -10,6 +10,7 @@
 (require "self/c.scm")
 ;;(require "self/llvm.scm")
 (require "self/bytecode.scm")
+(require "self/arm.scm")
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
@@ -120,6 +121,7 @@
           ;; XXX make these mutually exclusive?
 	  ;;"-llvm" -> (set! options.backend (backend:llvm))
           "-b"    -> (set! options.backend (backend:bytecode))
+          "-arm"  -> (set! options.backend (backend:arm))
           "-h"    -> (usage)
           "-help" -> (usage)
           "-types" -> (set! options.dumptypes #t)
@@ -158,6 +160,7 @@ Usage: compile <irken-src-file> [options]
 "
 ;; -llvm  : compile using the LLVM backend.
 "
+ -arm   : compile using the arm64 backend.
  -b     : compile using the bytecode backend.
 
 default flags:
@@ -290,7 +293,9 @@ default flags:
            ;; -> (compile-to-llvm base cps)
            (backend:bytecode)
            -> (compile-to-bytecode base cps)
-           ;; temporary: the native backends land in the following commits.
+           (backend:arm)
+           -> (compile-to-arm base cps)
+           ;; temporary: the amd64 and riscv64 backends land in the following commits.
            _ -> (raise (:NotImplemented "native backend"))
            )))
     (when (and (not (null? sources))

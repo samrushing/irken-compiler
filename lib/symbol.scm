@@ -45,6 +45,19 @@
     (%llvm-get ("@irk_internal_symbols_p" (-> (vector symbol)) #f)))
   (%backend bytecode
     (list->vector (%%vminsn (list symbol) 'gist)))
+  (%backend arm
+    (%arm
+     ((-> (vector symbol))
+      (lld_addr trg "irk_internal_symbols"))
+     ))
+  (%backend amd
+    (%amd
+     ((-> (vector symbol))
+      (leaq (grel "irk_internal_symbols") trg))))
+  (%backend rv
+    (%rv
+     ((-> (vector symbol))
+      (lld_addr trg "irk_internal_symbols"))))
   )
 
 (define (initial-symbol-table)

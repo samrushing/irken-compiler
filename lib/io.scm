@@ -3,7 +3,7 @@
 (require-ffi 'posix)
 
 (define (open path oflag mode) : (string int int -> int)
-  (%backend (c llvm)
+  (%backend (c llvm arm amd rv)
     (syscall
      (%%ffi open (%string->cref #f (zero-terminate path)) oflag
             ;; this hack forces `mode` to be an integer, which is

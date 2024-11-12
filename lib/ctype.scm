@@ -317,7 +317,7 @@
                   (raise (:NoFFI "unable to read FFI" name))
                   (set! fparts0 fparts1))))
         (read-string (string-concat fparts0))))
-    (%backend (c llvm)
+    (%backend (c llvm arm amd rv)
       ;; using stdio avoids a circular dependency on posix.ffi.
       (try
        (let ((file0 (stdio/open-read path0)))
@@ -553,7 +553,7 @@
 ;;   is done at compile-time.  The bytecode is more complex because
 ;;   information about sizes/structs/etc is only available at runtime.
 
-(%backend (c llvm)
+(%backend (c llvm arm amd rv)
 
   (defmacro build-ffi-fun
     (build-ffi-fun iface name ztname rtype rcode nargs argtypes (formal0 ...))
@@ -724,6 +724,7 @@
   (%backend c (%%cexp (-> int) "errno"))
   (%backend llvm (%llvm-call ("@irk_get_errno" (-> int))))
   (%backend bytecode (%%vminsn (-> int) 'errno))
+  (%backend (arm amd rv) (%asm-c-call ("irk_get_errno" (-> int))))
   )
 
 (define (raise-system-error)
