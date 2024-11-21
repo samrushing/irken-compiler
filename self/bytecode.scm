@@ -276,7 +276,7 @@
             (LINSN 'trcall0 label (+ 1 npop))
             (list (stream:insn
                    'trcall
-                   (prepend label npop (length args) args)
+                   (prepend label npop nargs args)
                    )))))
 
     (define (emit-call name fun args k)
@@ -807,6 +807,9 @@
             -> (push! r (INSN 'jmp (resolve index)))
             (stream:insn 'fun (target index))
             -> (push! r (INSN 'fun target (resolve index)))
+            ;; since the label for trcall is always negative, we are tempted to negate it
+            ;;  here and in the VM to save a few bytes.  I tried it, it's not really worth it.
+            ;;  [it saved about 100 bytes in a 84Kb byc file]
             (stream:insn 'trcall (index depth nregs . args))
             -> (push! r (stream:insn 'trcall (prepend (resolve index) depth nregs args)))
             (stream:insn 'trcall0 (index depth))

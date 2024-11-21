@@ -140,14 +140,21 @@ dump_object (object * ob, int depth)
 	fprintf (stdout, "#\\eof");
       } else {
 	char ch = ((char)((irk_int)ob>>TAGSIZE));
-	switch (ch) {
-	case '\000': fprintf (stdout, "#\\nul"); break;
-	case ' '   : fprintf (stdout, "#\\space"); break;
-	case '\n'  : fprintf (stdout, "#\\newline"); break;
-	case '\r'  : fprintf (stdout, "#\\return"); break;
-	case '\t'  : fprintf (stdout, "#\\tab"); break;
-	default    : fprintf (stdout, "#\\%c", ch);
-	}
+        if (ch > 127) {
+          // on-the-fly utf-8
+          uint8_t ch_lo = 0x80 | (ch & 0x3f);
+          uint8_t ch_hi = 0xc0 | (ch >> 6);
+          fprintf (stdout, "#\\%c%c", ch_hi, ch_lo);
+        } else {
+          switch (ch) {
+          case '\000': fprintf (stdout, "#\\nul"); break;
+          case ' '   : fprintf (stdout, "#\\space"); break;
+          case '\n'  : fprintf (stdout, "#\\newline"); break;
+          case '\r'  : fprintf (stdout, "#\\return"); break;
+          case '\t'  : fprintf (stdout, "#\\tab"); break;
+          default    : fprintf (stdout, "#\\%c", ch);
+          }
+        }
       }
       break;
     case TC_BOOL:
@@ -524,7 +531,7 @@ inline
 range_check (unsigned int length, unsigned int index)
 {
   if (index >= length) {
-    fprintf (stderr, "array/string reference out of range: %d[%d]\n", length, index);
+    fprintf (stderr, "array/string reference out of range: size=%d index=%d\n", length, index);
     abort();
   }
 }
@@ -607,7 +614,20 @@ stack_depth_indent()
   }
 }
 
-static
+void
+dump_lenv (object * env, int depth)
+{
+  int elen = GET_TUPLE_LENGTH (env);
+  fprintf (stderr, "env {\n");
+  for (int i=0; i < (elen - 1); i++) {
+    dump_object (env[2+i], depth + 1);
+  }
+  if (env[1] != IRK_NIL) {
+    dump_lenv (env[1], depth + 1);
+  }
+  fprintf (stderr, "}\n");
+}
+
 object *
 varref (irk_int depth, irk_int index) {
   object * lenv0 = lenv;
@@ -617,7 +637,6 @@ varref (irk_int depth, irk_int index) {
   return (object*)lenv0[index+2];
 }
 
-static
 void
 varset (irk_int depth, irk_int index, object * val) {
   object * lenv0 = lenv;
@@ -676,6 +695,13 @@ make_vector (irk_int size, object * val)
     return v;
   }
 }
+
+// these 'foreign' functions manage pointers to external/C pointer data.
+// they are boxed with the tag TC_FOREIGN.
+// two flavors:
+//
+//  1) a raw external pointer
+//  2) a TC_BUFFER object plus an offset.
 
 object *
 make_foreign (void * ptr)
@@ -886,6 +912,17 @@ void T (irk_int n)
   fprintf (stderr, "[%" PRIdPTR "]", n);
 }
 
+// this is called by the arm64 backend.
+// ideally, we'd like to actually have this raise an exception. TBD.
+// we'll need a saved continuation that we can invoke, that will raise
+// an exception for us.
+void
+out_of_range_exception (irk_int index, irk_int size)
+{
+  fprintf (stderr, "vector reference out of range: size=%ld index=%ld\n", size, index);
+  abort();
+}
+
 static uint64_t program_start_time;
 static uint64_t program_end_time;
 void prof_dump (void);
@@ -1011,21 +1048,19 @@ object *
 irk_copy_tuple (object * ob)
 {
   if (is_immediate (ob)) {
+    // XXX FIXME this check needed by the VM.
     return ob;
   } else {
     header h = (header) (ob[0]);
     int tag  = h & TAGMASK;
     irk_int len = GET_TUPLE_LENGTH (ob[0]);
-    //DO(ob);
     object * r = allocate (tag, len);
     for (int i=0; i < len; i++) {
-      // r[i+1] = copy(&ob[i+1]);
       r[i+1] = ob[i+1];
     }
     return r;
   }
 }
-
 
 object *
 irk_make_argv()
@@ -1052,6 +1087,18 @@ irk_make_string (object * len)
   irk_string * r = (irk_string*) alloc_no_clear (TC_STRING, string_tuple_length (len0));
   r->len = len0;
   return (object *) r;
+}
+
+object *
+irk_buffer_copy (object * src, object * sstart, object * n, object * dst, object * dstart)
+{
+  void * src0 = GET_STRING_POINTER (src);
+  irk_int sstart0 = unbox (sstart);
+  irk_int n0 = unbox (n);
+  void * dst0 = GET_STRING_POINTER (dst);
+  irk_int dstart0 = unbox (dstart);
+  memcpy (dst0 + dstart0, src0 + sstart0, n0);
+  return (object *) IRK_UNDEFINED;
 }
 
 object *
@@ -1146,7 +1193,8 @@ p_hash (uint32_t d, int k0, int k1)
   return d % irk_ambig_size;
 }
 
-static int lookup_field (int tag, int label)
+static
+int lookup_field (int tag, int label)
 {
   int32_t d = G[p_hash(0x01000193, tag, label)];
   if (d < 0) {
@@ -1157,7 +1205,6 @@ static int lookup_field (int tag, int label)
 }
 
 // replacement for backend.scm:hash2 & hash-item on 32-bit platforms.
-static
 uint32_t
 hash_item (uint32_t d, uint32_t k0, uint32_t k1, uint32_t size)
 {
@@ -1201,5 +1248,5 @@ main (int argc, char * argv[])
 #define IRK_RETURN(d) ((kfun)(k[3]))(r##d);
 #define O object *
 
-// With the C backend, generated code follow this point.
-// With the LLVM backend, this file is linked with the generated code.
+// With the C backend, generated code follows this point.
+// With the other backends/vm, this file is linked in.

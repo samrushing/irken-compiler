@@ -73,7 +73,7 @@ do_gc (int nroots)
       scan++;
     } else {
       object * p = scan + 1;
-      unsigned char tc = GET_TYPECODE (*scan);
+      uint16_t tc = GET_TYPECODE (*scan);
       irk_int length = GET_TUPLE_LENGTH (*scan);
       irk_int i;
 
@@ -104,16 +104,6 @@ do_gc (int nroots)
 	scan += length + 1;
 	break;
 
-      case TC_FOREIGN:
-        if (length == 1) {
-          scan += 2;
-        } else {
-          *p = copy (p); p++;
-          *p = copy (p); p++;
-          scan += 3;
-        }
-        break;
-
       default:
         // copy everything
         for (i=0; i < length; i++) {
@@ -142,7 +132,6 @@ do_gc (int nroots)
   return (object) box (freep - heap0);
 }
 
-static
 object
 gc_flip (int nregs)
 {
@@ -260,7 +249,7 @@ gc_relocate (int nroots, object * start, object * finish, irk_int delta)
 }
 
 // these could probably be written in irken...
-static irk_int
+irk_int
 dump_image (char * filename, object * closure) {
   FILE * dump_file = fopen (filename, "wb");
   irk_int offset;
@@ -281,7 +270,6 @@ dump_image (char * filename, object * closure) {
   return size;
 }
 
-static
 object *
 load_image (char * filename) {
   FILE * load_file = fopen (filename, "rb");

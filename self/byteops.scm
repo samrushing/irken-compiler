@@ -112,6 +112,7 @@
     (OI 'errno   1      #f     #t)   ;; target
     (OI 'meta    1      #f     #t)   ;; target
     (OI 'hash    5      #f     #t)   ;; target d k0 k1 size
+    (OI 'plat    1      #f     #t)   ;; target
     ;;  name   nargs varargs target? args
     ))
 

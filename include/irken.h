@@ -12,7 +12,11 @@
 typedef intptr_t irk_int;
 typedef void * object;
 
+#if defined(IRK_HEAP_SIZE)
+const size_t heap_size = IRK_HEAP_SIZE;
+#else
 const size_t heap_size = 50000000; // about 400MB on 64-bit machine
+#endif
 const size_t head_room = 8192;
 
 object * heap0 = NULL;
@@ -89,7 +93,7 @@ object * heap1 = NULL;
 #define HOW_MANY(x,n)		(((x)+(n)-1)/(n))
 #define STRING_TUPLE_LENGTH(n)  HOW_MANY (n + sizeof(int32_t), sizeof(object))
 #define STRING_HEADER(n)        STRING_TUPLE_LENGTH(n)<<TAGSIZE|TC_STRING
-#define SYMBOL_HEADER           ((1<<TAGSIZE)|TC_SYMBOL)
+#define SYMBOL_HEADER           ((2<<TAGSIZE)|TC_SYMBOL)
 #define CONS_HEADER             ((2<<TAGSIZE)|TC_PAIR)
 
 // these make the C output more compact & readable

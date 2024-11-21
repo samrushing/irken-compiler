@@ -271,10 +271,9 @@ typedef int32_t bytecode_t;
 static irk_int bytecode_len;
 static bytecode_t * bytecode;
 
-// NOTE: because we are using computed gotos in the main VM loop,
-//  any opcode that is out of range causes a segfault.  here we
-//  scan the bytecode here to ensure that all are in range before
-//  execution.
+// NOTE: because we are using computed gotos in the main VM loop, any
+//  opcode that is out of range causes a segfault.  here we scan the
+//  bytecode to ensure that all are in range before execution.
 
 static
 irk_int
@@ -691,7 +690,7 @@ vm_do_ffi (object * vm_regs, irk_int pc, int nfixed, irk_int nargs, object * res
         }
         return 0;
       } else {
-        fprintf (stderr, "ffi: null function address\n");
+        fprintf (stderr, "ffi: null function address: %p\n", get_foreign (vm_regs[bytecode[pc0+2]]));
         return -1;
       }
     } else {
@@ -883,7 +882,7 @@ vm_go (void)
     &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
     &&l_dlopen, &&l_dlsym0, &&l_dlsym, &&l_csize, &&l_cref2int, &&l_int2cref,
-    &&l_ob2int, &&l_obptr2int, &&l_errno, &&l_meta, &&l_hash
+    &&l_ob2int, &&l_obptr2int, &&l_errno, &&l_meta, &&l_hash, &&l_plat
   };
 
   assert ((sizeof (dispatch_table) / sizeof (void *)) == (sizeof (irk_opcodes) / sizeof (opcode_info_t)));
@@ -899,7 +898,7 @@ vm_go (void)
 
 
   //#define DISPATCH() DEBUG_DISPATCH()
-#define DISPATCH() NORMAL_DISPATCH()
+  #define DISPATCH() NORMAL_DISPATCH()
 
   // print_regs ((object*)vm_regs, 10);
   // print_stack (vm_k);
@@ -1477,11 +1476,13 @@ vm_go (void)
     irk_int sindex = BC2;
     irk_int nelem = UNTAG_INTEGER (REG3);
     irk_int sizeoff = get_sizeoff_entry (sindex);
+    fprintf (stderr, "sizeoff index = %ld value = %ld\n", sindex, sizeoff);
     result = (object*) malloc (sizeoff * nelem);
     if (!result) {
       fprintf (stderr, "malloc failed.\n");
       return TAG_INTEGER ((unsigned)-1);
     } else {
+      fprintf (stderr, "malloc(%ld) => %p\n", (sizeoff*nelem), result);
       REG1 = make_foreign (result);
       pc += 4;
       DISPATCH();
@@ -1522,6 +1523,10 @@ vm_go (void)
   }
  l_free: {
     // FREE src
+    object * foreign = REG1;
+    if (GET_TUPLE_LENGTH (*foreign) == 1) {
+      fprintf (stderr, "free %p\n", (void*) foreign[1]);
+    }
     free_foreign (REG1);
     pc += 2;
     DISPATCH();
@@ -1620,6 +1625,21 @@ vm_go (void)
         UNTAG_INTEGER (REG4), UNTAG_INTEGER (REG5)
       ));
     pc += 6;
+    DISPATCH();
+  }
+ l_plat: {
+    // PLAT target
+    struct utsname U;
+    char * result = "unknown";
+    if (0 == uname (&U)) {
+      result = U.sysname;
+    }
+    irk_int slen = strlen (result);
+    irk_string * dst = (irk_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
+    dst->len = slen;
+    memcpy (GET_STRING_POINTER (dst), result, slen);
+    REG1 = (object*) dst;
+    pc += 2;
     DISPATCH();
   }
 }
