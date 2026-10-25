@@ -1,3 +1,21 @@
+# compiled executables: extensionless files next to their sources
+/demo/**
+!/demo/**/
+!/demo/**/*.*
+/tests/**
+!/tests/**/
+!/tests/**/*.*
+/self/**
+!/self/**/
+!/self/**/*.*
+/vm/**
+!/vm/**/
+!/vm/**/*.*
+/ffi/**
+!/ffi/**/
+!/ffi/**/*.*
+
+
 self/compile.c
 self/compile.ll
 self/compile.byc
@@ -14,8 +32,44 @@ tests/*.byc
 /self/.tramp_history
 /vm/irkvm
 /vm/irkc
-ffi/*_iface.c
+ffi/*_iface*.c
 *~
 .tramp_history
 .DS_Store
 irken.elc
+
+# --- build outputs ---
+# generated assembly (the hand-written preambles are source)
+*.s
+!include/*-preamble.s
+*.ll
+*.byc
+*.tmp.c
+*.ssa
+*.o
+*.dylib
+a.out
+__pycache__/
+*.pyc
+util/tmp*.ll
+
+# C emitted by the backends and the ffi generator
+self/irk*.c
+ffi/gen/genffi.c
+ffi/tests/*.c
+doom/test/*.c
+
+# symlinks used to select the active compiler driver
+self/irken.scm
+self/amdamd.scm
+
+# private keys and certificates: never commit
+/cert/
+demo/h2/*.pem
+demo/h2/*.epm
+doom/ssh/id_*
+
+# scratch: C experiments at the top level, emacs autosaves
+/*.c
+/scratch/
+\#*#
