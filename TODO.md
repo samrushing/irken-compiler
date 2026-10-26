@@ -45,6 +45,14 @@ issues remaining:
 * maybe make an irkenb that's similar to genffi in that it carefully avoids all FFI
 * find a way to put c-call args into the right registers directly
 * and/or do cycle decomposition to permute the registers
+* source positions in the asm output: CPS insns don't carry source info
+  yet (nodes do), so thread it through the cps continuations, then emit
+  `// file.scm:line` comments and eventually `.file`/`.loc` directives so
+  lldb/gdb/addr2line can map a pc back to Irken source.
+* per-function metadata (e.g. for a more complex/generational gc)
+  alongside the existing function symbols.
+* riscv64: save/restore caller-saved irken registers around runtime
+  calls, as amd64/arm64 now do.
 
 platforms to test
 =================
