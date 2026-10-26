@@ -840,6 +840,22 @@
          ('movq retval (n trg))
          )))
 
+    (define (emit-c-get-ptr src trg free)
+      (AMD
+       (com "%c-get-ptr")
+       ('movq (n src) (c 0))
+       @ (callq-with-save-restore "irk_c_get_ptr" free)
+       ('movq retval (n trg))
+       ))
+
+    (define (emit-c-set-ptr dst src free)
+      (AMD
+       (com "%c-set-ptr")
+       ('movq (n dst) (c 0))
+       ('movq (n src) (c 1))
+       @ (callq-with-save-restore "irk_c_set_ptr" free)
+       ))
+
     (define (emit-free ref)
       (AMD
        (com "%free")
@@ -878,6 +894,8 @@
         '%c-get-int _    (src)                             -> (emit-c-get-int type src k.target)
         '%cref->string _ (src len)                         -> (emit-cref->string src len k.target)
         '%c-sref refexp (src)                              -> (emit-sref refexp src k.target)
+        '%c-get-ptr _    (src)                             -> (emit-c-get-ptr src k.target k.free)
+        '%c-set-ptr _    (dst src)                         -> (emit-c-set-ptr dst src k.free)
         '%free _ (ref)                                     -> (emit-free ref)
         '%c-sizeof ctexp ()                                -> (emit-c-sizeof ctexp k.target)
 

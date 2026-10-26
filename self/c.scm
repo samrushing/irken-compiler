@@ -749,7 +749,7 @@
           -> (begin
                (o.write (format "// %c-set-ptr"))
                (o.write (format "*((void**)get_foreign (r" (int dst) ")) = get_foreign (r" (int src) ");"))
-               (when (> k.target 0)
+               (when (>= k.target 0)
                  (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error)
           )

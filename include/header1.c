@@ -744,6 +744,21 @@ get_foreign (object * ob)
   }
 }
 
+// %c-get-ptr / %c-set-ptr for the native backends: read or write a
+//   pointer stored at a foreign address.  get-ptr allocates (the result
+//   is a new TC_FOREIGN), so callers must save/restore freep.
+object *
+irk_c_get_ptr (object * src)
+{
+  return make_foreign (*((void **) get_foreign (src)));
+}
+
+void
+irk_c_set_ptr (object * dst, object * src)
+{
+  *((void **) get_foreign (dst)) = get_foreign (src);
+}
+
 object *
 offset_foreign (object * foreign, irk_int offset)
 {

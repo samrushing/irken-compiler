@@ -771,6 +771,23 @@
          ('mov (n trg) (c 0))
          ('ldr_addr freep (g "freep")))))
 
+    ;; %c-get-ptr allocates a new foreign, so we must save/restore freep.
+    (define (emit-c-get-ptr src trg)
+      (ARM
+       (com "%c-get-ptr")
+       ('str_addr (s 0) freep (g "freep"))
+       ('mov (c 0) (n src))
+       ('bl (g "irk_c_get_ptr"))
+       ('mov (n trg) (c 0))
+       ('ldr_addr freep (g "freep"))))
+
+    (define (emit-c-set-ptr dst src)
+      (ARM
+       (com "%c-set-ptr")
+       ('mov (c 0) (n dst))
+       ('mov (c 1) (n src))
+       ('bl (g "irk_c_set_ptr"))))
+
     (define (emit-free ref)
       (ARM
        (com "%free")
@@ -808,6 +825,8 @@
         '%c-get-int _    (src)                             -> (emit-c-get-int type src k.target)
         '%cref->string _ (src len)                         -> (emit-cref->string src len k.target)
         '%c-sref refexp (src)                              -> (emit-sref refexp src k.target)
+        '%c-get-ptr _    (src)                             -> (emit-c-get-ptr src k.target)
+        '%c-set-ptr _    (dst src)                         -> (emit-c-set-ptr dst src)
         '%free _ (ref)                                     -> (emit-free ref)
         '%c-sizeof ctexp ()                                -> (emit-c-sizeof ctexp k.target)
 

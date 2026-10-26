@@ -19,4 +19,11 @@
       (push! r (c-get-int (c-aref int5* i))))
     (assert (eq? (cmp:=) (list-cmp int-cmp r '(16 9 4 1 0))))
     )
+  ;; read the same values back through the pointer array.
+  (let ((r '()))
+    (for-range i 5
+      (push! r (c-get-int (c-get-ptr (c-aref int5** i)))))
+    (assert (eq? (cmp:=) (list-cmp int-cmp r '(16 9 4 1 0))))
+    )
+  (printf "ok\n")
   )
