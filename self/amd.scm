@@ -506,7 +506,7 @@
     (define (ambig code)
       (tree/insert! the-context.ambig-rec int-cmp code #u))
 
-    (define (emit-record-get label sig rec trg)
+    (define (emit-record-get label sig rec trg free)
       (let ((label-code (lookup-label-code label)))
         (match (guess-record-type sig) with
           (maybe:yes sig0)
@@ -520,12 +520,12 @@
                 (com "ambig %record-get " (sym label) " code " (int label-code))
                 ('movq (n rec) (c 0))
                 ('movq (i label-code) (c 1))
-                ('callq (g "record_fetch"))
+                @ (callq-with-save-restore "record_fetch" free)
                 ('movq rax (n trg))
                 ))
           )))
 
-    (define (emit-record-set label sig rec val)
+    (define (emit-record-set label sig rec val free)
       (let ((label-code (lookup-label-code label)))
         (match (guess-record-type sig) with
           (maybe:yes sig0)
@@ -540,7 +540,7 @@
                 ('mov (n rec) (c 0))
                 ('mov (i label-code) (c 1))
                 ('mov (n val) (c 2))
-                ('callq (g "record_store"))
+                @ (callq-with-save-restore "record_store" free)
                 ))
           )))
 
@@ -753,7 +753,7 @@
        ('make_foreign (n src) (s 0))
        ('movq (s 0) (n target))))
 
-    (define (emit-c-aref type src index target)
+    (define (emit-c-aref type src index target free)
       (let ((ctype (irken-type->ctype (un-cref type)))
             (size (ctype->size ctype)))
         (AMD
@@ -762,11 +762,11 @@
          ('movq (n src) (c 0))
          ('movq (n index) (c 1))
          @ (if (> size 1) (AMD ('imulq (i size) (c 1))) (AMD))
-         ('callq (g "offset_foreign"))
+         @ (callq-with-save-restore "offset_foreign" free)
          ('mov retval (n target))
          )))
 
-    (define (emit-halloc-malloc type count target fun-name)
+    (define (emit-halloc-malloc type count target fun-name free)
       (let ((ctype (parse-ctype type))
             (size (ctype->size ctype)))
         (if (< target 0)
@@ -775,24 +775,25 @@
              ('untag (n count))
              ('movq (i size) (c 0))
              ('movq (n count) (c 1))
-             ('callq (g fun-name))
+             @ (callq-with-save-restore fun-name free)
              ('movq retval (n target))))))
 
-    (define (emit-halloc type count target)
-      (emit-halloc-malloc type count target "make_halloc"))
+    (define (emit-halloc type count target free)
+      (emit-halloc-malloc type count target "make_halloc" free))
 
-    (define (emit-malloc type count target)
-      (emit-halloc-malloc type count target "make_malloc"))
+    (define (emit-malloc type count target free)
+      (emit-halloc-malloc type count target "make_malloc" free))
 
     ;; note: this relies on a hack in cps.scm that sets the type of this insn to the type of the rval.
-    (define (emit-c-set-int type dst src)
+    (define (emit-c-set-int type dst src free)
       (let ((ctype (irken-type->ctype type))
             (size (ctype->size ctype)))
         ;; set target? e.g (let ((_ (set! thing...))))
         (AMD
          (com "c-set-int " (type-repr type))
          ('movq (n dst) (c 0))
-         ('callq (g "get_foreign"))
+         ;; src is read after the call, so it must survive it too.
+         @ (callq-with-save-restore "get_foreign" (list:cons src free))
          ('untag (n src))
          @ (match size with
              1 -> (AMD ('movb (B (n src)) (ind (s 0))))
@@ -803,13 +804,13 @@
              )
            )))
 
-    (define (emit-c-get-int type src trg)
+    (define (emit-c-get-int type src trg free)
       (let ((ctype (irken-type->ctype type))
             (size (ctype->size ctype)))
         (AMD
          (com "c-get-int " (type-repr type))
          ('movq (n src) (c 0))
-         ('callq (g "get_foreign"))
+         @ (callq-with-save-restore "get_foreign" free)
          ('zero (s 1))
          @ (match size with
              1 -> (AMD ('movb (ind (s 0)) (B (s 1))))
@@ -822,21 +823,21 @@
           ('tag (n trg))
          )))
 
-    (define (emit-cref->string src len trg)
+    (define (emit-cref->string src len trg free)
       (AMD
        (com "%cref->string")
        ('movq (n src) (c 0))
        ('movq (n len) (c 1))
-       ('callq (g "irk_cref_2_string"))
+       @ (callq-with-save-restore "irk_cref_2_string" free)
        ('movq retval (n trg))))
 
-    (define (emit-sref refexp src trg)
+    (define (emit-sref refexp src trg free)
       (let ((ref0 (sexp->ref refexp)))
         (AMD
          (com "%c-sref")
          ('movq (n src) (c 0))
          ('movq (i ref0.off) (c 1))
-         ('callq (g "offset_foreign"))
+         @ (callq-with-save-restore "offset_foreign" free)
          ('movq retval (n trg))
          )))
 
@@ -856,11 +857,11 @@
        @ (callq-with-save-restore "irk_c_set_ptr" free)
        ))
 
-    (define (emit-free ref)
+    (define (emit-free ref free)
       (AMD
        (com "%free")
        ('movq (n ref) (c 0))
-       ('callq (g "free_foreign"))))
+       @ (callq-with-save-restore "free_foreign" free)))
 
     (define (emit-c-sizeof ctexp trg)
       (let ((ctype (parse-ctype ctexp)))
@@ -887,23 +888,23 @@
         '%string->cref _     (s)                           -> (emit-string->cref s k.target)
         '%cref->int    _   (src)                           -> (emit-cref->int src k.target)
         '%int->cref    _   (src)                           -> (emit-int->cref src k.target)
-        '%c-aref _ (ref index)                             -> (emit-c-aref type ref index k.target)
-        '%halloc type (count)                              -> (emit-halloc type count k.target)
-        '%malloc type (count)                              -> (emit-malloc type count k.target)
-        '%c-set-int _    (dst src)                         -> (emit-c-set-int type dst src)
-        '%c-get-int _    (src)                             -> (emit-c-get-int type src k.target)
-        '%cref->string _ (src len)                         -> (emit-cref->string src len k.target)
-        '%c-sref refexp (src)                              -> (emit-sref refexp src k.target)
+        '%c-aref _ (ref index)                             -> (emit-c-aref type ref index k.target k.free)
+        '%halloc type (count)                              -> (emit-halloc type count k.target k.free)
+        '%malloc type (count)                              -> (emit-malloc type count k.target k.free)
+        '%c-set-int _    (dst src)                         -> (emit-c-set-int type dst src k.free)
+        '%c-get-int _    (src)                             -> (emit-c-get-int type src k.target k.free)
+        '%cref->string _ (src len)                         -> (emit-cref->string src len k.target k.free)
+        '%c-sref refexp (src)                              -> (emit-sref refexp src k.target k.free)
         '%c-get-ptr _    (src)                             -> (emit-c-get-ptr src k.target k.free)
         '%c-set-ptr _    (dst src)                         -> (emit-c-set-ptr dst src k.free)
-        '%free _ (ref)                                     -> (emit-free ref)
+        '%free _ (ref)                                     -> (emit-free ref k.free)
         '%c-sizeof ctexp ()                                -> (emit-c-sizeof ctexp k.target)
 
 	'%record-get (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec)
-        -> (emit-record-get label sig rec k.target)
+        -> (emit-record-get label sig rec k.target k.free)
 
         '%record-set (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec val)
-        -> (emit-record-set label sig rec val)
+        -> (emit-record-set label sig rec val k.free)
 
         '%asm-c-call (sexp:list ((sexp:string name) sig)) args
         -> (emit-c-call (parse-type sig) name args k.target k.free #t)
@@ -1308,19 +1309,34 @@
 
     ;; kludge: maps to r11, r10, r9, r8
     (define caller-saves-set '(4 5 6 7))
+    ;; call a C function, preserving any irken registers in `free` that
+    ;;   live in caller-saved machine registers.  `free` should include
+    ;;   any register the insn itself still reads after the call.
+    ;; %rsp is 16-byte aligned in irken code (see the prologue in
+    ;;   compile-to-amd), and the ABI requires that at the call, so an odd
+    ;;   number of pushes gets an extra 8 bytes of padding.
     (define (callq-with-save-restore name free)
       (let ((pushes '())
-            (pops '()))
+            (pops '())
+            (saved '()))
         (for-list reg free
-          (if (member-eq? reg caller-saves-set)
-              (begin
-                (push! pushes (AMDINSN 'pushq (n reg)))
-                (push! pops (AMDINSN 'popq (n reg))))))
+          (when (and (member-eq? reg caller-saves-set)
+                     (not (member-eq? reg saved)))
+            (push! saved reg)
+            (push! pushes (AMDINSN 'pushq (n reg)))
+            (push! pops (AMDINSN 'popq (n reg)))))
         (set! pops (reverse pops))
-        (AMD
-         @ pushes
-         ('callq (g name))
-         @ pops)))
+        (if (odd? (length saved))
+            (AMD
+             ('subq (i 8) rsp)
+             @ pushes
+             ('callq (g name))
+             @ pops
+             ('addq (i 8) rsp))
+            (AMD
+             @ pushes
+             ('callq (g name))
+             @ pops))))
 
     (define (emit-copy-lit index target free)
       (AMD

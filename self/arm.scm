@@ -470,7 +470,7 @@
     (define (ambig code)
       (tree/insert! the-context.ambig-rec int-cmp code #u))
 
-    (define (emit-record-get label sig rec trg)
+    (define (emit-record-get label sig rec trg free)
       (let ((label-code (lookup-label-code label)))
 	(match (guess-record-type sig) with
 	  (maybe:yes sig0)
@@ -485,12 +485,12 @@
                 (com "ambig %record-get " (sym label) " code " (int label-code))
                 ('mov (c 0) (n rec))
                 ('mov (c 1) (i label-code))
-                ('bl (g "record_fetch"))
+                @ (bl-with-save-restore "record_fetch" free)
                 ('mov (n trg) (c 0))
                 ))
           )))
 
-    (define (emit-record-set label sig rec val)
+    (define (emit-record-set label sig rec val free)
       (let ((label-code (lookup-label-code label)))
 	(match (guess-record-type sig) with
 	  (maybe:yes sig0)
@@ -506,7 +506,7 @@
                 ('mov (c 0) (n rec))
                 ('mov (c 1) (i label-code))
                 ('mov (c 2) (n val))
-                ('bl (g "record_store"))
+                @ (bl-with-save-restore "record_store" free)
                 ))
           )))
 
@@ -565,7 +565,46 @@
         -> (frob-retval other)
         ))
 
-    (define (emit-c-call sig name args target convert?)
+    ;; irken registers that live in caller-saved machine registers
+    ;;  (x5-x17), which any C function may clobber.
+    (define caller-saves-set
+      (let ((r '()))
+        (for-range i (vector-length arm-register-file)
+          (when (< arm-register-file[i] 19)
+            (push! r i)))
+        r))
+
+    ;; code to save/restore the registers in `free` that a C call may
+    ;;   clobber, as (:tuple saves restores).  `free` should include any
+    ;;   register the insn itself still reads after the call.  sp must
+    ;;   stay 16-byte aligned, so the save area is rounded up.
+    (define (save-restore free)
+      (let ((regs '()))
+        (for-list reg free
+          (when (and (member-eq? reg caller-saves-set)
+                     (not (member-eq? reg regs)))
+            (push! regs reg)))
+        (let ((nregs (length regs))
+              (nbytes (* 8 (+ nregs (logand nregs 1)))))
+          (if (= nregs 0)
+              (:tuple (list:nil) (list:nil))
+              (:tuple
+               (ARM
+                (com "save caller-saved: [" (join int->string ", " regs) "]")
+                ('sub sp sp (i nbytes))
+                @ (map-range i nregs (ARMINSN 'str (n (nth regs i)) (ind sp (i (* 8 i))))))
+               (ARM
+                @ (map-range i nregs (ARMINSN 'ldr (n (nth regs i)) (ind sp (i (* 8 i)))))
+                ('add sp sp (i nbytes))))))))
+
+    (define (bl-with-save-restore name free)
+      (let (((saves restores) (save-restore free)))
+        (ARM
+         @ saves
+         ('bl (g name))
+         @ restores)))
+
+    (define (emit-c-call sig name args target free convert?)
       (let ((nargs (length args)))
         (when (> nargs 5)
           (printf "emit-c-call " name " args " (join int->string "," args) "\n"))
@@ -576,7 +615,7 @@
          ;; possibly convert some of those args (irken->c)
          @ (if convert? (frob-inputs sig nargs) (list:nil))
          ;; call the function
-         ('bl (g name))
+         @ (bl-with-save-restore name free)
          @ (if (= target -1)
                (list:nil)
                (ARM
@@ -672,7 +711,7 @@
        ('mov (n target) (n src))
        ('tag (n target))))
 
-    (define (emit-c-aref type src index target)
+    (define (emit-c-aref type src index target free)
       (let ((ctype (irken-type->ctype (un-cref type)))
             (size (ctype->size ctype)))
         ;; note: this allocates, so we must save/restore freep.
@@ -682,12 +721,12 @@
          ('mov (c 0) (n src))
          ('mov (c 1) (i size))
          ('mul (c 1) (c 1) (n index))
-         ('bl (g "offset_foreign"))
+         @ (bl-with-save-restore "offset_foreign" free)
          ('mov (n target) (c 0))
          ('ldr_addr freep (g "freep"))
          )))
 
-    (define (emit-halloc-malloc type count target fun-name)
+    (define (emit-halloc-malloc type count target fun-name free)
       (let ((ctype (parse-ctype type))
             (size (ctype->size ctype)))
         (if (< target 0)
@@ -697,15 +736,15 @@
              ('untag (n count))
              ('mov (c 0) (i size))
              ('mov (c 1) (n count))
-             ('bl (g fun-name))
+             @ (bl-with-save-restore fun-name free)
              ('ldr_addr freep (g "freep"))
              ('mov (n target) (c 0))))))
 
-    (define (emit-halloc type count target)
-      (emit-halloc-malloc type count target "make_halloc"))
+    (define (emit-halloc type count target free)
+      (emit-halloc-malloc type count target "make_halloc" free))
 
-    (define (emit-malloc type count target)
-      (emit-halloc-malloc type count target "make_malloc"))
+    (define (emit-malloc type count target free)
+      (emit-halloc-malloc type count target "make_malloc" free))
 
     ;; the syntax for load/store changes depending on data size.
     (define (str-by-size size dst src)
@@ -718,14 +757,15 @@
         ))
 
     ;; note: this relies on a hack in cps.scm that sets the type of this insn to the type of the rval.
-    (define (emit-c-set-int type dst src)
+    (define (emit-c-set-int type dst src free)
       (let ((ctype (irken-type->ctype type))
             (size (ctype->size ctype)))
         ;; set target? e.g (let ((_ (set! thing...))))
         (ARM
          (com "c-set-int " (type-repr type))
          ('mov (c 0) (n dst))
-         ('bl (g "get_foreign"))
+         ;; src is read after the call, so it must survive it too.
+         @ (bl-with-save-restore "get_foreign" (list:cons src free))
          ('untag (n src))
          @ (str-by-size size (Rcarg 0) src)
          )))
@@ -739,60 +779,60 @@
         x -> (error (format "ldr-by-size - bad size: " (int x)))
         ))
 
-    (define (emit-c-get-int type src trg)
+    (define (emit-c-get-int type src trg free)
       (let ((ctype (irken-type->ctype type))
             (size (ctype->size ctype)))
         (ARM
          (com "c-get-int " (type-repr type))
          ('mov (c 0) (n src))
-         ('bl (g "get_foreign"))
+         @ (bl-with-save-restore "get_foreign" free)
          @ (ldr-by-size size (Rcarg 0) trg)
          ('tag (n trg))
          )))
 
-    (define (emit-cref->string src len trg)
+    (define (emit-cref->string src len trg free)
       (ARM
        (com "%cref->string")
        ('str_addr (s 0) freep (g "freep"))
        ('mov (c 0) (n src))
        ('mov (c 1) (n len))
-       ('bl (g "irk_cref_2_string"))
+       @ (bl-with-save-restore "irk_cref_2_string" free)
        ('mov (n trg) (c 0))
        ('ldr_addr freep (g "freep"))))
 
-    (define (emit-sref refexp src trg)
+    (define (emit-sref refexp src trg free)
       (let ((ref0 (sexp->ref refexp)))
         (ARM
          (com "%c-sref")
          ('str_addr (s 0) freep (g "freep"))
          ('mov (c 0) (n src))
          ('mov (c 1) (i ref0.off))
-         ('bl (g "offset_foreign"))
+         @ (bl-with-save-restore "offset_foreign" free)
          ('mov (n trg) (c 0))
          ('ldr_addr freep (g "freep")))))
 
     ;; %c-get-ptr allocates a new foreign, so we must save/restore freep.
-    (define (emit-c-get-ptr src trg)
+    (define (emit-c-get-ptr src trg free)
       (ARM
        (com "%c-get-ptr")
        ('str_addr (s 0) freep (g "freep"))
        ('mov (c 0) (n src))
-       ('bl (g "irk_c_get_ptr"))
+       @ (bl-with-save-restore "irk_c_get_ptr" free)
        ('mov (n trg) (c 0))
        ('ldr_addr freep (g "freep"))))
 
-    (define (emit-c-set-ptr dst src)
+    (define (emit-c-set-ptr dst src free)
       (ARM
        (com "%c-set-ptr")
        ('mov (c 0) (n dst))
        ('mov (c 1) (n src))
-       ('bl (g "irk_c_set_ptr"))))
+       @ (bl-with-save-restore "irk_c_set_ptr" free)))
 
-    (define (emit-free ref)
+    (define (emit-free ref free)
       (ARM
        (com "%free")
        ('mov (c 0) (n ref))
-       ('bl (g "free_foreign"))))
+       @ (bl-with-save-restore "free_foreign" free)))
 
     (define (emit-c-sizeof ctexp trg)
       (let ((ctype (parse-ctype ctexp)))
@@ -818,29 +858,29 @@
         '%ensure-heap _ (size)                             -> (emit-ensure-heap size k.free)
         '%string->cref _     (s)                           -> (emit-string->cref s k.target)
         '%cref->int    _   (src)                           -> (emit-cref->int src k.target)
-        '%c-aref _ (ref index)                             -> (emit-c-aref type ref index k.target)
-        '%halloc type (count)                              -> (emit-halloc type count k.target)
-        '%malloc type (count)                              -> (emit-malloc type count k.target)
-        '%c-set-int _    (dst src)                         -> (emit-c-set-int type dst src)
-        '%c-get-int _    (src)                             -> (emit-c-get-int type src k.target)
-        '%cref->string _ (src len)                         -> (emit-cref->string src len k.target)
-        '%c-sref refexp (src)                              -> (emit-sref refexp src k.target)
-        '%c-get-ptr _    (src)                             -> (emit-c-get-ptr src k.target)
-        '%c-set-ptr _    (dst src)                         -> (emit-c-set-ptr dst src)
-        '%free _ (ref)                                     -> (emit-free ref)
+        '%c-aref _ (ref index)                             -> (emit-c-aref type ref index k.target k.free)
+        '%halloc type (count)                              -> (emit-halloc type count k.target k.free)
+        '%malloc type (count)                              -> (emit-malloc type count k.target k.free)
+        '%c-set-int _    (dst src)                         -> (emit-c-set-int type dst src k.free)
+        '%c-get-int _    (src)                             -> (emit-c-get-int type src k.target k.free)
+        '%cref->string _ (src len)                         -> (emit-cref->string src len k.target k.free)
+        '%c-sref refexp (src)                              -> (emit-sref refexp src k.target k.free)
+        '%c-get-ptr _    (src)                             -> (emit-c-get-ptr src k.target k.free)
+        '%c-set-ptr _    (dst src)                         -> (emit-c-set-ptr dst src k.free)
+        '%free _ (ref)                                     -> (emit-free ref k.free)
         '%c-sizeof ctexp ()                                -> (emit-c-sizeof ctexp k.target)
 
 	'%record-get (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec)
-        -> (emit-record-get label sig rec k.target)
+        -> (emit-record-get label sig rec k.target k.free)
 
         '%record-set (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec val)
-        -> (emit-record-set label sig rec val)
+        -> (emit-record-set label sig rec val k.free)
 
         '%asm-c-call (sexp:list ((sexp:string name) sig)) args
-        -> (emit-c-call (parse-type sig) name args k.target #t)
+        -> (emit-c-call (parse-type sig) name args k.target k.free #t)
 
         '%asm-c-call (sexp:list ((sexp:string name) sig (sexp:bool convert?))) args
-        -> (emit-c-call (parse-type sig) name args k.target convert?)
+        -> (emit-c-call (parse-type sig) name args k.target k.free convert?)
 
         _ _ _
         -> (begin
@@ -1218,17 +1258,18 @@
             _       -> (ARM ('ldr_addr (n target) (l (format "lit_" (int index))))))
           (list:nil)))
 
-    (define (emit-ffi-call name rtype argtypes args target)
+    (define (emit-ffi-call name rtype argtypes args target free)
       (let ((sig (arrow rtype argtypes)))
-        (emit-c-call sig (symbol->string name) args target #t)))
+        (emit-c-call sig (symbol->string name) args target free #t)))
 
     ;; NOTE this is specific to macos' treatment of variadic funs.
     ;; will need to be tweaked for other platforms.
-    (define (emit-variadic-ffi name nfixed rtype argtypes args target)
+    (define (emit-variadic-ffi name nfixed rtype argtypes args target free)
       (let ((nvar (- (length argtypes) nfixed))
             ;; round up stack adjustment to 16 bytes.
             (nstack (* 8 (if (odd? nvar) (+ nvar 1) nvar)))
             (sig (arrow rtype argtypes))
+            ((saves restores) (save-restore free))
             (varcode (list:nil)))
         ;; tasks:
         ;; 1) compute how much 16-bit-aligned extra stack we need.
@@ -1247,6 +1288,8 @@
             ('str (c 0) (ind sp (i (* i 8)))))))
         (ARM
          (com "variadic ffi:  nfixed " (int nfixed) " nvar " (int nvar) " stack adjust " (int nstack))
+         ;; the save area goes above the stacked varargs, which must be at sp.
+         @ saves
          ('sub sp sp (i nstack))
          @ (flatten (reverse varcode))
          ;; put fixed args into the proper registers
@@ -1259,9 +1302,10 @@
                 @ (frob-output sig)
                   ('mov (n target) retval)))
          ('add sp sp (i nstack))
+         @ restores
          )))
 
-    (define (emit-ffi csig rtype argtypes name args target)
+    (define (emit-ffi csig rtype argtypes name args target free)
       ;; rtype/argtypes are predicates, not s-expressions.
       ;; csig is a parsed ctype, and indicates the signature from the FFI data.
       ;; these should be 'identical' unless varargs.  so we really do need both.
@@ -1270,11 +1314,11 @@
         (csig:fun name frtype fargtypes #t) ;; varargs
         -> (if (eq? the-context.options.platform 'Darwin)
                ;; macos uses its own custom version of variadic args.
-               (emit-variadic-ffi name (length fargtypes) rtype argtypes args target)
+               (emit-variadic-ffi name (length fargtypes) rtype argtypes args target free)
                ;; other platforms will follow the standard ABI?
-               (emit-ffi-call name rtype argtypes args target))
+               (emit-ffi-call name rtype argtypes args target free))
         (csig:fun name frtype fargtypes #f)
-        -> (emit-ffi-call name rtype argtypes args target)
+        -> (emit-ffi-call name rtype argtypes args target free)
         (csig:obj name obtype)
         -> (begin
              (warning "ffi object reference NYI")
@@ -1310,7 +1354,7 @@
         (insn:nvcase tr dt tags jn alts ealt k)      -> (emit-nvcase tr dt tags jn alts ealt k)
         (insn:pvcase tr tags arities jn alts ealt k) -> (emit-pvcase tr tags arities jn alts ealt k)
         (insn:litcon i kind k)                       -> (emitk (emit-litcon i kind k.target k.free) k)
-        (insn:ffi sig type ats name args k)          -> (emitk (emit-ffi sig type ats name args k.target) k)
+        (insn:ffi sig type ats name args k)          -> (emitk (emit-ffi sig type ats name args k.target k.free) k)
 
          _ -> (begin
                 (print-insn insn)
