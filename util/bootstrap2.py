@@ -95,16 +95,20 @@ open ('self/flags.scm', 'w').write (
 (define CFLAGS "%s")
 """ % (gcc, cflags))
 
-# XXX copy to irkenb.byc?
-#print ('copying the bootstrap compiler')
-#copy ('self/bootstrap.byc', 'self/compile.byc')
-
 print ('building VM')
 # system ('make vm')
 exec(open('util/build_vm.py').read())
 
 print ('generating posix FFI...')
 system ('IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/posix.ffi')
+
+# irkenb.byc is not committed: build it from source with the
+#   bootstrap compiler.  IRKENLIB=. matters here: without it, the FFI
+#   interfaces come from any installed copy (/usr/local/lib/irken), and
+#   constants missing from this tree's interfaces (e.g. SIGINFO) end up
+#   in the bytecode.
+print ('compiling the bytecode compiler (with vm)...')
+system ('IRKENLIB=. vm/irkvm self/bootstrap.byc self/irkenb.scm -b -q')
 
 print ('compiling native compiler (with vm)...')
 system ('IRKENLIB=. vm/irkvm self/irkenb.byc self/irken.scm -q')
