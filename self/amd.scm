@@ -512,7 +512,10 @@
           (maybe:yes sig0)
           -> (AMD
               (com "%record-get " (int rec) "." (sym label))
-              ('movq (ind (* 8 (+ 1 (index-eq label sig0))) (n rec)) (n trg)))
+              ;; rec may live in the %rbp register file, and x86 can't
+              ;;   use a memory operand as a base, so go through scratch.
+              ('movq (n rec) (s 0))
+              ('movq (ind (* 8 (+ 1 (index-eq label sig0))) (s 0)) (n trg)))
           (maybe:no)
           -> (begin
                (ambig label-code)
@@ -531,7 +534,9 @@
           (maybe:yes sig0)
           -> (AMD
               (com "%record-set " (int rec) "." (sym label))
-              ('movq (n val) (ind (* 8 (+ 1 (index-eq label sig0))) (n rec))))
+              ;; see emit-record-get.
+              ('movq (n rec) (s 0))
+              ('movq (n val) (ind (* 8 (+ 1 (index-eq label sig0))) (s 0))))
           (maybe:no)
           -> (begin
                (ambig label-code)
@@ -677,18 +682,24 @@
          (map frob-amdinsn parsed))
         ))
 
+    ;; vec and index may live in the %rbp register file; a memory operand
+    ;;   can't be a base or index, so load both into scratch registers.
     (define (emit-array-ref vec index target)
       (AMD
-       ('untag (n index))
-       ('rangecheck (n vec) (n index))
-       ('leaq (ind 8 (n vec) (n index) 8) (s 0))
+       ('movq (n vec) (s 0))
+       ('movq (n index) (s 1))
+       ('untag (s 1))
+       ('rangecheck (s 0) (s 1))
+       ('leaq (ind 8 (s 0) (s 1) 8) (s 0))
        ('movq (ind (s 0)) (n target))))
 
     (define (emit-array-set vec index val)
       (AMD
-       ('untag (n index))
-       ('rangecheck (n vec) (n index))
-       ('leaq (ind 8 (n vec) (n index) 8) (s 0))
+       ('movq (n vec) (s 0))
+       ('movq (n index) (s 1))
+       ('untag (s 1))
+       ('rangecheck (s 0) (s 1))
+       ('leaq (ind 8 (s 0) (s 1) 8) (s 0))
        ('movq (n val) (ind (s 0)))))
 
     (define (emit-exit arg)
@@ -714,8 +725,10 @@
         (AMD
          (com "%ensure-heap: size in " (int size) " nfree = " (int nfree))
          ('movq (grel "limit") (s 0))
-         ('untag (n size))
-         ('leaq (ind 0 (s 0) (n size) 8) (s 0))
+         ;; size may live in the %rbp register file (see emit-array-ref).
+         ('movq (n size) (s 1))
+         ('untag (s 1))
+         ('leaq (ind 0 (s 0) (s 1) 8) (s 0))
          ('cmp freep (s 0))
          ('jge (l L0))
          ;; need to gc
