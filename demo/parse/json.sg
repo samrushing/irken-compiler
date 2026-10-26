@@ -18,7 +18,8 @@
                        ;; backslash + any character
                        (cat (lit "\\") (reg "."))))
                    (lit "\"")))
-  (NUMBER     (reg "\\-?[0-9]+")) ;; XXX floating-point.
+  (NUMBER     (reg "\\-?[0-9]+")) ;; integers; FLOAT has a fraction or exponent.
+  (FLOAT      (reg "\\-?[0-9]+((\\.[0-9]+)|((\\.[0-9]+)?[eE][\\-+]?[0-9]+))"))
   (TRUE       (lit "true"))
   (FALSE      (lit "false"))
   (NULL       (lit "null"))
@@ -37,5 +38,5 @@
   (pair   (STRING COLON value))
   (array  (LBRACKET values RBRACKET) (LBRACKET RBRACKET))
   (values (values COMMA value) value)
-  (value  obj array STRING NUMBER TRUE FALSE NULL)
+  (value  obj array STRING NUMBER FLOAT TRUE FALSE NULL)
   ))

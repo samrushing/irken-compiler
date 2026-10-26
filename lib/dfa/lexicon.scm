@@ -245,5 +245,7 @@
   (match exp with
     (sexp:list ((sexp:symbol 'lexicon _) . rest))
     -> (map sexp->lexeme rest)
+    (sexp:list ((sexp:symbol 'parser _) (sexp:list ((sexp:symbol 'lexicon _) . rest)) . _))
+    -> (map sexp->lexeme rest)
     exp -> (raise (:Lexicon/Error "sexp->lexicon" (repr exp)))
     ))
