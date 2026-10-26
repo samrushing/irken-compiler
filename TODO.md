@@ -53,6 +53,12 @@ issues remaining:
   alongside the existing function symbols.
 * riscv64: save/restore caller-saved irken registers around runtime
   calls, as amd64/arm64 now do.
+* dead allocations: an unused record result gets target -1 and the C
+  backend emits `r-1[3] = ...` (amd64 aborts with an out-of-range
+  index).  repro: (try (begin (file/open-read "/nonexistent") #u)
+  except (:OSError e) -> (printn e))
+* OSError carries only errno; including the syscall name and
+  strerror() would make failures much easier to read.
 
 platforms to test
 =================
