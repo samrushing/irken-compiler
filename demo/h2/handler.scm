@@ -154,7 +154,7 @@
   ;; XXX hack, tracking down possible gc bug.
   (define (^gc-flip) ;; marked to not be inlined
     (%%cexp (-> int) "gc_flip(0)")))
-(%backend arm
+(%backend (arm amd rv)
   (define (^gc-flip) ;; fake it til you make it
     0))
 
