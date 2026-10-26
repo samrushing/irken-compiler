@@ -102,6 +102,32 @@ exec(open('util/build_vm.py').read())
 print ('generating posix FFI...')
 system ('IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/posix.ffi')
 
+# The asm backends take struct sizes, field offsets and constants from
+#   ffi/*_ffi.scm (the C backend gets them from the real headers), so
+#   these must match the build machine.  The committed copies may come
+#   from another platform: e.g. macOS `struct kevent` is 32 bytes but
+#   64 on FreeBSD 12+, which corrupts the heap in doom's poller.
+# Regenerate the ones doom/tls/h2 use.  An interface whose headers or
+#   library aren't installed here (kqueue on Linux, say) is left as-is.
+# (stdio/libc are left alone: genffi on Linux currently produces a
+#   stdio interface with a duplicate `stdin`.)
+def regen_ffi (name):
+    path = 'ffi/%s_ffi.scm' % (name,)
+    saved = None
+    if os.path.isfile (path):
+        saved = open (path, 'rb').read()
+    cmd = 'IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/%s.ffi > /dev/null 2>&1' % (name,)
+    if 0 == os.system (tweak (cmd)):
+        print ('  %s: regenerated' % (name,))
+    else:
+        if saved is not None:
+            open (path, 'wb').write (saved)
+        print ('  %s: skipped (genffi failed; missing headers?)' % (name,))
+
+print ('regenerating platform-dependent FFI interfaces...')
+for name in ('socket', 'kqueue', 'sodium', 'zlib'):
+    regen_ffi (name)
+
 # irkenb.byc is not committed: build it from source with the
 #   bootstrap compiler.  IRKENLIB=. matters here: without it, the FFI
 #   interfaces come from any installed copy (/usr/local/lib/irken), and
