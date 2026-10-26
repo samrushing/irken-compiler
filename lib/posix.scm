@@ -52,7 +52,7 @@
   ;; #define st_atime st_atimespec.tv_sec
   ;; and on freebsd we have:
   ;; #define st_atime st_atim.tv_sec
-  ;; linux puts the two timespec parts directly into the stat struct.
+  ;; and glibc on linux uses the same st_atim names as freebsd.
   ;; maybe eventually I'll add '%platform to the compiler?
   
   (define (get-atime stat*)
@@ -60,7 +60,7 @@
      (%%platform
       Darwin
       (%c-sref stat.st_atimespec.tv_sec stat*)
-      FreeBSD
+      (FreeBSD Linux)
       (%c-sref stat.st_atim.tv_sec stat*)
       else
       (%c-sref stat.st_atime stat*))
@@ -71,7 +71,7 @@
      (%%platform
       Darwin
       (%c-sref stat.st_mtimespec.tv_sec stat*)
-      FreeBSD
+      (FreeBSD Linux)
       (%c-sref stat.st_mtim.tv_sec stat*)
       else
       (%c-sref stat.st_mtime stat*))
@@ -82,7 +82,7 @@
      (%%platform
       Darwin
       (%c-sref stat.st_ctimespec.tv_sec stat*)
-      FreeBSD
+      (FreeBSD Linux)
       (%c-sref stat.st_ctim.tv_sec stat*)
       else
       (%c-sref stat.st_ctime stat*))
