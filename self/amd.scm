@@ -880,7 +880,8 @@
       (let ((ctype (parse-ctype ctexp)))
         (AMD
          (com "%c-sizeof")
-         ('movq (i (ctype->size ctype)) (n trg))
+         ;; tagged, like every other irken int (arm/rv emit a 'tag).
+         ('movq (i (+ 1 (* 2 (ctype->size ctype)))) (n trg))
          )))
 
     (define (emit-primop name params type args k)

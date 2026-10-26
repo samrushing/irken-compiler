@@ -724,7 +724,8 @@
   (%backend c (%%cexp (-> int) "errno"))
   (%backend llvm (%llvm-call ("@irk_get_errno" (-> int))))
   (%backend bytecode (%%vminsn (-> int) 'errno))
-  (%backend (arm amd rv) (%asm-c-call ("irk_get_errno" (-> int))))
+  ;; irk_get_errno already returns a tagged integer, so no conversion.
+  (%backend (arm amd rv) (%asm-c-call ("irk_get_errno" (-> int) #f)))
   )
 
 (define (raise-system-error)
