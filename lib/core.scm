@@ -719,9 +719,9 @@
 (define (impossible)
   (error "Why, sometimes I've believed as many as six impossible things before breakfast."))
 
-(define assert
-  #t -> #u
-  #f -> (raise (:AssertionError))
+(defmacro assert
+  (assert val)     -> (if val #u (raise (:AssertionError)))
+  (assert val msg) -> (if val #u (begin (print-string  msg) (newline) (raise (:AssertionError))))
   )
 
 (define (id x) x)

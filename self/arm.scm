@@ -49,7 +49,8 @@
 (define Rscratch2 -6) ;; x2
 (define Rscratch3 -7) ;; x3
 (define (Rcarg n)
-  (assert (and (< n 5) (>= n 0)))
+  (assert (and (< n 5) (>= n 0))
+          (format "arm Rcarg out of range: " (int n)))
   (- (+ 4 n)) ;; note: matches runtime-register-map below
   )
 
