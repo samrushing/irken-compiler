@@ -134,6 +134,8 @@
 
 (define (usage)
   (printf "
+This is the Irken riscv64 native compiler.
+
 Usage: compile <irken-src-file> [options]
  -v     : verbose (very!) output
  -I     : add include search directory
