@@ -49,7 +49,7 @@
 (define Rscratch2 -6) ;; x2
 (define Rscratch3 -7) ;; x3
 (define (Rcarg n)
-  (assert (and (< n 5) (>= n 0))
+  (assert (and (< n 8) (>= n 0))
           (format "arm Rcarg out of range: " (int n)))
   (- (+ 4 n)) ;; note: matches runtime-register-map below
   )
@@ -65,6 +65,11 @@
     2  ;; scratch2  carg2
     3  ;; scratch3  carg3
     4  ;;           carg4
+    ;; carg5-7 are also irken registers 19-17 (see arm-register-file),
+    ;;   so emit-c-call has to be careful when it loads them.
+    5  ;;           carg5
+    6  ;;           carg6
+    7  ;;           carg7
     ))
 
 (define (register->name n)
@@ -605,24 +610,44 @@
          ('bl (g name))
          @ restores)))
 
+    ;; x0-x7 carry the arguments, but x5-x7 are also irken registers
+    ;;   19-17.  with more than five args, loading them in order could
+    ;;   overwrite one before it's read (args 5..7 may live in x5..x7),
+    ;;   so they go through the stack instead.  [this is the arm64 twin
+    ;;   of the amd64 r8/r9 bug.]
+    (define (load-c-args args)
+      (let ((nargs (length args)))
+        (if (<= nargs 5)
+            (map-range i nargs (ARMINSN 'mov (c i) (n (nth args i))))
+            (let ((nbytes (* 16 (/ (+ nargs 1) 2)))) ;; keep sp 16-byte aligned
+              (ARM
+               ('sub sp sp (i nbytes))
+               @ (map-range i nargs (ARMINSN 'str (n (nth args i)) (ind sp (i (* 8 i)))))
+               @ (map-range i nargs (ARMINSN 'ldr (c i) (ind sp (i (* 8 i)))))
+               ('add sp sp (i nbytes)))))))
+
     (define (emit-c-call sig name args target free convert?)
       (let ((nargs (length args)))
-        (when (> nargs 5)
-          (printf "emit-c-call " name " args " (join int->string "," args) "\n"))
-        ;;(assert (<= nargs 5))
-        (ARM
-         ;; put the args into the proper registers
-         @ (map-range i nargs (ARMINSN 'mov (c i) (n (nth args i))))
-         ;; possibly convert some of those args (irken->c)
-         @ (if convert? (frob-inputs sig nargs) (list:nil))
-         ;; call the function
-         @ (bl-with-save-restore name free)
-         @ (if (= target -1)
-               (list:nil)
-               (ARM
-                @ (if convert? (frob-output sig) (list:nil))
-                  ('mov (n target) retval)))
-           )))
+        (when (> nargs 8)
+          (error1 "arm64: C calls with more than 8 args are not supported" name))
+        ;; save caller-saved irken registers *before* loading the args:
+        ;;  x5-x7 are both, and must be saved with their irken values.
+        (let (((saves restores) (save-restore free)))
+          (ARM
+           @ saves
+           ;; put the args into the proper registers
+           @ (load-c-args args)
+           ;; possibly convert some of those args (irken->c)
+           @ (if convert? (frob-inputs sig nargs) (list:nil))
+           ;; call the function
+           ('bl (g name))
+           @ restores
+           @ (if (= target -1)
+                 (list:nil)
+                 (ARM
+                  @ (if convert? (frob-output sig) (list:nil))
+                    ('mov (n target) retval)))
+             ))))
 
     (define (emit-arm-inline inline args target)
 
