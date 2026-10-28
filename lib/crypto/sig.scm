@@ -63,6 +63,17 @@
     (ber:CONTEXT 0 ((ber:OID oid)))
     . _))
   -> (:tuple oid privateKey)
+  ;; PKCS#8 wrapping an RFC 5915 EC key, as `openssl req -newkey ec` writes:
+  ;;   the algorithm is id-ecPublicKey with the curve as its parameter, and
+  ;;   the inner ECPrivateKey leaves out its own [0] parameters.
+  (ber:SEQUENCE
+   ((ber:INTEGER 0)
+    (ber:SEQUENCE ((ber:OID (1 2 840 10045 2 1)) (ber:OID curve)))
+    (ber:STRING (asn1string:OCTET) encapsulated)))
+  -> (match (ber->asn1 encapsulated) with
+       (ber:SEQUENCE ((ber:INTEGER 1) (ber:STRING (asn1string:OCTET) privateKey) . _))
+       -> (:tuple curve privateKey)
+       x -> (raise (:SIG/UnexpectedASN1 x)))
   x -> (raise (:SIG/ExpectedPKCS8 x))
   )
 
