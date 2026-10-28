@@ -2,6 +2,20 @@
 
 ;; --- literals ---
 
+;; quote a string for the assembler's .ascii directive.  we can't use
+;;   repr-string: gas reads *every* hex digit after \x, so "\xfc" followed
+;;   by "c" is taken as the single escape \xfcc, the string comes out one
+;;   byte short, and everything after it in .data is misaligned.  octal
+;;   escapes stop after three digits.
+(define (asm-string-repr s)
+  (define (asm-char ch)
+    (let ((n (char->ascii ch)))
+      (cond ((eq? ch #\") "\\\"")
+            ((eq? ch #\\) "\\\\")
+            ((and (>= n 32) (< n 127)) (char->string ch))
+            (else (format "\\" (zpad 3 (oct n)))))))
+  (format "\"" (join (map asm-char (string->list s))) "\""))
+
 (define (asm-emit-constructed o)
   (let ((lits the-context.literals)
 	(nlits lits.count)
@@ -109,7 +123,7 @@
              (o.dedent) (oformat "lit_" (int i) ":") (o.indent)
              (oformat ".quad " (ohead TC_STRING tlen))
              (oformat ".long " (int slen))
-             (oformat ".ascii " (string s))
+             (oformat ".ascii " (asm-string-repr s))
              (when (not (zero? npad))
                (oformat ".space " (int npad))))
         (literal:symbol s)
