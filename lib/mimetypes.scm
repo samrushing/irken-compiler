@@ -70,6 +70,7 @@
    ("image/heif"                     ("heif"))
    ("image/ief"                      ("ief"))
    ("image/jpeg"                     ("jpg" "jpe" "jpeg"))
+   ("image/jxl"                      ("jxl"))
    ("image/png"                      ("png"))
    ("image/svg+xml"                  ("svg"))
    ("image/tiff"                     ("tiff" "tif"))
