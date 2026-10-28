@@ -64,6 +64,14 @@ issues remaining:
   native backends.  Ask the C compiler for sizeof/offsetof instead?
 * OSError carries only errno; including the syscall name and
   strerror() would make failures much easier to read.
+* file/close doesn't flush the write buffer, so anything written with
+  file/write and not explicitly file/flush'd is lost (demo/crypto/x509tool
+  does this).  Read and write files are the same record type with
+  different fields, so the fix probably means a separate close for each.
+* string-split-string raises :String/SplitTooLong when the separator
+  is longer than the string, so string-replace-all does too; and
+  string-find-from restarts the match at the wrong index after a
+  partial match ("aab" isn't found in "aaab").
 
 platforms to test
 =================
