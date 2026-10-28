@@ -825,12 +825,17 @@
          ('movq (n src) (c 0))
          @ (callq-with-save-restore "get_foreign" free)
          ('zero (s 1))
-         @ (match size with
-             1 -> (AMD ('movb (ind (s 0)) (B (s 1))))
-             2 -> (AMD ('movw (ind (s 0)) (H (s 1))))
-             4 -> (AMD ('movl (ind (s 0)) (W (s 1))))
-             8 -> (AMD ('movq (ind (s 0))     (s 1)))
-             x -> (error (format "c-get-int - bad size: " (int x)))
+         ;; signed C types must be sign-extended: e.g. a `short` kevent
+         ;;   filter of -1 would otherwise read as 65535.
+         @ (match size (ctype-signed? ctype) with
+             1 #t -> (AMD ('movsbq (ind (s 0)) (s 1)))
+             2 #t -> (AMD ('movswq (ind (s 0)) (s 1)))
+             4 #t -> (AMD ('movslq (ind (s 0)) (s 1)))
+             1 #f -> (AMD ('movb (ind (s 0)) (B (s 1))))
+             2 #f -> (AMD ('movw (ind (s 0)) (H (s 1))))
+             4 #f -> (AMD ('movl (ind (s 0)) (W (s 1))))
+             8 _  -> (AMD ('movq (ind (s 0))     (s 1)))
+             x _  -> (error (format "c-get-int - bad size: " (int x)))
              )
           ('movq (s 1) (n trg))
           ('tag (n trg))

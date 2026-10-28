@@ -771,13 +771,18 @@
          @ (str-by-size size (Rcarg 0) src)
          )))
 
-    (define (ldr-by-size size src trg)
-      (match size with
-        1 -> (ARM ('ldrb (w (n trg)) (ind (n src))))
-        2 -> (ARM ('ldrh (w (n trg)) (ind (n src))))
-        4 -> (ARM ('ldr  (w (n trg)) (ind (n src))))
-        8 -> (ARM ('ldr  (n trg)     (ind (n src))))
-        x -> (error (format "ldr-by-size - bad size: " (int x)))
+    ;; signed C types must be sign-extended: e.g. a `short` kevent
+    ;;   filter of -1 would otherwise read as 65535.
+    (define (ldr-by-size size signed? src trg)
+      (match size signed? with
+        1 #t -> (ARM ('ldrsb (n trg)     (ind (n src))))
+        2 #t -> (ARM ('ldrsh (n trg)     (ind (n src))))
+        4 #t -> (ARM ('ldrsw (n trg)     (ind (n src))))
+        1 #f -> (ARM ('ldrb (w (n trg)) (ind (n src))))
+        2 #f -> (ARM ('ldrh (w (n trg)) (ind (n src))))
+        4 #f -> (ARM ('ldr  (w (n trg)) (ind (n src))))
+        8 _  -> (ARM ('ldr  (n trg)     (ind (n src))))
+        x _  -> (error (format "ldr-by-size - bad size: " (int x)))
         ))
 
     (define (emit-c-get-int type src trg free)
@@ -787,7 +792,7 @@
          (com "c-get-int " (type-repr type))
          ('mov (c 0) (n src))
          @ (bl-with-save-restore "get_foreign" free)
-         @ (ldr-by-size size (Rcarg 0) trg)
+         @ (ldr-by-size size (ctype-signed? ctype) (Rcarg 0) trg)
          ('tag (n trg))
          )))
 

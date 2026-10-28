@@ -653,13 +653,17 @@
          )))
 
     ;; the syntax for load/store changes depending on data size.
-    (define (load-by-size size)
-      (match size with
-        1 -> 'lbu
-        2 -> 'lhu
-        4 -> 'lwu
-        8 -> 'ldu
-        x -> (error (format "str-by-size - bad size: " (int x)))
+    ;; signed C types must be sign-extended.  (there is no `ldu`.)
+    (define (load-by-size size signed?)
+      (match size signed? with
+        1 #t -> 'lb
+        2 #t -> 'lh
+        4 #t -> 'lw
+        1 #f -> 'lbu
+        2 #f -> 'lhu
+        4 #f -> 'lwu
+        8 _  -> 'ld
+        x _  -> (error (format "load-by-size - bad size: " (int x)))
         ))
 
     (define (emit-c-get-int type src trg)
@@ -669,7 +673,7 @@
          (com "c-get-int " (type-repr type))
          ('mv (c 0) (n src))
          ('jal (l "get_foreign"))
-         ((load-by-size size) (n trg) (ind 0 (c 0)))
+         ((load-by-size size (ctype-signed? ctype)) (n trg) (ind 0 (c 0)))
          ('tag (n trg))
          )))
 

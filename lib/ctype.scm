@@ -44,6 +44,11 @@
   (:union symbol)
   )
 
+(define ctype-signed?
+  (ctype:int _ signed?) -> signed?
+  _                     -> #f
+  )
+
 (define ctype-repr
   (ctype:name name)    -> (symbol->string name)
   (ctype:int cint s?)  -> (cint-repr cint s?)
