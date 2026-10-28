@@ -97,16 +97,14 @@
 (define (make-cert sk cn days RNG)
   (let ((pub (p256-public-key sk))
         (now (gettime/realtime))
-        ;; a positive 127-bit serial number.
-        (serial (let ((s (RNG 16)))
-                  (string-set! s 0 (int->char (logior #x01 (logand #x7f (char->int (string-ref s 0))))))
-                  s))
+        ;; a random 128-bit serial number.
+        (serial (RNG 16))
         ;; RFC 7093: the key id may be a truncated SHA-256 of the key.
         (keyid (substring (sha256 pub) 0 20))
         (alg (SEQ (ber:OID oid-ecdsa-with-SHA256)))
         (tbs
          (SEQ (ber:CONTEXT 0 (list (ber:INTEGER 2)))              ;; v3
-              (ber:BINTEGER serial)
+              (ber/uint serial)
               alg
               (cn-name cn)                                         ;; issuer
               (SEQ (asn1-time (- now.sec 3600))                    ;; validity

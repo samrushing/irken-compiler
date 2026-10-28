@@ -12,8 +12,10 @@
 ;; DER note: no attempt is made (yet) to place encoded values in
 ;;   canonical order for SET. See section 5.15 of the "Layman's
 ;;   Guide..." for details.
-;; DER note: 'BINTEGER' (ints larger than 3 bytes) does not properly
-;;   check for canonical encoding yet.  User's responsibility for now.
+;; DER note: a 'BINTEGER' string is big-endian two's complement.  The
+;;   encoder strips redundant leading sign bytes, so the output is
+;;   minimal; but a caller with an unsigned value whose high bit is set
+;;   must still add a zero byte (see ber/uint).
 ;;
 ;; Safety Note: oversized OID elements raise an error.
 
@@ -81,6 +83,29 @@
 ;; handy
 (define (OCTETSTRING s)
   (ber:STRING (asn1string:OCTET) s))
+
+;; an INTEGER from an unsigned big-endian string (e.g. a 32-byte
+;;   ECDSA r or s): add a zero byte if the high bit is set, so it
+;;   isn't read as negative.  the encoder strips any extra zeros.
+(define (ber/uint s)
+  (if (and (> (string-length s) 0)
+           (>0 (logand #x80 (char->int (string-ref s 0)))))
+      (ber:BINTEGER (string-append "\x00" s))
+      (ber:BINTEGER s)))
+
+;; strip redundant leading bytes from a two's complement big-endian
+;;   integer: a 00 before a byte < 0x80, or an ff before a byte >= 0x80.
+(define (ber/minimal-int s)
+  (let ((len (string-length s)))
+    (let loop ((i 0))
+      (if (>= (+ i 1) len)
+          (if (= len 0) "\x00" (substring s i len))
+          (let ((b0 (char->int (string-ref s i)))
+                (hi (logand #x80 (char->int (string-ref s (+ i 1))))))
+            (if (or (and (= b0 #x00) (= hi 0))
+                    (and (= b0 #xff) (= hi #x80)))
+                (loop (+ i 1))
+                (substring s i len)))))))
 
 ;; BITSTRING with zero padding
 (define (BITSTRING0 s)
@@ -228,7 +253,7 @@
     (ber:NULL)                 -> (emit "\x05\x00")
     (ber:BOOLEAN b)            -> (emit (if b "\x01\x01\xff" "\x01\x01\x00"))
     (ber:INTEGER n)            -> (encode-int emit n)
-    (ber:BINTEGER s)           -> (encode-raw emit (asn1class:univ) #f #x02 s)
+    (ber:BINTEGER s)           -> (encode-raw emit (asn1class:univ) #f #x02 (ber/minimal-int s))
     (ber:ENUMERATED n)         -> (encode-enumerated emit n)
     (ber:STRING k s)           -> (encode-string emit k s)
     (ber:SEQUENCE vals)        -> (encode-structured emit #x10 #x00 vals)

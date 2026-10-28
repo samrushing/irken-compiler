@@ -55,17 +55,6 @@
      (p256-string->u8* sk))
     (string-append "\x04" x y)))
 
-;; a DER INTEGER must be minimal: strip leading zero bytes, then add
-;;   one back if the high bit is set (so it isn't read as negative).
-(define (p256-der-uint s)
-  (let loop ((i 0))
-    (if (and (< i 31) (= 0 (char->int (string-ref s i))))
-        (loop (+ i 1))
-        (let ((s (substring s i 32)))
-          (if (>0 (logand (char->int (string-ref s 0)) #x80))
-              (string-append "\x00" s)
-              s)))))
-
 ;; sign message <m> with secret key <sk>, returning the DER-encoded
 ;;  ECDSA-Sig-Value: SEQUENCE { INTEGER r, INTEGER s }
 (define (p256-sign m sk RNG)
@@ -81,7 +70,7 @@
      (p256-string->u8* h))
     (asn1->ber
      (ber:SEQUENCE
-      (list (ber:BINTEGER (p256-der-uint r))
-            (ber:BINTEGER (p256-der-uint s))
+      (list (ber/uint r)
+            (ber/uint s)
             )))
     ))
