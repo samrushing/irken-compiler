@@ -33,6 +33,7 @@
 
 (let ((f (file/open-write "/tmp/key.der" #t #o644)))
   (file/write f (asn1->ber (make-sample)))
+  (file/flush f)
   (file/close f)
   )
 
@@ -51,7 +52,7 @@
              )
         ))))
 
-(let ((asn1 (read-certificate sys.argv[1]))
-      (x509 (parse-x509 asn1)))
+(let ((x509 (parse-x509 (read-certificate sys.argv[1]))))
   (print-x509 x509)
+  (verify-cert x509)
   )

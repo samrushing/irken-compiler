@@ -401,6 +401,48 @@
 ;; utility
 ;; --------------------------------------------------------------------------------
 
+;; the raw encodings of the elements inside the constructed value
+;;   (e.g. a SEQUENCE) at the start of <der>, without decoding them.
+;; signatures are computed over the bytes as they were received, so
+;;   e.g. an X.509 tbsCertificate must be verified using its original
+;;   encoding: decoding and re-encoding it is only the same thing if
+;;   the sender used canonical DER.
+(define (ber/elements der)
+
+  (define (byte pos)
+    (when (>= pos (string-length der))
+      (raise (:BER/Underflow pos)))
+    (char->int (string-ref der pos)))
+
+  ;; -> (:tuple header-length content-length) of the TLV at <pos>.
+  (define (tlv pos)
+    (when (= #x1f (logand #x1f (byte pos)))
+      (raise (:BER/ExtendedTag "extended tags not supported" (byte pos))))
+    (let ((l0 (byte (+ pos 1))))
+      (cond ((< l0 #x80) (:tuple 2 l0))
+            ((or (= l0 #x80) (> l0 #x84))
+             (raise (:BER/BadLength "indefinite or oversized length" l0)))
+            (else
+             (let loop ((n (logand l0 #x7f)) (i (+ pos 2)) (len 0))
+               (if (= n 0)
+                   (:tuple (- i pos) len)
+                   (loop (- n 1) (+ i 1) (+ (<< len 8) (byte i)))))))))
+
+  (when (= 0 (logand #x20 (byte 0)))
+    (raise (:BER/NotConstructed (byte 0))))
+  (let (((hlen clen) (tlv 0))
+        (end (+ hlen clen))
+        (result '()))
+    (when (> end (string-length der))
+      (raise (:BER/Underflow end)))
+    (let loop ((pos hlen))
+      (cond ((= pos end) (reverse result))
+            ((> pos end) (raise (:BER/ExtraData end pos)))
+            (else
+             (let (((h c) (tlv pos)))
+               (push! result (substring der pos (+ pos h c)))
+               (loop (+ pos h c))))))))
+
 ;; sample producer
 (define (string-emitter s)
   (let ((pos 0)

@@ -18,7 +18,8 @@
 ;;    ((keytype:rsa) '(1 2 840 113549 1 1 1))
 ;;    ...))
 
-(define (parse-x509 asn1)
+;; <der> is the DER encoding of a Certificate.
+(define (parse-x509 der)
 
   (define (unexpected s x)
     (raise (:X509/Unexpected s x)))
@@ -28,7 +29,7 @@
      (tbsCertificate
       signatureAlgorithm
       signatureValue))
-    -> { tbs  = tbsCertificate ;; keep DER ('to be signed')
+    -> { tbs  = (first (ber/elements der)) ;; the DER that was signed, as received
          cert = (p-tbsCertificate tbsCertificate)
          algo = (p-AlgorithmIdentifier signatureAlgorithm)
          sig  = (p-Signature signatureValue) }
@@ -179,16 +180,17 @@
     x -> (unexpected "tbsCertificate" x)
     )
 
-  (p-x509 asn1)
+  (p-x509 (ber->asn1 der))
   )
 
+;; the DER of the first certificate in the PEM file at <path>.
 (define (read-certificate path)
-  (match (read-pem-asn1 path) with
-    (:tuple "CERTIFICATE" asn1)
-    -> asn1
-    (:tuple kind _)
-    -> (raise (:SIG/UnexpectedPEM "CERTIFICATE" kind))
-    ))
+  (with-file file (file/open-read path)
+    (match ((pem-read-gen (file-char-generator file))) with
+      (maybe:yes (:tuple "CERTIFICATE" der)) -> der
+      (maybe:yes (:tuple kind _)) -> (raise (:SIG/UnexpectedPEM kind))
+      (maybe:no) -> (raise (:SIG/NoPEMFound path))
+      )))
 
 (define (oid-repr oid)
   (format (join int->string "." oid)))
@@ -243,9 +245,7 @@
   )
 
 (define (verify-cert x509)
-  (let ((c (collector))
-        (_ (ber/encode c.push x509.tbs))
-        (der (c.val)))
+  (let ((der x509.tbs))
     (match x509.cert.pubkey.key with
       (public-key:rsa n e)
       -> (printf "verify: " (bool (rsa-verify n (int->big e) der x509.sig)) "\n")
