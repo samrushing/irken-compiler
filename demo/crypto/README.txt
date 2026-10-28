@@ -1,14 +1,26 @@
-generate a new p256 key & cert for localhost:
+generate a new p256 key & self-signed cert for localhost:
 
-$ openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout key.pem -out cert.pem -days 720 -subj '/CN=localhost'
+$ self/compile demo/crypto/gencert.scm
+$ demo/crypto/gencert
 
-[this writes the key as PKCS#8 wrapping an RFC 5915 EC key, which
- lib/crypto/sig.scm reads as of Oct 2026.]
+outputs: key.pem (PKCS#8, mode 0600), cert.pem
 
-If you already have a key:
+options:
+  -cn <name>    host name for the CN and subjectAltName [localhost]
+                (localhost also gets 127.0.0.1 and ::1)
+  -days <n>     validity [365]
+  -key <path>   [key.pem]
+  -cert <path>  [cert.pem]
+  -k            keep the existing key, write only a new cert
 
-$ openssl req -x509 -nodes -key key.pem -out cert.pem -days 720 -subj '/CN=localhost'
+the cert is meant to be trusted directly by a browser or OS: it has
+subjectAltName, keyUsage digitalSignature, extendedKeyUsage serverAuth
+and basicConstraints CA:FALSE.  For a demo cert, keep -days under 398.
 
-[need to make a genpkey.scm]
+with openssl, the rough equivalent is:
 
-outputs: key.pem, cert.pem
+$ openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+    -keyout key.pem -out cert.pem -days 365 -subj '/CN=localhost' \
+    -addext 'subjectAltName=DNS:localhost'
+
+[lib/crypto/sig.scm reads the PKCS#8 keys that openssl writes, too.]
