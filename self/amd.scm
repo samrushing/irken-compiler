@@ -709,12 +709,14 @@
             (nfree (length free)))
         (AMD
          (com "%ensure-heap: size in " (int size) " nfree = " (int nfree))
-         ('movq (grel "limit") (s 0))
+         ;; is freep + size words still below limit?  i.e. freep <= limit - size*8.
          ;; size may live in the %rbp register file (see emit-array-ref).
          ('movq (n size) (s 1))
          ('untag (s 1))
-         ('leaq (ind 0 (s 0) (s 1) 8) (s 0))
-         ('cmp freep (s 0))
+         ('shlq (i 3) (s 1))
+         ('movq (grel "limit") (s 0))
+         ('subq (s 1) (s 0))
+         ('cmp freep (s 0))   ;; flags from (limit - size*8) - freep
          ('jge (l L0))
          ;; need to gc
          ;; add free vars as roots
