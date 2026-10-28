@@ -604,50 +604,35 @@
         -> (frob-retval other)
         ))
 
+    ;; C calls.  Two hazards:
+    ;;  1) r8/r9 are both irken registers (7/6) and the 5th/6th C argument
+    ;;     registers, so with 5 or more args, loading one argument can
+    ;;     clobber the source of another.  in that case go through the
+    ;;     stack (simpler than cycle decomposition for the rare big call).
+    ;;  2) live caller-saved irken registers must be pushed *before* the
+    ;;     arguments are loaded, or the push saves the argument instead.
     (define (emit-c-call sig name args target free convert?)
-      (if (> (length args) 6)
-          (emit-c-call-many-regs sig name args target free convert?)
-          (emit-c-call-normal sig name args target free convert?)))
-
-    (define (emit-c-call-normal sig name args target free convert?)
-      (let ((nargs (length args)))
+      (let ((nargs (length args))
+            ((pre post) (save-restore-code free)))
         (AMD
+         @ pre
          ;; put the args into the proper registers
-         @ (map-range-rev i nargs (AMDINSN 'movq (n (nth args i)) (c i)))
+         @ (if (> nargs 4)
+               (AMD
+                @ (map-range i nargs (AMDINSN 'pushq (n (nth args i))))
+                @ (map-range-rev i nargs (AMDINSN 'popq (c i))))
+               (map-range-rev i nargs (AMDINSN 'movq (n (nth args i)) (c i))))
          ;; possibly convert some of those args (irken->c)
          @ (if convert? (frob-inputs sig nargs) (list:nil))
          ;; call the function
-	 @ (callq-with-save-restore name free)
+         ('callq (g name))
+         @ post
          @ (if (= target -1)
                (list:nil)
                (AMD
                 @ (if convert? (frob-output sig) (list:nil))
                 ('movq retval (n target))))
            )))
-
-    (define (emit-c-call-many-regs sig name args target free convert?)
-      (let ((nargs (length args)))
-        ;; this more complicated procedure is necessary because of r8/r9,
-        ;; which are used as 'irken' registers and also as 'c arguments'.
-        ;; managing the dance of registers properly would require cycle
-        ;; decomposition, this is just much simpler for the (rare)
-        ;; case of >6 arguments.
-        (AMD
-         ;; push all the args onto the stack
-         @ (map-range i nargs (AMDINSN 'pushq (n (nth args i))))
-         ;; pop them all off again into their proper locoations.
-         @ (map-range-rev i nargs (AMDINSN 'popq (c i)))
-         ;; possibly convert some of those args (irken->c)
-         @ (if convert? (frob-inputs sig nargs) (list:nil))
-         ;; call the function
-	 @ (callq-with-save-restore name free)
-         @ (if (= target -1)
-               (list:nil)
-               (AMD
-                @ (if convert? (frob-output sig) (list:nil))
-                ('movq retval (n target))))
-           )))
-
 
     (define (emit-amd-inline inline args target)
 
@@ -1334,7 +1319,7 @@
     ;; %rsp is 16-byte aligned in irken code (see the prologue in
     ;;   compile-to-amd), and the ABI requires that at the call, so an odd
     ;;   number of pushes gets an extra 8 bytes of padding.
-    (define (callq-with-save-restore name free)
+    (define (save-restore-code free)
       (let ((pushes '())
             (pops '())
             (saved '()))
@@ -1346,16 +1331,16 @@
             (push! pops (AMDINSN 'popq (n reg)))))
         (set! pops (reverse pops))
         (if (odd? (length saved))
-            (AMD
-             ('subq (i 8) rsp)
-             @ pushes
-             ('callq (g name))
-             @ pops
-             ('addq (i 8) rsp))
-            (AMD
-             @ pushes
-             ('callq (g name))
-             @ pops))))
+            (:tuple (AMD ('subq (i 8) rsp) @ pushes)
+                    (AMD @ pops ('addq (i 8) rsp)))
+            (:tuple pushes pops))))
+
+    (define (callq-with-save-restore name free)
+      (let (((pre post) (save-restore-code free)))
+        (AMD
+         @ pre
+         ('callq (g name))
+         @ post)))
 
     (define (emit-copy-lit index target free)
       (AMD
