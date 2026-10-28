@@ -429,7 +429,7 @@
   (libc/system (%string->cref #f (zero-terminate cmd))))
 
 (define (compile args)
-  (let ((cmd (format *CC* " " (join " " args))))
+  (let ((cmd (format *CC* " " (join " " (map ffi-path-expand args)))))
     (printf "CC: " cmd "\n")
     (let ((rcode (system cmd)))
       (if (not (= rcode 0))

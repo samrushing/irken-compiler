@@ -242,9 +242,9 @@
     (sexp:list ((sexp:symbol 'includes _) . rest))
     -> (set! info.includes (parse-string-list '() rest))
     (sexp:list ((sexp:symbol 'cflags _) . rest))
-    -> (set! info.cflags (parse-string-list '() rest))
+    -> (set! info.cflags (map ffi-path-expand (parse-string-list '() rest)))
     (sexp:list ((sexp:symbol 'lflags _) . rest))
-    -> (set! info.lflags (parse-string-list '() rest))
+    -> (set! info.lflags (map ffi-path-expand (parse-string-list '() rest)))
     (sexp:list ((sexp:symbol 'dll _) (sexp:string dll)))
     -> (set! info.dll dll)
     x -> (error1 "malformed spec file" (repr x))
@@ -306,6 +306,15 @@
   )
 
 (define FFI-PATH (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
+;; cflags and lflags in an interface may refer to files that live in the
+;;   irken tree (e.g. include/p256/p256_ec.c) as "$IRKENLIB/...".
+(define (ffi-path-expand s)
+  (let ((var "$IRKENLIB/")
+        (root (if (ends-with FFI-PATH "/") FFI-PATH (format FFI-PATH "/"))))
+    ;; string-split-string raises if s is shorter than var.
+    (if (< (string-length s) (string-length var))
+        s
+        (string-replace-all s var root))))
 
 (define (read-spec name)
   (let ((path0 (format FFI-PATH "ffi/" (sym name) "_ffi.scm")))
