@@ -233,6 +233,8 @@
   (let ((addr (address/make))
 	(addrlen* (halloc uint))
 	(buf* (%c-cast void (c-aref buf.buf buf.pos)))
+        ;; addrlen is value-result: it has to start as the buffer size.
+        (_ (c-set-int addrlen* addr.size))
         (nbytes (syscall (socket/recvfrom sock.fd buf* (- buf.size buf.pos) 0 addr.addr addrlen*))))
     (set! buf.end (+ buf.end nbytes)) ;; trust recv(2) to not overrun?
     (:tuple addr nbytes)))
