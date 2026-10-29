@@ -47,22 +47,57 @@
           -> (maybe:no)
           )))
 
+    ;; the request target is usually origin-form (/path), but may be
+    ;;  absolute-form (http://host/path), which scanners probing for open
+    ;;  proxies send.  RFC 9112 3.2.2: then the host comes from the target,
+    ;;  not the Host header.  -> (maybe (:tuple host-override path))
+    (define (split-target target)
+      (define (from-authority rest)
+        (let ((slash (string-find "/" rest)))
+          (if (= slash -1)
+              (:tuple (maybe:yes rest) "/")
+              (:tuple (maybe:yes (substring rest 0 slash))
+                      (substring rest slash (string-length rest))))))
+      (cond ((starts-with target "/") (maybe:yes (:tuple (maybe:no) target)))
+            ((starts-with target "http://")
+             (maybe:yes (from-authority (substring target 7 (string-length target)))))
+            ((starts-with target "https://")
+             (maybe:yes (from-authority (substring target 8 (string-length target)))))
+            (else (maybe:no)))) ;; e.g. "*", or garbage
+
+    ;; drop any :port from an authority.
+    (define (strip-port hostport)
+      (match (string-split hostport #\:) with
+        (host . _) -> host
+        _          -> hostport))
+
     (define (process-request header)
       (let ((lines (string-split-string header "\r\n"))
             (request (string-split (first lines) #\space))
             (mhost (get-host lines)))
-        (match request mhost with
-          (method path "HTTP/1.1") (maybe:yes host)
-          -> (let ((reply (format "HTTP/1.1 301 Moved Permanently\r\n"
-                                "Content-Length: 0\r\n"
-                                "Location: https://" host path "\r\n"
-                                "\r\n")))
-               (debugf "sending reply " (string reply) "\n")
-               (note-event stat (conn-event:redirect (format method " " path)))
-               (sock.send reply))
-          _ _
+        (match request with
+          (method target "HTTP/1.1")
+          -> (match (split-target target) with
+               (maybe:yes (:tuple (maybe:yes hostport) path))
+               -> (send-redirect method (strip-port hostport) path)
+               (maybe:yes (:tuple (maybe:no) path))
+               -> (match mhost with
+                    (maybe:yes host) -> (send-redirect method host path)
+                    (maybe:no) -> (note-event stat (conn-event:redirect (format "no host: " (string header)))))
+               (maybe:no)
+               -> (note-event stat (conn-event:redirect (format "bad target: " (string header)))))
+          _
           -> (note-event stat (conn-event:redirect (format "bad header: " (string header))))
           )))
+
+    (define (send-redirect method host path)
+      (let ((reply (format "HTTP/1.1 301 Moved Permanently\r\n"
+                           "Content-Length: 0\r\n"
+                           "Location: https://" host path "\r\n"
+                           "\r\n")))
+        (debugf "sending reply " (string reply) "\n")
+        (note-event stat (conn-event:redirect (format method " " path)))
+        (sock.send reply)))
 
     (define (read-header)
       (let loop ((parts (list:nil))
