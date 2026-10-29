@@ -144,6 +144,17 @@
       -> (if (member? (sexp:symbol (backend->name the-context.options.backend) null-src) backends sexp=?)
              (loop (foldr cons acc (reverse (scan-for-meta subs))) tl)
              (loop acc tl))
+      ;; (%platform Linux forms ...) or (%platform (FreeBSD Darwin) forms ...)
+      ;;  like %backend, but on the-context.options.platform.  [for an
+      ;;  expression, see %%platform.]
+      acc ((sexp:list ((sexp:symbol '%platform _) (sexp:symbol platform _) . subs)) . tl)
+      -> (if (eq? platform the-context.options.platform)
+             (loop (foldr cons acc (reverse (scan-for-meta subs))) tl)
+             (loop acc tl))
+      acc ((sexp:list ((sexp:symbol '%platform _) (sexp:list platforms) . subs)) . tl)
+      -> (if (member? (sexp:symbol the-context.options.platform null-src) platforms sexp=?)
+             (loop (foldr cons acc (reverse (scan-for-meta subs))) tl)
+             (loop acc tl))
       acc ((sexp:list ((sexp:symbol 'include _) (sexp:string path))) . tl)
       -> (loop (foldr cons acc (reverse (scan-for-meta (find-and-read-file path)))) tl)
       acc ((sexp:list ((sexp:symbol 'require _) (sexp:string path))) . tl)
