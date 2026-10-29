@@ -711,6 +711,19 @@ make_foreign (void * ptr)
   return r;
 }
 
+// a pointer to a string's characters (%string->cref).  this is the
+//   <buffer> <offset> flavor, so the pointer follows the string when the
+//   collector moves it.  a raw pointer into the heap would go stale, and
+//   worse, the collector would take it for an object and try to copy it.
+object *
+make_string_foreign (object * s)
+{
+  object * r = allocate (TC_FOREIGN, 2);
+  r[1] = s;
+  r[2] = (object *) TAG_INTEGER ((uint8_t *) GET_STRING_POINTER (s) - (uint8_t *) (s + 1));
+  return r;
+}
+
 object *
 make_malloc (irk_int size, irk_int count)
 {

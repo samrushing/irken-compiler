@@ -723,11 +723,19 @@
          (label L0)
          )))
 
+    ;; these three convert in a scratch register rather than in place:
+    ;;  the source may be a variable that's still live.
+    ;; %string->cref makes TC_FOREIGN <string> <offset> (see make_string_foreign
+    ;;  in header1.c), not a raw pointer into the heap: the pointer has to
+    ;;  follow the string when the collector moves it.  the characters are
+    ;;  at offset 4 from the end of the header (after the 32-bit length).
     (define (emit-string->cref s target)
       (ARM
        (com "%string->cref")
-       ('unstring (n s))
-       ('make_foreign (s 0) (n s))
+       ('alloc (s 0) (i #x24) (i 2))
+       ('str (n s) (ind (s 0) (i 8)))
+       ('mov (s 1) (i 9)) ;; (4<<1)|1
+       ('str (s 1) (ind (s 0) (i 16)))
        ('mov (n target) (s 0))
        ))
 

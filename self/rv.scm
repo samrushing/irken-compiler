@@ -580,11 +580,17 @@
          @ (dead-set trg)
          )))
 
+    ;; %string->cref makes TC_FOREIGN <string> <offset> (see make_string_foreign
+    ;;  in header1.c), not a raw pointer into the heap: the pointer has to
+    ;;  follow the string when the collector moves it.  the characters are
+    ;;  at offset 4 from the end of the header (after the 32-bit length).
     (define (emit-string->cref s target)
       (RV
        (com "%string->cref")
-       ('unstring (n s))
-       ('make_foreign (s 1) (n s))
+       ('alloc (s 1) (i #x24) (i 2)) ;; (alloc uses t0 = s0)
+       ('sd (n s) (ind 8 (s 1)))
+       ('li (s 2) (i 9)) ;; (4<<1)|1
+       ('sd (s 2) (ind 16 (s 1)))
        ('mv (n target) (s 1))
        ))
 

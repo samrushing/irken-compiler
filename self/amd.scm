@@ -732,11 +732,21 @@
          @ (dead-set trg) ;; only happens in testing, but...
          )))
 
+    ;; these three convert in a scratch register, not in place: the
+    ;;  source may be a variable that's still live, and an unwrapped
+    ;;  string pointer (string+12) or untagged int left in a register
+    ;;  looks to the garbage collector like a pointer into the heap.
+    ;; %string->cref makes TC_FOREIGN <string> <offset> (see make_string_foreign
+    ;;  in header1.c), not a raw pointer into the heap: the pointer has to
+    ;;  follow the string when the collector moves it.  the characters are
+    ;;  at offset 4 from the end of the header (after the 32-bit length).
     (define (emit-string->cref src trg)
       (AMD
        (com "%string->cref")
-       ('unstring (n src))
-       ('make_foreign (n src) (s 0))
+       ('alloc (i #x24) (i 2) (i 24) (s 0))
+       ('movq (n src) (s 1))
+       ('movq (s 1) (ind 8 (s 0)))
+       ('movq (i 9) (ind 16 (s 0))) ;; (4<<1)|1
        ('movq (s 0) (n trg))
        ))
 

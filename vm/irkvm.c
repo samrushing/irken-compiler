@@ -621,7 +621,8 @@ vm_do_ffi (object * vm_regs, irk_int pc, int nfixed, irk_int nargs, object * res
       break;
     case TC_FOREIGN:
       args[i] = &ffi_type_pointer;
-      vals[i] = ob[1];
+      // either a raw pointer, or <buffer> <offset> (halloc, %string->cref).
+      vals[i] = get_foreign (ob);
       pvals[i] = vals + i;
       break;
     default:
@@ -1541,8 +1542,7 @@ vm_go (void)
   }
  l_sgetp: {
     // SGETP dst src
-    irk_string * s = (irk_string *) REG1;
-    REG2 = make_foreign (s->data);
+    REG2 = make_string_foreign (REG1);
     pc += 3;
     DISPATCH();
   }

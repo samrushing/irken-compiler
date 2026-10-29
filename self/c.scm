@@ -843,7 +843,7 @@
           _ -> (primop-error))
 
         (define prim-string->cref
-          (src) -> (o.write (format "O r" (int k.target) " = make_foreign (GET_STRING_POINTER (r" (int src) "));"))
+          (src) -> (o.write (format "O r" (int k.target) " = make_string_foreign (r" (int src) ");"))
           _ -> (primop-error))
 
         ;; essentially a no-op.
