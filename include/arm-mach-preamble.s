@@ -19,8 +19,8 @@ _prof_dump:
 	.if ((\size + 1) * 8) < 4096
 	add x26, x26, (\size + 1) * 8
 	.else
-	add x26, x26, ((\size + 1) * 8) & 4095
-	add x26, x26, ((\size + 1) * 8) >> 12, lsl 12
+	add x26, x26, #(((\size + 1) * 8) & 4095)
+	add x26, x26, #(((\size + 1) * 8) >> 12), lsl #12
 	.endif
 	.endm
 
