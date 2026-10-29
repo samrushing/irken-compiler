@@ -64,9 +64,7 @@ issues remaining:
   files are different record types, so the fix probably means a
   separate close for each.
 * string-split-string raises :String/SplitTooLong when the separator
-  is longer than the string, so string-replace-all does too; and
-  string-find-from restarts the match at the wrong index after a
-  partial match ("aab" isn't found in "aaab").
+  is longer than the string, so string-replace-all does too.
 
 platforms to test
 =================

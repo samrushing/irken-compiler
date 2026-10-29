@@ -250,7 +250,9 @@
 		((eq? (string-ref a j) (string-ref b i))
 		 (loop (+ i 1) (+ j 1)))
 		(else
-		 (loop (+ i 1) 0)))))))
+		 ;; restart one past where this partial match began
+		 ;;  (not at i+1, which skips "lo" in "llo").
+		 (loop (+ (- i j) 1) 0)))))))
 
 (define (string-find a b)
   (string-find-from a b 0))
