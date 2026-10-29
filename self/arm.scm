@@ -374,8 +374,8 @@
     ;; wtf
     (define emit-arith1
       'srem arg0 arg1 target
-      -> (ARM ;; arm64 has no rem/mod op, instead uses fused mul-sub in combo.
-          ('udiv (s 0) (n arg0) (n arg1))
+      -> (ARM ;; arm64 has no rem op: q = sdiv(a,b), r = a - q*b (msub).
+          ('sdiv (s 0) (n arg0) (n arg1))
           ('msub (n target) (s 0) (n arg1) (n arg0)))
       op arg0 arg1 target
       -> (ARM ((llop->armop op) (n target) (n arg0) (n arg1)))
@@ -391,7 +391,8 @@
        ('tag (n target))
        ))
 
-    ;; we can do this all in one go using the udiv/fused-mulsub
+    ;; we can do this all in one go using sdiv/fused-mulsub (signed: udiv
+    ;;  gave nonsense for negative operands)
     ;; note: can't be done with inline asm until it supports :tuple returns.
     (define (emit-divmod arg0 arg1 target)
       ;; we need the tag for `(:tuple x y)`.
@@ -399,7 +400,7 @@
         (ARM
          ('untag (n arg0))
          ('untag (n arg1))
-         ('udiv (s 0) (n arg0) (n arg1))
+         ('sdiv (s 0) (n arg0) (n arg1))
          ('msub (s 2) (s 0) (n arg1) (n arg0))
          ('alloc (n target) (i (UOTAG tuple-tag)) (i 2))
          ('tag (s 0))

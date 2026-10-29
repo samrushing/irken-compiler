@@ -425,8 +425,10 @@
          ;; note: we use %rdi as a temporary here, the others are all taken!
          ('alloc (i (UOTAG tuple-tag)) (i 2) (i (* 8 3)) (c 0))
          ('movq (n arg0) rax)
-         ('zero rdx)
-         ('divq (n arg1))
+         ;; signed: sign-extend rax into rdx:rax and use idiv.  (zeroing
+         ;;  rdx and using div gave garbage for negative operands.)
+         ('cqto)
+         ('idivq (n arg1))
          ('tag rax)
          ('movq rax (ind 8  (c 0)))
          ('tag rdx)
