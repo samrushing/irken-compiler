@@ -752,16 +752,18 @@
 
     (define (emit-cref->int src target)
       (AMD
-       ('unforeign (n src))
-       ('movq (n src) (n target))
+       ('movq (n src) (s 0))
+       ('unforeign (s 0))
+       ('movq (s 0) (n target))
        ('tag (n target))))
 
     (define (emit-int->cref src target)
       (AMD
        (com "%int->cref")
-       ('untag (n src))
-       ('make_foreign (n src) (s 0))
-       ('movq (s 0) (n target))))
+       ('movq (n src) (s 0))
+       ('untag (s 0))
+       ('make_foreign (s 0) (s 1))
+       ('movq (s 1) (n target))))
 
     (define (emit-c-aref type src index target free)
       (let ((ctype (irken-type->ctype (un-cref type)))

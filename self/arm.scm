@@ -741,9 +741,17 @@
 
     (define (emit-cref->int src target)
       (ARM
-       ('unforeign (n src))
-       ('mov (n target) (n src))
+       ('mov (s 0) (n src))
+       ('unforeign (s 0))
+       ('mov (n target) (s 0))
        ('tag (n target))))
+
+    (define (emit-int->cref src target)
+      (ARM
+       (com "%int->cref")
+       ('mov (s 0) (n src))
+       ('untag (s 0))
+       ('make_foreign (n target) (s 0))))
 
     (define (emit-c-aref type src index target free)
       (let ((ctype (irken-type->ctype (un-cref type)))
@@ -897,6 +905,7 @@
         '%ensure-heap _ (size)                             -> (emit-ensure-heap size k.free)
         '%string->cref _     (s)                           -> (emit-string->cref s k.target)
         '%cref->int    _   (src)                           -> (emit-cref->int src k.target)
+        '%int->cref    _   (src)                           -> (emit-int->cref src k.target)
         '%c-aref _ (ref index)                             -> (emit-c-aref type ref index k.target k.free)
         '%halloc type (count)                              -> (emit-halloc type count k.target k.free)
         '%malloc type (count)                              -> (emit-malloc type count k.target k.free)
