@@ -610,37 +610,120 @@
          ('bl (g name))
          @ restores)))
 
-    ;; x0-x7 carry the arguments, but x5-x7 are also irken registers
-    ;;   19-17.  with more than five args, loading them in order could
-    ;;   overwrite one before it's read (args 5..7 may live in x5..x7),
-    ;;   so they go through the stack instead.  [this is the arm64 twin
-    ;;   of the amd64 r8/r9 bug.]
-    (define (load-c-args args)
-      (let ((nargs (length args)))
-        (if (<= nargs 5)
-            (map-range i nargs (ARMINSN 'mov (c i) (n (nth args i))))
+    ;; arguments past the eighth go on the stack.  AAPCS64 gives each one
+    ;;  an 8-byte slot; Apple's arm64 ABI packs them at their natural size
+    ;;  and alignment instead (an int takes 4 bytes).
+    (define (stack-arg-size type)
+      (if (eq? the-context.options.platform 'Darwin)
+          (match type with
+            (maybe:yes (type:pred kind _ _))
+            -> (match kind with
+                 'int -> 4 'uint -> 4 'int32_t -> 4 'uint32_t -> 4
+                 'short -> 2 'ushort -> 2 'int16_t -> 2 'uint16_t -> 2
+                 'int8_t -> 1 'uint8_t -> 1
+                 _ -> 8)
+            _ -> 8)
+          8))
+
+    ;; the C type of argument <i>, if the signature says.
+    (define (sig-arg-type sig i)
+      (match sig with
+        (type:pred 'arrow (result-type . arg-types) _)
+        -> (if (< i (length arg-types)) (maybe:yes (nth arg-types i)) (maybe:no))
+        _ -> (maybe:no)))
+
+    ;; -> (:tuple code nbytes): store args 8.. into a new stack area,
+    ;;   converting each one on the way through x0 (which is loaded last).
+    (define (store-stack-args sig args convert? csizes)
+      (let ((nargs (length args))
+            (code '())
+            (off 0))
+        (for-range i nargs
+          (when (>= i 8)
+            (let ((type (sig-arg-type sig i))
+                  (size (cond ((not (eq? the-context.options.platform 'Darwin)) 8)
+                              ((< i (length csizes)) (nth csizes i))
+                              (else (stack-arg-size type)))))
+              ;; natural alignment
+              (set! off (* size (/ (+ off (- size 1)) size)))
+              (push! code (ARM ('mov (c 0) (n (nth args i)))))
+              (when convert?
+                (match type with
+                  (maybe:yes t) -> (push! code (frob-arg 0 t))
+                  (maybe:no)    -> #u))
+              (push! code
+                     (match size with
+                       8 -> (ARM ('str (c 0) (ind sp (i off))))
+                       4 -> (ARM ('str (w (c 0)) (ind sp (i off))))
+                       2 -> (ARM ('strh (w (c 0)) (ind sp (i off))))
+                       _ -> (ARM ('strb (w (c 0)) (ind sp (i off))))))
+              (set! off (+ off size)))))
+        (let ((nbytes (* 16 (/ (+ off 15) 16))))
+          (:tuple (ARM
+                   ('sub sp sp (i nbytes))
+                   @ (flatten (reverse code)))
+                  nbytes))))
+
+    ;; x0-x7 carry the first eight arguments.  two hazards:
+    ;;  * x5-x7 are also irken registers 19-17, so loading the args in
+    ;;    order could overwrite one before it's read (args 5..7 may live
+    ;;    in x5..x7).  [the arm64 twin of the amd64 r8/r9 bug.]
+    ;;  * converting a cref (unforeign) needs scratch registers (x2/x3),
+    ;;    which are also argument registers.
+    ;; so in either case each arg is converted in x0 and stored to the
+    ;;  stack, and then x0..x7 are loaded from there.
+    (define (load-c-args sig args convert?)
+      (let ((nargs (min 8 (length args)))
+            (types (map (lambda (i) (sig-arg-type sig i)) (range nargs)))
+            (cref? (and convert?
+                        (some? (lambda (t)
+                                 (match t with
+                                   (maybe:yes (type:pred 'cref _ _)) -> #t
+                                   _ -> #f))
+                               types))))
+        (if (and (<= nargs 5) (not cref?))
+            (ARM
+             @ (map-range i nargs (ARMINSN 'mov (c i) (n (nth args i))))
+             @ (if convert? (frob-inputs sig nargs) (list:nil)))
             (let ((nbytes (* 16 (/ (+ nargs 1) 2)))) ;; keep sp 16-byte aligned
               (ARM
                ('sub sp sp (i nbytes))
-               @ (map-range i nargs (ARMINSN 'str (n (nth args i)) (ind sp (i (* 8 i)))))
+               @ (flatten
+                  (map-range
+                   i nargs
+                   (if convert?
+                       (ARM
+                        ('mov (c 0) (n (nth args i)))
+                        @ (match (nth types i) with
+                            (maybe:yes t) -> (frob-arg 0 t)
+                            (maybe:no)    -> (list:nil))
+                        ('str (c 0) (ind sp (i (* 8 i)))))
+                       (ARM ('str (n (nth args i)) (ind sp (i (* 8 i))))))))
                @ (map-range i nargs (ARMINSN 'ldr (c i) (ind sp (i (* 8 i)))))
                ('add sp sp (i nbytes)))))))
 
     (define (emit-c-call sig name args target free convert?)
-      (let ((nargs (length args)))
-        (when (> nargs 8)
-          (error1 "arm64: C calls with more than 8 args are not supported" name))
+      (emit-c-call* sig name args target free convert? '()))
+
+    ;; csizes: the C size of each argument, if known.
+    (define (emit-c-call* sig name args target free convert? csizes)
+      (let ((nargs (length args))
+            ((stack-code stack-bytes)
+             (if (> nargs 8)
+                 (store-stack-args sig args convert? csizes)
+                 (:tuple (list:nil) 0))))
         ;; save caller-saved irken registers *before* loading the args:
         ;;  x5-x7 are both, and must be saved with their irken values.
         (let (((saves restores) (save-restore free)))
           (ARM
            @ saves
-           ;; put the args into the proper registers
-           @ (load-c-args args)
-           ;; possibly convert some of those args (irken->c)
-           @ (if convert? (frob-inputs sig nargs) (list:nil))
+           ;; stack args first: they go through x0, before x0-x7 are loaded.
+           @ stack-code
+           ;; put the args, converted (irken->c) if need be, into x0..x7
+           @ (load-c-args sig args convert?)
            ;; call the function
            ('bl (g name))
+           @ (if (> stack-bytes 0) (ARM ('add sp sp (i stack-bytes))) (list:nil))
            @ restores
            @ (if (= target -1)
                  (list:nil)
@@ -1341,8 +1424,7 @@
          ('sub sp sp (i nstack))
          @ (flatten (reverse varcode))
          ;; put fixed args into the proper registers
-         @ (map-range i nfixed (ARMINSN 'mov (c i) (n (nth args i))))
-         @ (frob-inputs sig nfixed)
+         @ (load-c-args sig (take args nfixed) #t)
          ('bl (g (symbol->string name)))
          @ (if (= target -1)
                (list:nil)

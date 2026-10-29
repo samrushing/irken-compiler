@@ -107,21 +107,20 @@ _prof_dump:
         str \val, [\dst, 8]
         .endm
 
-	;; this uses x6/x7 as scratch, hopefully
-        ;; this is safe because `unforeign` is used
-        ;; to adjust arguments to C functions, which
-        ;; are (currently) limited to x0..x5, and
-        ;; anything else should get spilt. fingers crossed.
+	;; uses x2/x3 as scratch.  (it used x6/x7, but those are also
+	;; irken registers 18/17 and C argument registers 6/7.)  x2/x3
+	;; are runtime scratch; emit-c-call converts arguments in x0
+	;; before it loads x1..x7, so they're free here.
 
 	.macro unforeign src
-          mov x7, \src
-          ldp x6, \src, [\src]
-          asr x6, x6, 16
-          cmp x6, #1
+          mov x3, \src
+          ldp x2, \src, [\src]
+          asr x2, x2, 16
+          cmp x2, #1
           beq L1\@
-          ldr x7, [x7, 16]
-          add x7, \src, x7, asr 1
-          add \src, x7, 8
+          ldr x3, [x3, 16]
+          add x3, \src, x3, asr 1
+          add \src, x3, 8
         L1\@:
         .endm
 
