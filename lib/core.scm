@@ -27,7 +27,8 @@
   (%backend bytecode #u))
 
 (define (newline)
-  (%backend c (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" #\newline))
+  ;; (returns #u, as on the other backends: printn ends with this.)
+  (%backend c (%%cexp (char -> int) "fputc (GET_CHAR(%0), stdout)" #\newline) #u)
   ;; note: these are both 'wrong', in the sense that irk_putc() assumes an irken
   ;;   character as input, which relies on argument frobbing *not* being applied to characters.
   (%backend llvm (%llvm-call ("@irk_putc" (char -> undefined) ccc) #\newline))

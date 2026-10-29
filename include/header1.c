@@ -438,9 +438,10 @@ print_string (object * ob, int quoted)
     fputc ('"', stdout);
   }
   for (i=0; i < (s->len); i++, ps++) {
-    if (*ps == '"') {
+    if (*ps == '"' || (quoted && *ps == '\\')) {
+      // (escape backslashes too, or "a\\x41" and "a\x41" print the same)
       fputc ('\\', stdout);
-      fputc ('"', stdout);
+      fputc (*ps, stdout);
     } else {
       if (isprint(*ps)) {
 	fputc (*ps, stdout);
