@@ -14,7 +14,14 @@ _prof_dump:
 	movk \x, \size, lsl 16
 	str \x, [x26]		; write tag
 	mov \x, x26
+	;; add's immediate is 12 bits (optionally shifted 12): split big ones,
+	;;   e.g. the environment record of a function with hundreds of locals.
+	.if ((\size + 1) * 8) < 4096
 	add x26, x26, (\size + 1) * 8
+	.else
+	add x26, x26, ((\size + 1) * 8) & 4095
+	add x26, x26, ((\size + 1) * 8) >> 12, lsl 12
+	.endif
 	.endm
 
 	.macro topref, dst, index

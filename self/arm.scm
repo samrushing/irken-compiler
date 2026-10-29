@@ -1532,6 +1532,12 @@
 
 (define (arm-peep armgen)
 
+  ;; ldp/stp take a signed 7-bit offset scaled by 8: -512..504.
+  ;;  (ldr/str reach much further, so big environment records can have
+  ;;  slots that ldp/stp can't.)
+  (define (pair-offset-ok? off)
+    (and (>= off -512) (<= off 504)))
+
   (makegen emit
     (let loop ((ma (armgen))
                (mb (armgen)))
@@ -1540,7 +1546,7 @@
         -> (match a b with
              (arm:insn 'str ((armop:x src0) (armop:ind ((armop:x dst0) (armop:i off0)))))
              (arm:insn 'str ((armop:x src1) (armop:ind ((armop:x dst1) (armop:i off1)))))
-             -> (if (and (= dst0 dst1) (= off0 (- off1 8)))
+             -> (if (and (= dst0 dst1) (= off0 (- off1 8)) (pair-offset-ok? off0))
                     (begin
                       (emit (ARMINSN 'stp (x src0) (x src1) (ind (x dst0) (i off0))))
                       (loop (armgen) (armgen)))
@@ -1549,7 +1555,9 @@
                       (loop mb (armgen))))
              (arm:insn 'ldr ((armop:x src0) (armop:ind ((armop:x dst0) (armop:i off0)))))
              (arm:insn 'ldr ((armop:x src1) (armop:ind ((armop:x dst1) (armop:i off1)))))
-             -> (if (and (= dst0 dst1) (= off0 (- off1 8)) (not (= src0 dst0))) ;; note extra condition!
+             -> (if (and (= dst0 dst1) (= off0 (- off1 8)) (pair-offset-ok? off0)
+                         (not (= src0 dst0))  ;; note extra conditions!
+                         (not (= src0 src1))) ;; (ldp with the same register twice is UNPREDICTABLE)
                     (begin
                       (emit (ARMINSN 'ldp (x src0) (x src1) (ind (x dst0) (i off0))))
                       (loop (armgen) (armgen)))
