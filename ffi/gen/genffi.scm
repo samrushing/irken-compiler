@@ -61,7 +61,17 @@
     (match t with
       (ctype2:name name)
       -> (match (tree/member map symbol-index-cmp name) with
-           (maybe:yes next) -> (map-type sub next)
+           ;; a typedef of a named struct/union becomes a reference to it,
+           ;;  not a copy of its definition: e.g. epoll_event's
+           ;;  `epoll_data_t data;` would otherwise define the union a second
+           ;;  time inside the struct.
+           (maybe:yes next)
+           -> (match next with
+                (ctype2:struct sname (maybe:yes _))
+                -> (if (eq? sname '%anonymous) (map-type sub next) (ctype2:struct sname (maybe:no)))
+                (ctype2:union uname (maybe:yes _))
+                -> (if (eq? uname '%anonymous) (map-type sub next) (ctype2:union uname (maybe:no)))
+                _ -> (map-type sub next))
            (maybe:no) -> t)
       _ -> t))
   (map-type sub type)
