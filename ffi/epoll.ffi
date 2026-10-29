@@ -1,0 +1,13 @@
+;; -*- Mode: Irken -*-
+
+;; Linux epoll(7), for doom's poller.  (the BSDs and macOS use kqueue.)
+
+(epoll
+ (includes "sys/epoll.h" "errno.h")
+ (structs epoll_event)
+ (constants
+  EPOLLIN EPOLLOUT EPOLLERR EPOLLHUP EPOLLRDHUP EPOLLONESHOT EPOLLET
+  EPOLL_CTL_ADD EPOLL_CTL_MOD EPOLL_CTL_DEL EPOLL_CLOEXEC
+  ENOENT EEXIST EINTR)
+ (sigs epoll_create1 epoll_ctl epoll_wait)
+ )

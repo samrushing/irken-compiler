@@ -108,9 +108,8 @@ system ('IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/posix.ffi')
 #   from another platform: e.g. macOS `struct kevent` is 32 bytes but
 #   64 on FreeBSD 12+, which corrupts the heap in doom's poller.
 # Regenerate the ones doom/tls/h2 use.  An interface whose headers or
-#   library aren't installed here (kqueue on Linux, say) is left as-is.
-# (stdio/libc are left alone: genffi on Linux currently produces a
-#   stdio interface with a duplicate `stdin`.)
+#   library aren't installed here (kqueue on Linux, epoll elsewhere) is
+#   left as-is.
 def regen_ffi (name):
     path = 'ffi/%s_ffi.scm' % (name,)
     saved = None
@@ -125,7 +124,7 @@ def regen_ffi (name):
         print ('  %s: skipped (genffi failed; missing headers?)' % (name,))
 
 print ('regenerating platform-dependent FFI interfaces...')
-for name in ('socket', 'kqueue', 'sodium', 'zlib'):
+for name in ('socket', 'kqueue', 'epoll', 'sodium', 'zlib'):
     regen_ffi (name)
 
 # irkenb.byc is not committed: build it from source with the

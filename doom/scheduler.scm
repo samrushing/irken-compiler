@@ -1,6 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(require "doom/kqueue.scm")
 (require "doom/timeq.scm")
 
 ;; XXX there's a strong argument here for using vectors rather than a
@@ -9,19 +8,6 @@
 ;;  [I'll probably try that when I do epoll for linux]
 
 ;; XXX we will need a priority queue.
-
-;; for each EVFILT, we have separate map of ident=>continuation
-
-(define (make-poller)
-  { kqfd	= (kqueue/kqueue)
-    runnable	= (queue/make)
-    nwait	= 0 ;; how many events are waiting?
-    filters	= (make-vector EVFILT_SYSCOUNT (tree/empty))
-    ievents	= (make-changelist 1000)
-    oevents	= (make-changelist 1000)
-    })
-
-(define the-poller (make-poller))
 
 ;; store the thread-id and current exc handler along with the continuation.
 (define (poller/enqueue k)
@@ -90,6 +76,34 @@
        (set! *the-exception-handler* exn-handler)
        (set! *thread-id* thread-id)
        (putcc k #u)))
+
+;; --------------------------------------------------------------------------------
+;; the platform-specific part: the-poller, and
+;;   poller/wait-for-read, poller/wait-for-write, poller/forget,
+;;   poller/wait-and-schedule.
+;; --------------------------------------------------------------------------------
+
+;; Linux: epoll
+(%platform Linux
+  (require "doom/epoll.scm"))
+
+;; the BSDs and macOS: kqueue
+(%platform (FreeBSD Darwin)
+
+(require "doom/kqueue.scm")
+
+;; for each EVFILT, we have separate map of ident=>continuation
+
+(define (make-poller)
+  { kqfd	= (kqueue/kqueue)
+    runnable	= (queue/make)
+    nwait	= 0 ;; how many events are waiting?
+    filters	= (make-vector EVFILT_SYSCOUNT (tree/empty))
+    ievents	= (make-changelist 1000)
+    oevents	= (make-changelist 1000)
+    })
+
+(define the-poller (make-poller))
 
 ;; these funs know that EVFILT values are consecutive small negative ints
 
@@ -191,3 +205,5 @@
           "  [ievents]: " (int the-poller.ievents.index) "\n"
           "  [oevents]: " (int the-poller.oevents.index) "\n"
           "}\n"))
+
+) ;; %platform kqueue
