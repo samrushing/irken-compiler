@@ -372,30 +372,33 @@
   (define (int-cmp a b)
     (%arm
      ((int int -> cmp)
-      ;; note: we do not bother with untagging the ints. [XXX verify that this is ok]
+      ;; note: we do not bother with untagging the ints: tagging, 2n+1,
+      ;;  preserves order.  but the comparisons must be signed (gt/lt,
+      ;;  not hi/lo), or every negative number sorts after the positives.
       ;; note: constants for TC_USERIMM included here, reflecting
       ;;  the three values for `cmp` datatype.
       (mov (s 0) (i 22))                ;; s0 <- #0x16 (TC_USERIMM)
       (movk (s 0) (i 1) (lsl 16))       ;; s0 <- #x10016 (cmp:=)
       (add (s 1) (s 0) (i 16) (lsl 12)) ;; s1 <- s0 + (16 << 12) (cmp:>)
       (cmp (a 0) (a 1))                 ;; cmp a, b
-      (csel (s 0) (s 1) (s 0) (cc hi))  ;; s0 <= hi ? s1 : s0
+      (csel (s 0) (s 1) (s 0) (cc gt))  ;; s0 <= gt ? s1 : s0
       (mov (s 1) (i 22))                ;; s1 <- (cmp:<)
-      (csel trg (s 1) (s 0) (cc lo)))   ;; trg <- lo ? s1 : s0
+      (csel trg (s 1) (s 0) (cc lt)))   ;; trg <- lt ? s1 : s0
      a b
      )))
 (%backend amd
   (define (int-cmp a b)
     (%amd
      ((int int -> cmp)
+      ;; (signed comparisons: setl/cmovge, not setb/cmovae)
       (zero (s 0))
       (cmpq (a 0) (a 1))
-      (setb (B (s 0)))
+      (setl (B (s 0)))
       (shlq (i 16) (s 0))
       (addq (i #x10016) (s 0))
       (cmpq (a 1) (a 0))
       (movq (i 22) (s 1))
-      (cmovaeq (s 0) (s 1))
+      (cmovgeq (s 0) (s 1))
       (movq (s 1) trg))
      a b
      )))
@@ -408,17 +411,18 @@
   (define (int-cmp a b)
     (%rv
      ((int int -> cmp)
-      (bltu  (a 1) (a 0) "@0")
+      ;; (signed comparisons: blt/bge, not bltu/bgeu)
+      (blt   (a 1) (a 0) "@0")
       (lui   (s 0) (i 16))
       (addiw (s 1) (s 0) (i 22))
       (li    (s 0) (i 22))
-      (bgeu  (a 0) (a 1) "@1")
+      (bge   (a 0) (a 1) "@1")
       (j "@2")
       (label "@0")
       (lui   (s 0) (i 32))
       (addiw (s 1) (s 0) (i 22))
       (li    (s 0) (i 22))
-      (bltu  (a 0) (a 1) "@2")
+      (blt   (a 0) (a 1) "@2")
       (label "@1")
       (mv    (s 0) (s 1))
       (label "@2")
