@@ -603,3 +603,20 @@ void prof_dump (void)
     (maybe:no)
     -> (cmap/add the-context.literals (literal:vector (list (literal:int 0))))
     ))
+
+;; the type to convert an FFI function's result with.  typing promotes
+;;  every C integer type to irken's int, but a native backend needs the
+;;  real C type to tag the value correctly: a long result treated as a
+;;  32-bit int loses its upper half.
+(define (ffi-result-type frtype rtype)
+  (match frtype with
+    (ctype:int cint signed?) -> (int-ctype->itype cint signed?)
+    _ -> rtype))
+
+;; the size in bytes of each C argument (for ABIs that pack stack args).
+(define (ffi-arg-sizes fargtypes)
+  (map (lambda (t)
+         (match t with
+           (ctype:int cint _) -> (cint-size cint)
+           _ -> 8))
+       fargtypes))

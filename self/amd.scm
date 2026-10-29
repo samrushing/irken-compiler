@@ -1379,7 +1379,7 @@
       ;;(printf "emit-ffi " (sym name) " csig: " (csig-repr csig) " argtypes: (" (join type-repr " " argtypes) ")\n")
       (match csig with
         (csig:fun name frtype fargtypes _) ;; varargs no matter here.
-        -> (let ((sig (arrow rtype argtypes)))
+        -> (let ((sig (arrow (ffi-result-type frtype rtype) argtypes)))
              (emit-c-call sig (symbol->string name) args target free #t))
         (csig:obj name obtype)
         -> (begin

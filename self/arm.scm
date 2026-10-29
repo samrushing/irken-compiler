@@ -1393,6 +1393,12 @@
       (let ((sig (arrow rtype argtypes)))
         (emit-c-call sig (symbol->string name) args target free #t)))
 
+    ;; a call with the C signature at hand: tag the result by its real
+    ;;  C type, and give stack arguments their real sizes.
+    (define (emit-ffi-call/csig name frtype fargtypes rtype argtypes args target free)
+      (let ((sig (arrow (ffi-result-type frtype rtype) argtypes)))
+        (emit-c-call* sig (symbol->string name) args target free #t (ffi-arg-sizes fargtypes))))
+
     ;; NOTE this is specific to macos' treatment of variadic funs.
     ;; will need to be tweaked for other platforms.
     (define (emit-variadic-ffi name nfixed rtype argtypes args target free)
@@ -1448,7 +1454,7 @@
                ;; other platforms will follow the standard ABI?
                (emit-ffi-call name rtype argtypes args target free))
         (csig:fun name frtype fargtypes #f)
-        -> (emit-ffi-call name rtype argtypes args target free)
+        -> (emit-ffi-call/csig name frtype fargtypes rtype argtypes args target free)
         (csig:obj name obtype)
         -> (begin
              (warning "ffi object reference NYI")
