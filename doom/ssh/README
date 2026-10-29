@@ -21,3 +21,4 @@ support within that.
 TODO:
 
   sftp
+  mlkem768x25519-sha256 [needed to avoid the post-quantum warning from newer ssh.  needs newer libsodium]
