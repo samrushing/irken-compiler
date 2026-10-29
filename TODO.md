@@ -57,11 +57,6 @@ issues remaining:
   backend emits `r-1[3] = ...` (amd64 aborts with an out-of-range
   index).  repro: (try (begin (file/open-read "/nonexistent") #u)
   except (:OSError e) -> (printn e))
-* genffi computes struct sizes from its own C parse, and can't evaluate
-  `sizeof` in array bounds ("expression too complex to evaluate").  On
-  Linux/glibc that makes `struct sockaddr_in` 8 bytes instead of 16
-  (sin_zero's length is a sizeof expression), which matters for the
-  native backends.  Ask the C compiler for sizeof/offsetof instead?
 * OSError carries only errno; including the syscall name and
   strerror() would make failures much easier to read.
 * file/close doesn't flush the write buffer, so anything written with

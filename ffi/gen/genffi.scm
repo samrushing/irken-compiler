@@ -157,7 +157,9 @@
       (let ((parts (string-split line #\space)))
         (match parts with
           (_ name0 name1)
-          -> (when (and (paren-free? name0) (paren-free? name1))
+          ;; skip self-renames like glibc's `#define stdin stdin`.
+          -> (when (and (paren-free? name0) (paren-free? name1)
+                        (not (string=? name0 name1)))
                (tree/insert! renames string-compare name0 name1))
           _ -> #u
           )))
