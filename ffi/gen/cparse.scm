@@ -686,8 +686,11 @@
        except
        (:ExpTooComplex exp0)
        -> (begin
-            (printf "expression too complex to evaluate: " (repr (parse->sexp exp0)) "\n")
-            0)))
+            (printf "expression too complex to evaluate: " (repr (parse->sexp exp0))
+                    " (will ask the C compiler)\n")
+            ;; -1 means 'unknown', as distinct from 0 for '[]'.  genc2 asks the
+            ;;  compiler for the real length where it can.
+            -1)))
 
     (define (p-int s)
       ;; filter out suffixes like 'U' and 'L'

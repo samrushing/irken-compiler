@@ -44,7 +44,7 @@
   (ctype2:name name)    -> (format "(type " (symbol->string name) ")")
   (ctype2:int cint s?)  -> (cint-repr cint s?)
   (ctype2:float l? d?)  -> (format (if l? "long" "") (if d? "double" "float"))
-  (ctype2:array size t) -> (format "(array " (int size) " " (ctype2-repr t) ")")
+  (ctype2:array size t) -> (format "(array " (int (max size 0)) " " (ctype2-repr t) ")") ;; -1: unknown
   (ctype2:pointer t)    -> (format "(* " (ctype2-repr t) ")")
   (ctype2:struct name (maybe:no))        -> (format "(struct " (sym name) ")")
   (ctype2:struct name (maybe:yes slots)) -> (format "(struct " (sym name) " (" (join declarator-repr " " slots) "))")
@@ -120,7 +120,7 @@
 (define declarator->c
   ;; arrays and function pointers: special cases.
   (declarator:t (ctype2:array size t) (maybe:yes name))
-  -> (format (ctype2->c t) " " (sym name) "[" (int size) "]")
+  -> (format (ctype2->c t) " " (sym name) "[" (int (max size 0)) "]") ;; -1: unknown size
   (declarator:t (ctype2:pointer (ctype2:function rtype args var?)) (maybe:yes name))
   -> (format (ctype2->c rtype) "(*" (sym name) ")(" (join declarator->c ", " args) (if var? ", ..." "") ")")
   (declarator:t type (maybe:yes name))
@@ -133,7 +133,10 @@
   (ctype2:name name)              -> (format (sym name))
   (ctype2:int cint s?)            -> (format (if s? "" "unsigned ") (cint->c cint))
   (ctype2:float l? d?)            -> (format (if l? "long " "") (if d? "double" "float"))
-  (ctype2:array size t)           -> (format (ctype2->c t) (if (> size 0) (format "[" (int size) "]") "[]"))
+  (ctype2:array size t)           -> (format (ctype2->c t)
+                                             (cond ((> size 0) (format "[" (int size) "]"))
+                                                   ((= size 0) "[]")
+                                                   (else "[0]"))) ;; unknown size
   (ctype2:pointer t)              -> (format (ctype2->c t) "*")
   (ctype2:struct name (maybe:no)) -> (format "struct " (sym name))
   (ctype2:union name (maybe:no))  -> (format "union " (sym name))

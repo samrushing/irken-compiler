@@ -123,6 +123,8 @@
                         (ctype2:struct new-name (maybe:no))
                         (ctype2:union new-name (maybe:no)))))
       (tree/insert! types.structs magic-cmp (:tuple new-name struct?) new-type)
+      ;; there's no such type in the real headers.
+      (tree/insert! types.synthetic symbol-index-cmp new-name #t)
       ;; return a referral to our newly named top-level type
       ref-type
       ))
@@ -180,7 +182,8 @@
         (typedefs (tree/empty))
         (structs (tree/empty))
         (functions (tree/empty))
-        (enums (tree/empty)))
+        (enums (tree/empty))
+        (anon-typedefs (tree/empty)))
 
     (define (parse-toks toks root)
       (earley tdgram (prod:nt root) (list-generator toks)))
@@ -204,8 +207,13 @@
       -> (begin
            (match type with
              ;; name top-level anon typedef structs
-             (ctype2:struct '%anonymous sub) -> (set! type (ctype2:struct name sub))
-             (ctype2:union '%anonymous sub)  -> (set! type (ctype2:union name sub))
+             ;;  [in C these are referred to as plain `name`, not `struct name`]
+             (ctype2:struct '%anonymous sub) -> (begin
+                                                  (set! type (ctype2:struct name sub))
+                                                  (tree/insert! anon-typedefs symbol-index-cmp name #t))
+             (ctype2:union '%anonymous sub)  -> (begin
+                                                  (set! type (ctype2:union name sub))
+                                                  (tree/insert! anon-typedefs symbol-index-cmp name #t))
              (ctype2:enum '%anonymous sub)   -> (set! type (ctype2:enum name sub))
              _ -> #u
              )
@@ -259,7 +267,11 @@
             ))))
     (printf "...done.\n")
     ;; our result, a kind of database gleaned from the cpp file.
-    {typedefs=typedefs structs=structs functions=functions enums=enums}
+    {typedefs=typedefs structs=structs functions=functions enums=enums
+     ;; names of `typedef struct {...} name`
+     anon-typedefs=anon-typedefs
+     ;; names that name-anonymous made up for nested anonymous structs/unions
+     synthetic=(tree/empty)}
     ))
 
 (define (substitute-all-typedefs types)
@@ -637,12 +649,89 @@
 
     (define (W s) (stdio/write ofile s) #u)
 
+    ;; can we refer to this type in C, from the real headers?
+    (define (real-name? kind name)
+      (match (tree/member types.synthetic symbol-index-cmp name) with
+        (maybe:yes _) -> #f
+        (maybe:no)    -> #t))
+
+    ;; how C spells the real type.
+    (define (real-type kind name)
+      (match (tree/member types.anon-typedefs symbol-index-cmp name) with
+        (maybe:yes _) -> (format (sym name))
+        (maybe:no)    -> (format (sym kind) " " (sym name))))
+
+    (define (slot-repr type)
+      (ctype2-repr (map-type remove-argnames type)))
+
+    ;; sizes and offsets from the parsed copy (irk_xxx).
+    (define (emit-parsed kind name sname0 sname1 slots)
+      (W (format "  // offsets for " sname0 " (parsed copy only)\n"
+                 "  fprintf (stdout, \"(" sname0 " %\" PRIdPTR  \"\\n\", sizeof (" sname1 "));\n"))
+      (for-list slot slots
+        (match slot with
+          (declarator:t type (maybe:yes name))
+          -> (begin
+               (match type with
+                 (ctype2:array -1 _)
+                 -> (printf "warning: unknown array length for " sname0 "." (sym name) "\n")
+                 _ -> #u)
+               (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym name) " "
+                          (slot-repr type)
+                          ")\\n\", "
+                          (if (eq? kind 'struct)
+                              (format "offsetof(" sname1 ", " (sym name) ")")
+                              "(intptr_t)0")
+                          ");\n")))
+          (declarator:t type (maybe:no))
+          -> (W (format "  // un-named slot of type " (ctype2-repr type) "\n"))
+          )))
+
+    ;; sizes, offsets and array lengths from the real type, which may
+    ;;  differ from the parsed copy (e.g. glibc's sockaddr_in.sin_zero,
+    ;;  whose length is a sizeof expression).
+    (define (emit-real kind name sname0 sname1 slots)
+      (let ((real (real-type kind name)))
+        (W (format "  // offsets for " sname0 " (real type: " real ")\n"
+                   "  if (sizeof (" sname1 ") != sizeof (" real "))\n"
+                   "    fprintf (stderr, \"genffi: note: " sname0 ": parsed size %\" PRIdPTR \", real size %\" PRIdPTR \"\\n\",\n"
+                   "             (intptr_t) sizeof (" sname1 "), (intptr_t) sizeof (" real "));\n"
+                   "  fprintf (stdout, \"(" sname0 " %\" PRIdPTR  \"\\n\", (intptr_t) sizeof (" real "));\n"))
+        (for-list slot slots
+          (match slot with
+            (declarator:t type (maybe:yes fname))
+            -> (let ((field (format "((" real " *) 0)->" (sym fname)))
+                     (off (if (eq? kind 'struct)
+                              (format "(intptr_t) offsetof(" real ", " (sym fname) ")")
+                              "(intptr_t) 0")))
+                 (match type with
+                   ;; an array whose length isn't 0 (i.e. not `[]`): ask the compiler.
+                   (ctype2:array n elt)
+                   -> (if (= n 0)
+                          (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym fname) " "
+                                     (slot-repr type) ")\\n\", " off ");\n"))
+                          (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym fname)
+                                     " (array %\" PRIdPTR \" " (slot-repr elt) "))\\n\", " off ",\n"
+                                     "           (intptr_t) (sizeof (" field ") / sizeof (" field "[0])));\n")))
+                   _
+                   -> (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym fname) " "
+                                 (slot-repr type) ")\\n\", " off ");\n"))))
+            (declarator:t type (maybe:no))
+            -> (W (format "  // un-named slot of type " (ctype2-repr type) "\n"))
+            ))))
+
     (W (format "// generated by " sys.argv[0] "\n\n"
                "#include <stdio.h>\n"
                "#include <stdint.h>\n"
                "#include <stddef.h>\n"
                "#include <inttypes.h>\n"
                ))
+    ;; the real headers: sizes and offsets come from the real types where
+    ;;  they have a name we can use.  the parsed copies (irk_xxx) are only
+    ;;  a fallback, and a cross-check.
+    (W (format "// interface includes\n"))
+    (for-list include iface.includes
+      (W (format "#include <" include ">\n")))
     (substitute-all-typedefs types)
     (name-anonymous types iface.structs)
     (verbose (dump-types types))
@@ -668,22 +757,9 @@
                   (sname1 (format (sym kind) " irk_" (sym name1))) ;; with prefix
                   (empty? (= (length slots) 0)))
               (when (not empty?)
-                (W (format "  // offsets for " sname0 "\n"
-                           "  fprintf (stdout, \"(" sname0 " %\" PRIdPTR  \"\\n\", sizeof (" sname1 "));\n"))
-                (for-list slot slots
-                  (match slot with
-                    (declarator:t type (maybe:yes name))
-                    ;; (4 sin6_flowinfo (int (4 0)))
-                    -> (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym name) " "
-                                  (ctype2-repr (map-type remove-argnames type))
-                                  ")\\n\", "
-                                  (if (eq? kind 'struct)
-                                      (format "offsetof(" sname1 ", " (sym name) ")")
-                                      "(intptr_t)0")
-                                  ");\n"))
-                    (declarator:t type (maybe:no))
-                    -> (W (format "  // un-named slot of type " (ctype2-repr type) "\n"))
-                    ))
+                (if (real-name? kind name1)
+                    (emit-real kind name1 sname0 sname1 slots)
+                    (emit-parsed kind name1 sname0 sname1 slots))
                 (W "  fprintf (stdout, \" )\\n\");\n")
                 )
               )))
