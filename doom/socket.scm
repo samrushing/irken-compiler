@@ -55,6 +55,10 @@
       (sock/listen sock n))
 
     (define (bind addr)
+      ;; SO_REUSEADDR only matters for bind().  (setting it on every
+      ;;  accepted socket also failed with EINVAL on macOS when the peer
+      ;;  had already reset the connection.)
+      (sock/set-reuseaddr sock)
       (sock/bind sock addr))
 
     (define (accept)
@@ -125,7 +129,6 @@
 
     ;; body of doom/make*
     (sock/set-nonblocking sock)
-    (sock/set-reuseaddr sock)
 
     {listen=listen
      bind=bind

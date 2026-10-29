@@ -94,7 +94,9 @@
   (let ((sock (doom/make (tcp4-sock)))
         (addr (address/make4 ip port)))
     (sock.bind addr)
-    (sock.listen 5)
+    ;; a small backlog fails under a burst of connections: macOS (and
+    ;;  FreeBSD) reset connections once the accept queue is full.
+    (sock.listen SOMAXCONN)
     (debugf "starting redirect server... on " (address/unparse addr) "\n")
     (debugf "  server fd = " (int (sock.get-fd)) "\n")
     (let loop ()
@@ -106,9 +108,15 @@
          (poller/fork (lambda () (redirect-channel addr-string sockfun)))
          (loop))
        except (:OSError errno)
-       -> (if (= errno ECONNABORTED)
-              (loop)
-              (debugf "OSError on accepting socket: " (int errno) "\n"))
+       -> (cond ((= errno ECONNABORTED) (loop))
+                ;; out of file descriptors: back off for a moment, rather
+                ;;  than leave the accept loop (which stops the server).
+                ((or (= errno EMFILE) (= errno ENFILE))
+                 (debugf "accept: out of file descriptors (" (int errno) ")\n")
+                 (timeq/sleep 100)
+                 (loop))
+                (else
+                 (debugf "OSError on accepting socket: " (int errno) "\n")))
        )
       )
     (debugf "after accept loop.\n")
