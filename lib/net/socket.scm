@@ -184,7 +184,7 @@
 ;;  call manually for the VM backend.
 (define (fcntl/set fd val)
 
-  (%backend (c llvm arm amd)
+  (%backend (c llvm arm amd rv)
     (syscall
      (%%ffi fcntl fd F_SETFL val)))
 
@@ -194,7 +194,7 @@
        (%%ffi fcntl pfun #\i 3 fd F_SETFL val)))))
 
 (define (fcntl/get fd)
-  (%backend (c llvm arm amd)
+  (%backend (c llvm arm amd rv)
     (syscall
      (socket/fcntl fd F_GETFL)))
   (%backend bytecode

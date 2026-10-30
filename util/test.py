@@ -26,6 +26,10 @@
 #   backends can run in parallel without trampling each other's output.
 #   run from the top of the source tree: the compiler is self/compile, and
 #   IRKENLIB defaults to ./
+#
+# to test another architecture's backend under emulation, e.g. riscv64:
+#   CC=riscv64-linux-gnu-gcc IRKEN_TEST_WRAP_rv="qemu-riscv64 -L /usr/riscv64-linux-gnu" \
+#     python3 util/test.py -B rv
 
 import os
 import re
@@ -114,6 +118,11 @@ def run_one (test, backend, scratch, args):
         cmd = ['vm/irkvm', base + '.byc']
     else:
         cmd = [base]
+    # e.g. IRKEN_TEST_WRAP_rv="qemu-riscv64 -L /usr/riscv64-linux-gnu", to
+    #  run another machine's binaries (with CC set to a cross-compiler).
+    wrap = os.environ.get ('IRKEN_TEST_WRAP_' + backend)
+    if wrap:
+        cmd = wrap.split() + cmd
     rc, out = run (cmd, args.timeout, env=env)
     lines = [l for l in out.split ('\n') if not NOISE.match (l)]
     while lines and lines[-1] == '':
