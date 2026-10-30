@@ -680,14 +680,37 @@
     ;; --- expressions ---
     ;; this is needed usually for array declarations, where the size is usually
     ;;  an integer constant, but sometimes a complex expression.
+    ;; turn a parsed expression back into (roughly) the C it came from,
+    ;;  for messages: its tokens, spaced, but not inside parens/brackets.
+    (define (parse->c p)
+      (define (tokens p acc)
+        (match p with
+          (parse:t tok)     -> (list:cons tok.val acc)
+          (parse:nt _ subs) -> (foldr tokens acc subs)))
+      (let ((r '()) (prev ""))
+        (for-list tok (tokens p '())
+          (when (not (or (null? r)
+                         (string=? prev "(") (string=? prev "[")
+                         (string=? tok ")") (string=? tok "]")))
+            (push! r " "))
+          (push! r tok)
+          (set! prev tok))
+        (string-concat (reverse r))))
+
     (define (get-exp-value exp)
       (try
        (eval-exp exp)
        except
-       (:ExpTooComplex exp0)
-       -> (begin
-            (printf "expression too complex to evaluate: " (repr (parse->sexp exp0))
-                    " (will ask the C compiler)\n")
+       (:ExpTooComplex _)
+       -> (let ((c (parse->c exp)))
+            ;; system headers are full of these, mostly in declarations an
+            ;;  interface doesn't use, so only mention them with -v.  where it
+            ;;  matters (an array length genffi can't get from the compiler)
+            ;;  genc2 warns.
+            (when *verbose-flag*
+              (printf "note: can't evaluate `"
+                      (if (> (string-length c) 100) (format (substring c 0 100) "...") c)
+                      "` (will ask the C compiler)\n"))
             ;; -1 means 'unknown', as distinct from 0 for '[]'.  genc2 asks the
             ;;  compiler for the real length where it can.
             -1)))
