@@ -16,7 +16,10 @@ def clean_c (path, precious):
             for name in files:
                 jp = os.path.join (root, name)
                 if name.endswith ('.c') and name not in precious:
-                    os.remove (jp)
+                    # only C generated from an .scm next to it: there's
+                    #  hand-written C here too (e.g. tests/p256/kat.c).
+                    if os.path.isfile (jp[:-2] + '.scm'):
+                        os.remove (jp)
                 else:
                     stat = os.stat (jp)
                     if stat.st_mode & 1:
