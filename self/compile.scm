@@ -142,6 +142,9 @@
 
 (define (usage)
   (printf "
+
+This is the full Irken compiler, which includes C, bytecode, and native backends.
+
 Usage: compile <irken-src-file> [options]
  -c     : don't compile .c file
  -v     : verbose (very!) output
