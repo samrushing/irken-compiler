@@ -281,11 +281,7 @@
 
     (define emit-arith1
       'srem arg0 arg1 target
-      -> (RV
-          ('div (s 0) (n arg0) (n arg1))
-          ('mul (n arg1) (s 0) (n arg1))
-          ('sub (n target) (n arg0) (n arg1))
-          )
+      -> (RV ('rem (n target) (n arg0) (n arg1))) ;; (signed remainder)
       op arg0 arg1 target
       -> (RV ((llop->rvop op) (n target) (n arg0) (n arg1)))
       )
@@ -306,7 +302,7 @@
         (RV
          ('untag (n arg0))
          ('untag (n arg1))
-         ('divu (s 1) (n arg0) (n arg1))
+         ('div (s 1) (n arg0) (n arg1)) ;; signed (divu: nonsense for negatives)
          ('mul (s 2) (s 1) (n arg1))
          ('sub (s 2) (n arg0) (s 2))
          ('alloc (n target) (i (UOTAG tuple-tag)) (i 2))
@@ -383,7 +379,7 @@
     (define (ambig code)
       (tree/insert! the-context.ambig-rec int-cmp code #u))
 
-    (define (emit-record-get label sig rec trg)
+    (define (emit-record-get label sig rec trg free)
       (let ((label-code (lookup-label-code label)))
         (match (guess-record-type sig) with
           (maybe:yes sig0)
@@ -395,14 +391,12 @@
                (ambig label-code)
                (RV
                 (com "ambig %record-get " (sym label) " code " (int label-code))
-                ('mv (c 0) (n rec))
-                ('li (c 1) (i label-code))
-                ('call (l "record_fetch"))
+                @ (rv-helper "record_fetch" (list (rvop:n rec) (rvop:i label-code)) free)
                 ('mv (n trg) (c 0))
                 ))
           )))
 
-    (define (emit-record-set label sig rec val)
+    (define (emit-record-set label sig rec val free)
       (let ((label-code (lookup-label-code label)))
         (match (guess-record-type sig) with
           (maybe:yes sig0)
@@ -414,10 +408,7 @@
                (ambig label-code)
                (RV
                 (com "ambig %record-set " (sym label) " code " (int label-code))
-                ('mv (c 0) (n rec))
-                ('li (c 1) (i label-code))
-                ('mv (c 2) (n val))
-                ('call (l "record_store"))
+                @ (rv-helper "record_store" (list (rvop:n rec) (rvop:i label-code) (rvop:n val)) free)
                 ))
           )))
 
@@ -456,6 +447,10 @@
 
     (define (frob-retval type)
       (match type with
+        ;; RV64 keeps 32-bit values sign-extended in registers, even unsigned
+        ;;  ones: zero-extend those.
+        (type:pred 'uint _ _)    -> (RV ('slli (c 0) (c 0) (i 32)) ('srli (c 0) (c 0) (i 32)) ('tag (c 0)))
+        (type:pred 'u32 _ _)     -> (RV ('slli (c 0) (c 0) (i 32)) ('srli (c 0) (c 0) (i 32)) ('tag (c 0)))
         (type:pred 'cref _ _)    -> (RV ('mv (s 1) (c 0)) ('make_foreign (c 0) (s 1)))
         (type:pred '* _ _)       -> (RV ('mv (s 1) (c 0)) ('make_foreign (c 0) (s 1)))
         (type:pred 'void _ _)    -> (RV ('mv (c 0) (i TC_UNDEFINED)))
@@ -473,26 +468,161 @@
         -> (frob-retval other)
         ))
 
-    (define (emit-c-call sig name args target convert?)
-      (let ((nargs (length args)))
-        (when (> nargs 5)
-          (printf "emit-c-call " name " args " (join int->string "," args) "\n"))
-        ;;(assert (<= nargs 5))
-        (RV
-         ;; put the args into the proper registers
-         @ (map-range i nargs (RVINSN 'mv (c i) (n (nth args i))))
-         ;; possibly convert some of those args (irken->c)
-         @ (if convert? (frob-inputs sig nargs) (RV))
-         ;; call the function.
-         ;; 'call' is apparently a pseudo-insn that handles relocation issues?
-         ;; on linux 'jal doesn't work here.
-         ('call (l name))
-         @ (if (= target -1)
-               (RV)
+    ;; --- calling C ---
+    ;;
+    ;; a0-a7 carry C arguments, but a1-a7 are also irken registers 19-13
+    ;;  (see RV/register-file), and nothing preserves t3-t6/a1-a7 across a
+    ;;  call.  so, for every call into C (FFI or runtime helper):
+    ;;  1) live irken registers that C may clobber are saved on the stack
+    ;;     first, and restored after;
+    ;;  2) if loading the args in order would overwrite one before it's read
+    ;;     (arg j sits in a register that arg i < j is loaded into), they go
+    ;;     through the stack: each is converted in a0 and stored, then
+    ;;     a0..a7 are loaded from there;
+    ;;  3) args past the eighth go on the stack, in 8-byte slots at sp.
+
+    (define rv-caller-saved?
+      ;; t0-t2, a0-a7, t3-t6 (and ra, which irken doesn't allocate)
+      (lambda (mreg)
+        (or (= mreg 1)
+            (and (>= mreg 5) (<= mreg 7))
+            (and (>= mreg 10) (<= mreg 17))
+            (>= mreg 28))))
+
+    (define caller-saves-set
+      (let ((r '()))
+        (for-range i (vector-length RV/register-file)
+          (when (rv-caller-saved? RV/register-file[i])
+            (push! r i)))
+        r))
+
+    ;; -> (:tuple saves restores), keeping sp 16-byte aligned.
+    (define (save-restore free)
+      (let ((regs '()))
+        (for-list reg free
+          (when (and (member-eq? reg caller-saves-set)
+                     (not (member-eq? reg regs)))
+            (push! regs reg)))
+        (let ((nregs (length regs))
+              (nbytes (* 8 (+ nregs (logand nregs 1)))))
+          (if (= nregs 0)
+              (:tuple (list:nil) (list:nil))
+              (:tuple
                (RV
-                @ (if convert? (frob-output sig) (list:nil))
-                  ('mv (n target) retval)))
-           )))
+                (com "save caller-saved: [" (join int->string ", " regs) "]")
+                ('addi sp sp (i (- 0 nbytes)))
+                @ (map-range i nregs (RVINSN 'sd (n (nth regs i)) (ind (* 8 i) sp))))
+               (RV
+                @ (map-range i nregs (RVINSN 'ld (n (nth regs i)) (ind (* 8 i) sp)))
+                ('addi sp sp (i nbytes))))))))
+
+    ;; the machine register an operand reads, or -1.
+    (define rvop->mreg
+      (rvop:n r) -> RV/register-file[r]
+      _          -> -1)
+
+    ;; would loading these operands into a0, a1, ... in order clobber one
+    ;;  before it's read?
+    (define (load-hazard? ops)
+      (let loop ((i 0) (ops ops) (written '()))
+        (match ops with
+          () -> #f
+          (op . rest)
+          -> (if (member-eq? (rvop->mreg op) written)
+                 #t
+                 (loop (+ i 1) rest (list:cons RV/carg-registers[i] written))))))
+
+    ;; load an operand (register, scratch, or immediate) into C arg <i>.
+    (define (load-carg i op)
+      (match op with
+        (rvop:i k) -> (RV ('li (c i) (i k)))
+        _          -> (list (rv:insn 'mv (list (rvop:c i) op)))))
+
+    ;; the C type of argument <i>, if the signature says.
+    (define (sig-arg-type sig i)
+      (match sig with
+        (type:pred 'arrow (result-type . arg-types) _)
+        -> (if (< i (length arg-types)) (maybe:yes (nth arg-types i)) (maybe:no))
+        _ -> (maybe:no)))
+
+    (define (frob-arg-maybe i mtype)
+      (match mtype with
+        (maybe:yes t) -> (frob-arg i t)
+        (maybe:no)    -> (list:nil)))
+
+    ;; put up to eight operands into a0..a7, converting (irken->c) if
+    ;;  convert?.  conversions only use t0-t2, never another arg register.
+    (define (load-c-args sig ops convert?)
+      (let ((nargs (min 8 (length ops)))
+            (ops (take ops nargs)))
+        (if (not (load-hazard? ops))
+            (RV
+             @ (flatten (map-range i nargs (load-carg i (nth ops i))))
+             @ (if convert?
+                   (flatten (map-range i nargs (frob-arg-maybe i (sig-arg-type sig i))))
+                   (list:nil)))
+            (let ((nbytes (* 16 (/ (+ nargs 1) 2))))
+              (RV
+               (com "args through the stack")
+               ('addi sp sp (i (- 0 nbytes)))
+               @ (flatten
+                  (map-range
+                   i nargs
+                   (RV
+                    @ (load-carg 0 (nth ops i))
+                    @ (if convert? (frob-arg-maybe 0 (sig-arg-type sig i)) (list:nil))
+                    ('sd (c 0) (ind (* 8 i) sp)))))
+               @ (map-range i nargs (RVINSN 'ld (c i) (ind (* 8 i) sp)))
+               ('addi sp sp (i nbytes)))))))
+
+    ;; args 8.. go on the stack, converted on the way through a0 (which is
+    ;;  loaded afterwards).  -> (:tuple code nbytes)
+    (define (store-stack-args sig ops convert?)
+      (let ((nargs (length ops))
+            (nstack (- nargs 8))
+            (nbytes (* 16 (/ (+ nstack 1) 2))))
+        (:tuple
+         (RV
+          ('addi sp sp (i (- 0 nbytes)))
+          @ (flatten
+             (map-range
+              j nstack
+              (let ((i (+ j 8)))
+                (RV
+                 @ (load-carg 0 (nth ops i))
+                 @ (if convert? (frob-arg-maybe 0 (sig-arg-type sig i)) (list:nil))
+                 ('sd (c 0) (ind (* 8 j) sp)))))))
+         nbytes)))
+
+    ;; call C function <name> with <ops>; the result is left in a0.
+    ;;  <free> are the registers live after the call.
+    (define (rv-call sig name ops free convert?)
+      (let ((nargs (length ops))
+            ((saves restores) (save-restore free))
+            ((stack-code stack-bytes)
+             (if (> nargs 8)
+                 (store-stack-args sig ops convert?)
+                 (:tuple (list:nil) 0))))
+        (RV
+         @ saves
+         @ stack-code
+         @ (load-c-args sig ops convert?)
+         ('call (l name))
+         @ (if (> stack-bytes 0) (RV ('addi sp sp (i stack-bytes))) (list:nil))
+         @ restores)))
+
+    ;; a runtime helper: no conversions.
+    (define (rv-helper name ops free)
+      (rv-call (pred 'raw '()) name ops free #f))
+
+    (define (emit-c-call sig name args target free convert?)
+      (RV
+       @ (rv-call sig name (map (lambda (r) (rvop:n r)) args) free convert?)
+       @ (if (= target -1)
+             (RV)
+             (RV
+              @ (if convert? (frob-output sig) (list:nil))
+                ('mv (n target) retval)))))
 
     (define (emit-rv-inline inline args target)
 
@@ -563,8 +693,8 @@
         (RV
          (com "%ensure-heap: size in " (int size) " nfree = " (int nfree))
          ('ldr_addr (s 0) (l "limit"))
-         ('slli (n size) (n size) (i 2)) ;; N.B. hidden 'untag', nearly.
-         ('sub (s 0) (s 0) (n size))
+         ('slli (s 1) (n size) (i 2)) ;; N.B. hidden 'untag', nearly.
+         ('sub (s 0) (s 0) (s 1))
          ('blt freep (s 0) (l L0))
          ;; need to gc
          ;; add free vars as roots
@@ -594,46 +724,55 @@
        ('mv (n target) (s 1))
        ))
 
+    ;; (in a scratch register: the source may be a live variable.)
     (define (emit-cref->int src target)
       (RV
-       ('unforeign (n src))
-       ('mv (n target) (n src))
+       ('mv (s 2) (n src))   ;; (unforeign uses t0/t1)
+       ('unforeign (s 2))
+       ('mv (n target) (s 2))
        ('tag (n target))))
 
-    (define (emit-c-aref type src index target)
+    (define (emit-int->cref src target)
+      (RV
+       (com "%int->cref")
+       ('mv (s 2) (n src))
+       ('untag (s 2))
+       ('make_foreign (s 1) (s 2)) ;; (alloc uses t0)
+       ('mv (n target) (s 1))))
+
+    (define (emit-c-aref type src index target free)
       (let ((ctype (irken-type->ctype (un-cref type)))
             (size (ctype->size ctype)))
         ;; note: this allocates, so we must save/restore freep.
         (RV
-         ('untag (n index))
+         ('mv (s 1) (n index))
+         ('untag (s 1))
+         ('li (s 2) (i size))
+         ('mul (s 1) (s 1) (s 2))
          ('str_addr freep (l "freep"))
-         ('mv (c 0) (n src))
-         ('li (c 1) (i size))
-         ('mul (c 1) (c 1) (n index))
-         ('call (l "offset_foreign"))
+         @ (rv-helper "offset_foreign" (list (rvop:n src) (rvop:s 1)) free)
          ('mv (n target) (c 0))
          ('ldr_addr freep (l "freep"))
          )))
 
-    (define (emit-halloc-malloc type count target fun-name)
+    (define (emit-halloc-malloc type count target fun-name free)
       (let ((ctype (parse-ctype type))
             (size (ctype->size ctype)))
         (if (< target 0)
             (error "dead %halloc?")
             (RV
              ('str_addr freep (l "freep"))
-             ('untag (n count))
-             ('li (c 0) (i size))
-             ('mv (c 1) (n count))
-             ('call (l fun-name))
+             ('mv (s 1) (n count))
+             ('untag (s 1))
+             @ (rv-helper fun-name (list (rvop:i size) (rvop:s 1)) free)
              ('ldr_addr freep (l "freep"))
              ('mv (n target) (c 0))))))
 
-    (define (emit-halloc type count target)
-      (emit-halloc-malloc type count target "make_halloc"))
+    (define (emit-halloc type count target free)
+      (emit-halloc-malloc type count target "make_halloc" free))
 
-    (define (emit-malloc type count target)
-      (emit-halloc-malloc type count target "make_malloc"))
+    (define (emit-malloc type count target free)
+      (emit-halloc-malloc type count target "make_malloc" free))
 
     ;; the syntax for load/store changes depending on data size.
     (define (store-by-size size)
@@ -646,16 +785,17 @@
         ))
 
     ;; note: this relies on a hack in cps.scm that sets the type of this insn to the type of the rval.
-    (define (emit-c-set-int type dst src)
+    (define (emit-c-set-int type dst src free)
       (let ((ctype (irken-type->ctype type))
             (size (ctype->size ctype)))
         ;; set target? e.g (let ((_ (set! thing...))))
         (RV
          (com "c-set-int " (type-repr type))
-         ('mv (c 0) (n dst))
-         ('call (l "get_foreign"))
-         ('untag (n src))
-         ((store-by-size size) (n src) (ind 0 (c 0)))
+         ;; src is read after the call, so it must survive it too.
+         @ (rv-helper "get_foreign" (list (rvop:n dst)) (list:cons src free))
+         ('mv (s 1) (n src))
+         ('untag (s 1))
+         ((store-by-size size) (s 1) (ind 0 (c 0)))
          )))
 
     ;; the syntax for load/store changes depending on data size.
@@ -672,60 +812,51 @@
         x _  -> (error (format "load-by-size - bad size: " (int x)))
         ))
 
-    (define (emit-c-get-int type src trg)
+    (define (emit-c-get-int type src trg free)
       (let ((ctype (irken-type->ctype type))
             (size (ctype->size ctype)))
         (RV
          (com "c-get-int " (type-repr type))
-         ('mv (c 0) (n src))
-         ('call (l "get_foreign"))
+         @ (rv-helper "get_foreign" (list (rvop:n src)) free)
          ((load-by-size size (ctype-signed? ctype)) (n trg) (ind 0 (c 0)))
          ('tag (n trg))
          )))
 
-    (define (emit-cref->string src len trg)
+    (define (emit-cref->string src len trg free)
       (RV
        (com "%cref->string")
        ('str_addr freep (l "freep"))
-       ('mv (c 0) (n src))
-       ('mv (c 1) (n len))
-       ('call (l "irk_cref_2_string"))
+       @ (rv-helper "irk_cref_2_string" (list (rvop:n src) (rvop:n len)) free)
        ('mv (n trg) (c 0))
        ('ldr_addr freep (l "freep"))))
 
-    (define (emit-sref refexp src trg)
+    (define (emit-sref refexp src trg free)
       (let ((ref0 (sexp->ref refexp)))
         (RV
          (com "%c-sref")
          ('str_addr freep (l "freep"))
-         ('mv (c 0) (n src))
-         ('li (c 1) (i ref0.off))
-         ('call (l "offset_foreign"))
+         @ (rv-helper "offset_foreign" (list (rvop:n src) (rvop:i ref0.off)) free)
          ('mv (n trg) (c 0))
          ('ldr_addr freep (l "freep")))))
 
     ;; %c-get-ptr allocates a new foreign, so we must save/restore freep.
-    (define (emit-c-get-ptr src trg)
+    (define (emit-c-get-ptr src trg free)
       (RV
        (com "%c-get-ptr")
        ('str_addr freep (l "freep"))
-       ('mv (c 0) (n src))
-       ('call (l "irk_c_get_ptr"))
+       @ (rv-helper "irk_c_get_ptr" (list (rvop:n src)) free)
        ('mv (n trg) (c 0))
        ('ldr_addr freep (l "freep"))))
 
-    (define (emit-c-set-ptr dst src)
+    (define (emit-c-set-ptr dst src free)
       (RV
        (com "%c-set-ptr")
-       ('mv (c 0) (n dst))
-       ('mv (c 1) (n src))
-       ('call (l "irk_c_set_ptr"))))
+       @ (rv-helper "irk_c_set_ptr" (list (rvop:n dst) (rvop:n src)) free)))
 
-    (define (emit-free ref)
+    (define (emit-free ref free)
       (RV
        (com "%free")
-       ('mv (c 0) (n ref))
-       ('call (l "free_foreign"))))
+       @ (rv-helper "free_foreign" (list (rvop:n ref)) free)))
 
     (define (emit-c-sizeof ctexp trg)
       (let ((ctype (parse-ctype ctexp)))
@@ -751,29 +882,30 @@
         '%ensure-heap _ (size)                             -> (emit-ensure-heap size k.free k.target)
         '%string->cref _     (s)                           -> (emit-string->cref s k.target)
         '%cref->int    _   (src)                           -> (emit-cref->int src k.target)
-        '%c-aref _ (ref index)                             -> (emit-c-aref type ref index k.target)
-        '%halloc type (count)                              -> (emit-halloc type count k.target)
-        '%malloc type (count)                              -> (emit-malloc type count k.target)
-        '%c-set-int _    (dst src)                         -> (emit-c-set-int type dst src)
-        '%c-get-int _    (src)                             -> (emit-c-get-int type src k.target)
-        '%cref->string _ (src len)                         -> (emit-cref->string src len k.target)
-        '%c-sref refexp (src)                              -> (emit-sref refexp src k.target)
-        '%c-get-ptr _    (src)                             -> (emit-c-get-ptr src k.target)
-        '%c-set-ptr _    (dst src)                         -> (emit-c-set-ptr dst src)
-        '%free _ (ref)                                     -> (emit-free ref)
+        '%int->cref    _   (src)                           -> (emit-int->cref src k.target)
+        '%c-aref _ (ref index)                             -> (emit-c-aref type ref index k.target k.free)
+        '%halloc type (count)                              -> (emit-halloc type count k.target k.free)
+        '%malloc type (count)                              -> (emit-malloc type count k.target k.free)
+        '%c-set-int _    (dst src)                         -> (emit-c-set-int type dst src k.free)
+        '%c-get-int _    (src)                             -> (emit-c-get-int type src k.target k.free)
+        '%cref->string _ (src len)                         -> (emit-cref->string src len k.target k.free)
+        '%c-sref refexp (src)                              -> (emit-sref refexp src k.target k.free)
+        '%c-get-ptr _    (src)                             -> (emit-c-get-ptr src k.target k.free)
+        '%c-set-ptr _    (dst src)                         -> (emit-c-set-ptr dst src k.free)
+        '%free _ (ref)                                     -> (emit-free ref k.free)
         '%c-sizeof ctexp ()                                -> (emit-c-sizeof ctexp k.target)
 
 	'%record-get (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec)
-        -> (emit-record-get label sig rec k.target)
+        -> (emit-record-get label sig rec k.target k.free)
 
         '%record-set (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec val)
-        -> (emit-record-set label sig rec val)
+        -> (emit-record-set label sig rec val k.free)
 
         '%asm-c-call (sexp:list ((sexp:string name) sig)) args
-        -> (emit-c-call (parse-type sig) name args k.target #t)
+        -> (emit-c-call (parse-type sig) name args k.target k.free #t)
 
         '%asm-c-call (sexp:list ((sexp:string name) sig (sexp:bool convert?))) args
-        -> (emit-c-call (parse-type sig) name args k.target convert?)
+        -> (emit-c-call (parse-type sig) name args k.target k.free convert?)
 
         _ _ _
         -> (begin
@@ -882,14 +1014,12 @@
                ('ld (n target) (ind (* 8 (+ index 2)) (s 0))))
         ))
 
-    (define (emit-varref depth index target)
+    (define (emit-varref depth index target free)
       (if (and (>= depth 0) (or (> depth 5) (> index 253)))
           (RV
            (com "varref " (int depth) ", " (int index))
            ('str_addr lenv (l "lenv"))
-           ('li (c 0) (i depth))
-           ('li (c 1) (i index))
-           ('call (l "varref"))
+           @ (rv-helper "varref" (list (rvop:i depth) (rvop:i index)) free)
            ('mv (n target) (c 0)))
           (emit-varref-inline depth index target)
           ))
@@ -905,15 +1035,12 @@
                ('sd (n val) (ind (* 8 (+ index 2)) (s 0))))
         ))
 
-    (define (emit-varset depth index val target)
+    (define (emit-varset depth index val target free)
       (if (and (>= depth 0) (or (> depth 5) (> index 253)))
           (RV
            (com "varset " (int depth) ", " (int index))
            ('str_addr lenv (l "lenv"))
-           ('li (c 0) (i depth))
-           ('li (c 1) (i index))
-           ('mv (c 2) (n val))
-           ('call (l "varset"))
+           @ (rv-helper "varset" (list (rvop:i depth) (rvop:i index) (rvop:n val)) free)
            @ (dead-set target))
           (emit-varset-inline depth index val)
           ))
@@ -1155,11 +1282,11 @@
          @ (emit-jump-continuation jump-num k.insn))
         ))
 
-    (define (emit-copy-lit index target)
+    (define (emit-copy-lit index target free)
       (RV
        ('str_addr freep (l "freep"))
-       ('ldr_addr (c 0) (l (format "lit_" (int index))))
-       ('call (l "irk_copy_tuple"))
+       ('ldr_addr (s 1) (l (format "lit_" (int index))))
+       @ (rv-helper "irk_copy_tuple" (list (rvop:s 1)) free)
        ('mv (n target) retval)
        ('ldr_addr freep (l "freep"))
       ))
@@ -1169,12 +1296,12 @@
           (match kind with
             'string -> (RV ('lld_addr (n target) (l (format "lit_" (int index)))))
             'symbol -> (RV ('lld_addr (n target) (l (format "lit_" (int index)))))
-            'record -> (emit-copy-lit index target)
-            'vector -> (emit-copy-lit index target)
+            'record -> (emit-copy-lit index target free)
+            'vector -> (emit-copy-lit index target free)
             _       -> (RV ('ldr_addr (n target) (l (format "lit_" (int index))))))
           (RV)))
 
-    (define (emit-ffi csig rtype argtypes name args target)
+    (define (emit-ffi csig rtype argtypes name args target free)
       ;; rtype/argtypes are predicates, not s-expressions.
       ;; csig is a parsed ctype, and indicates the signature from the FFI data.
       ;; these should be 'identical' unless varargs.  so we really do need both.
@@ -1182,7 +1309,7 @@
       (match csig with
         ;; variadic follows same calling convention, no need to specialize.
         (csig:fun name frtype fargtypes _)
-        -> (emit-c-call (arrow rtype argtypes) (symbol->string name) args target #t)
+        -> (emit-c-call (arrow (ffi-result-type frtype rtype) argtypes) (symbol->string name) args target free #t)
         (csig:obj name obtype)
         -> (begin
              (warning "ffi object reference NYI")
@@ -1205,8 +1332,8 @@
         (insn:alloc tag size k)                      -> (emitk (emit-alloc tag size k.target) k)
         (insn:store off arg tup i k)                 -> (emitk (emit-store off arg tup i) k)
         (insn:close name nreg body k)                -> (emitk (emit-close name nreg body k.target) k)
-        (insn:varref d i k)                          -> (emitk (emit-varref d i k.target) k)
-        (insn:varset d i v k)                        -> (emitk (emit-varset d i v k.target) k)
+        (insn:varref d i k)                          -> (emitk (emit-varref d i k.target k.free) k)
+        (insn:varset d i v k)                        -> (emitk (emit-varset d i v k.target k.free) k)
         (insn:new-env size top? types k)             -> (emitk (emit-new-env size top? types k.target) k)
         (insn:push r k)                              -> (emitk (emit-push r) k)
         (insn:pop r k)                               -> (emitk (emit-pop r k.target) k)
@@ -1218,7 +1345,7 @@
         (insn:nvcase tr dt tags jn alts ealt k)      -> (emit-nvcase tr dt tags jn alts ealt k)
         (insn:pvcase tr tags arities jn alts ealt k) -> (emit-pvcase tr tags arities jn alts ealt k)
         (insn:litcon i kind k)                       -> (emitk (emit-litcon i kind k.target k.free) k)
-        (insn:ffi sig type ats name args k)          -> (emitk (emit-ffi sig type ats name args k.target) k)
+        (insn:ffi sig type ats name args k)          -> (emitk (emit-ffi sig type ats name args k.target k.free) k)
 
          _ -> (begin
                 (print-insn insn)
