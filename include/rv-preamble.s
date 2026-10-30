@@ -87,7 +87,7 @@ prof_dump:
         .macro heapcheck x
         ldr_addr \x, limit
         blt x25, \x, L1\@
-        jal irk_gc_flip
+        call irk_gc_flip
         L1\@:
         .endm
 
@@ -148,7 +148,7 @@ prof_dump:
         vlen_ut	t1, \vec
         mv	t0, \index
         blt	t0, t1, L1\@
-        j	out_of_range_exception
+        tail	out_of_range_exception
         L1\@:
         .endm
 
@@ -201,7 +201,7 @@ irk_gc_flip:
         str_addr x26, lenv
         str_addr x25, freep
         li a0, 0
-        jal gc_flip
+        call gc_flip
         ldr_addr x27, k
         ldr_addr x26, lenv
         ldr_addr x25, freep
@@ -216,7 +216,7 @@ irk_gc_for_ensure_heap:
         str_addr x27, k
         str_addr x26, lenv
         str_addr x25, freep
-        jal gc_flip
+        call gc_flip
         ldr_addr x27, k
         ldr_addr x26, lenv
         ldr_addr x25, freep
@@ -228,7 +228,7 @@ rv_make_string:
         addi    sp, sp, -16
         sd      ra, 8(sp)
         str_addr x25, freep
-        jal	irk_make_string
+        call	irk_make_string
         ldr_addr x25, freep
         ld	ra, 8(sp)
         addi	sp, sp, 16

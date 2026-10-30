@@ -457,7 +457,7 @@
      (('a 'a -> cmp)
       (mv (c 0) (a 0))
       (mv (c 1) (a 1))
-      (jal "magic_cmp")
+      (call "magic_cmp")
       (slli (c 0) (c 0) (i 16))
       (lui (s 0) (i 16))
       (addiw (s 0) (s 0) (i 22))
@@ -658,7 +658,7 @@
       (mv (c 0) (a 0))
       (mv (c 1) (a 1))
       (untag (c 0))
-      (jal "make_vector")
+      (call "make_vector")
       (ldr_addr freep "freep")
       (mv trg (c 0)))
      n val))
@@ -1116,7 +1116,7 @@
     (%rv
      ((-> (vector string))
       (str_addr freep "freep")
-      (jal "irk_make_argv")
+      (call "irk_make_argv")
       (ldr_addr freep "freep")
       (mv trg (c 0)))))
   (%backend amd

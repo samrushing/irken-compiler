@@ -274,7 +274,7 @@
     ;; llvm -> rv64 arithmetic insns
     (define llop->rvop
       'shl  -> 'sll
-      'ashr -> 'srl
+      'ashr -> 'sra  ;; arithmetic (srl is logical: wrong for negatives)
       'sdiv -> 'div
       other -> other
       )
@@ -397,7 +397,7 @@
                 (com "ambig %record-get " (sym label) " code " (int label-code))
                 ('mv (c 0) (n rec))
                 ('li (c 1) (i label-code))
-                ('jal (l "record_fetch"))
+                ('call (l "record_fetch"))
                 ('mv (n trg) (c 0))
                 ))
           )))
@@ -417,7 +417,7 @@
                 ('mv (c 0) (n rec))
                 ('li (c 1) (i label-code))
                 ('mv (c 2) (n val))
-                ('jal (l "record_store"))
+                ('call (l "record_store"))
                 ))
           )))
 
@@ -543,7 +543,7 @@
     (define (emit-exit arg)
       (RV
        ('mv retval (n arg))
-       ('j  (l "Lreturn"))
+       ('tail (l "Lreturn"))
        ))
 
     (define (emit-putcc rk rv target)
@@ -572,7 +572,7 @@
          @ (map-range i nfree (RVINSN 'sd (n (nth free i)) (ind (* 8 (+ i 3)) (s 0))))
          ('li (c 0) (i nfree))
          ;; invoke GC
-         ('jal (l "irk_gc_for_ensure_heap"))
+         ('call (l "irk_gc_for_ensure_heap"))
          ;; restore free vars
          ('ldr_addr (s 0) (l "heap0"))
          @ (map-range i nfree (RVINSN 'ld (n (nth free i)) (ind (* 8 (+ i 3)) (s 0))))
@@ -610,7 +610,7 @@
          ('mv (c 0) (n src))
          ('li (c 1) (i size))
          ('mul (c 1) (c 1) (n index))
-         ('jal (l "offset_foreign"))
+         ('call (l "offset_foreign"))
          ('mv (n target) (c 0))
          ('ldr_addr freep (l "freep"))
          )))
@@ -625,7 +625,7 @@
              ('untag (n count))
              ('li (c 0) (i size))
              ('mv (c 1) (n count))
-             ('jal (l fun-name))
+             ('call (l fun-name))
              ('ldr_addr freep (l "freep"))
              ('mv (n target) (c 0))))))
 
@@ -653,7 +653,7 @@
         (RV
          (com "c-set-int " (type-repr type))
          ('mv (c 0) (n dst))
-         ('jal (l "get_foreign"))
+         ('call (l "get_foreign"))
          ('untag (n src))
          ((store-by-size size) (n src) (ind 0 (c 0)))
          )))
@@ -678,7 +678,7 @@
         (RV
          (com "c-get-int " (type-repr type))
          ('mv (c 0) (n src))
-         ('jal (l "get_foreign"))
+         ('call (l "get_foreign"))
          ((load-by-size size (ctype-signed? ctype)) (n trg) (ind 0 (c 0)))
          ('tag (n trg))
          )))
@@ -689,7 +689,7 @@
        ('str_addr freep (l "freep"))
        ('mv (c 0) (n src))
        ('mv (c 1) (n len))
-       ('jal (l "irk_cref_2_string"))
+       ('call (l "irk_cref_2_string"))
        ('mv (n trg) (c 0))
        ('ldr_addr freep (l "freep"))))
 
@@ -700,7 +700,7 @@
          ('str_addr freep (l "freep"))
          ('mv (c 0) (n src))
          ('li (c 1) (i ref0.off))
-         ('jal (l "offset_foreign"))
+         ('call (l "offset_foreign"))
          ('mv (n trg) (c 0))
          ('ldr_addr freep (l "freep")))))
 
@@ -710,7 +710,7 @@
        (com "%c-get-ptr")
        ('str_addr freep (l "freep"))
        ('mv (c 0) (n src))
-       ('jal (l "irk_c_get_ptr"))
+       ('call (l "irk_c_get_ptr"))
        ('mv (n trg) (c 0))
        ('ldr_addr freep (l "freep"))))
 
@@ -719,13 +719,13 @@
        (com "%c-set-ptr")
        ('mv (c 0) (n dst))
        ('mv (c 1) (n src))
-       ('jal (l "irk_c_set_ptr"))))
+       ('call (l "irk_c_set_ptr"))))
 
     (define (emit-free ref)
       (RV
        (com "%free")
        ('mv (c 0) (n ref))
-       ('jal (l "free_foreign"))))
+       ('call (l "free_foreign"))))
 
     (define (emit-c-sizeof ctexp trg)
       (let ((ctype (parse-ctype ctexp)))
@@ -889,7 +889,7 @@
            ('str_addr lenv (l "lenv"))
            ('li (c 0) (i depth))
            ('li (c 1) (i index))
-           ('jal (l "varref"))
+           ('call (l "varref"))
            ('mv (n target) (c 0)))
           (emit-varref-inline depth index target)
           ))
@@ -913,7 +913,7 @@
            ('li (c 0) (i depth))
            ('li (c 1) (i index))
            ('mv (c 2) (n val))
-           ('jal (l "varset"))
+           ('call (l "varset"))
            @ (dead-set target))
           (emit-varset-inline depth index val)
           ))
@@ -950,7 +950,9 @@
     (define (funcall mname funreg)
       (match mname with
         (maybe:yes name)
-        -> (RV ('j (l (safe-function-name name)))) ;; known function
+        ;; `tail` (auipc+jr, clobbering t1) rather than `j`: j reaches only
+        ;;  +/-1MB, and the full compiler's text is several times that.
+        -> (RV ('tail (l (safe-function-name name)))) ;; known function
         (maybe:no)
         -> (RV
             ('ld (s 0) (ind 8 (n funreg)))  ;; address via closure
@@ -1157,7 +1159,7 @@
       (RV
        ('str_addr freep (l "freep"))
        ('ldr_addr (c 0) (l (format "lit_" (int index))))
-       ('jal (l "irk_copy_tuple"))
+       ('call (l "irk_copy_tuple"))
        ('mv (n target) retval)
        ('ldr_addr freep (l "freep"))
       ))
@@ -1339,7 +1341,7 @@
     ('ld (r 's10) (ind 88 sp))
     ('ld (r 's11) (ind 96 sp))
     ('addi sp sp (i 96))
-    ('j (l "exit_continuation"))
+    ('tail (l "exit_continuation"))
     (label "irk_get_metadata")
     ('ldr_addr (r 'a0) (l (format "lit_" (int (- the-context.literals.count 1)))))
     ('ret)
