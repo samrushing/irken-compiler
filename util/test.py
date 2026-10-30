@@ -164,6 +164,20 @@ def find_tests (paths):
             r.append (p)
     return r
 
+def newest (paths):
+    return max ((os.stat (p).st_mtime for p in paths if os.path.isfile (p)), default=0)
+
+def sources (*dirs):
+    return [PJ (d, f) for d in dirs for f in os.listdir (d) if f.endswith ('.scm')]
+
+def warn_stale ():
+    # a stale compiler or VM gives confusing results: say so up front.
+    def check (binary, srcs, how):
+        if os.path.isfile (binary) and newest (srcs) > os.stat (binary).st_mtime:
+            print ('warning: %s is older than its sources; rebuild it with:\n    %s' % (binary, how))
+    check ('self/compile', sources ('self', 'lib'), 'IRKENLIB=. self/compile self/compile.scm')
+    check ('vm/irkvm', ['vm/irkvm.c', 'include/header1.c', 'include/gc1.c'], 'python3 util/build_vm.py')
+
 def main ():
     ap = argparse.ArgumentParser (description='run irken tests')
     ap.add_argument ('paths', nargs='*', default=['test'])
@@ -174,8 +188,13 @@ def main ():
     ap.add_argument ('-k', '--keep', action='store_true', help='keep the scratch directory')
     ap.add_argument ('-v', '--verbose', action='store_true', help='list every result, not just problems')
     args = ap.parse_args()
+    if not os.path.isdir ('self'):
+        sys.exit ('run this from the top of the source tree')
     if not os.path.isfile ('self/compile'):
-        sys.exit ('run this from the top of the source tree (no self/compile here)')
+        sys.exit ('no self/compile, the compiler with all the backends.  build it with:\n'
+                  '    IRKENLIB=. self/irken self/compile.scm\n'
+                  '(or re-run util/bootstrap2.py, which now does that too)')
+    warn_stale()
     backends = args.backends.split (',') if args.backends else host_backends()
     tests = [Test (p) for p in find_tests (args.paths)]
     scratch = tempfile.mkdtemp (prefix='irken-test-')

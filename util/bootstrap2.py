@@ -174,3 +174,9 @@ else:
 
 unlink ('self/irken.1.s')
 move ('self/irken.2.s', 'self/irken.s')
+
+# self/irken only has this machine's native backend.  self/compile has
+#   them all (c, bytecode, arm64, amd64, riscv64); util/test.py uses it.
+if irkbin != 'compile':
+    print ('building self/compile (all backends)...')
+    system ('IRKENLIB=. self/irken self/compile.scm -q')
