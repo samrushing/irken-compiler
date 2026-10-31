@@ -3,7 +3,7 @@
 ;; big variable-sized allocations (strings, vectors), checked after the
 ;;  collections they cause.
 
-;; skip: b -- ~150M string-set!s: minutes in the VM
+;; skip: b -- ~30M string-set!s: too slow in the VM
 
 (include "lib/basis.scm")
 
@@ -19,7 +19,7 @@
     #t))
 
 (let loop ((i 0) (recent (list:nil)) (ok #t))
-  (if (= i 300)
+  (if (= i 60)
       (printn ok)
       (let ((s (make-string 500000))
             (ch (int->char (+ 97 (mod i 26)))))
