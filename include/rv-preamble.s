@@ -162,8 +162,8 @@ prof_dump:
         ld	t1, 0(\src)
         ld	\src, 8(\src)
         srli	t1, t1, 16
-        li	t2, 1
-        beq	t1, t2, L1\@
+        addi	t1, t1, -1
+        beqz	t1, L1\@
         ld	t0, 16(t0)
         srai	t0, t0, 1
         add	\src, \src, t0

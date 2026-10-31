@@ -727,7 +727,7 @@
     ;; (in a scratch register: the source may be a live variable.)
     (define (emit-cref->int src target)
       (RV
-       ('mv (s 2) (n src))   ;; (unforeign uses t0/t1)
+       ('mv (s 2) (n src))   ;; (unforeign uses t0/t1, not t2)
        ('unforeign (s 2))
        ('mv (n target) (s 2))
        ('tag (n target))))
