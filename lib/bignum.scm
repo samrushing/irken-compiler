@@ -503,6 +503,30 @@
       (stp (s 1) (s 2) (ind (a 2) (i 8)))
       (mov trg (i 14)))
      a b r))
+  (%backend rv
+    ;; mul/mulh give the 128-bit product; split it into 60-bit digits.
+    ;; (the args are untagged in scratch registers, not in place: they
+    ;;  may be live variables.)
+    (%rv
+     ((int int (vector int) -> undefined)
+      (srai (s 0) (a 0) (i 1))
+      (srai (s 1) (a 1) (i 1))
+      (mul  (s 2) (s 0) (s 1))     ;; low 64 bits
+      (mulh (s 0) (s 0) (s 1))     ;; high 64 bits
+      ;; high digit: product >> 60
+      (slli (s 0) (s 0) (i 4))
+      (srli (s 1) (s 2) (i 60))
+      (add  (s 0) (s 0) (s 1))
+      (slli (s 0) (s 0) (i 1))
+      (addi (s 0) (s 0) (i 1))
+      ;; low digit: low 60 bits, tagged
+      (slli (s 2) (s 2) (i 4))
+      (srli (s 2) (s 2) (i 3))
+      (addi (s 2) (s 2) (i 1))
+      (sd   (s 0) (ind 8 (a 2)))
+      (sd   (s 2) (ind 16 (a 2)))
+      (li   trg (i 14)))
+     a b r))
   (%backend amd
     ;; note: header1.c:mul2 needs the int args untagged.
     (%asm-c-call ("irk_mul2" (int int (vector int) -> undefined) #t) a b r))
@@ -706,7 +730,7 @@
       (set! r[0] q0)
       (set! r[1] r0)))
   ;; no 128-bit divide on arm64, sigh.
-  (%backend (arm amd)
+  (%backend (arm amd rv)
     (%asm-c-call
      ("irk_div2b1" (int int int (vector int) -> undefined))
      ah al b r

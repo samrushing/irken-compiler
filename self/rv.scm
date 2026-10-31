@@ -453,7 +453,7 @@
         (type:pred 'u32 _ _)     -> (RV ('slli (c 0) (c 0) (i 32)) ('srli (c 0) (c 0) (i 32)) ('tag (c 0)))
         (type:pred 'cref _ _)    -> (RV ('mv (s 1) (c 0)) ('make_foreign (c 0) (s 1)))
         (type:pred '* _ _)       -> (RV ('mv (s 1) (c 0)) ('make_foreign (c 0) (s 1)))
-        (type:pred 'void _ _)    -> (RV ('mv (c 0) (i TC_UNDEFINED)))
+        (type:pred 'void _ _)    -> (RV ('li (c 0) (i TC_UNDEFINED)))
         (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
                                         (RV ('tag (c 0)))
         			        (list:nil))
