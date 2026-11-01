@@ -135,7 +135,7 @@
     (max lo (min hi val)))
 
   (define (send-404 request)
-    (request.send-headers (list (:tuple ":status" "404")) #f))
+    (request.send-headers "404" (list:nil) #f))
 
   (let ((path (lookup-header ":path" request.headers))
         (conn (request.get-conn)))
@@ -152,9 +152,8 @@
                            (scale (clamp 2 50 (get-int-param params "scale" 10)))
                            (solve? (>0 (get-int-param params "solve" 0)))
                            (seed (get-int-param params "seed" (random))))
-                       (request.send-headers
-                        (list (:tuple ":status" "200")
-                              (:tuple "content-type" "image/svg+xml")
+                       (request.send-headers "200"
+                        (list (:tuple "content-type" "image/svg+xml")
                               (:tuple "content-encoding" (get-content-encoding)))
                         #t)
                        (let ((maze (make-maze w h seed bias))
@@ -164,10 +163,7 @@
                          (for (last? chunk) (notify-last-gen zgen)
                            (request.send-data chunk last?))))))
                ((string=? path "/")
-                (request.send-headers
-                 (list (:tuple ":status" "302")
-                       (:tuple "location" "/game.html"))
-                 #f))
+                (request.send-headers "302" (list (:tuple "location" "/game.html")) #f))
                ;; test target that places many svg images on a single page.
                ;; [mostly trying to get lots of parallel request activity]
                ((starts-with path "/many/")
@@ -189,9 +185,7 @@
                                  "&solve=" (int (if solve? 1 0))
                                  "&seed=" (int (+ seed i))
                                  "\"><br>")))
-                       (request.send-headers
-                        (list (:tuple ":status" "200")
-                              (:tuple "content-type" "text/html")) #t)
+                       (request.send-headers "200" (list (:tuple "content-type" "text/html")) #t)
                        (request.send-data
                         (format
                          "<!DOCTYPE html>\n<html><body>\n"
@@ -206,8 +200,7 @@
                        (maybe:yes (:tuple ctype fgen))
                        -> (begin
                             (request.send-headers
-                             (list (:tuple ":status" "200")
-                                   (:tuple "content-type" ctype)) #t)
+                             "200" (list (:tuple "content-type" ctype)) #t)
                             (for (last? chunk) (notify-last-gen fgen)
                               (request.send-data chunk last?)))
                        _ -> (send-404 request)
@@ -219,13 +212,13 @@
                ))))
 
 (define (h2-channel h2-handler x509s skey alpns)
-  (lambda (sockfun)
+  (lambda (addr sockfun)
     (poller/fork
      (lambda ()
        (try
         (let ((sock (tls13/make-channel sockfun x509s skey alpns)))
           (try
-           ((make-h2-conn sock h2-handler))
+           ((make-h2-conn addr sock h2-handler))
            except
            (:Doom/EOF _)
            -> #u
@@ -259,9 +252,10 @@
     (debugf "  server fd = " (int (sock.get-fd)) "\n")
     (let loop ()
       (debugf "accept wait...\n")
-      (let (((sockfun addr) (sock.accept)))
-        (debugf "client: addr " (address/unparse addr) "\n")
-        (handler sockfun)
+      (let (((sockfun addr) (sock.accept))
+            (addr-string (address/unparse addr)))
+        (debugf "client: addr " addr-string "\n")
+        (handler addr-string sockfun)
         (loop))
       )))
 
