@@ -24,3 +24,24 @@ $ openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
     -addext 'subjectAltName=DNS:localhost'
 
 [lib/crypto/sig.scm reads the PKCS#8 keys that openssl writes, too.]
+
+----------------------------------------------------------------------
+
+describe certificates, and check the chain they form:
+
+$ self/compile demo/crypto/x509tool.scm
+$ demo/crypto/x509tool chain.pem
+
+each input file is PEM (any number of certificates) or DER.  for each
+cert it prints the names, validity, key, fingerprint and decoded
+extensions (SANs, key usages, policies, AIA, CRL DPs, SCTs, ...).
+then, for each cert, it finds the issuer among the inputs and checks
+the issuer name, key ids, that the issuer is a CA, and the signature.
+the exit status is 1 if it found a problem.
+
+options:
+  -v   also print keys and signatures in hex
+  -a   also dump each certificate's ASN.1
+
+signatures it can check: ECDSA on P-256/P-384 (lib/crypto/ecdsa.scm),
+Ed25519, and RSA PKCS#1 v1.5 with sha256/384/512.
