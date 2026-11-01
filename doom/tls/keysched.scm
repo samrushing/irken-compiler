@@ -22,7 +22,21 @@
         (recv-key {key="" iv=""})
         (send-seq 0)
         (recv-seq 0)
+        (client? #f) ;; which side of the connection we are
         )
+
+    (define (set-client)
+      (set! client? #t))
+
+    ;; set our send & receive keys from the client & server secrets.
+    (define (set-keys c-secret s-secret)
+      (if client?
+          (begin (set! send-key (make-key c-secret))
+                 (set! recv-key (make-key s-secret)))
+          (begin (set! send-key (make-key s-secret))
+                 (set! recv-key (make-key c-secret))))
+      (set! send-seq 0)
+      (set! recv-seq 0))
 
     (define (hkdf-label label context length)
       (rope->string
@@ -44,10 +58,7 @@
         (set! secrets.current (hkdf.extract secrets.current shared-key))
         (set! secrets.s-hs-tf (expand-label secrets.current "s hs traffic" trans0 hsize))
         (set! secrets.c-hs-tf (expand-label secrets.current "c hs traffic" trans0 hsize))
-        (set! send-key (make-key secrets.s-hs-tf))
-        (set! recv-key (make-key secrets.c-hs-tf))
-        (set! send-seq 0)
-        (set! recv-seq 0)
+        (set-keys secrets.c-hs-tf secrets.s-hs-tf)
         ))
 
     (define (set-appdata-key)
@@ -57,10 +68,7 @@
         (set! secrets.current (hkdf.extract derived zeros))
         (set! secrets.s-ap-tf (expand-label secrets.current "s ap traffic" trans0 hsize))
         (set! secrets.c-ap-tf (expand-label secrets.current "c ap traffic" trans0 hsize))
-        (set! send-key (make-key secrets.s-ap-tf))
-        (set! recv-key (make-key secrets.c-ap-tf))
-        (set! send-seq 0)
-        (set! recv-seq 0)
+        (set-keys secrets.c-ap-tf secrets.s-ap-tf)
         ))
 
     (define (add-tscript-packet pkt)
@@ -144,7 +152,8 @@
     (let ((PRK (hkdf.extract "" zeros)))
       (set! secrets.current (expand-label PRK "derived" hempty hsize)))
 
-    {add-tscript-packet = add-tscript-packet
+    {set-client         = set-client
+     add-tscript-packet = add-tscript-packet
      get-tscript-hash   = get-tscript-hash
      get-finished       = get-finished
      set-hsk-key        = set-hsk-key

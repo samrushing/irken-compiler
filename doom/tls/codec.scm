@@ -126,6 +126,21 @@
     ;;          by using a single-element list]
     ;; XXX or we could use a mode boolean arg to tls-unpacker?
 
+    ;; extensions whose shape differs in a ServerHello.  <ctx> is
+    ;;  ctx-sh, ctx-hrr (HelloRetryRequest), or ctx-other.
+    (define ctx-other 0)
+    (define ctx-sh 1)
+    (define ctx-hrr 2)
+
+    (define (get-extension-in ctx etype elen)
+      (match ctx etype with
+        1 43 -> (tlsext:supported-versions (list (get-u16)))
+        2 43 -> (tlsext:supported-versions (list (get-u16)))
+        1 51 -> (tlsext:key-share (get-key-share))
+        2 51 -> (tlsext:hrr-key-share (get-u16))
+        _ _  -> (get-extension-by-type etype elen)
+        ))
+
     (define (get-extension-by-type etype elen)
       (match etype with
         00 -> (tlsext:server-names (get-vector-16 get-server-name))
@@ -141,14 +156,20 @@
         xx -> (tlsext:other xx (get-other elen))
         ))
 
-    (define (get-extension)
+    (define (get-extension* ctx)
       (let ((etype (get-u16))
             (elen (get-u16))
-            (pos0 pos)
-            (result (get-extension-by-type etype elen)))
-        (when (not (= pos (+ pos0 elen)))
+            (vpos0 vpos)
+            ;; an empty extension (e.g. server_name in EncryptedExtensions)
+            (result (if (= elen 0)
+                        (tlsext:other etype "")
+                        (get-extension-in ctx etype elen))))
+        (when (not (= vpos (+ vpos0 elen)))
           (raise (:TLS/Alert (tls-alert-desc:decode-error) "bad extension length")))
         result))
+
+    (define (get-extension)
+      (get-extension* ctx-other))
 
     (define (unpack-client-hello len)
       (let ((vpos0 vpos)
@@ -167,6 +188,64 @@
         (when (not (= vpos (+ vpos0 len)))
           (raise (:TLS/Alert (tls-alert-desc:decode-error) "bad length")))
         result))
+
+    (define hrr-magic
+      (hex->string "CF21AD74E59A6111BE1D8C021E65B891C2A211167ABB8C5E079E09E2C8A8339C"))
+
+    (define (check-length vpos0 len)
+      (when (not (= vpos (+ vpos0 len)))
+        (raise (:TLS/Alert (tls-alert-desc:decode-error) "bad length"))))
+
+    ;; a HelloRetryRequest is a ServerHello with a magic random.
+    (define (unpack-server-hello len)
+      (let ((vpos0 vpos)
+            (legacy-version (get-u16))
+            (random (get-opaque 32))
+            (ctx (if (string=? random hrr-magic) ctx-hrr ctx-sh))
+            (legacy-session-id (get-vector-opaque get-u8))
+            (cipher-suite (get-u16))
+            (legacy-compression-method (get-u8))
+            (extensions (get-vector-16 (lambda () (get-extension* ctx)))))
+        (check-length vpos0 len)
+        (tls-hsk:server-hello
+         {legver=legacy-version
+          random=random
+          sessid=legacy-session-id
+          suite=cipher-suite
+          exts=extensions})))
+
+    (define (unpack-enc-exts len)
+      (let ((vpos0 vpos)
+            (extensions (get-vector-16 get-extension)))
+        (check-length vpos0 len)
+        (tls-hsk:enc-exts extensions)))
+
+    ;; struct {
+    ;;   opaque certificate_request_context<0..2^8-1>;
+    ;;   CertificateEntry certificate_list<0..2^24-1>;
+    ;; } Certificate;
+    ;; struct {
+    ;;   opaque cert_data<1..2^24-1>;
+    ;;   Extension extensions<0..2^16-1>;
+    ;; } CertificateEntry;
+    (define (get-cert-entry)
+      (let ((cert (get-vector-opaque get-u24))
+            (exts (get-vector-16 get-extension)))
+        cert))
+
+    (define (unpack-cert len)
+      (let ((vpos0 vpos)
+            (context (get-vector-opaque get-u8))
+            (certs (get-vector get-u24 get-cert-entry)))
+        (check-length vpos0 len)
+        (tls-hsk:cert certs)))
+
+    (define (unpack-cert-verify len)
+      (let ((vpos0 vpos)
+            (scheme (get-u16))
+            (sig (get-vector-opaque get-u16)))
+        (check-length vpos0 len)
+        (tls-hsk:cert-verify scheme sig)))
 
     (define (unpack-finished len)
       (tls-hsk:finished (get-opaque len)))
@@ -190,6 +269,12 @@
         (tls-record:hsk
          (match (int->tls-hsk-type kind) with
            (tls-hsk-type:client-hello) -> (unpack-client-hello len)
+           (tls-hsk-type:server-hello) -> (unpack-server-hello len)
+           (tls-hsk-type:enc-exts)     -> (unpack-enc-exts len)
+           (tls-hsk-type:cert)         -> (unpack-cert len)
+           (tls-hsk-type:cert-request) -> (begin (get-opaque len) (tls-hsk:cert-request))
+           (tls-hsk-type:cert-verify)  -> (unpack-cert-verify len)
+           (tls-hsk-type:new-session-ticket) -> (begin (get-opaque len) (tls-hsk:new-session-ticket))
            (tls-hsk-type:finished)     -> (unpack-finished len)
            (tls-hsk-type:key-update)   -> (unpack-keyupdate len)
            _ -> (raise (:TLS/Alert (tls-alert-desc:unexpected-message) "unexpected handshake"))
