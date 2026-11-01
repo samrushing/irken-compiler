@@ -19,9 +19,12 @@
         (current '()) ;; pieces of the current record
         )
 
+    ;; <current> holds the bytes of the current handshake message that
+    ;;  came in earlier fragments, so that the message can be
+    ;;  reconstructed exactly (for the transcript hash).
     (define (assure n)
       (when (> n (- blen pos))
-        (push! current buf)
+        (push! current (substring buf 0 pos))
         (let (((fkind frag) (get-fragment))
               (flen (string-length frag)))
           (when (not (or (= kind -1) (= fkind kind)))
@@ -148,7 +151,7 @@
         result))
 
     (define (unpack-client-hello len)
-      (let ((pos0 pos)
+      (let ((vpos0 vpos)
             (legacy-version (get-u16))
             (random (get-opaque 32))
             (legacy-session-id (get-vector-opaque get-u8))
@@ -161,7 +164,7 @@
                       sessid=legacy-session-id
                       suites=cipher-suites
                       exts=extensions})))
-        (when (not (= pos (+ pos0 len)))
+        (when (not (= vpos (+ vpos0 len)))
           (raise (:TLS/Alert (tls-alert-desc:decode-error) "bad length")))
         result))
 
@@ -219,7 +222,13 @@
               (last (substring buf 0 pos))
               (pkt (string-concat (reverse (list:cons last current))))
               (plen (string-length pkt)))
-          (push! records {raw=pkt record=record kind=kind version=#x303 length=plen})))
+          (push! records {raw=pkt record=record kind=kind version=#x303 length=plen})
+          ;; a record may hold several handshake messages: start the
+          ;;  next one afresh.
+          (set! current '())
+          (set! buf (substring buf pos blen))
+          (set! blen (- blen pos))
+          (set! pos 0)))
       (reverse records))
     ))
 
