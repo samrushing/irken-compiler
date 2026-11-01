@@ -455,14 +455,17 @@
     (define (llcc-suffix op cc)
       (string->symbol (format (sym op) (sym (llcc->amdcc cc)))))
 
+    ;; target may live in the %rbp register file, and setCC/movzx need
+    ;;   a byte register: build the result in scratch.
     (define (emit-icmp cc arg0 arg1 target)
       (AMD
        (com "icmp")
        ('cmp (n arg1) (n arg0))               ;; note order.
-       ((llcc-suffix 'set cc) (B (n target))) ;; sets only the lowest byte
-       ('movzx (B (n target)) (n target))     ;; widen 8 -> 64 bits
-       ('shlq (i 16) (n target))              ;; convert to boolean object
-       ('orq (i 6) (n target))))
+       ((llcc-suffix 'set cc) (B (s 0)))      ;; sets only the lowest byte
+       ('movzx (B (s 0)) (s 0))               ;; widen 8 -> 64 bits
+       ('shlq (i 16) (s 0))                   ;; convert to boolean object
+       ('orq (i 6) (s 0))
+       ('movq (s 0) (n target))))
 
     (define (emit-test-cmp cc arg0 arg1 reg jn k0 k1 k)
       (let ((skip-label (new-label "L"))
@@ -808,12 +811,15 @@
          ('movq (n dst) (c 0))
          ;; src is read after the call, so it must survive it too.
          @ (callq-with-save-restore "get_foreign" (list:cons src free))
-         ('untag (n src))
+         ;; untag a copy, in scratch: src may still be live, and may
+         ;;   live in the %rbp register file (which has no byte form).
+         ('movq (n src) (s 1))
+         ('untag (s 1))
          @ (match size with
-             1 -> (AMD ('movb (B (n src)) (ind (s 0))))
-             2 -> (AMD ('movw (H (n src)) (ind (s 0))))
-             4 -> (AMD ('movl (W (n src)) (ind (s 0))))
-             8 -> (AMD ('movq (n src)     (ind (s 0))))
+             1 -> (AMD ('movb (B (s 1)) (ind (s 0))))
+             2 -> (AMD ('movw (H (s 1)) (ind (s 0))))
+             4 -> (AMD ('movl (W (s 1)) (ind (s 0))))
+             8 -> (AMD ('movq (s 1)     (ind (s 0))))
              x -> (error (format "c-set-int - bad size: " (int x)))
              )
            )))
@@ -1503,15 +1509,24 @@
 
   (makegen emit
 
+    ;; instructions that only write their destination.
+    (define (write-only? op)
+      (member-eq? op '(movq leaq movzx movsbq movswq movslq)))
+
     (define (frob-insn op src dst)
       ;; [a smarter system would have use/def info and know of a spare reg on hand]
-      ;; OPERAND MEM0 MEM1
-      ;; => movq MEM0 %rax
-      ;;    OPERAND %rax MEM1
+      ;; %rax breaks any use of scratch0, so we use %rbx.
       (emit (amd:comment "no-mem2mem"))
-      ;; %rax breaks any use of scratch0, trying %rbx now.
-      (emit (amd:insn    op (list src (amdop:reg Rbx))))
-      (emit (amd:insn 'movq (list (amdop:reg Rbx) dst))))
+      (if (write-only? op)
+          ;; OP MEM0 MEM1 => OP MEM0 %rbx ; movq %rbx MEM1
+          (begin
+            (emit (amd:insn    op (list src (amdop:reg Rbx))))
+            (emit (amd:insn 'movq (list (amdop:reg Rbx) dst))))
+          ;; dst is read too (cmp, addq, ...):
+          ;; OP MEM0 MEM1 => movq MEM0 %rbx ; OP %rbx MEM1
+          (begin
+            (emit (amd:insn 'movq (list src (amdop:reg Rbx))))
+            (emit (amd:insn    op (list (amdop:reg Rbx) dst))))))
 
     (for insn gen
       (match insn with
