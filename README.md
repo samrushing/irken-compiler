@@ -46,7 +46,7 @@ News:
 Introduction/Tutorial:
 ----------------------
 
-  [http://dark.nightmare.com/rushing/irken/irken/lang.html](http://dark.nightmare.com/rushing/irken/irken/lang.html)
+  [https://dark.nightmare.com/rushing/irken/irken/lang.html](https://dark.nightmare.com/rushing/irken/irken/lang.html)
 
 The best way to get familiar with the language is to read the source code in
 the 'self' directory, and browse over the files in "tests".
