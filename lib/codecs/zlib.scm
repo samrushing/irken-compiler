@@ -54,7 +54,16 @@
       (free obuf*)
       )))
 
+;; zlib-format data (rfc1950)
 (define (inflate gen osize)
+  (inflate2 gen osize 15))
+
+;; <window-bits> selects the format, as for inflateInit2():
+;;   8..15: zlib (rfc1950)
+;;  -8..-15: raw deflate (rfc1951)
+;;  16 + (8..15): gzip (rfc1952)
+;;  32 + (8..15): zlib or gzip, detected from the header
+(define (inflate2 gen osize window-bits)
 
   (let ((Z* (malloc (struct z_stream_s)))
         (obuf* (make-char-buffer osize))
@@ -64,15 +73,16 @@
       (c-set-ptr (%c-sref z_stream_s.zalloc Z*) NULL)
       (c-set-ptr (%c-sref z_stream_s.zfree Z*) NULL)
       (c-set-ptr (%c-sref z_stream_s.opaque Z*) NULL)
-      (when (not (= Z_OK (zlib/inflateInit_ Z*
-                                            zlib_version*
-                                            (%c-sizeof (struct z_stream_s)))))
+      (when (not (= Z_OK (zlib/inflateInit2_ Z*
+                                             window-bits
+                                             zlib_version*
+                                             (%c-sizeof (struct z_stream_s)))))
         (c-set-int (%c-sref z_stream_s.avail_in Z*) 0)
         (c-set-ptr (%c-sref z_stream_s.next_in Z*) NULL)
         (zlib/inflateEnd Z*)
         (free Z*)
         (free obuf*)
-        (raise (:Zlib/APIFailure 'inflateInit_)))
+        (raise (:Zlib/APIFailure 'inflateInit2_)))
 
       (define (out-loop flush)
         (let ((done? #f)

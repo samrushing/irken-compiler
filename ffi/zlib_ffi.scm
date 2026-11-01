@@ -8,6 +8,7 @@
 (sig deflate ((* (struct z_stream_s)) int -> int))
 (sig deflateEnd ((* (struct z_stream_s)) -> int))
 (sig inflateInit_ ((* (struct z_stream_s)) (* char) int -> int))
+(sig inflateInit2_ ((* (struct z_stream_s)) int (* char) int -> int))
 (sig inflate ((* (struct z_stream_s)) int -> int))
 (sig inflateEnd ((* (struct z_stream_s)) -> int))
 (struct z_stream_s 112

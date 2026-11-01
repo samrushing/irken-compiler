@@ -17,6 +17,6 @@
              )
   (sigs zlibVersion
         deflateInit_ deflate deflateEnd
-        inflateInit_ inflate inflateEnd
+        inflateInit_ inflateInit2_ inflate inflateEnd
         )
   )
