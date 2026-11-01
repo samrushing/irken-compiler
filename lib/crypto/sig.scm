@@ -127,24 +127,27 @@
    val -> (raise (:SIG/InvalidKey (ber-repr val)))
    )
 
-;; assumes sha256
-;; 9.2 EMSA-PKCS1-v1_5
-(define (pad-and-annotate digest mlen)
-  (let ((diglen (string-length digest))
-        (asn1 (ber:SEQUENCE
+;; 9.2 EMSA-PKCS1-v1_5, for any hash: <hash-oid> names the hash
+;;  that made <digest> (e.g. 2.16.840.1.101.3.4.2.1 for sha256).
+(define (emsa-pkcs1-v1_5 digest hash-oid mlen)
+  (let ((asn1 (ber:SEQUENCE
                (list
                 (ber:SEQUENCE
-                 (list (ber:OID '(2 16 840 1 101 3 4 2 1))
+                 (list (ber:OID hash-oid)
                        (ber:NULL)))
                 (ber:STRING (asn1string:OCTET) digest))))
         (T (asn1->ber asn1))
         (tlen (string-length T)))
-    (when (not (= diglen 32))
-      (raise (:SIG/DigestWrongSize digest)))
     (when (< mlen (+ 11 tlen))
       (raise (:SIG/MlenTooShort mlen)))
     (let ((PS (format (repeat (- mlen tlen 3) "\xff"))))
       (string-append "\x00\x01" PS "\x00" T))))
+
+;; assumes sha256
+(define (pad-and-annotate digest mlen)
+  (when (not (= (string-length digest) 32))
+    (raise (:SIG/DigestWrongSize digest)))
+  (emsa-pkcs1-v1_5 digest '(2 16 840 1 101 3 4 2 1) mlen))
 
 ;; 4.1 integer to octet string
 (define (I2OSP n len)
@@ -189,22 +192,19 @@
     (I2OSP s nbytes)
     ))
 
-;; 8.2.2
-(define (rsa-verify n e M S)
+;; 8.2.2, for any hash.  <hash> is the hash function, <hash-oid> its OID.
+(define (rsa-verify-hash n e M S hash hash-oid)
   (let ((nbytes (big/nbytes n))
-        (Slen (string-length S))
-        (s (OS2IP S))
-        (m (big-exp-mod s e n))
-        (EM0 (I2OSP m nbytes))
-        (EM1 (pad-and-annotate (sha256 M) nbytes)))
-    ;; (printf " --- verify ---\n")
-    ;; (printf "s " (big-repr s) "\n")
-    ;; (printf "H   " (string->hex (sha256 M)) "\n")
-    ;; (printf "EM0 " (string->hex EM0) "\n")
-    ;; (printf "EM1 " (string->hex EM1) "\n")
+        (Slen (string-length S)))
     (when (not (= nbytes Slen))
       (raise (:SIG/SigWrongSize nbytes Slen)))
-    (string=? EM0 EM1)))
+    (let ((EM0 (I2OSP (big-exp-mod (OS2IP S) e n) nbytes))
+          (EM1 (emsa-pkcs1-v1_5 (hash M) hash-oid nbytes)))
+      (string=? EM0 EM1))))
+
+;; 8.2.2, with sha256.
+(define (rsa-verify n e M S)
+  (rsa-verify-hash n e M S sha256 '(2 16 840 1 101 3 4 2 1)))
 
 (define (xor-strings a b)
   (when (not (= (string-length a) (string-length b)))
@@ -274,3 +274,55 @@
     (I2OSP s nbytes)
     ))
 
+
+;; B.2.1 MGF1
+(define (mgf1 hash seed maskLen)
+  (let ((parts (list:nil)))
+    (for-range i (how-many maskLen hash.size)
+      (push! parts (hash.oneshot (string-append seed (I2OSP (int->big i) 4)))))
+    (substring (string-concat (reverse parts)) 0 maskLen)))
+
+;; 9.1.2 EMSA-PSS-VERIFY, with the salt length = the hash length
+;;  (as TLS 1.3 requires).
+(define (emsa-pss-verify M EM emBits hash)
+  (let ((hLen hash.size)
+        (sLen hash.size)
+        (emLen (how-many emBits 8))
+        (emExtra (- (* emLen 8) emBits)))
+    (if (or (< emLen (+ hLen sLen 2))
+            (not (= (string-length EM) emLen))
+            (not (= #xbc (char->int (string-ref EM (- emLen 1)))))
+            ;; the leftmost emExtra bits of EM must be zero
+            (not (= 0 (logand (char->int (string-ref EM 0))
+                              (logand #xff (<< #xff (- 8 emExtra)))))))
+        #f
+        (let ((dbLen (- emLen hLen 1))
+              (maskedDB (substring EM 0 dbLen))
+              (H (substring EM dbLen (+ dbLen hLen)))
+              (DB (xor-strings maskedDB (mgf1 hash H dbLen)))
+              (psLen (- emLen hLen sLen 2)))
+          (string-set! DB 0 (int->char (logand (>> #xff emExtra) (char->int (string-ref DB 0)))))
+          (let loop ((i 0))
+            (cond ((< i psLen)
+                   (if (= 0 (char->int (string-ref DB i))) (loop (+ i 1)) #f))
+                  ((not (= 1 (char->int (string-ref DB psLen)))) #f)
+                  (else
+                   (let ((salt (substring DB (- dbLen sLen) dbLen))
+                         (H1 (hash.oneshot (string-append (format (repeat 8 "\x00"))
+                                                          (hash.oneshot M)
+                                                          salt))))
+                     (string=? H H1)))))))))
+
+;; 8.1.2 RSASSA-PSS-VERIFY
+(define (rsassa-pss-verify n e M S hash)
+  (let ((nbytes (big/nbytes n))
+        (modbits (big->bits n)))
+    (if (not (= (string-length S) nbytes))
+        #f
+        (let ((m (big-exp-mod (OS2IP S) e n))
+              (emBits (- modbits 1))
+              (emLen (how-many emBits 8)))
+          ;; m < n, but it must also fit in emLen bytes.
+          (if (> (big->bits m) (* 8 emLen))
+              #f
+              (emsa-pss-verify M (I2OSP m emLen) emBits hash))))))
