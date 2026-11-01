@@ -44,7 +44,8 @@
         (newend (+ buf.end slen)))
     (when (< buf.size newend)
       (buffer/grow! buf newend))
-    (let ((dst* (c-aref buf.buf buf.pos)))
+    ;; append after any data not yet read.
+    (let ((dst* (c-aref buf.buf buf.end)))
       (libc/memcpy (%c-cast void dst*)
                    (%c-cast void (%string->cref #f s))
                    slen)
