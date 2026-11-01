@@ -128,8 +128,8 @@
 ;; put the current thread to sleep while waiting for the kevent (ident, filter).
 (define (poller/wait-for ident filter)
   (let ((k (getcc)))
-    (when (= filter EVFILT_WRITE)
-      (printf (ansi red (int ident))))
+    ;; (when (= filter EVFILT_WRITE)
+    ;;   (printf (ansi red (int ident))))
     (match (poller/lookup-event ident filter) with
       (maybe:no)
       -> (begin
@@ -157,14 +157,14 @@
   -> (match (poller/lookup-event ident filter) with
        (maybe:yes (:tuple thread-id exc-handler k))
        -> (begin
-           (when (= filter EVFILT_WRITE)
-             (printf (ansi blue (int ident)))
-             (for-map k v (kfilt filter)
-               (printf (ansi yellow (int k)))))
+           ;; (when (= filter EVFILT_WRITE)
+           ;;   (printf (ansi blue (int ident)))
+           ;;   (for-map k v (kfilt filter)
+           ;;     (printf (ansi yellow (int k)))))
             (poller/delete-event ident filter)
-            (when (= filter EVFILT_WRITE)
-              (for-map k v (kfilt filter)
-                (printf (ansi cyan (int k)))))
+            ;; (when (= filter EVFILT_WRITE)
+            ;;   (for-map k v (kfilt filter)
+            ;;     (printf (ansi cyan (int k)))))
             (poller/enqueue* thread-id exc-handler k))
        (maybe:no)
        -> (begin
