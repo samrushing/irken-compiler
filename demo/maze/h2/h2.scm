@@ -3,6 +3,7 @@
 (require "lib/basis.scm")
 (require "lib/random.scm")
 (require "lib/mtwist.scm")
+(require "lib/posix.scm")
 
 (require "lib/codecs/zlib.scm")
 ;;(require "lib/codecs/brotli.scm")
@@ -341,8 +342,8 @@
         (set! p.posy (rand-range h))
         (set! gx (rand-range w))
         (set! gy (rand-range h))
-        (p.ws.send-binary (encode #\f (list p.posx p.posy)) #t)
-        (p.ws.send-binary (encode #\g (list gx gy)) #t)
+        (safe-send p (encode #\f (list p.posx p.posy)))
+        (safe-send p (encode #\g (list gx gy)))
         ))
 
     (define (split-command s)
@@ -369,13 +370,39 @@
         (tree/insert! players string-compare peer p)
         (ws.send-binary mdata #t)
         (ws.send-binary (encode #\g (list gx gy)) #t)
-        (ws.send-binary (format "N" p.name) #t)))
+        (ws.send-binary (format "N" p.name) #t)
+        (for-map k q players
+          (when (not (eq? q p))
+            (safe-send p (encode #\m (list q.id q.posx q.posy)))))))
 
+    ;; remove a player (if still present) and tell everyone else.
+    ;; safe to call more than once for the same peer.
     (define (done peer)
-      (tree/delete! players magic-cmp peer))
+      (match (tree/member players string-compare peer) with
+        (maybe:yes p)
+        -> (begin
+             (tree/delete! players string-compare peer)
+             (send-to-all (encode #\q (list p.id))))
+        (maybe:no)
+        -> #u))
+
+    ;; a failed send to one player must never take down the sender's
+    ;;  connection (or the server): drop the dead player and carry on.
+    ;;  its own connection thread will see the error on recv and exit.
+    (define (safe-send p msg)
+      (try
+       (begin (p.ws.send-binary msg #t) #u)
+       except
+       EXN -> (begin
+                ;; note: EXN must be used (print-exception pins its type to
+                ;;  an rsum), or typing.scm:type-of-handle types the whole
+                ;;  `try` as the exception type.
+                (debugf "send to player " (int p.id) " failed, dropping: ")
+                (print-exception EXN)
+                (done p.peer))))
 
     (define (encode cmd data)
-      (list->string (list:cons cmd (map int->char data))))
+      (list->string (list:cons cmd (map (lambda (n) (int->char (logand #xff n))) data))))
 
     (define (move p data)
       (let ((parts (map char->int (string->list data))))
@@ -408,11 +435,11 @@
     (define (send-to-others me msg)
       (for-map k p players
         (when (not (eq? me p))
-          (p.ws.send-binary msg #t))))
+          (safe-send p msg))))
 
     (define (send-to-all msg)
       (for-map k p players
-        (p.ws.send-binary msg #t)))
+        (safe-send p msg)))
 
     (define (set-goal gx gy)
       (set! last-goal-found (gettime/realtime))
@@ -477,16 +504,21 @@
   (let ((ws (websocket sock))
         (peer (address/unparse addr)))
     (handler.new peer ws)
-    (for pkt ws.pktgen
-      (match pkt with
-        (:tuple _ data #t)
-        -> (handler.msg peer ws data)
-        (:tuple _ data #f)
-        -> (raise (:H2Maze/UnfinishedWebsocketPacket data))
-        ))
+    (try
+     (for pkt ws.pktgen
+       (match pkt with
+         (:tuple _ data #t)
+         -> (handler.msg peer ws data)
+         (:tuple _ data #f)
+         -> (raise (:H2Maze/UnfinishedWebsocketPacket data))
+         ))
+     except
+     EXN -> (print-exception EXN))
+    ;; must happen even after an error, or the dead player stays in the
+    ;;  table and the next broadcast writes to a reset/closed socket.
     (handler.done peer)
     (printf "exiting ws client...\n")
-    (ws.close)
+    (try (ws.close) except EXN -> (print-exception EXN))
     ))
 
 (define (wss-serve ip port channel)
@@ -505,6 +537,9 @@
 ;; ------------------------------
 
 (define (main)
+  ;; without this, writing to a socket the peer has reset kills the
+  ;;  whole server with SIGPIPE (no message, exit status 141).
+  (signal/ignore SIGPIPE)
   (let ((x509s (read-certs sys.argv[1]))
         (skey (read-skey sys.argv[2]))
         (mhandler (ws-handler)))
