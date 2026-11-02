@@ -16,6 +16,7 @@
 (require "lib/regex.scm")
 
 (require "doom/tls/tls13.scm")
+(require "lib/crypto/x509.scm")
 (require "doom/socket.scm")
 (require "doom/http/h2.scm")
 (require "doom/http/html.scm")
@@ -49,13 +50,15 @@
     -> #u
     ))
 
-(define (h2-channel h2-handler x509s skey alpns)
+;; <creds> is {x509s skey}: each connection uses the current ones (see
+;;  reload-on-sighup).
+(define (h2-channel h2-handler creds alpns)
   (lambda (addr sockfun)
     (poller/fork
      (lambda ()
        (let ((stat (*stats*.add addr)))
          (try
-          (let ((sock (tls13/make-channel sockfun x509s skey alpns)))
+          (let ((sock (tls13/make-channel sockfun creds.x509s creds.skey alpns)))
             (note-event stat (conn-event:tls-good (sock.get-info)))
             (try
              ;; create and invoke h2 read-frames loop.
@@ -129,6 +132,55 @@
           _ -> (raise (:TLS/ExpectedCertificate path))
           ))
       (reverse result))))
+
+(define key-matches?
+  (skey:p256 sk)     (public-key:ec k _)     -> (string=? (p256-public-key sk) k)
+  (skey:ed25519 sd)  (public-key:ed25519 pk) -> (let (((sk pk0) (ed25519-seed-to-keypair sd)))
+                                                  (string=? pk0 pk))
+  (skey:rsa r)       (public-key:rsa n e)    -> (big= r.n n)
+  _ _ -> #f
+  )
+
+;; the certificate chain and key, checking that they go together.
+(define (load-creds cert key)
+  (let ((x509s (read-certs cert))
+        (skey (read-skey key)))
+    (when (null? x509s)
+      (raise (:Serve/BadCreds (format "no certificates in " cert))))
+    (let ((leaf (parse-x509 (first x509s))))
+      (when (not (key-matches? skey leaf.cert.pubkey.key))
+        (raise (:Serve/BadCreds (format key " is not the key for " cert))))
+      {x509s=x509s skey=skey})))
+
+;; on SIGHUP, reload <cert> and <key> into <creds>: new connections use
+;;  them, existing ones carry on.  if they can't be loaded, keep the old.
+;; on SIGHUP, reload <cert> and <key> into <creds>: new connections use
+;;  them, existing ones carry on.  if they can't be loaded, keep the old.
+(define (reload-on-sighup creds cert key)
+  (define (reload)
+    (try
+     (let ((new (load-creds cert key)))
+       (set! creds.x509s new.x509s)
+       (set! creds.skey new.skey)
+       (debugf "SIGHUP: reloaded " cert " (" (int (length new.x509s)) " certs) and " key "\n"))
+     except
+     (:Serve/BadCreds why) -> (debugf "SIGHUP: " why ": keeping the old ones\n")
+     (:OSError n) -> (debugf "SIGHUP: " (strerror n) ": keeping the old ones\n")
+     (:TLS/ExpectedCertificate path) -> (debugf "SIGHUP: unexpected PEM in " path ": keeping the old ones\n")
+     (:SIG/NoPEMFound path) -> (debugf "SIGHUP: no key in " path ": keeping the old ones\n")
+     (:SIG/UnexpectedPEM kind) -> (debugf "SIGHUP: unexpected PEM " kind ": keeping the old ones\n")
+     (:X509/Unexpected what _) -> (debugf "SIGHUP: can't parse the certificate (" what "): keeping the old ones\n")
+     (:X509/Unsupported what _) -> (debugf "SIGHUP: unsupported certificate (" what "): keeping the old ones\n")))
+  (if poller/signals?
+      (begin
+        (signal/ignore SIGHUP)
+        (poller/fork
+         (lambda ()
+           (let loop ()
+             (poller/wait-for-signal SIGHUP)
+             (reload)
+             (loop)))))
+      (debugf "no SIGHUP reloading on this platform (yet)\n")))
 
 (define *logfile* (maybe:no))
 (define *stats* (make-server-history 1000))
@@ -215,8 +267,10 @@
     (when-maybe v (get-int-opt opts 'http) (set! http-port v))
     (set! *dnscache* (dnscache/make "127.0.0.1" 1000))
 
-    (let ((x509s (read-certs cert))
-          (skey (read-skey key))
+    (let ((creds (try
+                  (load-creds cert key)
+                  except
+                  (:Serve/BadCreds why) -> (begin (printf why "\n") (%exit #f 1))))
           ((ip port) (split-addr addr))
           (handler (h2-handler
                     (multi-handler
@@ -226,11 +280,12 @@
           ;;(handler (h2-handler (host-handler root)))
           )
       (set! *logfile* (maybe:yes (file/open-append log #o644)))
-      (debugf "read " (int (length x509s)) " certs.\n")
+      (debugf "read " (int (length creds.x509s)) " certs.\n")
       (debugf "redirect? " (bool redirect?) "\n")
       (when (or redirect? (not (eq? acme-dir (maybe:no))))
         (poller/fork (lambda () (serve-redirect ip http-port acme-dir))))
-      (serve ip port (h2-channel handler x509s skey '("h2")))
+      (reload-on-sighup creds cert key)
+      (serve ip port (h2-channel handler creds '("h2")))
       (poller/wait-and-schedule))))
 
 ;; this helps with localhost testing - firefox will race its own cache

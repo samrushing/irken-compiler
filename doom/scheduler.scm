@@ -147,6 +147,15 @@
 (define (poller/wait-for-write fd)
   (poller/wait-for fd EVFILT_WRITE))
 
+;; can we wait for signals?  (on Linux, not yet.)
+(define poller/signals? #t)
+
+;; wait for the signal <signum>.  the signal should be ignored
+;;  (signal/ignore): kqueue records it even so, and ignoring it keeps
+;;  its default action (e.g. exiting, for SIGHUP) from happening.
+(define (poller/wait-for-signal signum)
+  (poller/wait-for signum EVFILT_SIGNAL))
+
 (define (poller/forget fd)
   (poller/delete-event fd EVFILT_READ)
   (poller/delete-event fd EVFILT_WRITE)

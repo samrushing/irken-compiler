@@ -56,11 +56,15 @@ Certificates last 90 days (64 from February 2027, 45 from February
 
     cd /usr/local/etc/irken-httpd && \
       /usr/local/bin/acme -challenges /var/acme -days 30 \
-        nightmare.com dark.nightmare.com www.nightmare.com
+        nightmare.com dark.nightmare.com www.nightmare.com \
+      | grep -q '^wrote' && pkill -HUP -x serve
 
-The server reads its certificate when it starts, so restart it after a
-renewal (acme exits 0 both when it renews and when there's nothing to
-do; it prints "wrote cert.pem" when it renews).
+acme prints "wrote cert.pem" when it renews (and exits 0 both then and
+when there's nothing to do).  On SIGHUP, serve reloads its -cert and
+-key: new connections use them, and existing ones carry on.  If they
+can't be loaded, or the key doesn't match the certificate, it keeps the
+old ones (and says so).  [SIGHUP reloading uses kqueue, so for now it
+works on the BSDs and macOS, not Linux.]
 
 Testing with pebble
 -------------------

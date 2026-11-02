@@ -95,6 +95,13 @@
             (poller/schedule save))
        (maybe:no) -> #u))
 
+;; XXX on Linux, waiting for signals needs signalfd(2), which isn't in
+;;  the epoll FFI yet.
+(define poller/signals? #f)
+
+(define (poller/wait-for-signal signum)
+  (raise (:Poller/SignalsNotSupported signum)))
+
 (define (poller/forget fd)
   (when (tree/delete!? the-poller.readers int-cmp fd)
     (dec! the-poller.nwait))
