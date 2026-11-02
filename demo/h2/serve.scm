@@ -288,8 +288,7 @@
       (serve ip port (h2-channel handler creds '("h2")))
       (poller/wait-and-schedule))))
 
-;; this helps with localhost testing - firefox will race its own cache
-;;   and RST_STREAMs etc resulting in unwanted SIGPIPE.
-;;(signal/ignore SIGPIPE)
+;; don't let SIGPIPE take down the server.
+(signal/ignore SIGPIPE)
 (main)
 (printf "after main.\n")
