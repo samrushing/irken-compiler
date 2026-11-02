@@ -96,7 +96,7 @@
     (printf "\n" (bold "chain") "\n")
     (for-range i n
       (let ((x certs[i]))
-        (printf "  [" (int i) "] " (x509-name-short x.cert.subject) "\n")
+        (printf "  [" (int i) "] " (x509-label x.cert) "\n")
         (when (< now (x509-time->unix x.cert.validity.not-before))
           (inc! problems 1)
           (printf "      " (ansi (bold red) "problem: ") "not valid until "
@@ -158,7 +158,7 @@
       (for-range i n
         (let ((x certs[i]))
           (printf (if (= i 0) "" "\n")
-                  (ansi (bold blue) "-- [" (int i) "] " (x509-name-short x.cert.subject) " --")
+                  (ansi (bold blue) "-- [" (int i) "] " (x509-label x.cert) " --")
                   "\n")
           (print-x509 x now verbose?)
           (when dump?

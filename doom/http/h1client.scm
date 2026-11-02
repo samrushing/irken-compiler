@@ -84,8 +84,9 @@
       )))
 
 ;; send a request and read the whole response.  <headers> is a list
-;;  of (:tuple name value).  returns {status headers body}, like h2/client.
-(define (h1/request conn method authority path headers)
+;;  of (:tuple name value); <body> may be "".  returns {status headers
+;;  body}, like h2/client.
+(define (h1/request conn method authority path headers body)
 
   (let ((r (h1/reader conn)))
 
@@ -160,7 +161,10 @@
              "host: " authority "\r\n"
              "connection: close\r\n")
        (map (lambda (h) (match h with (:tuple name val) -> (format name ": " val "\r\n"))) headers)
-       (list "\r\n"))))
+       (if (or (> (string-length body) 0) (string=? method "POST") (string=? method "PUT"))
+           (list "content-length: " (int->string (string-length body)) "\r\n")
+           (list:nil))
+       (list "\r\n" body))))
 
     (let ((head (read-head)))
       {status=head.status headers=head.headers body=(read-body head.status head.headers)})

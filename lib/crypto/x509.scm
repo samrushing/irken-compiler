@@ -468,6 +468,18 @@
       (maybe:no)    -> (x509-name-repr names)
       )))
 
+;; a short label for a certificate: its CN, or (since certificates
+;;  increasingly have an empty subject) its first subjectAltName.
+(define (x509-label cert)
+  (if (null? cert.subject)
+      (match (x509-find-extension cert '(2 5 29 17)) with
+        (maybe:yes ext)
+        -> (match (ber->asn1 ext.value) with
+             (ber:SEQUENCE (name . _)) -> (general-name-repr name)
+             _ -> "(no name)")
+        (maybe:no) -> "(no name)")
+      (x509-name-short cert.subject)))
+
 (define (x509-name=? a b)
   (string=? (x509-name-repr a) (x509-name-repr b)))
 

@@ -84,7 +84,9 @@
 
     ;; send a request, and read the whole response.
     ;;  <headers> is a list of (:tuple name value), with lowercase names.
-    (define (request method authority path headers)
+    ;;  <req-body> may be "".  (it must fit in the server's initial
+    ;;  flow-control window: we don't wait for WINDOW_UPDATE.)
+    (define (request method authority path headers req-body)
       (let ((sid next-stream-id)
             (block (list:nil))
             (status "")
@@ -105,14 +107,26 @@
           (when (flag-set? H2-FLAGS-END-STREAM f.flags)
             (set! done #t)))
         (inc! next-stream-id 2)
+        (when (> (string-length req-body) 65535)
+          (raise (:H2/BodyTooLarge (string-length req-body))))
         (send-frame (H2-FRAME:HEADERS)
-                    (logior H2-FLAGS-END-HEADERS H2-FLAGS-END-STREAM)
+                    (if (= 0 (string-length req-body))
+                        (logior H2-FLAGS-END-HEADERS H2-FLAGS-END-STREAM)
+                        H2-FLAGS-END-HEADERS)
                     sid
                     (encoder (append (list (:tuple ":method" method)
                                            (:tuple ":scheme" "https")
                                            (:tuple ":authority" authority)
                                            (:tuple ":path" path))
                                      headers)))
+        ;; the body, in frames of at most 16KB (the minimum max-frame-size)
+        (let loop ((pos 0))
+          (when (< pos (string-length req-body))
+            (let ((end (min (string-length req-body) (+ pos 16384))))
+              (send-frame (H2-FRAME:DATA)
+                          (if (= end (string-length req-body)) H2-FLAGS-END-STREAM 0)
+                          sid (substring req-body pos end))
+              (loop end))))
         (while (not done)
           (let ((f (read-frame)))
             (if (not (= f.stream-id sid))

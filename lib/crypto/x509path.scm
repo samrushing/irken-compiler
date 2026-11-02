@@ -83,7 +83,7 @@
 ;; --- paths ---
 
 (define (x509-describe x)
-  (format "'" (x509-name-short x.cert.subject) "'"))
+  (format "'" (x509-label x.cert) "'"))
 
 ;; check that <x> is within its validity period.
 (define (x509-check-validity x now)
