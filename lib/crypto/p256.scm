@@ -55,9 +55,9 @@
      (p256-string->u8* sk))
     (string-append "\x04" x y)))
 
-;; sign message <m> with secret key <sk>, returning the DER-encoded
-;;  ECDSA-Sig-Value: SEQUENCE { INTEGER r, INTEGER s }
-(define (p256-sign m sk RNG)
+;; sign message <m> (hashed with sha256) with secret key <sk>,
+;;  returning r || s, 32 bytes each (as JWS ES256 wants).
+(define (p256-sign-raw m sk RNG)
   (let ((h (sha256 m))
         (k (p256-random-scalar RNG))
         (r (make-string 32))
@@ -68,9 +68,13 @@
      (p256-string->u8* sk)
      (p256-string->u8* k)
      (p256-string->u8* h))
+    (string-append r s)))
+
+;; sign message <m> with secret key <sk>, returning the DER-encoded
+;;  ECDSA-Sig-Value: SEQUENCE { INTEGER r, INTEGER s }
+(define (p256-sign m sk RNG)
+  (let ((rs (p256-sign-raw m sk RNG)))
     (asn1->ber
      (ber:SEQUENCE
-      (list (ber/uint r)
-            (ber/uint s)
-            )))
-    ))
+      (list (ber/uint (substring rs 0 32))
+            (ber/uint (substring rs 32 64)))))))
