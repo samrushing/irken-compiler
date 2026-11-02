@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Maze Race</title>
+<style>
+  :root {
+    --bg:        #f3f1ec;
+    --panel:     #ffffffcc;
+    --border:    #00000014;
+    --text:      #1d1d22;
+    --muted:     #6b6a72;
+    --board:     #fbfaf7;
+    --wall:      #2b2b33;
+    --goal:      #e8553e;
+    --chip:      #0000000a;
+    --ok:        #2fa36b;
+    --warn:      #d99a1e;
+    --bad:       #d6453d;
+    --player-l:  46%;
+    --shadow:    0 1px 2px #0000000d, 0 8px 24px #00000012;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:       #0e1016;
+      --panel:    #171a23cc;
+      --border:   #ffffff12;
+      --text:     #e7e8ee;
+      --muted:    #8b8fa0;
+      --board:    #141720;
+      --wall:     #aab3cc;
+      --goal:     #ff6b55;
+      --chip:     #ffffff0d;
+      --player-l: 62%;
+      --shadow:   0 1px 2px #00000040, 0 12px 32px #00000059;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { font-size: 16px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+  h1 .sub { color: var(--muted); font-weight: 450; margin-left: 6px; }
+
+  .status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+  .status[data-state="live"]    .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+  .status[data-state="offline"] .dot { background: var(--bad); }
+
+  .hud { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+  .chip {
+    background: var(--chip); border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px 10px; font-size: 12px;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .chip b { font-weight: 600; }
+  .goals { letter-spacing: 2px; }
+
+  button.icon {
+    font: inherit; color: var(--text); background: var(--chip);
+    border: 1px solid var(--border); border-radius: 8px;
+    width: 30px; height: 30px; cursor: pointer;
+  }
+  button.icon:hover { background: var(--border); }
+
+  main {
+    display: grid; grid-template-columns: 1fr 260px; gap: 16px;
+    padding: 16px; min-height: 0;
+  }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; padding: 10px; }
+    #board { place-items: start center; }
+  }
+
+  #board {
+    display: grid; place-items: center; min-height: 0; min-width: 0; overflow: auto;
+  }
+  canvas {
+    display: block;
+    background: var(--board);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    touch-action: none;   /* swipe-to-move on phones */
+  }
+
+  aside {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 8px; min-height: 0;
+    backdrop-filter: blur(8px);
+  }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; font-weight: 600; }
+  #me { font-weight: 600; display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+  .swatch { width: 12px; height: 12px; border-radius: 4px; flex: none; background: var(--muted); }
+
+  #log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+  #log li {
+    display: flex; gap: 8px; align-items: baseline;
+    font-size: 13px; animation: slide-in .25s ease-out;
+  }
+  #log li .swatch { width: 8px; height: 8px; border-radius: 50%; transform: translateY(-1px); }
+  #log li.mine { font-weight: 600; }
+  #log li:nth-child(n+4) { opacity: .65; }
+  #log li:nth-child(n+7) { opacity: .4; }
+  #log .empty { color: var(--muted); font-style: italic; }
+  @keyframes slide-in { from { opacity: 0; transform: translateY(-4px); } }
+
+  .hint { color: var(--muted); font-size: 12px; margin-top: auto; }
+  kbd {
+    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    border: 1px solid var(--border); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 4px; background: var(--chip);
+  }
+
+  dialog {
+    color: var(--text); background: var(--board);
+    border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px 24px; box-shadow: var(--shadow); max-width: 360px;
+  }
+  dialog::backdrop { background: #0006; backdrop-filter: blur(2px); }
+  dialog h3 { margin: 0 0 12px; font-size: 15px; }
+  dialog table { border-collapse: collapse; width: 100%; }
+  dialog td { padding: 4px 0; }
+  dialog td:first-child { padding-right: 16px; white-space: nowrap; }
+  dialog p { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+</style>
+<script src="maze.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Maze Race <span class="sub">irken · h2</span></h1>
+    <span class="status" id="status" data-state="connecting"><span class="dot"></span><span id="status-text">connecting…</span></span>
+    <div class="hud">
+      <span class="chip">Level <b id="level">–</b></span>
+      <span class="chip">Goals <b class="goals" id="goals">○○○</b></span>
+      <span class="chip"><b id="size">–</b></span>
+      <span class="chip"><b id="players">1</b> racing</span>
+    </div>
+    <button class="icon" id="help-btn" title="Controls (?)" aria-label="Controls">?</button>
+  </header>
+
+  <main>
+    <div id="board"><canvas id="cv" aria-label="Maze"></canvas></div>
+    <aside>
+      <h2>You</h2>
+      <div id="me"><span class="swatch" id="me-swatch"></span><span id="me-name">…</span></div>
+      <h2>Race log</h2>
+      <ul id="log"><li class="empty">Waiting for the first capture…</li></ul>
+      <div class="hint"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> move · <kbd>?</kbd> help</div>
+    </aside>
+  </main>
+
+  <dialog id="help">
+    <h3>Controls</h3>
+    <table>
+      <tr><td><kbd>←</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> / <kbd>WASD</kbd></td><td>Move (hold to run)</td></tr>
+      <tr><td>Swipe &amp; hold</td><td>Move on touch screens</td></tr>
+      <tr><td><kbd>=</kbd></td><td>Skip to next level (everyone)</td></tr>
+      <tr><td><kbd>Shift</kbd> + <kbd>R</kbd></td><td>Reset game (everyone)</td></tr>
+      <tr><td><kbd>?</kbd></td><td>Toggle this help</td></tr>
+    </table>
+    <p>Reach the red goal first. Three goals per level; the maze grows each level.</p>
+  </dialog>
+</body>
+</html>

@@ -126,6 +126,8 @@
   (match path with
     "game.js"   -> (maybe:yes (:tuple "text/javascript" (get-file-gen path)))
     "game.html" -> (maybe:yes (:tuple "text/html" (get-file-gen path)))
+    "maze.js"   -> (maybe:yes (:tuple "text/javascript" (get-file-gen path)))
+    "maze.html" -> (maybe:yes (:tuple "text/html" (get-file-gen path)))
     _           -> (maybe:no)
     ))
 
@@ -163,7 +165,8 @@
                          (for (last? chunk) (notify-last-gen zgen)
                            (request.send-data chunk last?))))))
                ((string=? path "/")
-                (request.send-headers "302" (list (:tuple "location" "/game.html")) #f))
+                ;;(request.send-headers "302" (list (:tuple "location" "/game.html")) #f))
+                (request.send-headers "302" (list (:tuple "location" "/maze.html")) #f))
                ;; test target that places many svg images on a single page.
                ;; [mostly trying to get lots of parallel request activity]
                ((starts-with path "/many/")
