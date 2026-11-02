@@ -3,7 +3,26 @@
 (require "lib/basis.scm")
 (require "doom/doom.scm")
 
-(define (redirect-channel addr sockfun)
+;; ACME http-01 (rfc8555 8.3): answer
+;;  /.well-known/acme-challenge/<token> with the file <token> in
+;;  <acme-dir> (where an ACME client such as demo/acme writes them).
+(define acme-challenge-prefix "/.well-known/acme-challenge/")
+
+(define (acme-token-ok? token)
+  (and (> (string-length token) 0)
+       (every? (lambda (ch) (or (digit? ch) (letter? ch) (char=? ch #\-) (char=? ch #\_)))
+               (string->list token))))
+
+(define (read-small-file path)
+  (with-file f (file/open-read path)
+    (let loop ((parts (list:nil)))
+      (let ((s (file/read-buffer f)))
+        (if (= 0 (string-length s))
+            (string-concat (reverse parts))
+            (loop (list:cons s parts)))))))
+
+;; <acme-dir> is (maybe dir).
+(define (redirect-channel addr sockfun acme-dir)
   (let ((sock (sockfun 8192 8192))
         (eoh-state 0)
         (stat (*stats*.add addr)))
@@ -75,20 +94,44 @@
       (let ((lines (string-split-string header "\r\n"))
             (request (string-split (first lines) #\space))
             (mhost (get-host lines)))
+        (define (redirect method target)
+          (match (split-target target) with
+            (maybe:yes (:tuple (maybe:yes hostport) path))
+            -> (send-redirect method (strip-port hostport) path)
+            (maybe:yes (:tuple (maybe:no) path))
+            -> (match mhost with
+                 (maybe:yes host) -> (send-redirect method host path)
+                 (maybe:no) -> (note-event stat (conn-event:redirect (format "no host: " (string header)))))
+            (maybe:no)
+            -> (note-event stat (conn-event:redirect (format "bad target: " (string header))))))
         (match request with
           (method target "HTTP/1.1")
-          -> (match (split-target target) with
-               (maybe:yes (:tuple (maybe:yes hostport) path))
-               -> (send-redirect method (strip-port hostport) path)
-               (maybe:yes (:tuple (maybe:no) path))
-               -> (match mhost with
-                    (maybe:yes host) -> (send-redirect method host path)
-                    (maybe:no) -> (note-event stat (conn-event:redirect (format "no host: " (string header)))))
-               (maybe:no)
-               -> (note-event stat (conn-event:redirect (format "bad target: " (string header)))))
+          -> (match acme-dir (split-target target) with
+               (maybe:yes dir) (maybe:yes (:tuple _ path))
+               -> (if (starts-with path acme-challenge-prefix)
+                      (send-challenge dir path)
+                      (redirect method target))
+               _ _ -> (redirect method target))
           _
           -> (note-event stat (conn-event:redirect (format "bad header: " (string header))))
           )))
+
+    ;; HTTP/1.1 response with a small body.
+    (define (send-reply status body)
+      (sock.send (format "HTTP/1.1 " status "\r\n"
+                         "Content-Type: text/plain\r\n"
+                         "Content-Length: " (int (string-length body)) "\r\n"
+                         "Connection: close\r\n"
+                         "\r\n"
+                         body)))
+
+    (define (send-challenge dir path)
+      (let ((token (substring path (string-length acme-challenge-prefix) (string-length path)))
+            (file (format dir "/" token)))
+        (note-event stat (conn-event:redirect (format "acme-challenge " token)))
+        (if (and (acme-token-ok? token) (isfile? file))
+            (send-reply "200 OK" (read-small-file file))
+            (send-reply "404 Not Found" ""))))
 
     (define (send-redirect method host path)
       (let ((reply (format "HTTP/1.1 301 Moved Permanently\r\n"
@@ -125,7 +168,8 @@
      -> (sock.close)
      )))
 
-(define (serve-redirect ip port)
+;; <acme-dir> is (maybe dir): see redirect-channel.
+(define (serve-redirect ip port acme-dir)
   (let ((sock (doom/make (tcp4-sock)))
         (addr (address/make4 ip port)))
     (sock.bind addr)
@@ -140,7 +184,7 @@
        (let (((sockfun addr) (sock.accept))
              (addr-string (address/unparse addr)))
          (debugf "redirect client: addr " addr-string "\n")
-         (poller/fork (lambda () (redirect-channel addr-string sockfun)))
+         (poller/fork (lambda () (redirect-channel addr-string sockfun acme-dir)))
          (loop))
        except (:OSError errno)
        -> (cond ((= errno ECONNABORTED) (loop))

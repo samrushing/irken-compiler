@@ -140,6 +140,8 @@
    (arg 'cert (string "cert.pem"))
    (arg 'key  (string "key.pem"))
    (arg 'log  (string "/var/log/irken-httpd.log"))
+   (arg 'acme (string ""))
+   (arg 'http (int 80))
    (flag 'r)
    (pos 'addr (string "127.0.0.1:4433"))
    (flag 'h)
@@ -163,6 +165,9 @@
           "  [-key = key.pem]\n"
           "  [-log = /var/log/irken-httpd.log]\n"
           "  [-r] disable redirect (301 Moved Permanently) on port 80\n"
+          "  [-acme <dir>] on port 80, answer ACME http-01 challenges\n"
+          "     (/.well-known/acme-challenge/<token>) from <dir>/<token>\n"
+          "  [-http <port>] use <port> instead of 80 for redirects & challenges\n"
           "  [-h] print this usage.\n"
           "\n"
           " note: the root filesystem is expected to be of the form:\n"
@@ -195,6 +200,8 @@
         (cert "cert.pem")
         (key  "key.pem")
         (redirect? #t)
+        (acme-dir (maybe:no))
+        (http-port 80)
         (log  "/var/log/irken-httpd.log")
         (usermap (tree/make string-cmp ("foo" "bar") ("gandalf" "shadowfax"))))
     (when-maybe v (get-bool-opt opts 'h) (usage))
@@ -204,6 +211,8 @@
     (when-maybe v (get-string-opt opts 'key)  (set! key v))
     (when-maybe v (get-string-opt opts 'log)  (set! log v))
     (when-maybe v (get-string-opt opts 'addr) (set! addr v))
+    (when-maybe v (get-string-opt opts 'acme) (when (> (string-length v) 0) (set! acme-dir (maybe:yes v))))
+    (when-maybe v (get-int-opt opts 'http) (set! http-port v))
     (set! *dnscache* (dnscache/make "127.0.0.1" 1000))
 
     (let ((x509s (read-certs cert))
@@ -219,8 +228,8 @@
       (set! *logfile* (maybe:yes (file/open-append log #o644)))
       (debugf "read " (int (length x509s)) " certs.\n")
       (debugf "redirect? " (bool redirect?) "\n")
-      (when redirect?
-        (poller/fork (lambda () (serve-redirect ip 80))))
+      (when (or redirect? (not (eq? acme-dir (maybe:no))))
+        (poller/fork (lambda () (serve-redirect ip http-port acme-dir))))
       (serve ip port (h2-channel handler x509s skey '("h2")))
       (poller/wait-and-schedule))))
 
