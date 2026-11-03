@@ -1428,7 +1428,7 @@
     (com "rv64 output")
     = ".text"
     (global "toplevel")
-    ('addi sp sp (i -96))
+    ('addi sp sp (i -112)) ;; 13 registers, 16-byte aligned
     ('sd (r 'ra) (ind 0  sp))
     ('sd (r 's0) (ind 8  sp))
     ('sd (r 's1) (ind 16 sp))
@@ -1467,7 +1467,7 @@
     ('ld (r 's9) (ind 80 sp))
     ('ld (r 's10) (ind 88 sp))
     ('ld (r 's11) (ind 96 sp))
-    ('addi sp sp (i 96))
+    ('addi sp sp (i 112))
     ('tail (l "exit_continuation"))
     (label "irk_get_metadata")
     ('ldr_addr (r 'a0) (l (format "lit_" (int (- the-context.literals.count 1)))))
