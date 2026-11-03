@@ -193,8 +193,8 @@
       (insn:close name nreg body k)                -> (begin (emit-close name nreg body k.target) (emit k.insn))
       (insn:varref d i k)                          -> (begin (emit-varref d i k.target) (emit k.insn))
       (insn:varset d i v k)                        -> (begin (emit-varset d i v k.target) (emit k.insn))
-      (insn:new-env size top? _ types k)           -> (begin (emit-new-env size top? types k.target) (emit k.insn))
-      (insn:alloc tag size _ k)                    -> (begin (emit-alloc tag size k.target) (emit k.insn))
+      (insn:new-env size top? init? types k)       -> (begin (emit-new-env size top? init? types k.target) (emit k.insn))
+      (insn:alloc tag size init? k)                -> (begin (emit-alloc tag size init? k.target) (emit k.insn))
       (insn:store off arg tup i k)                 -> (begin (emit-store off arg tup i) (emit k.insn))
       (insn:invoke name fun args k)                -> (emit-call name fun args k)
       (insn:tail name fun args)                    -> (emit-tail name fun args)
@@ -431,20 +431,24 @@
 	    ;; the set! is a dead assignment, but we need to put something there
 	    (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 
-    (define (emit-new-env size top? types target)
+    ;; init?: see insn:new-env in cps.scm.
+    (define (emit-new-env size top? init? types target)
       (let ((env-index (env-counter.inc)))
 	(o.write (format "// env " (int env-index) ":"))
 	(o.write (format "//   " (join type-repr " " types)))
-	(o.write (format "O r" (int target) " = allocate (TC_ENV, " (int (+ size 1)) ");"))
+	(o.write (format "O r" (int target) " = " (if init? "alloc_cleared" "allocate")
+                         " (TC_ENV, " (int (+ size 1)) ");"))
 	(if top?
 	    (o.write (format "top = r" (int target) ";")))))
 
-    (define (emit-alloc tag size target)
+    ;; init?: see insn:alloc in cps.scm.
+    (define (emit-alloc tag size init? target)
       (let ((tag-string (format (if (= size 0) "UITAG(" "UOTAG(") (int tag) ")")))
 	(if (= size 0)
 	    ;; unit type - use an immediate
 	    (o.write (format "O r" (int target) " = (object*)" tag-string ";"))
-	    (o.write (format "O r" (int target) " = allocate (" tag-string ", " (int size) ");")))))
+	    (o.write (format "O r" (int target) " = " (if init? "alloc_cleared" "allocate")
+                             " (" tag-string ", " (int size) ");")))))
 
     (define (emit-store off arg tup i)
       (o.write (format "r" (int tup) "[" (int (+ 1 (+ i off))) "] = r" (int arg) ";")))
@@ -1047,7 +1051,8 @@
     ;; emit the top-level insns
     (o.write "void toplevel (void) {")
     (o.indent)
-    ;; allocate() initializes objects' slots: see clear_tospace in gc1.c.
+    ;; we initialize any slot a collection could see before it's set:
+    ;;  see clear_tospace in gc1.c.
     (o.write "clear_tospace = 0;")
     (when the-context.options.trace (o.write "TRACE(\"toplevel\");"))
     (emit insns)

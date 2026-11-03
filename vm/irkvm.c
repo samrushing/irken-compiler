@@ -17,6 +17,7 @@
 
 static object * allocate (irk_int tc, irk_int size);
 static object * alloc_no_clear (irk_int tc, irk_int size);
+static object * alloc_cleared (irk_int tc, irk_int size);
 static object * dump_object (object * ob, int depth);
 static void print_object (object * ob);
 static object do_gc (int nroots);
@@ -1011,7 +1012,7 @@ vm_go (void)
   DISPATCH();
  l_env:
   // ENV <target> <size>
-  REG1 = allocate (TC_VM_LENV, BC2+1);
+  REG1 = alloc_cleared (TC_VM_LENV, BC2+1);
   pc += 3;
   DISPATCH();
  l_stor:
@@ -1272,7 +1273,7 @@ vm_go (void)
   DISPATCH();
  l_alloc:
   // ALLOC <target> <tag> <size>
-  REG1 = allocate (BC2, BC3);
+  REG1 = alloc_cleared (BC2, BC3);
   pc += 4;
   DISPATCH();
  l_rref: {
@@ -1646,8 +1647,8 @@ vm_go (void)
 
 void
 toplevel (void) {
-  // every VM allocation goes through allocate(), which initializes the
-  //  object's slots: no need to clear the heap after a collection.
+  // the objects the VM fills in later (ENV, ALLOC) are cleared when
+  //  they're allocated: no need to clear the heap after a collection.
   clear_tospace = 0;
   if (irk_argc < 2) {
     fprintf (stderr, "Usage: %s <bytecode-file> <arg0> <arg1> ...\n", irk_argv[0]);

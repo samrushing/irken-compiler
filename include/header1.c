@@ -669,7 +669,7 @@ allocate (irk_int tc, irk_int size)
 {
   object * save = freep;
   *freep = (object*) (size<<TAGSIZE | (tc & TAGMASK));
-#if 1
+#if 0
   // at least on the g5, this technique is considerably faster than using memset
   //   in gc_flip() to 'pre-clear' the heap... probably a cache effect...
   while (size--) {
@@ -685,6 +685,16 @@ allocate (irk_int tc, irk_int size)
   prof_funs[prof_current_fun].allocs++;
   prof_funs[prof_current_fun].alloc_words += size;
 #endif
+  return save;
+}
+
+// an object whose slots are filled in later, while something that can
+//  trigger a collection runs: zero them first (see clear_tospace in gc1.c).
+static object *
+alloc_cleared (irk_int tc, irk_int size)
+{
+  object * save = allocate (tc, size);
+  memset (save + 1, 0, sizeof (object) * size);
   return save;
 }
 
