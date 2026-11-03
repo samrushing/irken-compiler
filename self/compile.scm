@@ -123,6 +123,7 @@
           "-sl"   -> (begin (inc! i) (set! options.src-limit (string->int argv[i])))
           ;; XXX make these mutually exclusive?
 	  ;;"-llvm" -> (set! options.backend (backend:llvm))
+          "-C"    -> (set! options.backend (backend:c))
           "-b"    -> (set! options.backend (backend:bytecode))
           "-arm"  -> (set! options.backend (backend:arm))
           "-amd"  -> (set! options.backend (backend:amd))
@@ -168,10 +169,13 @@ Usage: compile <irken-src-file> [options]
 "
 ;; -llvm  : compile using the LLVM backend.
 "
+ -C     : compile using the C backend.
  -arm   : compile using the arm64 backend.
  -amd   : compile using the amd64 backend.
  -rv    : compile using the riscv64 backend.
  -b     : compile using the bytecode backend.
+ (the default is this machine's native backend, if this compiler was
+  built with one; otherwise C.)
 
 default flags:
   CC='" CC "'
@@ -190,18 +194,28 @@ default flags:
 
 (define the-context (make-context))
 
+;; the default backend: native code for the machine this compiler was
+;;  itself compiled for.  (built as C or bytecode, we can't tell, so C.)
+(define (default-backend)
+  (%backend arm (backend:arm))
+  (%backend amd (backend:amd))
+  (%backend rv (backend:rv))
+  (%backend (c llvm bytecode) (backend:c)))
+
 (define (main)
   (when (< sys.argc 2)
         (usage)
         (raise (:NotEnoughArgs)))
-  (platform-configure
-   (match the-context.options.backend with
-     (backend:arm) -> 'arm
-     (backend:amd) -> 'amd
-     (backend:rv)  -> 'rv
-     _ -> 'amd ;; sensible default
-     ))
+  (set! the-context.options.backend (default-backend))
   (let ((filearg (get-options sys.argv the-context.options))
+        ;; (after the options: they may choose another backend.)
+        (_ (platform-configure
+            (match the-context.options.backend with
+              (backend:arm) -> 'arm
+              (backend:amd) -> 'amd
+              (backend:rv)  -> 'rv
+              _ -> 'amd ;; sensible default
+              )))
         (transform (transformer))
         (path sys.argv[filearg])
         (base (find-base path))

@@ -163,23 +163,28 @@ using a relatively small example:
 
     $ irken -v tests/t_while.scm
 
-Irken will use the CC and CFLAGS environment variables when compiling the C output.  You may
-try out another compiler like this:
+Irken will use the CC and CFLAGS environment variables when compiling or assembling its
+output.  You may try out another compiler like this:
 
     $ CC="gcc" CFLAGS="-std=c99 -O2 -I." irken ...
 
-Native Backends:
-----------------
+Backends:
+---------
 
-`self/compile` emits C by default.  To emit assembly for the machine
-instead (it's assembled and linked with the C compiler, along with the
-runtime in `include/`):
+The compiler (`irken` once installed, `self/compile` before) emits native
+code for the machine it's running on: arm64 (macOS, Linux, FreeBSD),
+amd64 or riscv64 (Linux).  Elsewhere, it emits C.  The output is
+assembled or compiled, and linked, with the C compiler, along with the
+runtime in `include/`.  To choose a backend:
 
-    $ self/compile -arm demo/maze/maze.scm      # arm64 (macOS, Linux, FreeBSD)
-    $ self/compile -amd demo/maze/maze.scm      # amd64
-    $ self/compile -rv demo/maze/maze.scm       # riscv64 (Linux)
+    $ irken -C demo/maze/maze.scm       # C
+    $ irken -b demo/maze/maze.scm       # bytecode, for the VM (see below)
+    $ irken -arm demo/maze/maze.scm     # arm64
+    $ irken -amd demo/maze/maze.scm     # amd64
+    $ irken -rv demo/maze/maze.scm      # riscv64
 
-`self/irken` uses its native backend by default.
+`self/irken`, left by the bootstrap, has only this machine's native
+backend, which makes it quicker to rebuild while working on the compiler.
 
 
 Bytecode Backend:

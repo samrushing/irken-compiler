@@ -101,7 +101,7 @@ def run_one (test, backend, scratch, args):
     src = PJ (work, os.path.basename (test.path))
     shutil.copy (test.path, src)
     base = os.path.splitext (src)[0]
-    flag = {'c': [], 'b': ['-b'], 'arm': ['-arm'], 'amd': ['-amd'], 'rv': ['-rv']}[backend]
+    flag = {'c': ['-C'], 'b': ['-b'], 'arm': ['-arm'], 'amd': ['-amd'], 'rv': ['-rv']}[backend]
     env = dict (os.environ)
     env.setdefault ('IRKENLIB', './')
     rc, cout = run (['self/compile'] + flag + [src, '-q'], args.timeout * 4, env=env)
