@@ -12,7 +12,11 @@ def getenv_or (name, default):
     else:
         return default
 
-gcc = getenv_or ('CC', 'clang')
+# clang if there is one, otherwise the system's cc (gcc on most Linux).
+import shutil
+gcc = getenv_or ('CC', 'clang' if shutil.which ('clang') else 'cc')
+# (genffi, run below, also compiles C: make sure it uses the same compiler.)
+os.environ['CC'] = gcc
 default_cflags = '-std=c99 -O3 -I./include'
 
 plat = os.uname()

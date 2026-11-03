@@ -13,7 +13,11 @@ def getenv_or (name, default):
     else:
         return default
 
-gcc = getenv_or ('CC', 'clang')
+# clang if there is one, otherwise the system's cc (gcc on most Linux).
+import shutil
+gcc = getenv_or ('CC', 'clang' if shutil.which ('clang') else 'cc')
+# (genffi, run below, also compiles C: make sure it uses the same compiler.)
+os.environ['CC'] = gcc
 default_cflags = '-O3 -I./include'
 
 plat = os.uname()
@@ -121,15 +125,34 @@ step ('compiling stage1 compiler (with stage0)...')
 system ('IRKENLIB=. self/irken self/irken.scm -q')
 move ('self/irken' + ext, 'self/irken.1' + ext)
 
-# Everything after stage1 is independent, so run it all at once: stage2
+# Everything after stage1 is independent, so run it at once: stage2
 #   (to check that the compiler reproduces itself), self/compile (all the
 #   backends; util/test.py uses it), and genffi.  stage1 and stage2 are
 #   the same compiler, so self/compile and genffi are built with a copy
 #   of stage1 while stage2 is replacing self/irken.
+# Each Irken process can use ~800MB (two semispaces, which are cleared),
+#   so how much runs at once depends on how much memory there is.
 import subprocess
 copy ('self/irken', 'self/irken-stage1')
 
+def phys_mem ():
+    try:
+        return os.sysconf ('SC_PAGE_SIZE') * os.sysconf ('SC_PHYS_PAGES')
+    except (ValueError, OSError, AttributeError):
+        return 0
+
+slots = int (phys_mem() * 0.75 / (800 * 1024 * 1024))
+parallel = slots >= 3
+ffi_jobs = (slots - 2) if parallel else 1
+if not parallel:
+    step ('(not much memory: one step at a time)')
+
 def background (what, cmd, log):
+    if not parallel:
+        step (what.replace (', in the background', ''))
+        p = subprocess.Popen ('%s > %s 2>&1' % (cmd, log), shell=True)
+        p.wait()
+        return (cmd, log, p)
     step (what)
     return (cmd, log, subprocess.Popen ('%s > %s 2>&1' % (cmd, log), shell=True))
 

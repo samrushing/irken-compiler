@@ -12,7 +12,9 @@ def getenv_or (name, default):
     else:
         return default
 
-cc = getenv_or ('CC', 'clang')
+# clang if there is one, otherwise the system's cc (gcc on most Linux).
+import shutil
+cc = getenv_or ('CC', 'clang' if shutil.which ('clang') else 'cc')
 cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -I./include -lffi')
 
 uname = platform.uname()

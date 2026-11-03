@@ -412,7 +412,7 @@
     _ -> (raise (:GenFFI/BadFFI exp))
     ))
 
-(define *CC* (getenv-or "CC" "clang"))
+(define *CC* (getenv-or "CC" "cc"))
 
 (define (compile args)
   (let ((cmd (format *CC* " " (join " " (map ffi-path-expand args)))))
