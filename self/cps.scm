@@ -44,10 +44,13 @@
   (:varref int int cont)
   ;; varset <depth> <index> <reg> <k>
   (:varset int int int cont)
-  ;; new-env <size> <top?> <k>
-  (:new-env int bool (list type) cont)
-  ;; alloc <tag> <size> <k>
-  (:alloc int int cont)
+  ;; new-env <size> <top?> <init?> <types> <k>
+  ;;  init?: the slots must be initialized, because computing the args
+  ;;  that will fill them could trigger a collection.  (the heap is not
+  ;;  cleared in advance.)
+  (:new-env int bool bool (list type) cont)
+  ;; alloc <tag> <size> <init?> <k>
+  (:alloc int int bool cont)
   ;; store <offset> <arg> <tuple> <i> <k>
   (:store int int int int cont)
   ;; invoke <name> <closure> <args> <k>
@@ -133,6 +136,19 @@
   (if (member-eq? the-context.options.backend (list (backend:bytecode) (backend:arm) (backend:amd) (backend:rv)))
       (make-actual-register-allocator)
       (make-bogus-register-allocator)))
+
+;; can evaluating <node> trigger a collection?  Only calls (a function's
+;;  entry checks the heap) and some primops (e.g. %make-vector's
+;;  ensure-heap) can.  allocating a fixed-size object inline can't.
+(define (gc-free? node)
+  (and (match (noderec->t node) with
+         (node:varref _)  -> #t
+         (node:literal _) -> #t
+         (node:cexp _ _ _) -> #t
+         (node:primapp name _)
+         -> (member-eq? name '(%vcon %dtcon %rextend %rmake %raccess))
+         _ -> #f)
+       (every? gc-free? (noderec->subs node))))
 
 (define (compile exp)
 
@@ -503,12 +519,13 @@
     (define (compile-args args lenv k)
       (set-flag! VFLAG-ALLOCATES)
       (match args with
-	() -> (insn:new-env 0 (lenv-top? lenv) '() k)
+	() -> (insn:new-env 0 (lenv-top? lenv) #f '() k)
 	_  -> (let ((nargs (length args))
 		    (types (map (lambda (x) (get-node-type x)) args)))
 		(insn:new-env
 		 nargs
 		 (lenv-top? lenv)
+		 (not (every? gc-free? args))
 		 types
                  (make-cont
                   k.target k.free
@@ -565,6 +582,7 @@
 	(insn:new-env
 	 nargs
 	 (lenv-top? lenv)
+	 (not (every? gc-free? inits))
 	 types
 	 (cont k.free
 	       (lambda (tuple-reg)
@@ -670,6 +688,7 @@
 	     (if (> nargs 0)
 		 (insn:alloc
                   tag nargs
+                  (not (every? gc-free? args))
                   (make-cont
                    k.target k.free
                    (compile-store-args
@@ -677,7 +696,7 @@
                     (add-to-set k.target k.free)
                     lenv k)
                    ))
-		 (insn:alloc tag 0 k)))
+		 (insn:alloc tag 0 #f k)))
 	_ -> (error1 "bad %vcon params" params)))
 
     (define (c-record-literal exp lenv k)
@@ -702,6 +721,7 @@
 	       (insn:alloc
                 tag
                 (length args)
+                (not (every? gc-free? args))
                 ;; this is a hack.  the issue is that <k> already holds the target for
                 ;;   the allocation... compile-store-args is broken in that it assigns
                 ;;   a target for a <stor> [rather than a dead cont].
@@ -861,8 +881,8 @@
   (insn:varset d i v k)            -> (printf "set " (int d) "," (int i) " val:" (int v))
   (insn:store o a t i k)           -> (printf "stor off:" (int o) " arg:" (int a) " tup:" (int t) " idx:" (int i))
   (insn:invoke n c a k)            -> (printf "invoke " (maybe n symbol->string "lambda") " cl:" (int c) " args:" (int a) " free: " (fintlist k.free))
-  (insn:new-env n top? types k)    -> (printf "env n:" (int n) " top?:" (bool top?) " " (join type-repr " " types))
-  (insn:alloc tag size k)          -> (printf "alloc tag:" (int tag) " size:" (int size))
+  (insn:new-env n top? init? types k) -> (printf "env n:" (int n) " top?:" (bool top?) " init?:" (bool init?) " " (join type-repr " " types))
+  (insn:alloc tag size init? k)    -> (printf "alloc tag:" (int tag) " size:" (int size) " init?:" (bool init?))
   (insn:push r k)                  -> (printf "push " (int r))
   (insn:pop r k)                   -> (printf "pop " (int r))
   (insn:primop name p t args k)    -> (printf "prim " (sym name) " " (repr p) " " (type-repr t) " " (fintlist args))
@@ -960,8 +980,8 @@
   (insn:varset _ _ _ k)         -> k
   (insn:store _ _ _ _ k)        -> k
   (insn:invoke _ _ _ k)         -> k
-  (insn:new-env _ _ _ k)        -> k
-  (insn:alloc _ _ k)            -> k
+  (insn:new-env _ _ _ _ k)      -> k
+  (insn:alloc _ _ _ k)          -> k
   (insn:push _ k)               -> k
   (insn:pop _ k)                -> k
   (insn:primop _ _ _ _ k)       -> k

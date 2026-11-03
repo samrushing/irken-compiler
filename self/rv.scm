@@ -957,10 +957,12 @@
              (RV ('mv (n target) (n var))))
             (else (list:nil))))
 
-    (define (emit-alloc tag size target)
+    ;; init?: see insn:alloc in cps.scm.
+    (define (emit-alloc tag size init? target)
       (if (= size 0)
           (emit-immediate (UITAG tag) target)
-          (RV ('alloc (n target) (i (UOTAG tag)) (i size)))))
+          (RV ('alloc (n target) (i (UOTAG tag)) (i size))
+              @ (if init? (rv-zero-slots target size) (list:nil)))))
 
     (define (emit-store off arg tup index)
       (if (< index 254)
@@ -1045,12 +1047,31 @@
           (emit-varset-inline depth index val)
           ))
 
-    (define (emit-new-env size top? types target)
+    ;; zero words 1..n of the object in register <reg>.
+    (define (rv-zero-slots reg n)
+      (let loop ((i 1) (acc (list:nil)))
+        (cond ((> i n) (reverse acc))
+              ;; sd's offset is 12 bits, signed.
+              ((< (* 8 i) 2048)
+               (loop (+ i 1) (list:cons (RVINSN 'sd zero (ind (* 8 i) (n reg))) acc)))
+              (else
+               (loop (+ i 1)
+                     (append (reverse (RV ('li (s 0) (i (* 8 i)))
+                                          ('add (s 0) (n reg) (s 0))
+                                          ('sd zero (ind 0 (s 0)))))
+                             acc))))))
+
+    (define (emit-new-env size top? init? types target)
       (RV
        (com "new-env size=" (int size))
        @ (if (< size 254)
              (RV ('alloc (n target) (i TC_ENV) (i (+ size 1))))
              (RV ('bigalloc (n target) (i TC_ENV) (i (+ size 1)))))
+       ;; the args are stored as they're computed, and computing one can
+       ;;  trigger a collection: so the slots (and the link in slot 1)
+       ;;  must hold something harmless until then.  (the heap isn't
+       ;;  cleared in advance.)
+       @ (if init? (rv-zero-slots target (+ size 1)) (list:nil))
        @ (if top?
              (RV (com "set top")
                  ('str_addr (n target) (l "top")))
@@ -1329,12 +1350,12 @@
         (insn:label jn next)                         -> (emit-label jn next)
         (insn:jump reg target jn free)               -> (emit-jump reg target jn free.val)
         (insn:move dst var k)                        -> (emitk (emit-move dst var k.target) k)
-        (insn:alloc tag size k)                      -> (emitk (emit-alloc tag size k.target) k)
+        (insn:alloc tag size init? k)                -> (emitk (emit-alloc tag size init? k.target) k)
         (insn:store off arg tup i k)                 -> (emitk (emit-store off arg tup i) k)
         (insn:close name nreg body k)                -> (emitk (emit-close name nreg body k.target) k)
         (insn:varref d i k)                          -> (emitk (emit-varref d i k.target k.free) k)
         (insn:varset d i v k)                        -> (emitk (emit-varset d i v k.target k.free) k)
-        (insn:new-env size top? types k)             -> (emitk (emit-new-env size top? types k.target) k)
+        (insn:new-env size top? init? types k)       -> (emitk (emit-new-env size top? init? types k.target) k)
         (insn:push r k)                              -> (emitk (emit-push r) k)
         (insn:pop r k)                               -> (emitk (emit-pop r k.target) k)
         (insn:tail name fun args)                    -> (emit-tail name fun args)
@@ -1447,6 +1468,9 @@
     ('ldr_addr k     (l "k"))
     ('lld_addr (r 't0) (l "Lreturn"))
     ('sd (r 't0) (ind 24 k))
+    ;; we initialize any slot a collection could see before it's set:
+    ;;  see clear_tospace in gc1.c.
+    ('str_addr zero (l "clear_tospace"))
     (com "--- user program starts here ---")
     ))
   (emit-rv-gen o (list-generator rv))

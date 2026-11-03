@@ -1065,10 +1065,12 @@
              (ARM ('mov (n target) (n var))))
             (else (list:nil))))
 
-    (define (emit-alloc tag size target)
+    ;; init?: see insn:alloc in cps.scm.
+    (define (emit-alloc tag size init? target)
       (if (= size 0)
           (emit-immediate (UITAG tag) target)
-          (ARM ('alloc (n target) (i (UOTAG tag)) (i size)))))
+          (ARM ('alloc (n target) (i (UOTAG tag)) (i size))
+               @ (if init? (arm-zero-slots target size) (list:nil)))))
 
     (define (emit-store off arg tup index)
       (ARM
@@ -1141,11 +1143,29 @@
       (ARM @ (emit-varset* depth index val)
            @ (dead-set target)))
 
-    (define (emit-new-env size top? types target)
+    ;; zero words 1..n of the object in register <reg>.
+    (define (arm-zero-slots reg n)
+      (let loop ((i 1) (acc (list:nil)))
+        (cond ((> i n) (reverse acc))
+              ;; stp's offset is 7 bits, scaled: up to 504.
+              ((and (< i n) (<= (* 8 i) 504))
+               (loop (+ i 2) (list:cons (ARMINSN 'stp xzr xzr (ind (n reg) (i (* 8 i)))) acc)))
+              ((<= (* 8 i) 32760)
+               (loop (+ i 1) (list:cons (ARMINSN 'str xzr (ind (n reg) (i (* 8 i)))) acc)))
+              (else
+               ;; (str's offset is 12 bits, scaled.)
+               (error1 "arm: environment too large" n)))))
+
+    (define (emit-new-env size top? init? types target)
       ;; types are just for comment metadata [for now]
       (ARM
        (com "new-env size=" (int size))
        ('alloc (n target) (i TC_ENV) (i (+ size 1)))
+       ;; the args are stored as they're computed, and computing one can
+       ;;  trigger a collection: so the slots (and the link in slot 1)
+       ;;  must hold something harmless until then.  (the heap isn't
+       ;;  cleared in advance.)
+       @ (if init? (arm-zero-slots target (+ size 1)) (list:nil))
        @ (if top?
              (ARM (com "set top")
                   ('str_addr (s 0) (n target) (g "top")))
@@ -1475,12 +1495,12 @@
         (insn:label jn next)                         -> (emit-label jn next)
         (insn:jump reg target jn free)               -> (emit-jump reg target jn free.val)
         (insn:move dst var k)                        -> (emitk (emit-move dst var k.target) k)
-        (insn:alloc tag size k)                      -> (emitk (emit-alloc tag size k.target) k)
+        (insn:alloc tag size init? k)                -> (emitk (emit-alloc tag size init? k.target) k)
         (insn:store off arg tup i k)                 -> (emitk (emit-store off arg tup i) k)
         (insn:close name nreg body k)                -> (emitk (emit-close name nreg body k.target) k)
         (insn:varref d i k)                          -> (emitk (emit-varref d i k.target) k)
         (insn:varset d i v k)                        -> (emitk (emit-varset d i v k.target) k)
-        (insn:new-env size top? types k)             -> (emitk (emit-new-env size top? types k.target) k)
+        (insn:new-env size top? init? types k)       -> (emitk (emit-new-env size top? init? types k.target) k)
         (insn:push r k)                              -> (emitk (emit-push r) k)
         (insn:pop r k)                               -> (emitk (emit-pop r k.target) k)
         (insn:tail name fun args)                    -> (emit-tail name fun args)
@@ -1631,6 +1651,9 @@
     ('ldr_addr (x 28) (g "k"))
     ('lld_addr (x 25) (l "Lreturn"))
     ('str (x 25) (ind (x 28) (i 24)))
+    ;; we initialize any slot a collection could see before it's set:
+    ;;  see clear_tospace in gc1.c.
+    ('str_addr (x 25) xzr (g "clear_tospace"))
     ))
   (let ((gen0 (list-generator arm))
         (gen1 (if the-context.options.no-peephole gen0 (arm-peep (arm-normalize-regs gen0)))))

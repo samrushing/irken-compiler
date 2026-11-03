@@ -193,8 +193,8 @@
       (insn:close name nreg body k)                -> (begin (emit-close name nreg body k.target) (emit k.insn))
       (insn:varref d i k)                          -> (begin (emit-varref d i k.target) (emit k.insn))
       (insn:varset d i v k)                        -> (begin (emit-varset d i v k.target) (emit k.insn))
-      (insn:new-env size top? types k)             -> (begin (emit-new-env size top? types k.target) (emit k.insn))
-      (insn:alloc tag size k)                      -> (begin (emit-alloc tag size k.target) (emit k.insn))
+      (insn:new-env size top? _ types k)           -> (begin (emit-new-env size top? types k.target) (emit k.insn))
+      (insn:alloc tag size _ k)                    -> (begin (emit-alloc tag size k.target) (emit k.insn))
       (insn:store off arg tup i k)                 -> (begin (emit-store off arg tup i) (emit k.insn))
       (insn:invoke name fun args k)                -> (emit-call name fun args k)
       (insn:tail name fun args)                    -> (emit-tail name fun args)
@@ -1047,6 +1047,8 @@
     ;; emit the top-level insns
     (o.write "void toplevel (void) {")
     (o.indent)
+    ;; allocate() initializes objects' slots: see clear_tospace in gc1.c.
+    (o.write "clear_tospace = 0;")
     (when the-context.options.trace (o.write "TRACE(\"toplevel\");"))
     (emit insns)
     (o.dedent)

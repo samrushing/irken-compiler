@@ -1646,6 +1646,9 @@ vm_go (void)
 
 void
 toplevel (void) {
+  // every VM allocation goes through allocate(), which initializes the
+  //  object's slots: no need to clear the heap after a collection.
+  clear_tospace = 0;
   if (irk_argc < 2) {
     fprintf (stderr, "Usage: %s <bytecode-file> <arg0> <arg1> ...\n", irk_argv[0]);
   } else if (-1 == read_bytecode_file (irk_argv[1])) {

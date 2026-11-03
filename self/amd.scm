@@ -994,10 +994,16 @@
              (AMD ('movq (n var) (n target))))
             (else (list:nil))))
 
-    (define (emit-alloc tag size target)
+    ;; zero words 1..n of the object in register <reg>.
+    (define (amd-zero-slots reg n)
+      (map-range i n (AMDINSN 'movq (i 0) (ind (* 8 (+ i 1)) (n reg)))))
+
+    ;; init?: see insn:alloc in cps.scm.
+    (define (emit-alloc tag size init? target)
       (if (= size 0)
           (AMD (com "alloc imm " (int tag)) ('movq (i (UITAG tag)) (n target)))
-          (AMD ('alloc (i (UOTAG tag)) (i size) (i (* 8 (+ 1 size))) (n target)))))
+          (AMD ('alloc (i (UOTAG tag)) (i size) (i (* 8 (+ 1 size))) (n target))
+               @ (if init? (amd-zero-slots target size) (list:nil)))))
 
     (define (emit-store off arg tup index)
       (AMD
@@ -1076,11 +1082,16 @@
       (AMD @ (emit-varset* depth index val)
            @ (dead-set target)))
 
-    (define (emit-new-env size top? types target)
+    (define (emit-new-env size top? init? types target)
       ;; types are just for comment metadata [for now]
       (AMD
        (com "new-env size=" (int size))
        ('alloc (i TC_ENV) (i (+ size 1)) (i (* 8 (+ size 2))) (n target))
+       ;; the args are stored as they're computed, and computing one can
+       ;;  trigger a collection: so the slots (and the link in slot 1)
+       ;;  must hold something harmless until then.  (the heap isn't
+       ;;  cleared in advance.)
+       @ (if init? (amd-zero-slots target (+ size 1)) (list:nil))
        @ (if top?
              (AMD
               (com "set top")
@@ -1408,12 +1419,12 @@
         (insn:label jn next)                         -> (emit-label jn next)
         (insn:jump reg target jn free)               -> (emit-jump reg target jn free.val)
         (insn:move dst var k)                        -> (emitk (emit-move dst var k.target) k)
-        (insn:alloc tag size k)                      -> (emitk (emit-alloc tag size k.target) k)
+        (insn:alloc tag size init? k)                -> (emitk (emit-alloc tag size init? k.target) k)
         (insn:store off arg tup i k)                 -> (emitk (emit-store off arg tup i) k)
         (insn:close name nreg body k)                -> (emitk (emit-close name nreg body k.target) k)
         (insn:varref d i k)                          -> (emitk (emit-varref d i k.target) k)
         (insn:varset d i v k)                        -> (emitk (emit-varset d i v k.target) k)
-        (insn:new-env size top? types k)             -> (emitk (emit-new-env size top? types k.target) k)
+        (insn:new-env size top? init? types k)       -> (emitk (emit-new-env size top? init? types k.target) k)
         (insn:push r k)                              -> (emitk (emit-push r) k)
         (insn:pop r k)                               -> (emitk (emit-pop r k.target) k)
         (insn:tail name fun args)                    -> (emit-tail name fun args)
@@ -1642,6 +1653,9 @@
     ('leaq (rel "Lreturn") rax)
     ('movq (grel "k") rcx)
     ('movq rax (ind 24 rcx))
+    ;; we initialize any slot a collection could see before it's set:
+    ;;  see clear_tospace in gc1.c.
+    ('movq (i 0) (grel "clear_tospace"))
     ))
   (emit-amd-gen
    o

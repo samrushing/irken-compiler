@@ -547,6 +547,7 @@ range_check (unsigned int length, unsigned int index)
 
 irk_int verbose_gc = 1;
 irk_int clear_fromspace = 0;
+// see gc1.c: compiled code that doesn't need this sets it to 0.
 irk_int clear_tospace = 1;
 
 irk_int vm (int argc, char * argv[]);
@@ -557,7 +558,21 @@ irk_int vm (int argc, char * argv[]);
 
 uint64_t gc_ticks = 0;
 
-#if 1
+#if defined(IRK_GC_POISON)
+// debugging: fill free heap space with a word the collector will notice
+//  (see copy() in gc1.c), to catch objects whose slots are still unset
+//  when a collection happens.  build with -DIRK_GC_POISON, and maybe a
+//  small -DIRK_HEAP_SIZE so that collections are frequent.
+#define IRK_POISON ((object) 0x00DEAD00DEAD0000ULL)
+static
+void
+clear_space (object * p, irk_int n)
+{
+  while (n--) {
+    *p++ = IRK_POISON;
+  }
+}
+#elif 1
 static
 void
 clear_space (object * p, irk_int n)
@@ -654,7 +669,7 @@ allocate (irk_int tc, irk_int size)
 {
   object * save = freep;
   *freep = (object*) (size<<TAGSIZE | (tc & TAGMASK));
-#if 0
+#if 1
   // at least on the g5, this technique is considerably faster than using memset
   //   in gc_flip() to 'pre-clear' the heap... probably a cache effect...
   while (size--) {
@@ -1249,15 +1264,17 @@ void toplevel (void);
 int
 main (int argc, char * argv[])
 {
-  heap0 = (object *) malloc (sizeof (object) * heap_size);
-  heap1 = (object *) malloc (sizeof (object) * heap_size);
+  // calloc: the heaps start out zeroed, and (for big allocations) the
+  //  pages aren't touched until they're used.
+  heap0 = (object *) calloc (heap_size, sizeof (object));
+  heap1 = (object *) calloc (heap_size, sizeof (object));
   if (!heap0 || !heap1) {
     fprintf (stderr, "unable to allocate heap\n");
     return -1;
   } else {
-    if (clear_tospace) {
-      clear_space (heap0, heap_size);
-    }
+#if defined(IRK_GC_POISON)
+    clear_space (heap0, heap_size);
+#endif
     irk_argc = argc;
     irk_argv = argv;
     limit = heap0 + (heap_size - head_room);

@@ -17,6 +17,13 @@ object *
 copy (object * p)
 {
   object * pp = (object *) *p;
+#if defined(IRK_GC_POISON)
+  if (pp == IRK_POISON) {
+    fprintf (stderr, "GC: poison (an unset slot) at %p, %d words past the scan pointer\n",
+             (void *) p, (int) (p - scan));
+    abort();
+  }
+#endif
   if (is_immediate (pp)) {
     return pp;
   } else if (sitting_duck (pp)) {
@@ -122,9 +129,17 @@ do_gc (int nroots)
     clear_space (heap1, heap_size);
   }
 
+#if defined(IRK_GC_POISON)
+  // (always: the point is to catch code that depends on clearing.)
+  clear_space (freep, heap_size - (freep - heap0));
+#else
+  // code from older compilers expects the heap to be cleared; code from
+  //  newer ones initializes any slot that a collection could see before
+  //  it's set, and sets clear_tospace to 0.
   if (clear_tospace) {
     clear_space (freep, heap_size - (freep - heap0));
   }
+#endif
 
   if (verbose_gc) {
     fprintf (stderr, "collected %" PRIuPTR " words]\n", freep - heap0);
