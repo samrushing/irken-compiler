@@ -104,6 +104,26 @@ t_start = time.time()
 def step (msg):
     print ('[%5.1fs] %s' % (time.time() - t_start, msg))
 
+# say where this is, so a pasted log identifies itself.
+def describe_build ():
+    import subprocess
+    def git (*args):
+        try:
+            return subprocess.run (('git',) + args, capture_output=True, text=True).stdout.strip()
+        except OSError:
+            return ''
+    u = os.uname()
+    print ('host: %s  (%s %s, %s)' % (u.nodename, u.sysname, u.release, u.machine))
+    branch, commit = git ('branch', '--show-current'), git ('log', '-1', '--format=%h %s')
+    if commit:
+        # (not counting the files a bootstrap itself rewrites.)
+        changed = git ('status', '--porcelain', '--untracked-files=no', '--',
+                       '.', ':!self/flags.scm', ':!ffi/*_ffi.scm')
+        dirty = ' (with local changes)' if changed else ''
+        print ('git:  %s %s%s' % (branch or '(detached)', commit, dirty))
+    print ('cc:   %s %s' % (gcc, cflags))
+
+describe_build ()
 step ('building VM')
 # system ('make vm')
 exec(open('util/build_vm.py').read())
