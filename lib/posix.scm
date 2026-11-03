@@ -105,8 +105,10 @@
 
 (define (signal/ignore signum)
   (%backend bytecode (posix/signal signum SIG_IGN))
-  ;; there are horrible c type shenanigans with signal,
-  ;;   this seems to mollify the c compiler.
-  (%backend (c llvm arm amd rv) (%%ffi signal signum SIG_IGN)))
+  ;; signal's handler is a function pointer: through the FFI, SIG_IGN
+  ;;  would be an int, which C compilers now reject.  so in C, call it
+  ;;  with the real SIG_IGN.
+  (%backend c (%%cexp (int -> int) "(irk_int) signal (%0, SIG_IGN)" signum))
+  (%backend (llvm arm amd rv) (%%ffi signal signum SIG_IGN)))
 
 
