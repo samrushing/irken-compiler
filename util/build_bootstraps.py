@@ -19,4 +19,3 @@ def system (cmd):
 
 system ('IRKENLIB=. self/compile self/compile.scm -b -q')
 system ('cp self/compile.byc self/bootstrap.byc')
-system ('IRKENLIB=. self/compile ffi/gen/genffi.scm -b -q')

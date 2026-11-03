@@ -42,7 +42,6 @@ issues remaining:
 
 * whatever causes VM to spin if there's a failure in system(CC)
   - seems to be related to raising an error - probably the loop of lookup up error polyvars
-* maybe make an irkenb that's similar to genffi in that it carefully avoids all FFI
 * find a way to put c-call args into the right registers directly
 * and/or do cycle decomposition to permute the registers
 * source positions in the asm output: CPS insns don't carry source info

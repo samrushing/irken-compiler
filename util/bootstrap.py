@@ -97,9 +97,6 @@ print ('building VM')
 # system ('make vm')
 exec(open('util/build_vm.py').read())
 
-print ('generating posix FFI...')
-system ('IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/posix.ffi')
-
 print ('compiling stage0 binary (with vm)...')
 system ('IRKENLIB=. vm/irkvm self/compile.byc self/compile.scm -q')
 
@@ -136,3 +133,12 @@ else:
 
 unlink ('self/compile.1.c')
 move ('self/compile.2.c', 'self/compile.c')
+
+# the compiler needs only the libc & stdio interfaces (see lib/base.scm),
+#   so this platform's posix (etc) interfaces can wait until now.
+import time
+t_start = time.time()
+def step (msg):
+    print ('[%5.1fs] %s' % (time.time() - t_start, msg))
+compiler = 'self/compile'
+exec(open('util/gen_ffis.py').read())

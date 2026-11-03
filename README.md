@@ -66,10 +66,17 @@ The default compiler is 'clang', to use gcc:
 
 Which does the following:
 
-1. use self/bootstrap.byc to generate and compile self/compile.c.
-2. this binary will be used to recompile the compiler.
-3. that binary will recompile the compiler again.
-4. the output from steps 2 and 3 are compared, they should be identical.
+1. builds the bytecode VM, and uses it to run self/bootstrap.byc once:
+   it compiles the native compiler for this machine (self/irken; arm64,
+   amd64 or riscv64.  elsewhere, the C backend).
+2. that binary recompiles the compiler, and the result recompiles it
+   again: the output from these two steps should be identical.
+3. compiles genffi (ffi/gen/genffi), and uses it to generate this
+   platform's FFI interfaces (posix, sockets, kqueue/epoll, ...).
+4. builds self/compile, which has all the backends.
+
+The compiler itself only needs C's libc and stdio (see lib/base.scm),
+so nothing platform-specific has to be generated before step 1.
 
 Note: It is not possible to compile with optimization off, because
 this disables the tail call optimization that Irken relies on -

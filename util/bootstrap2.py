@@ -95,88 +95,80 @@ open ('self/flags.scm', 'w').write (
 (define CFLAGS "%s")
 """ % (gcc, cflags))
 
-print ('building VM')
+import time
+t_start = time.time()
+def step (msg):
+    print ('[%5.1fs] %s' % (time.time() - t_start, msg))
+
+step ('building VM')
 # system ('make vm')
 exec(open('util/build_vm.py').read())
 
-print ('generating posix FFI...')
-system ('IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/posix.ffi')
+# The compiler needs only the libc and stdio interfaces (see lib/base.scm),
+#   which are the same everywhere, so it can be built before anything is
+#   generated for this platform.  The VM runs self/bootstrap.byc just once,
+#   to compile the native compiler: everything after that runs natively.
+# IRKENLIB=. matters: without it, FFI interfaces could come from an
+#   installed copy (/usr/local/lib/irken).
+native_flag = {'irkarm': '-arm', 'irkamd': '-amd', 'irkrv': '-rv', 'compile': ''}[irkbin]
+# (with no native backend, the compiler's output is C.)
+ext = '.c' if irkbin == 'compile' else '.s'
 
-# The asm backends take struct sizes, field offsets and constants from
-#   ffi/*_ffi.scm (the C backend gets them from the real headers), so
-#   these must match the build machine.  The committed copies may come
-#   from another platform: e.g. macOS `struct kevent` is 32 bytes but
-#   64 on FreeBSD 12+, which corrupts the heap in doom's poller.
-# Regenerate the ones doom/tls/h2 use.  An interface whose headers or
-#   library aren't installed here (kqueue on Linux, epoll elsewhere) is
-#   left as-is.
-def regen_ffi (name):
-    path = 'ffi/%s_ffi.scm' % (name,)
-    saved = None
-    if os.path.isfile (path):
-        saved = open (path, 'rb').read()
-    cmd = 'IRKENLIB=. vm/irkvm ffi/gen/genffi.byc -gen ffi/%s.ffi > /dev/null 2>&1' % (name,)
-    if 0 == os.system (tweak (cmd)):
-        print ('  %s: regenerated' % (name,))
-    else:
-        if saved is not None:
-            open (path, 'wb').write (saved)
-        print ('  %s: skipped (genffi failed; missing headers?)' % (name,))
+step ('compiling stage0 compiler (with vm)...')
+system ('IRKENLIB=. vm/irkvm self/bootstrap.byc %s self/irken.scm -q' % (native_flag,))
 
-print ('regenerating platform-dependent FFI interfaces...')
-for name in ('socket', 'kqueue', 'epoll', 'sodium', 'zlib'):
-    regen_ffi (name)
-
-# irkenb.byc is not committed: build it from source with the
-#   bootstrap compiler.  IRKENLIB=. matters here: without it, the FFI
-#   interfaces come from any installed copy (/usr/local/lib/irken), and
-#   constants missing from this tree's interfaces (e.g. SIGINFO) end up
-#   in the bytecode.
-print ('compiling the bytecode compiler (with vm)...')
-system ('IRKENLIB=. vm/irkvm self/bootstrap.byc self/irkenb.scm -b -q')
-
-print ('compiling native compiler (with vm)...')
-system ('IRKENLIB=. vm/irkvm self/irkenb.byc self/irken.scm -q')
-
-print ('compiling stage0 binary (with vm)...')
-system ('IRKENLIB=. vm/irkvm self/irken.byc self/irken.scm -q')
-
-print ('compiling stage1 binary (with stage0):')
+step ('compiling stage1 compiler (with stage0)...')
 system ('IRKENLIB=. self/irken self/irken.scm -q')
-move ('self/irken.s', 'self/irken.1.s')
+move ('self/irken' + ext, 'self/irken.1' + ext)
 
-print ('compiling stage2 binary (with stage1):')
-system ('IRKENLIB=. self/irken self/irken.scm -q')
-move ('self/irken.s', 'self/irken.2.s')
+# Everything after stage1 is independent, so run it all at once: stage2
+#   (to check that the compiler reproduces itself), self/compile (all the
+#   backends; util/test.py uses it), and genffi.  stage1 and stage2 are
+#   the same compiler, so self/compile and genffi are built with a copy
+#   of stage1 while stage2 is replacing self/irken.
+import subprocess
+copy ('self/irken', 'self/irken-stage1')
+
+def background (what, cmd, log):
+    step (what)
+    return (cmd, log, subprocess.Popen ('%s > %s 2>&1' % (cmd, log), shell=True))
+
+def wait_for (job):
+    cmd, log, p = job
+    if 0 != p.wait():
+        print (open (log).read())
+        raise CommandFailed (cmd)
+    unlink (log)
+
+stage2 = background (
+    'compiling stage2 compiler (with stage1), in the background...',
+    'IRKENLIB=. self/irken-stage1 self/irken.scm -q', 'self/irken.log'
+)
+build_compile = None
+if irkbin != 'compile':
+    build_compile = background (
+        'building self/compile (all backends), in the background...',
+        'IRKENLIB=. self/irken-stage1 self/compile.scm -q', 'self/compile.log'
+    )
+
+compiler = 'self/irken-stage1'
+exec(open('util/gen_ffis.py').read())
 
 def diff (p0, p1):
-    import os
     p0, p1 = tweak (p0), tweak (p1)
-    if os.stat(p0).st_size == os.stat(p1).st_size:
-        f0 = open (p0, 'r')
-        f1 = open (p1, 'r')
-        while 1:
-            b0 = f0.read (32700)
-            b1 = f1.read (32700)
-            if b0 != b1:
-                return False
-            if not b0:
-                break
-        return True
+    return open (p0, 'rb').read() == open (p1, 'rb').read()
 
-# file comparison on windows?  duh, should just do it in python.
-samesame = diff ('self/irken.1.s', 'self/irken.2.s')
-if samesame:
+step ('waiting for stage2...')
+wait_for (stage2)
+if diff ('self/irken.1' + ext, 'self/irken' + ext):
     print ('stage1 and stage2 identical, party on wayne!')
-    print ('consider running "python util/install.py" now')
 else:
     print ('stage1 and stage2 output differs')
+unlink ('self/irken.1' + ext)
 
-unlink ('self/irken.1.s')
-move ('self/irken.2.s', 'self/irken.s')
+if build_compile is not None:
+    step ('waiting for self/compile...')
+    wait_for (build_compile)
 
-# self/irken only has this machine's native backend.  self/compile has
-#   them all (c, bytecode, arm64, amd64, riscv64); util/test.py uses it.
-if irkbin != 'compile':
-    print ('building self/compile (all backends)...')
-    system ('IRKENLIB=. self/irken self/compile.scm -q')
+unlink ('self/irken-stage1')
+step ('done.  consider running "python util/install.py" now')

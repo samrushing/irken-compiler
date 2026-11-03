@@ -2,8 +2,13 @@
 
 all: safe
 
-# build from bootstrap.
+# build from bootstrap: a native compiler for this machine (self/irken),
+#  plus self/compile with all the backends.  (bootstrap-c builds
+#  self/compile with the C backend, as it used to.)
 bootstrap: vm
+	python3 util/bootstrap2.py
+
+bootstrap-c: vm
 	python3 util/bootstrap.py
 
 vm: vm/irkvm
