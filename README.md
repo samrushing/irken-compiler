@@ -71,6 +71,21 @@ Introduction/Tutorial:
 The best way to get familiar with the language is to read the source code in
 the 'self' directory, and browse over the files in "tests".
 
+Requirements:
+-------------
+
+* a 64-bit machine: arm64 or amd64 (macOS, Linux, FreeBSD), or riscv64 (Linux).
+  Others should work with the C backend.
+* python3, make, and a C compiler (clang or gcc).
+* libffi, with its headers, for the bytecode VM:
+  * macOS: nothing extra (the Xcode command line tools have it).
+  * Debian/Ubuntu: `apt install libffi-dev`.  Fedora: `dnf install libffi-devel`.
+  * FreeBSD: `pkg install libffi`.
+* optional, for the crypto and HTTP/2 demos: libsodium and zlib
+  (e.g. `apt install libsodium-dev zlib1g-dev`, `pkg install libsodium`,
+  or `brew install libsodium`).  Without them, the bootstrap just skips
+  their interfaces.
+
 Bootstrap:
 ----------
 
