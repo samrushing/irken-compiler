@@ -6,34 +6,13 @@
 ;; needed by the runtime (in the case of the VM) and at compile time
 ;; (when using the C or LLVM backends).
 
-;; We can't use lib/basis.scm here, because we are trying to avoid
-;; 'unsafe' FFI's like posix that use constants/structs/etc
-;; that vary between platforms.  We stick to libc and stdio.
-;;
-;; Why?  Because we need to run this program in order to bootstrap
-;;  the compiler/runtime during initial build/install.
+;; We use lib/base.scm, not lib/basis.scm: this program generates the
+;;  platform's posix interface, so it can't depend on it.  (see lib/base.scm.)
 
-(require "lib/core.scm")
-(require "lib/pair.scm")
-(require "lib/string.scm")
-(require "lib/format.scm")
-(require "lib/symbol.scm")
-(%backend bytecode (require "lib/vmffi.scm"))
-(require "lib/queue.scm")
-(require "lib/set.scm")
-(require "lib/alist.scm")
-(require "lib/ctype.scm") ;; needed by os & io.
-(require "lib/sexp.scm")
-(require "lib/read.scm")
-(require "lib/stdio.scm")
-(require "lib/frb.scm")
+(require "lib/base.scm")
 (require "lib/getopt.scm")
-(require "lib/map.scm")
 (require "lib/cmap.scm")
-
 (require "lib/graph.scm") ;; for `strongly`.
-
-(require-ffi 'libc)
 
 (require "ffi/gen/cparse.scm")
 (require "ffi/gen/ctype.scm")
@@ -433,24 +412,7 @@
     _ -> (raise (:GenFFI/BadFFI exp))
     ))
 
-;; from os.scm
-(define (getenv name)
-  (let ((val* (libc/getenv (%string->cref #f (zero-terminate name)))))
-    (if (cref-null? val*)
-        ""
-        (%cref->string #f val* (libc/strlen val*))
-        )))
-
-(define (getenv-or var default)
-  (let ((val (getenv var)))
-    (if (= 0 (string-length val))
-        default
-        val)))
-
 (define *CC* (getenv-or "CC" "clang"))
-
-(define (system cmd)
-  (libc/system (%string->cref #f (zero-terminate cmd))))
 
 (define (compile args)
   (let ((cmd (format *CC* " " (join " " (map ffi-path-expand args)))))
@@ -461,15 +423,8 @@
           #u))
     ))
 
-;; again, we can't just call posix/uname here because we don't have
-;;   access to any FFI yet.
 (define (get-platform)
-  (system "uname -s > /tmp/irken-platform.txt")
-  (let ((f (stdio/open-read "/tmp/irken-platform.txt"))
-        (mline (stdio/read-line f)))
-    (stdio/close f)
-    (system "rm /tmp/irken-platform.txt")
-    mline))
+  (maybe:yes (platform-name)))
 
 ;; the foo_iface1.c file serves two purposes:
 ;; 1) when fed through 'cc -E', it gives the scanner something

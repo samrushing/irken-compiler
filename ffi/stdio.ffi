@@ -8,7 +8,9 @@
   (cflags)
   (sigs
    fopen fwrite fread fgetc fclose fflush fdopen putchar getchar
-   stdin stdout stderr
+   ;; note: no stdin/stdout/stderr.  their symbols differ by platform
+   ;;  (e.g. __stdinp on macOS & FreeBSD), and the compiler needs this
+   ;;  interface to be the same everywhere: use fdopen instead.
    ;; variadic
    printf fprintf
    ))

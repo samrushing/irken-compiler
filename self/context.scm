@@ -1,8 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-;; for uname
-(require "lib/posix.scm")
-
 (datatype backend
   (:c)
 ;;  (:llvm)
@@ -13,11 +10,7 @@
   )
 
 (define (get-platform)
-  (%backend bytecode (string->symbol (%%vminsn (-> string) 'plat)))
-  (%backend (c llvm arm amd rv)
-    (let ((utsname (uname)))
-      (string->symbol utsname.sysname)
-      )))
+  (string->symbol (platform-name)))
 
 (define (make-options)
   {verbose		= #f

@@ -1,7 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (include "lib/basis.scm")
-(include "lib/map.scm")
+;; (lib/map.scm is in basis)
 
 (define (sort-dirlist dl)
   (sort (lambda (a b) (symbol<? a.kind b.kind)) dl))

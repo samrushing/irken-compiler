@@ -12,8 +12,5 @@
 (sig fdopen (int (* char) -> (* (struct __sFILE))))
 (sig putchar (int -> int))
 (sig getchar ( -> int))
-(sig (stdin __stdinp) (* (struct __sFILE)))
-(sig (stdout __stdoutp) (* (struct __sFILE)))
-(sig (stderr __stderrp) (* (struct __sFILE)))
 (sig printf ((* char) ... -> int))
 (sig fprintf ((* (struct __sFILE)) (* char) ... -> int))

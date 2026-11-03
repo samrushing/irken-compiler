@@ -3,7 +3,8 @@
 ;; this is a modified version of compile.scm that includes only the
 ;;  amd64 backend.
 
-(require "lib/basis.scm")
+(require "lib/base.scm") ;; (no posix: see lib/base.scm)
+(require "lib/file.scm")
 (require "lib/cmap.scm")
 (require "lib/counter.scm")
 

@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(require "lib/basis.scm")
+(require "lib/base.scm") ;; (no posix: see lib/base.scm)
+(require "lib/file.scm")
 
 (require "self/flags.scm")
 (require "self/context.scm")
