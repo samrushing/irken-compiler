@@ -441,11 +441,11 @@
          _ (src index)
          -> (let ((tsexp (irken-type->sexp (un-cref type)))
                   (sindex (get-sizeoff tsexp)))
-              (printf "c-aref parm = " (repr parm) " sizeoff " (int sindex) "\n"
-                      "       type = " (type-repr type) "\n"
-                      "       sexp = " (repr tsexp) "\n"
-                      "     sindex = " (int sindex) "\n"
-                      )
+              ;; (printf "c-aref parm = " (repr parm) " sizeoff " (int sindex) "\n"
+              ;;         "       type = " (type-repr type) "\n"
+              ;;         "       sexp = " (repr tsexp) "\n"
+              ;;         "     sindex = " (int sindex) "\n"
+              ;;         )
               (LINSN 'caref target src sindex index))
          _ _ -> (primop-error))
 
