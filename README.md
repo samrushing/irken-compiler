@@ -33,6 +33,7 @@ News:
   Tested on:
 
   * arm64 macOS (M1 Pro, M2 Pro)
+  * amd64 macOS
   * arm64 freebsd-14
   * amd64 freebsd-14
   * arm64 linux
