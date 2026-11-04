@@ -1,0 +1,9 @@
+;; -*- Mode: lisp -*-
+
+;; testing variadic support
+
+(vari
+ (includes "sys/stdio.h")
+ (verbatim
+  (sig printf ((* char) ... -> int))
+  ))

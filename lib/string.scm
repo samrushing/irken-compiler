@@ -5,6 +5,8 @@
     (%%cexp (int -> int) "string_tuple_length (%0)" n))
   (%backend (bytecode llvm)
     (how-many (+ n 4) (get-word-size)))
+  (%backend (arm amd rv)
+    (>> (+ n 11) 3)) ;; optimized
   )
 
 (define (make-string n)
@@ -16,8 +18,14 @@
      n))
   (%backend llvm
     (%llvm-call ("@irk_make_string" (int -> string) ccc) n))
+  (%backend arm
+    (%asm-c-call ("arm_make_string" (int -> string)) n))
+  (%backend amd
+    (%asm-c-call ("irk_make_string" (int -> string) #f) n))
+  (%backend rv
+    (%asm-c-call ("rv_make_string" (int -> string) #f) n))
   (%backend bytecode
-    (%%cexp (int -> string) "smake" n))
+    (%%vminsn (int -> string) 'smake n))
   )
 
 (defmacro string-range-check
@@ -39,10 +47,14 @@
     (%llvm-call
      ("@irk_buffer_copy" (string int int string int -> undefined))
      src src-start n dst dst-start))
+  (%backend (arm amd rv)
+    (%asm-c-call
+     ("irk_buffer_copy" (string int int string int -> undefined) #f)
+     src src-start n dst dst-start))
   (%backend bytecode
-    (%%cexp
+    (%%vminsn
      (string int int string int -> undefined)
-     "scopy"
+     'scopy
      src src-start n dst dst-start)))
 
 ;; XXX need a %copy-tuple prim. (or %copy-object?)
@@ -63,6 +75,40 @@
     (string-set! r 0 ch)
     r))
 
+(define (char->utf8 ch)
+
+  (define (chtag val tag nshift)
+    (int->char (logior tag (logand #x3f (>> val (* nshift 6))))))
+
+  (define (u2 n)
+    (let ((s (make-string 2)))
+      (string-set! s 0 (chtag n #xc0 1))
+      (string-set! s 1 (chtag n #x80 0))
+      s))
+
+  (define (u3 n)
+    (let ((s (make-string 3)))
+      (string-set! s 0 (chtag n #xe0 2))
+      (string-set! s 1 (chtag n #x80 1))
+      (string-set! s 2 (chtag n #x80 0))
+      s))
+
+  (define (u4 n)
+    (let ((s (make-string 4)))
+      (string-set! s 0 (chtag n #xf0 3))
+      (string-set! s 1 (chtag n #x80 2))
+      (string-set! s 2 (chtag n #x80 1))
+      (string-set! s 3 (chtag n #x80 0))
+      s))
+
+  (let ((n (char->int ch)))
+    (cond ((< n #x80) (char->string ch))
+          ((< n #x800) (u2 n))
+          ((< n #x10000) (u3 n))
+          ((< n #x110000) (u4 n))
+          (else (raise (:UnicodeCharTooLarge n))))
+    ))
+
 (define (bool->string b)
   ;; we copy because strings are mutable.
   (copy-string (if b "#t" "#f") 2))
@@ -73,8 +119,37 @@
     (%%cexp (string int -> char) "TO_CHAR(((unsigned char *)%0)[%1])" s n))
   (%backend llvm
     (%llvm-call ("@irk_string_ref" (string int -> char)) s n))
+  (%backend arm
+    (%arm
+     ((string int -> char)
+      (add (s 0) (a 0) (a 1) (asr 1))
+      (ldrb (w (s 0)) (ind (s 0) (i 12)))
+      (mov (w (s 1)) (i 2))
+      (bfi (s 1) (s 0) (i 16) (i 8))
+      (mov trg (s 1))
+      )
+     s n))
+  (%backend amd
+    (%amd
+     ((string int -> char)
+      (sarq (a 1))
+      (movzbl (ind 12 (a 0) (a 1) 1) (W (s 0)))
+      (shlq (i 16) (s 0))
+      (orq (i 2) (s 0))
+      (movq (s 0) trg))
+     s n
+     ))
+  (%backend rv
+    (%rv
+     ((string int -> char)
+      (srai (a 1) (a 1) (i 1))
+      (add (a 0) (a 0) (a 1))
+      (lbu (a 0) (ind 12 (a 0)))
+      (slli (a 0) (a 0) (i 16))
+      (ori trg (a 0) (i 2)))
+     s n))
   (%backend bytecode
-    (%%cexp (string int -> char) "sref" s n)))
+    (%%vminsn (string int -> char) 'sref s n)))
 
 (define (string-set! s n c)
   (string-range-check s n)
@@ -84,18 +159,45 @@
   (%backend llvm
     (%llvm-call ("@irk_string_set" (string int char -> undefined)) s n c))
   (%backend bytecode
-    (%%cexp (string int char -> undefined) "sset" s n c)))
+    (%%vminsn (string int char -> undefined) 'sset s n c))
+  (%backend arm
+    (%arm
+     ((string int char -> undefined)
+      (lsr (s 0) (a 2) (i 16))
+      (add (s 1) (a 0) (a 1) (asr 1))
+      (strb (w (s 0)) (ind (s 1) (i 12))))
+     s n c))
+  (%backend amd
+    (%amd
+     ((string int char -> undefined)
+      (sarq (a 1))
+      (shrq (i 16) (a 2))
+      (movb (B (a 2)) (ind 12 (a 0) (a 1) 1))
+      )
+     s n c))
+  (%backend rv
+    (%rv
+     ((string int char -> undefined)
+      (srai (a 1) (a 1) (i 1))
+      (srli (a 2) (a 2) (i 16))
+      (add (a 0) (a 0) (a 1))
+      (sb (a 2) (ind 12 (a 0))))
+     s n c))
+  )
 
-(define (string-concat l)
-  ;; merge a list of strings into one string
-  (let ((tsize (fold (lambda (s acc) (+ (string-length s) acc)) 0 l))
-	(buffer (make-string tsize)))
-    (let loop ((l0 l) (pos 0))
-      (match l0 with
-         () -> buffer
-	 (hd . tl) -> (begin
-			(buffer-copy hd 0 (string-length hd) buffer pos)
-			(loop tl (+ pos (string-length hd))))))))
+;; merge a list of strings into one string
+(define string-concat
+  ;; handle some edge cases
+  ()    -> ""
+  (one) -> one
+  l     -> (let ((tsize (fold (lambda (s acc) (+ (string-length s) acc)) 0 l))
+	         (buffer (make-string tsize)))
+             (let loop ((l0 l) (pos 0))
+               (match l0 with
+                 ()        -> buffer
+	         (hd . tl) -> (begin
+		                (buffer-copy hd 0 (string-length hd) buffer pos)
+		                (loop tl (+ pos (string-length hd))))))))
 
 (defmacro string-append
   (string-append)           -> ""
@@ -128,6 +230,8 @@
     (%%cexp ((raw string) (raw string) -> cmp) "irk_string_cmp (%0, %1)" a b))
   (%backend llvm
     (%llvm-call ("@irk_string_cmp" (string string -> cmp) ccc) a b))
+  (%backend (arm amd rv)
+    (%asm-c-call ("irk_string_cmp" (string string -> cmp) #f) a b))
   (%backend bytecode
     (magic-cmp a b)))
 
@@ -146,7 +250,9 @@
 		((eq? (string-ref a j) (string-ref b i))
 		 (loop (+ i 1) (+ j 1)))
 		(else
-		 (loop (+ i 1) 0)))))))
+		 ;; restart one past where this partial match began
+		 ;;  (not at i+1, which skips "lo" in "llo").
+		 (loop (+ (- i j) 1) 0)))))))
 
 (define (string-find a b)
   (string-find-from a b 0))
@@ -252,7 +358,7 @@
 (define lower?         (char-class lowercase))
 (define upper?         (char-class uppercase))
 (define letter?        (char-class letters))
-(define field?         (char-class (cons #\- (append letters digits))))
+(define field?         (char-class (cons #\_ (cons #\- (append letters digits)))))
 (define printable?     (char-class printable))
 
 ;; ascii only
@@ -302,6 +408,41 @@
       _            -> (ds2i 0 digits)
       )))
 
+;; originally from lisp_reader.scm
+(define hex-map
+  (alist/make
+   (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
+   (#\a 10) (#\b 11) (#\c 12) (#\d 13) (#\e 14) (#\f 15)
+   (#\A 10) (#\B 11) (#\C 12) (#\D 13) (#\E 14) (#\F 15)
+   ))
+
+(define dec-map
+  (alist/make
+   (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8) (#\9 9)
+   ))
+
+(define oct-map
+  (alist/make
+   (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7)
+   ))
+
+;; XXX this currently does not check that the literal will fit in an irken integer!
+
+;; maybe parse integer in base <b> from string <s>
+(define (parse-integer b s)
+  (let ((neg? (eq? (string-ref s 0) #\-))
+	(start (if neg? 1 0))
+        (n (string-length s)))
+    (let loop ((i start)
+	       (r 0))
+      (if (= i n)
+	  (result:ok (if neg? (- 0 r) r))
+	  (match (alist/lookup hex-map (string-ref s i)) with
+	    (maybe:no)        -> (result:err (:BadInteger s))
+	    (maybe:yes digit) -> (loop (+ i 1) (+ (* r b) digit)))
+	  ))))
+
+
 ;; pre-compute 0..100?
 (define (int->string n)
   (if (= 0 n)
@@ -314,7 +455,32 @@
 		  (list:cons (ascii->char (+ 48 (remainder x 10))) r)
 		  )))))
 
-(%backend (c llvm)
+
+(define (string-trim-left s)
+  (let loop ((start 0)
+             (end (string-length s)))
+    (cond ((= start end) "")
+          ((whitespace? (string-ref s start)) (loop (+ 1 start) end))
+          (else (substring s start end)))))
+
+(define (string-trim-right s)
+  (let loop ((end (string-length s)))
+    (cond ((= 0 end) "")
+          ((whitespace? (string-ref s (- end 1))) (loop (- end 1)))
+          (else (substring s 0 end)))))
+
+;; lazy, yes.
+(define (string-trim-both s)
+  (string-trim-right (string-trim-left s)))
+
+(define (string-reverse s)
+  (let ((sl (string-length s))
+        (r (make-string sl)))
+    (for-range i sl
+      (string-set! r (- sl i 1) (string-ref s i)))
+    r))
+
+(%backend c
 
   ;; these are now somewhat obsolete because FFI.
   (define (strlen s)

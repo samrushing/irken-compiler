@@ -165,6 +165,7 @@
     ('float)        -> (ctype2:float #f #f)
     ('double)       -> (ctype2:float #f #t)
     ('long 'double) -> (ctype2:float #t #t)
+    ('__int128)     -> (ctype2:int (cint:width 8) #f) ;; extension
     ;; note: 'long float' is not legal.
     otherwise       -> (grok-int-type syms)
     ))
@@ -269,7 +270,7 @@
         (if (> (length types) 1)
             (grok-num-type (map type->name types))
             (first types)))
-      ;; (printf "collapse-type-list " (join ctype2-repr ", " types) "\n")
+      ;;(printf "collapse-type-list " (join ctype2-repr ", " types) "\n")
       (match (length types) (last types) with
         1 type -> type
         n (ctype2:pointer sub)
@@ -287,7 +288,8 @@
       (ctype2:int (cint:char) #t)  -> 'char
       (ctype2:float _ #f)          -> 'float
       (ctype2:float _ #t)          -> 'double
-      x -> (impossible)
+      (ctype2:name '__int128)      -> '__int128 ;; extension
+      x -> (raise (:UnGrokableIntType (ctype2-repr x)))
       )
     ;; a declaration is essentially:
     ;; type name0=val0, name1=val1, ...;
@@ -406,19 +408,20 @@
       ;; x()
       type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftParen val=_}) (parse:t {kind='RightParen val=_}))
       -> (let (((type0 name0) (p-directDeclarator type dD)))
-           (:tuple (ctype2:function type0 (list:nil)) name0))
+           (:tuple (ctype2:function type0 (list:nil) #f) name0))
       ;; x(int,int)
       type ((parse:nt 'directDeclarator ((parse:t {kind='Identifier val=name}))) (parse:t {kind='LeftParen val=_}) pTL (parse:t {kind='RightParen val=_}))
-      -> (:tuple (ctype2:function type (p-parameterTypeList pTL)) (string->symbol name))
+      -> (let (((params var?) (p-parameterTypeList pTL)))
+           (:tuple (ctype2:function type params var?) (string->symbol name)))
       ;; (*x)(int,int)
       type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftParen val=_}) pTL (parse:t {kind='RightParen val=_}))
       -> (let (((type0 name0) (p-directDeclarator type dD))
-               (params (p-parameterTypeList pTL)))
+               ((params var?) (p-parameterTypeList pTL)))
            (match type0 with
              (ctype2:pointer sub)
-             -> (:tuple (ctype2:pointer (ctype2:function sub params)) name0)
+             -> (:tuple (ctype2:pointer (ctype2:function sub params var?)) name0)
              _
-             -> (:tuple (ctype2:function type0 params) name0)
+             -> (:tuple (ctype2:function type0 params var?) name0)
              ))
       type x -> (begin
                   (printf "unhandled directDeclarator " (repr (parse->sexp (parse:nt 'directDeclarator x))) "\n")
@@ -445,7 +448,8 @@
       ;; (LeftParen parameterTypeList RightParen)
       ;; (LeftParen parameterTypeList RightParen directAbstractDeclarator-0)
       type ((parse:t {kind='LeftParen val=_}) (parse:nt 'parameterTypeList pTL) (parse:t {kind='RightParen val=_}) . ignore)
-      -> (ctype2:function type (p-parameterTypeList (parse:nt 'parameterTypeList pTL)))
+      -> (let (((ptl var?) (p-parameterTypeList (parse:nt 'parameterTypeList pTL))))
+           (ctype2:function type ptl var?))
       ;; (LeftBracket RightBracket)
       type ((parse:t {kind='LeftBracket val=_}) (parse:t {kind='RightBracket val=_}) . ignore)
       -> (ctype2:array 0 type)
@@ -506,9 +510,9 @@
     ;; --- parameter lists ---
     (define p-parameterTypeList
       (parse:nt 'parameterTypeList (pL))
-      -> (p-parameterList '() pL)
+      -> (:tuple (p-parameterList '() pL) #f)
       (parse:nt 'parameterTypeList (pL Comma Ellipsis))
-      -> (p-parameterList '() pL)
+      -> (:tuple (p-parameterList '() pL) #t)
       x
       -> (impossiblex x)
       )
@@ -676,19 +680,51 @@
     ;; --- expressions ---
     ;; this is needed usually for array declarations, where the size is usually
     ;;  an integer constant, but sometimes a complex expression.
+    ;; turn a parsed expression back into (roughly) the C it came from,
+    ;;  for messages: its tokens, spaced, but not inside parens/brackets.
+    (define (parse->c p)
+      (define (tokens p acc)
+        (match p with
+          (parse:t tok)     -> (list:cons tok.val acc)
+          (parse:nt _ subs) -> (foldr tokens acc subs)))
+      (let ((r '()) (prev ""))
+        (for-list tok (tokens p '())
+          (when (not (or (null? r)
+                         (string=? prev "(") (string=? prev "[")
+                         (string=? tok ")") (string=? tok "]")))
+            (push! r " "))
+          (push! r tok)
+          (set! prev tok))
+        (string-concat (reverse r))))
+
     (define (get-exp-value exp)
       (try
        (eval-exp exp)
        except
-       (:ExpTooComplex exp0)
-       -> (begin
-            ;; (printf "expression too complex to evaluate: " (repr (parse->sexp exp0)) "\n")
-            0)))
+       (:ExpTooComplex _)
+       -> (let ((c (parse->c exp)))
+            ;; system headers are full of these, mostly in declarations an
+            ;;  interface doesn't use, so only mention them with -v.  where it
+            ;;  matters (an array length genffi can't get from the compiler)
+            ;;  genc2 warns.
+            (when *verbose-flag*
+              (printf "note: can't evaluate `"
+                      (if (> (string-length c) 100) (format (substring c 0 100) "...") c)
+                      "` (will ask the C compiler)\n"))
+            ;; -1 means 'unknown', as distinct from 0 for '[]'.  genc2 asks the
+            ;;  compiler for the real length where it can.
+            -1)))
+
+    (define (p-int s)
+      ;; filter out suffixes like 'U' and 'L'
+      (let ((digs0 (string->list s))
+            (digs1 (filter digit? digs0)))
+        (string->int (list->string digs1))))
 
     ;; we evaluate simple arithmetic expressions involving *,/,%,+,-,<<, and >>.
     (define eval-exp
       (parse:t {kind='Constant val=num})
-      -> (string->int num)
+      -> (p-int num)
       (parse:nt rule (one))
       -> (eval-exp one)
       (parse:nt 'primaryExpression ((parse:t {kind='LeftParen val=_}) one (parse:t {kind='RightParen val=_})))

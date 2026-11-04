@@ -25,9 +25,6 @@
   () -> (error "cdr")
   (_ . y) -> y)
 
-;; I'm planning on downcasing these two eventually.  I was thinking of
-;;  such macros in C-like terms - i.e., warn the user that they're macros,
-;;  but it just annoyingly sticks out.
 (defmacro list
   (list)         -> (list:nil)
   (list x y ...) -> (list:cons x (list y ...)))
@@ -132,7 +129,7 @@
   )
 
 (define nth
-  ()       _ -> (error "list index out of range")
+  ()       _ -> (raise (:ListIndexError))
   (hd . _) 0 -> hd
   (_ . tl) n -> (nth tl (- n 1))
   )
@@ -140,13 +137,13 @@
 (define take
   xs       0 -> (list:nil)
   (x . xs) n -> (list:cons x (take xs (- n 1)))
-  ()       _ -> (error "list index out of range")
+  ()       _ -> (raise (:ListIndexError))
   )
 
 (define drop
-  ()       _ -> (error "list index out of range")
   xs       0 -> xs
   (_ . xs) n -> (drop xs (- n 1))
+  ()       _ -> (raise (:ListIndexError))
   )
 
 ;; (a b c d e f) 3 x   -> (a b c x d e f)
@@ -168,7 +165,7 @@
   (let loop ((i 0)
 	     (l l))
     (match l with
-      ()	-> (error "list index out of range")
+      ()	-> (raise (:ListIndexError))
       (hd . tl) -> (if (eq? hd v)
 		       i
 		       (loop (+ i 1) tl)))))
@@ -216,6 +213,15 @@
 	 (if (= vname $n)
 	     (reverse $acc)
 	     ($loop (+ vname 1) (list:cons (begin body ...) $acc))))))
+
+(defmacro map-range-rev
+  (map-range-rev vname num body ...)
+  -> (let (($n num))
+       (let $loop ((vname 0)
+                   ($acc (list:nil)))
+         (if (= vname $n)
+             $acc
+             ($loop (+ vname 1) (list:cons (begin body ...) $acc))))))
 
 (define filter
   p () -> '()
@@ -268,6 +274,12 @@
   p acc (hd . tl) -> (p hd (foldr p acc tl))
   )
 
+(define foldr1
+  p ()        -> (raise (:Foldr1/Empty))
+  p (x)       -> x
+  p (hd . tl) -> (p hd (foldr1 p tl))
+  )
+
 (define some?
   p () -> #f
   p (hd . tl) -> (if (p hd) #t (some? p tl)))
@@ -308,6 +320,28 @@
        (cmp:=) -> (list-cmp cmp as bs)
        result  -> result
        ))
+
+;; (unzip (list (:tuple 0 1) (:tuple 2 3)))
+;; => (:tuple (0 2) (1 3))
+
+(define (unzip pairs)
+  (define U
+    acc0 acc1 ()                    -> (:tuple (reverse acc0) (reverse acc1))
+    acc0 acc1 ((:tuple a b) . rest) -> (U (list:cons a acc0) (list:cons b acc1) rest)
+    )
+  (U (list:nil) (list:nil) pairs))
+
+;; (zip '(0 2) '(1 3))
+;; => ((:tuple 0 1) (:tuple 2 3))
+
+(define (zip as bs)
+  (define Z
+    acc () ()             -> (reverse acc)
+    acc (a . as) (b . bs) -> (Z (list:cons (:tuple a b) acc) as bs)
+    acc _ _               -> (raise (:Zip/UnequalLengthLists))
+    )
+  (Z '() as bs)
+  )
 
 ;; collect lists of duplicate runs
 ;; http://www.christiankissig.de/cms/files/ocaml99/problem09.ml

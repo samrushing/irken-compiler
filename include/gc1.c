@@ -17,6 +17,13 @@ object *
 copy (object * p)
 {
   object * pp = (object *) *p;
+#if defined(IRK_GC_POISON)
+  if (pp == IRK_POISON) {
+    fprintf (stderr, "GC: poison (an unset slot) at %p, %d words past the scan pointer\n",
+             (void *) p, (int) (p - scan));
+    abort();
+  }
+#endif
   if (is_immediate (pp)) {
     return pp;
   } else if (sitting_duck (pp)) {
@@ -73,7 +80,7 @@ do_gc (int nroots)
       scan++;
     } else {
       object * p = scan + 1;
-      unsigned char tc = GET_TYPECODE (*scan);
+      uint16_t tc = GET_TYPECODE (*scan);
       irk_int length = GET_TUPLE_LENGTH (*scan);
       irk_int i;
 
@@ -104,16 +111,6 @@ do_gc (int nroots)
 	scan += length + 1;
 	break;
 
-      case TC_FOREIGN:
-        if (length == 1) {
-          scan += 2;
-        } else {
-          *p = copy (p); p++;
-          *p = copy (p); p++;
-          scan += 3;
-        }
-        break;
-
       default:
         // copy everything
         for (i=0; i < length; i++) {
@@ -132,9 +129,17 @@ do_gc (int nroots)
     clear_space (heap1, heap_size);
   }
 
+#if defined(IRK_GC_POISON)
+  // (always: the point is to catch code that depends on clearing.)
+  clear_space (freep, heap_size - (freep - heap0));
+#else
+  // code from older compilers expects the heap to be cleared; code from
+  //  newer ones initializes any slot that a collection could see before
+  //  it's set, and sets clear_tospace to 0.
   if (clear_tospace) {
     clear_space (freep, heap_size - (freep - heap0));
   }
+#endif
 
   if (verbose_gc) {
     fprintf (stderr, "collected %" PRIuPTR " words]\n", freep - heap0);
@@ -142,7 +147,6 @@ do_gc (int nroots)
   return (object) box (freep - heap0);
 }
 
-static
 object
 gc_flip (int nregs)
 {
@@ -260,7 +264,7 @@ gc_relocate (int nroots, object * start, object * finish, irk_int delta)
 }
 
 // these could probably be written in irken...
-static irk_int
+irk_int
 dump_image (char * filename, object * closure) {
   FILE * dump_file = fopen (filename, "wb");
   irk_int offset;
@@ -281,7 +285,6 @@ dump_image (char * filename, object * closure) {
   return size;
 }
 
-static
 object *
 load_image (char * filename) {
   FILE * load_file = fopen (filename, "rb");

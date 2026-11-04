@@ -27,7 +27,8 @@
                           ;; backslash + any character
                           (cat (lit "\\") (reg "."))))
                       (lit "\"")))
-     (NUMBER     (reg "\\-?[0-9]+")) ;; XXX floating-point.
+     (NUMBER     (reg "\\-?[0-9]+")) ;; integers; FLOAT has a fraction or exponent.
+     (FLOAT      (reg "\\-?[0-9]+((\\.[0-9]+)|((\\.[0-9]+)?[eE][\\-+]?[0-9]+))"))
      (TRUE       (lit "true"))
      (FALSE      (lit "false"))
      (NULL       (lit "null"))
@@ -46,7 +47,7 @@
      (pair   (STRING COLON value))
      (array  (LBRACKET values RBRACKET) (LBRACKET RBRACKET))
      (values (values COMMA value) value)
-     (value  obj array STRING NUMBER TRUE FALSE NULL)
+     (value  obj array STRING NUMBER FLOAT TRUE FALSE NULL)
      ))
    ))
 
@@ -55,6 +56,7 @@
 (datatype json
   (:string string)
   (:number int)
+  (:float string) ;; the literal text: irken has no floating-point type
   (:bool bool)
   (:null)
   (:array (list json))
@@ -70,6 +72,7 @@
 (define json-repr
   (json:string s)   -> (format (string s))
   (json:number n)   -> (format (int n))
+  (json:float s)    -> s
   (json:bool #t)    -> "true"
   (json:bool #f)    -> "false"
   (json:null)       -> "null"
@@ -89,6 +92,7 @@
   (json:bool #f)  -> 6
   (json:null)     -> 4
   (json:number n) -> (string-length (int->string n))
+  (json:float s)  -> (string-length s)
   (json:string s) -> (+ 2 (string-length s))
   (json:obj pairs)
   -> (fold binary+ (* 2 (length pairs)) (map json-pp-pair-size pairs))
@@ -170,6 +174,7 @@
   -> (match tok.kind with
        'STRING -> (json:string (parse-string tok.val))
        'NUMBER -> (json:number (string->int tok.val))
+       'FLOAT  -> (json:float tok.val)
        'TRUE   -> (json:bool #t)
        'FALSE  -> (json:bool #f)
        'NULL   -> (json:null)

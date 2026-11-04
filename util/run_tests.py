@@ -50,9 +50,9 @@ def test_t22():
     r6 = [ str(x) for x in range (6) ]
     assert (lines[1:] == (r6 + r6 + ['#u', '']))
 
-if not os.path.isfile ('parse/lexstep.scm'):
-    print ('generating parse/lexstep.scm...')
-    os.system ('(cd parse; python lexer.py)')
+# if not os.path.isfile ('parse/lexstep.scm'):
+#     print ('generating parse/lexstep.scm...')
+#     os.system ('(cd parse; python lexer.py)')
 
 def test_t_lex():
     # needs to generate parse/lexstep.scm for this test to run.
@@ -101,14 +101,14 @@ for size, file in files:
                     out = run_test (base)
                     exp_path = PJ ('tests', base + '.exp')
                     if os.path.isfile (exp_path):
-                        exp = open (exp_path).read()
+                        exp = open (exp_path, 'rb').read()
                         if out != exp:
                             failed.append ((base, 'did not match expected output'))
                             #raise ValueError ("oops - output didn't match on test '%s'" % (base,))
                         else:
                             succeeded += 1
                     else:
-                        succeeded += 1                    
+                        succeeded += 1
                 else:
                     # tests that require special handling for whatever reason.
                     try:

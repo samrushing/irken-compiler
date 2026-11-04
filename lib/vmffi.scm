@@ -3,13 +3,13 @@
 ;; XXX would be nice to have a generic 'memoize' feature!
 
 (define (vm-dlopen name)
-  (%%cexp (string -> (cref void)) "dlopen" name))
+  (%%vminsn (string -> (cref void)) 'dlopen name))
 
 (define (vm-dlsym0 name)
-  (%%cexp (string -> (cref void)) "dlsym0" name))
+  (%%vminsn (string -> (cref void)) 'dlsym0 name))
 
 (define (vm-dlsym handle name)
-  (%%cexp ((cref void) string -> (cref void)) "dlsym" handle name))
+  (%%vminsn ((cref void) string -> (cref void)) 'dlsym handle name))
 
 (define vm-get-lib-handle
   (let ((libs (tree:empty)))
@@ -40,7 +40,10 @@
           -> (let ((sym-handle0 (vm-dlsym0 name))
                    (sym-handle1
                     (if (cref-null? sym-handle0)
-                        (vm-dlsym (vm-get-lib-handle lib) name)
+                        (let ((r (vm-dlsym (vm-get-lib-handle lib) name)))
+                          (if (cref-null? r)
+                              (raise (:VMFFI/NoSym lib name))
+                              r))
                         sym-handle0)))
                (tree/insert! syms magic-cmp key sym-handle1)
                sym-handle1)

@@ -13,6 +13,12 @@
 ;;   something not supported but the compiler.
 
 ;; XXX can this benefit from memoization?
+;;     answer: not really.
+;;     we mostly care about it for apply-subst-to-program, but
+;;     the cost of wholesale apply-subst to the entire program is
+;;     immense (twice the time & space of typing itself!), and not
+;;     really needed.  calling apply-subst on demand in the CPS phase
+;;     (via `get-node-type`) seems to be easy & sufficient.
 
 (define (apply-subst t)
   (define (p t)
@@ -30,6 +36,9 @@
 		   r))
 	    ))))
   (p t))
+
+(define (get-node-type n)
+  (apply-subst (noderec->type n)))
 
 ;; --------- tenv API ---------
 
@@ -53,6 +62,17 @@
        (set! free1 (tree/insert free1 magic-cmp k #f)))
      free0)
     {free=free1 env=(tree/insert tenv.env symbol-index-cmp name scheme)}))
+
+(define (tenv/dump tenv)
+  (print-string " tenv= {\n")
+  (tree/inorder
+   (lambda (k v)
+     (printf "   " (sym k) " " (scheme-repr v) "\n"))
+   tenv.env)
+  (printf " -- free = ")
+  (tree/inorder (lambda (k _) (printf (type-repr k) " ")) tenv.free)
+  (printf "}\n")
+  )
 
 (define (occurs-free-in-tenv tvar tenv)
   (match (tree/member tenv.free magic-cmp tvar) with
@@ -87,18 +107,25 @@
 
 (define scheme-repr
   (:scheme gens type)
-  -> (format "forall(" (join type-repr "," gens) ")." (type-repr type)))
+  -> (format "forall(" (join type-repr "," gens) ")." (type-repr (apply-subst type))))
 
-(define (type-program node)
+(define (remember-variant-label label)
+  (match (alist/lookup the-context.variant-labels label) with
+    (maybe:yes _) -> #u
+    (maybe:no) -> (let ((index (alist/length the-context.variant-labels)))
+		    (alist/push the-context.variant-labels label index))))
+
+(define (type-program root-node)
 
   (define (unify exp t0 t1)
 
     (define (print-type-error t0 t1)
-      (printf (join "\n" (get-node-context node (noderec->id exp) 30)) "\n")
+      (printf (join "\n" (get-node-context root-node (noderec->id exp) 30)) "\n")
       (printf "node id=" (int (noderec->id exp)) "\n")
       (let ((ut0 (apply-subst t0))
 	    (ut1 (apply-subst t1)))
-	(printf "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n")))
+	(printf "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n")
+        (printf "\n  " (src-repr (noderec->src exp) the-context.options.src-limit) "\n")))
 
     (define (type-error t0 t1)
       (print-type-error t0 t1)
@@ -191,6 +218,12 @@
     (U t0 t1)
     )
 
+  (define (other-error message node)
+    (printf (bold message) "\n")
+    (printf "\n  " (src-repr (noderec->src node) the-context.options.src-limit) "\n")
+    (raise (:TypingError message))
+    )
+
   (define (instantiate-type-scheme gens type)
     ;; map from gens->fresh
     (when the-context.options.debugtyping
@@ -233,16 +266,16 @@
     (match (noderec->t exp) with
       (node:literal lit)	    -> (type-of-literal lit exp tenv)
       (node:cexp gens sig _)	    -> (type-of-cexp gens sig exp tenv)
-      (node:ffi gens sig _)	    -> (type-of-cexp gens sig exp tenv)
+      (node:ffi name sig)           -> (type-of-ffi name sig exp tenv)
       (node:if)			    -> (type-of-conditional exp tenv)
       (node:sequence)		    -> (type-of-sequence (noderec->subs exp) tenv)
-      (node:function _ formals)	    -> (type-of-function formals (car (noderec->subs exp)) (noderec->type exp) tenv)
-      (node:varref name)	    -> (type-of-varref name tenv)
+      (node:function name formals)  -> (type-of-function name formals (car (noderec->subs exp)) (noderec->type exp) tenv)
+      (node:varref name)	    -> (type-of-varref name exp tenv)
       (node:varset name)	    -> (type-of-varset name exp tenv)
       (node:call)		    -> (type-of-call exp tenv)
       (node:fix names)		    -> (type-of-fix names exp tenv)
       (node:let names)		    -> (type-of-let names exp tenv)
-      (node:primapp name parms)	    -> (type-of-primapp name parms (noderec->subs exp) tenv)
+      (node:primapp name parms)	    -> (type-of-primapp exp name parms (noderec->subs exp) tenv)
       (node:nvcase dt tags arities) -> (type-of-vcase dt tags arities exp tenv)
       (node:subst _ _)              -> (impossible)
       ))
@@ -252,14 +285,20 @@
       (printf "( type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n"))
     (let ((texp0 (noderec->type exp))
           (texp1 (type-of* exp tenv)))
-      ;; XXX the intent of this is to unify with user-assigned types,
-      ;;  but it is breaking polymorphic types somehow. (try poly-append).
-      ;;(when (not (no-type? texp0))
-      ;;  (unify exp texp0 texp1))
       (set-node-type! exp texp1)
       (when the-context.options.debugtyping
-        (printf "type-of* " (int (noderec->id exp)) " " (type-repr texp1) ")\n"))
+        (printf "  type-of* " (int (noderec->id exp)) " " (type-repr (apply-subst texp1)) ")\n"))
       texp1))
+
+  ;; (define (type-of exp tenv)
+  ;;   (try
+  ;;    (type-of* exp tenv)
+  ;;    except
+  ;;    (:TypingError msg)
+  ;;    -> (begin
+  ;;         (printf (join "\n" (get-node-context root-node (noderec->id exp) 30)) "\n")
+  ;;         (error msg)
+  ;;         ))
 
   (define (type-of-literal lit exp tenv)
     (match lit with
@@ -275,7 +314,10 @@
            (:scheme gens type)
            -> (match (instantiate-type-scheme gens type) with
                 (type:pred 'arrow (result-type . arg-types) _)
-                -> (begin
+                -> (let ((nargs0 (length arg-types))
+                         (nargs1 (length l)))
+                     (when (not (= nargs0 nargs1))
+                       (other-error "Bad Arity" exp))
                      (for-range i (length arg-types)
                        (let ((tx (type-of-literal (nth l i) exp tenv)))
                          (unify exp tx (nth arg-types i))))
@@ -344,6 +386,38 @@
                     )))
       type -> type))
 
+  (define (type-of-ffi name sig exp tenv)
+    (match sig with
+      (csig:fun _ frtype fargtypes var?)
+      -> (let ((args (noderec->subs exp))
+               (argtypes (map (lambda (x) (type-of x tenv)) (noderec->subs exp)))
+               (nfixed (length fargtypes)))
+           ;; (printf "type-of-ffi " (sym name)
+           ;;         " csig " (csig-repr sig)
+           ;;         " argtypes (" (join type-repr " " argtypes)
+           ;;         ") nfixed=" (int nfixed)
+           ;;         "\n")
+           ;; %%ffi has 3 extra arguments in bytecode mode.
+           (if (eq? the-context.options.backend (backend:bytecode))
+               (set! argtypes (drop argtypes 3)))
+           ;; unify the <n> fixed (formal) args
+           (for-range i nfixed
+             (let ((type0 (ctype->irken-type (frob-int-arg (nth fargtypes i))))
+                   (type1 (nth argtypes i)))
+               (unify exp type0 type1)))
+           ;; compute the type of the extra args (though we unify against no formal arg types)
+           (for-range i (- (length argtypes) nfixed)
+             (let ((arg (nth args (+ nfixed i))))
+               ;; (printf "typing extra arg at position " (int (+ nfixed i)) " of type " (type-repr (noderec->type arg)) "\n")
+               ;; (pp-node arg)
+               (type-of (nth args (+ nfixed i)) tenv)
+               ;; (printf " now has type " (type-repr (noderec->type arg)) "\n")
+               ))
+           (ffi-type-frob-int (ctype->irken-type frtype)))
+      (csig:obj _ obtype)
+      -> (pred 'cref (list (ffi-type-frob-int (ctype->irken-type obtype))))
+      ))
+
   (define (type-of-conditional exp tenv)
     (match (map (lambda (x) (type-of x tenv)) (noderec->subs exp)) with
       (tif tthen telse)
@@ -368,7 +442,9 @@
   (define (optional-type formal tenv)
     (new-tvar))
 
-  (define (type-of-function formals body sig tenv)
+  (define (type-of-function name formals body sig tenv)
+    (when the-context.options.debugtyping
+      (printf "type-of-function " (bold (sym name)) "\n"))
     (let ((arg-types '()))
       (for-list formal formals
         (let ((type (optional-type formal tenv)))
@@ -383,21 +459,27 @@
 
   (define (apply-tenv name tenv)
     ;; (print-string "apply-tenv: ") (printn name)
-    ;; (print-string " tenv= {\n")
-    ;; (tenv/iterate
-    ;;  (lambda (k v)
-    ;;    (printf " " (sym k) " " (scheme-repr v) "\n"))
-    ;;  tenv)
-    ;; (print-string "}\n")
+    ;; (tenv/dump tenv)
     (match (tenv/lookup tenv name) with
-      (maybe:no) -> (error1 "apply-tenv: unbound variable" name)
+      ;;(maybe:no) -> (error1 "apply-tenv: unbound variable" name)
+      (maybe:no)
+      -> (begin
+           (tenv/dump tenv)
+           (error1 "apply-tenv: unbound variable" name))
       (maybe:yes (:scheme gens type))
-      -> (instantiate-type-scheme gens type)))
+      -> (instantiate-type-scheme gens type)
+      ;; -> (let ((r (instantiate-type-scheme gens type)))
+      ;;      (printf "apply-tenv: => " (type-repr (apply-subst r)) "\n")
+      ;;      r
+      ;;      )
+      ))
 
-  (define (type-of-varref name tenv)
-    (let ((t (apply-tenv name tenv)))
-      ;;(printf "varref: " (sym name) " type = " (type-repr t) "\n")
-      t))
+  (define (type-of-varref name exp tenv)
+    ;; (let ((t (apply-tenv name tenv)))
+    ;;   (printf "varref: " (sym name) " type = " (type-repr (apply-subst t)) "\n")
+    ;;   t))
+    (apply-tenv name tenv)
+    )
 
   (define (type-of-varset name exp tenv)
     ;; XXX implement the no-generalize rule for vars that are assigned.
@@ -428,7 +510,7 @@
 	       (init-tvars (list->vector (map-range i n (new-tvar))))
 	       (init-types (make-vector n no-type))
 	       )
-	   ;;(print-string "reordered: ") (printn names0)
+	   ;;(printf "reordered: (" (join symbol->string " " names0) "\n")
 	   (for-list part partition
              ;; build temp tenv for typing the inits
              (let ((temp-tenv
@@ -438,11 +520,11 @@
                      tenv (reverse part))))
                ;; type each init in temp-tenv
                (for-list i part
-                 (let ((ti (type-of inits[i] temp-tenv))
-                       (_ (unify inits[i] ti init-tvars[i]))
-                       ;;(ti (apply-subst ti)))
-                       )
-                   (set! init-types[i] ti)))
+                 (let ((ti (type-of inits[i] temp-tenv)))
+                   (unify inits[i] ti init-tvars[i])
+                   ;;(set! init-types[i] (apply-subst ti)))
+                   (set! init-types[i] ti)
+                   ))
                ;; now extend the environment with type schemes instead
                (for-list i part
                  (let ((scheme (build-type-scheme init-types[i] tenv)))
@@ -526,12 +608,6 @@
       _ -> (error1 "malformed pvcase" exp)
       ))
 
-  (define (remember-variant-label label)
-    (match (alist/lookup the-context.variant-labels label) with
-      (maybe:yes _) -> #u
-      (maybe:no) -> (let ((index (alist/length the-context.variant-labels)))
-		      (alist/push the-context.variant-labels label index))))
-
   ;; these are used in type schemes in lookup-primap.  Since they are generalized
   ;;  over, it's ok to use the same tvar repeatedly.
   (define T0 (new-tvar))
@@ -564,7 +640,7 @@
       '%rmake       -> (:scheme '() (arrow (rproduct (rdefault (rabs))) '()))
       '%ensure-heap -> (:scheme '() (arrow undefined-type (list int-type)))
       '%rextend     -> (match params with
-                         (sexp:symbol label)
+                         (sexp:symbol label _)
                          -> (let ((plabel (make-label label)))
                               ;; forall('a,'b).({lab=(abs) 'a} 'b -> {lab=(pre 'b) 'a})
                               (:scheme (list T0 T1)
@@ -575,7 +651,7 @@
                               )
                          _ -> (prim-error name))
       '%raccess     -> (match params with
-			 (sexp:symbol label)
+			 (sexp:symbol label _)
 			 -> (:scheme (list T0 T1)
 				     (arrow T0
 					    (list (rproduct (rlabel (make-label label)
@@ -583,7 +659,7 @@
 								    T1)))))
 			 _ -> (prim-error name))
       '%rset        -> (match params with
-			 (sexp:symbol label)
+			 (sexp:symbol label _)
 			 -> (:scheme (list T0 T1)
 				     (arrow undefined-type
 					    (list (rproduct (rlabel (make-label label)
@@ -600,7 +676,7 @@
 			      (maybe:yes dt) -> (dt.get-alt-scheme altname))
 			 _ -> (prim-error name))
       '%vcon        -> (match params with
-			 (sexp:list ((sexp:symbol label) (sexp:int arity)))
+			 (sexp:list ((sexp:symbol label _) (sexp:int arity)))
 			 -> (let ((plabel (make-label label)))
 			      (remember-variant-label label)
 			      (match arity with
@@ -655,8 +731,11 @@
       '%llarith    -> (:scheme '() (arrow int-type (list int-type int-type)))
       '%llicmp     -> (:scheme '() (arrow bool-type (list int-type int-type)))
       '%lleq       -> (:scheme (list T0) (arrow bool-type (list T0 T0)))
-      ;; -------------------- FFI --------------------
-      '%ffi2  -> (lookup-ffi-scheme params)
+      '%divmod -> (:scheme '()
+                           (arrow (rsum (rlabel (make-label 'tuple)
+                                                (rpre (pred 'product (list int-type int-type)))
+                                                (rdefault (rabs))))
+                                  (list int-type int-type)))
       '%malloc -> (:scheme '() (arrow (pred 'cref
                                             (list (pred 'array (list (parse-type params)))))
                                       (list int-type)))
@@ -690,6 +769,11 @@
       '%llvm-call    -> (make-llvm-scheme params)
       ;; for fetching irken objects in external symbols
       '%llvm-get     -> (make-llvm-scheme params)
+      ;; asm backend
+      '%asm-c-call   -> (make-asm-c-call-scheme params)
+      '%arm          -> (make-asm-inline-scheme params)
+      '%amd          -> (make-asm-inline-scheme params)
+      '%rv           -> (make-asm-inline-scheme params)
       ;; -------------------- FFI --------------------
       _ -> (error1 "lookup-primapp" name)))
 
@@ -704,7 +788,7 @@
 
   (define get-sref
     ;; structname.field0.field1.field2 ...
-    (sexp:attr (sexp:symbol sname) fname)
+    (sexp:attr (sexp:symbol sname _) fname)
     -> (:tuple (lookup-field fname (lookup-struct-fields sname)) sname)
     (sexp:attr sub fname)
     -> (let (((ref sname) (get-sref sub)))
@@ -730,9 +814,9 @@
 
   ;; XXX do we need to scan the resulting type for tvars to add to gens?
   (define lookup-ffi-scheme
-    (sexp:symbol name)
+    (sexp:symbol name _)
     -> (match (ffi-info.sigs::get name) with
-         (maybe:yes (csig:fun _ rtype argtypes))
+         (maybe:yes (csig:fun _ rtype argtypes var?))
          -> (:scheme '() (arrow (ffi-type-frob-int (ctype->irken-type rtype))
                                 (map ctype->irken-type (map frob-int-arg argtypes))))
          (maybe:yes (csig:obj _ obtype))
@@ -746,6 +830,16 @@
     ;; after the sig are optional metadata
     (sexp:list ((sexp:string _) sig . _)) -> (parse-cexp-sig sig)
     x -> (error1 "make-llvm-scheme: malformed" (repr x))
+    )
+
+  (define make-asm-c-call-scheme
+    (sexp:list ((sexp:string _) sig . _)) -> (parse-cexp-sig sig)
+    x -> (error1 "make-asm-c-call-scheme: malformed" (repr x))
+    )
+
+  (define make-asm-inline-scheme
+    (sexp:list (sig . _)) -> (parse-cexp-sig sig)
+    x -> (error1 "make-asm-inline-scheme: malformed" (repr x))
     )
 
   ;; each exception is stored in a global table along with a tvar
@@ -804,7 +898,7 @@
         -> val-type
 	_ -> (error1 "unify-handlers: expected row sum type" (type-repr val-type)))))
 
-  (define (type-of-primapp name params subs tenv)
+  (define (type-of-primapp exp name params subs tenv)
     ;; special primapps
     (match name with
       ;; we need a map of exception => tvar, then cross-verify with each handle expression.
@@ -812,13 +906,13 @@
       -> (match subs with
 	   (exn-val)
 	   -> (type-of-raise exn-val tenv)
-	   _ -> (error1 "%exn-raise: bad arity" subs))
+	   _ -> (other-error "%exn-raise: bad arity" exp))
       '%exn-handle
       ;; %exn-handle is wrapped around the match expression of the exception handler
       -> (match subs with
 	   (exn-val exn-match)
 	   -> (type-of-handle exn-val exn-match tenv)
-	   _ -> (error1 "%exn-handle: bad arity" subs))
+	   _ -> (other-error "%exn-handle: bad arity" exp))
 
       ;; normal primapps
       _ -> (match (lookup-primapp name params) with
@@ -834,10 +928,10 @@
 		    (type:pred 'arrow (result-type . arg-types) _)
 		    -> (begin
 			 (when (not (= (length arg-types) (length subs)))
-                           (printf "\n\nwrong number of args to primapp '" (sym name) "'\n"
+                           (printf "\n\nwrong number of args to primapp '" (sym name) " params " (repr params) "'\n"
                                    "types: (" (join " " (map type-repr arg-types)) ")\n"
                                    "args: " (join " " (map repr (map noderec->sexp subs))) "\n")
-                           (error "wrong number of args"))
+                           (other-error "wrong number of args" exp))
 			 (for-range
 			     i (length arg-types)
 			     (let ((arg (nth subs i))
@@ -845,22 +939,24 @@
 				   (arg-type (nth arg-types i)))
 			       (unify arg ta arg-type)))
 			 result-type)
-		    _ -> (error1 "type-of-primapp" name)
+		    _ -> (other-error "type-of-primapp: expected arrow type" exp)
 		    )))))
 
-  (define (apply-subst-to-program n)
-    ;; This one loop is causing heap allocation to triple while compiling,
-    ;;   and almost certainly adding a lot to the compile time.
-    ;; I think this is because apply-subst is destroying the shared nature
-    ;;   of the tree of types - by deep-copying all types.
-    (set-node-type! n (apply-subst (noderec->type n)))
-    (for-each apply-subst-to-program (noderec->subs n)))
+  ;;(build-graphs node)
+  (type-of root-node (tenv/make))
+  )
 
-  (let ((t (type-of node (tenv/make))))
-    ;;(printf "applying subst...") (flush)
-    (apply-subst-to-program node)
-    ;;(printf "done.\n")
-    t))
+(define (build-graphs node)
+  (let ((dep-graph (build-dependency-graph node))
+        (strong (strongly dep-graph)))
+    (set! the-context.dep-graph dep-graph) ;; needed by do-trim to find unused things
+    (set! the-context.scc-graph strong)    ;; needed by type-of-fix for re-ordering
+    (when the-context.options.debugtyping
+      (printf "strongly-connected-components:\n")
+      (printf "(" (join (lambda (x) (format "(" (join symbol->string " " x) ")")) " " strong) ")\n"))
+    ;; (printf "SCC:\n")
+    ;; (printn strong)
+    ))
 
 (define (dump-types n)
 
@@ -883,7 +979,7 @@
                  (while (< depth (car funstack))
                    (pop! funstack)))
              (printf (rpad 20 (format (repeat (length funstack) "  ") (strip-alpha name)))
-                     " : " (type-repr* (noderec->type node) #t) "\n"))
+                     " : " (type-repr* (apply-subst (noderec->type node)) #t) "\n"))
         _ -> #u
         )
       )))

@@ -204,6 +204,10 @@
 		     ($genloop ($gen))))))
   )
 
+;; XXX there's an argument that the order should be reversed here.
+;;     scheme has a SRFI-197 implementing 'nest', which matches
+;;     this order.  'chain' does the more 'natural' order.
+
 (defmacro pipe
   (pipe a)       -> a
   (pipe a b)     -> (a b)

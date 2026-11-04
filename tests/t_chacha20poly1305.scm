@@ -2,10 +2,9 @@
 
 ;; [two] test vectors from rfc7539.
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/crypto/sodium.scm")
-(include "lib/codecs/hex.scm")
+(require "lib/basis.scm")
+(require "lib/crypto/sodium.scm")
+(require "lib/codecs/hex.scm")
 
 (defmacro hexcat
   (hexcat a ...) -> (hex->string (string-concat (list a ...)))

@@ -59,6 +59,9 @@
     (hd . tl) acc -> (rj tl (list:cons sep (list:cons hd acc))))
   (rj l (list:nil)))
 
+(define (rope/join-string sep l)
+  (rope/join (rope:leaf sep) l))
+
 ;; return `n` as a list of bits, msb-first.
 (define n->bits
   0 acc -> acc
@@ -67,7 +70,7 @@
 
 (define (rope/repeat n s)
   (define loop
-    ()       acc -> acc
+    ()        acc -> acc
     (#f . tl) acc -> (loop tl (rope-make acc acc)) ;; 2 * acc
     (#t . tl) acc -> (loop tl (rope-make (rope-make acc acc) s)) ;; 2 * acc + acc
     )

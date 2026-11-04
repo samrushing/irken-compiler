@@ -9,9 +9,6 @@
 
 (define thing-counter 0)
 
-(define (hack a b)
-  (:tuple a b))
-
 (define format-header
   (:tuple name val) -> (html (dt name) (dd val))
   )
@@ -47,12 +44,12 @@
         (conn (request.get-conn)))
     (if (match path with (maybe:yes path) -> (string=? path "/") (maybe:no) -> #f)
         (begin
-          (request.send-headers
-           (list (hack ":status" "200")
-                 (hack "content-type" "text/html")) #t)
+          (request.send-headers "200"
+           (list (:tuple "content-type" "text/html")) #t)
           (request.send-data
            (rope->string
             (html
+             "<!doctype html>"
              (html
               (head (style sexp-css))
               (body (h1 (&f "request " (int thing-counter)))
@@ -64,12 +61,12 @@
            #t)
           (inc! thing-counter)
           )
-        (request.send-headers (list (hack ":status" "404")) #f)
+        (request.send-headers "404" (list:nil) #f)
         )))
 
-(define (fun-h2-conn sock h2-handler)
+(define (fun-h2-conn addr sock h2-handler)
   (try
-   ((make-h2-conn sock h2-handler))
+   ((make-h2-conn addr sock h2-handler))
    except
    (:Doom/EOF _)
    -> #u
@@ -82,13 +79,22 @@
   )
 
 (define (h2-channel h2-handler x509s skey alpns)
-  (lambda (sockfun)
+  (lambda (addr sockfun)
     (try
-     (fun-h2-conn (tls13/make-channel sockfun x509s skey alpns) h2-handler)
+     (fun-h2-conn addr (tls13/make-channel sockfun x509s skey alpns) h2-handler)
      except
-     (:TLS/Failed)
+     (:TLS/Failed desc) ;; fixme
      -> (printf "tls failed.\n")
      )))
+
+(define (safe-accept sock)
+  (try
+   (sock.accept)
+   except (:OSError n)
+   -> (begin
+        (printf "accept() call failed [errno " (int n) "]\n")
+        (safe-accept sock))
+   ))
 
 ;; handler := (lambda (sockfun) ...)
 (define (serve ip port handler)
@@ -99,14 +105,14 @@
     (printf "starting server...\n")
     (let loop ()
       (printf "accept wait...\n")
-      (let (((sockfun addr) (sock.accept)))
+      (let (((sockfun addr) (safe-accept sock)))
         (printf "client: addr " (address/unparse addr) "\n")
-        (poller/fork (lambda () (handler sockfun)))
+        (poller/fork (lambda () (handler addr sockfun)))
         (loop)))))
 
 (define (read-certs path)
   (with-file file (file/open-read path)
-    (let ((pgen (pem-gen (file-char-generator file)))
+    (let ((pgen (pem-read-gen (file-char-generator file)))
           (result '()))
       (for pem pgen
         (match pem with

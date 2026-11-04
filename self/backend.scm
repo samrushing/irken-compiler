@@ -7,6 +7,7 @@
   (let ((level 0)
         (buffer '())
         (nbytes 0)
+        (indent-string "  ")
         (total 0))
     (define (push s)
       (push! buffer s)
@@ -14,10 +15,10 @@
       (if (>= nbytes 16384)
           (flush)))
     (define (write-string s)
-      (push (format (repeat level "  ") s "\n")))
+      (push (format (repeat level indent-string) s "\n")))
     (define (flush)
       (when (> nbytes 0)
-        (write file.fd (string-concat (reverse buffer)))
+        (file/write file (string-concat (reverse buffer)))
         (set! buffer '())
         (set! total (+ total nbytes))
         (set! nbytes 0)))
@@ -25,12 +26,24 @@
     (define (dedent) (set! level (- level 1)))
     (define (close-file)
       (flush)
-      (close file.fd)
+      (file/flush file)
+      (file/close file)
       )
     (define (get-total)
       total)
-    {write=write-string indent=indent dedent=dedent copy=push close=close-file get-total=get-total flush=flush}
+    (define (set-indent-string s)
+      (set! indent-string s))
+    {write=write-string
+     indent=indent dedent=dedent copy=push
+     close=close-file
+     get-total=get-total
+     flush=flush
+     set-indent=set-indent-string}
     ))
+
+(defmacro oformat
+  (oformat item ...) -> (o.write (format item ...))
+  )
 
 (define (make-name-frobber)
   (define safe-name-map
@@ -80,14 +93,14 @@
     (maybe:no) -> (raise (:NoSuchDatatype "NoSuchDatatype" dtname))
     (maybe:yes dt)
     -> (let ((alt (dt.get altname)))
-         (+ TC_USERIMM (<< alt.index 8)))))
+         (+ TC_USERIMM (<< alt.index TAGSIZE)))))
 
 (define encode-immediate
   (literal:int n)              -> (logior 1 (<< n 1))
-  (literal:char ch)            -> (logior 2 (<< (char->ascii ch) 8))
+  (literal:char ch)            -> (logior 2 (<< (char->ascii ch) TAGSIZE))
   (literal:undef)              -> #x0e
-  (literal:bool #t)            -> #x106
-  (literal:bool #f)            -> #x006
+  (literal:bool #t)            -> (logior 6 (<< 1 TAGSIZE))
+  (literal:bool #f)            -> (logior 6 (<< 0 TAGSIZE))
   (literal:vector ())          -> #x12
   (literal:cons 'list 'nil ()) -> TC_NIL
   (literal:cons dt alt ())     -> (encode-user-immediate dt alt)
@@ -144,7 +157,7 @@
   ;; can we disambiguate this record signature?
   (let ((sig (map (lambda (x) ;; remove sexp wrapping
 		    (match x with
-		      (sexp:symbol field) -> field
+		      (sexp:symbol field _) -> field
 		      _ -> (impossible))) sig))
 	(sig (filter (lambda (x) (not (eq? x '...))) sig)))
     (let ((candidates '()))
@@ -181,17 +194,20 @@ void prof_dump (void)
 
 ;; with large programs, the constructed initializers can get *really*
 ;;  long... long enough to cause problems even for emacs.
-(define (sprinkle-newlines parts)
+(define (sprinkle-newlines* parts sep)
   (let ((n 0)
         (r '()))
     (for-list part parts
       (cond ((= n 10)
-             (push! r (string-append "\n\t" part))
+             (push! r (string-append sep part))
              (set! n 0))
             (else
              (push! r part)))
       (inc! n))
     (reverse r)))
+
+(define (sprinkle-newlines parts)
+  (sprinkle-newlines* parts "\n\t"))
 
 ;; we support three types of non-immediate literals:
 ;;
@@ -255,7 +271,7 @@ void prof_dump (void)
 	-> (let ((args0 (map (partial (walk _ litnum)) args))
 		 (nargs (length args))
                  (oindex0 (+ 1 oindex)))
-	     (push-val (format "(" (int nargs) "<<8)|TC_VECTOR"))
+	     (push-val (format "(" (int nargs) "<<TAGSIZE)|TC_VECTOR"))
 	     (for-each push-val args0)
 	     (format "UPTR(" (int litnum) "," (int oindex0) ")"))
         (literal:record tag fields)
@@ -266,7 +282,7 @@ void prof_dump (void)
                              fields))
                  (nargs (length args0))
                  (oindex0 (+ 1 oindex)))
-             (push-val (format "(" (int nargs) "<<8)|UOTAG(" (int tag) ")"))
+             (push-val (format "(" (int nargs) "<<TAGSIZE)|UOTAG(" (int tag) ")"))
              (for-each push-val args0)
              (format "UPTR(" (int litnum) "," (int oindex0) ")"))
 	(literal:symbol sym)
@@ -314,7 +330,7 @@ void prof_dump (void)
        the-context.symbols)
       ;; XXX NOTE: this does not properly use TC_EMPTY_VECTOR
       (o.write (format "irk_int irk_internal_symbols[] = {("
-                       (int (length symptrs)) "<<8)|TC_VECTOR,\n\t" (join "," (sprinkle-newlines symptrs)) "};"))
+                       (int (length symptrs)) "<<TAGSIZE)|TC_VECTOR,\n\t" (join "," (sprinkle-newlines symptrs)) "};"))
       (o.write (format "object * irk_internal_symbols_p = (object*) &irk_internal_symbols;"))
       )
     (o.indent)
@@ -360,6 +376,27 @@ void prof_dump (void)
 	   r)
 	  rest))))
 
+
+(define (nvcase-frob-else tags subs ealt)
+
+  (define split-last
+    ()        acc -> (impossible)
+    (last)    acc -> (:tuple (reverse acc) last)
+    (hd . tl) acc -> (split-last tl (list:cons hd acc))
+    )
+
+  ;; if there's no else clause, we need to pull out the last
+  ;;   branch of the nvcase and make it one, because with llvm switch
+  ;;   the else block is not optional.
+
+  (match ealt with
+    (maybe:yes elsek) -> (:tuple tags subs elsek)
+    (maybe:no)
+    -> (let (((tags0 tagn) (split-last tags '()))
+             ((subs0 subn) (split-last subs '())))
+	 (:tuple tags0 subs0 subn))
+    ))
+
 ;; perfect hash function for ambiguous record field lookups.
 ;; some field-index lookups are unable to be resolved at compile time.
 ;; we use a map (size N) of (tag, label)->index at runtime.
@@ -401,9 +438,16 @@ void prof_dump (void)
      d item.k0 item.k1 size))
   )
 
+(%backend (arm amd rv)
+  (define (hash-item d item size)
+    (%asm-c-call
+     ("hash_item" (int int int int -> int))
+     d item.k0 item.k1 size))
+  )
+
 (%backend bytecode
   (define (hash-item d item size)
-    (%%cexp (int int int int -> int) "hash" d item.k0 item.k1 size))
+    (%%vminsn (int int int int -> int) 'hash d item.k0 item.k1 size))
   )
 
 (define (create-minimal-perfect-hash table)
@@ -439,6 +483,8 @@ void prof_dump (void)
                       (member-eq? slot slots))
                   (begin
                     (set! d (+ 1 d))
+                    (when (> d 10000)
+                      (raise (:PerfectHashFailed table)))
                     (set! item 0)
                     (set! slots (list:nil)))
                   (begin
@@ -476,13 +522,14 @@ void prof_dump (void)
 ;;  in a call to `lookup_field()`.
 
 (define (build-ambig-table)
-  ;; When the table is really small, the perfect hash generator's lower bits
-  ;;   are unable to fill it, causing it to go in an infinite loop.  We pad
-  ;;   the table with enough elements to have a size of at least seven.
+  ;; When the table is really small, the perfect hash generator's
+  ;;   lower bits are unable to fill it, causing it to go in an
+  ;;   infinite loop.  We pad the table with enough elements to have a
+  ;;   size of at least seventeen.
   (define (pad-table table)
     (let ((size (tree/size table)))
-      (when (< size 7)
-        (for-range i (- 7 size)
+      (when (< size 17)
+        (for-range i (- 17 size)
           (let ((v (+ 1010 i)))
             (tree/insert! table magic-cmp (:tuple v v) v))))
       table))
@@ -557,3 +604,20 @@ void prof_dump (void)
     (maybe:no)
     -> (cmap/add the-context.literals (literal:vector (list (literal:int 0))))
     ))
+
+;; the type to convert an FFI function's result with.  typing promotes
+;;  every C integer type to irken's int, but a native backend needs the
+;;  real C type to tag the value correctly: a long result treated as a
+;;  32-bit int loses its upper half.
+(define (ffi-result-type frtype rtype)
+  (match frtype with
+    (ctype:int cint signed?) -> (int-ctype->itype cint signed?)
+    _ -> rtype))
+
+;; the size in bytes of each C argument (for ABIs that pack stack args).
+(define (ffi-arg-sizes fargtypes)
+  (map (lambda (t)
+         (match t with
+           (ctype:int cint _) -> (cint-size cint)
+           _ -> 8))
+       fargtypes))

@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(require "lib/basis.scm")
+(require "lib/base.scm") ;; (no posix: see lib/base.scm)
+(require "lib/file.scm")
 
 (require "self/flags.scm")
 (require "self/context.scm")
@@ -8,8 +9,11 @@
 (require "self/analyze.scm")
 
 (require "self/c.scm")
-(require "self/llvm.scm")
+;;(require "self/llvm.scm")
 (require "self/bytecode.scm")
+(require "self/arm.scm")
+(require "self/amd.scm")
+(require "self/rv.scm")
 
 (define (find-base path)
   (let ((parts (string-split path #\.))
@@ -115,9 +119,15 @@
 	  "-n"    -> (set! options.noletreg #t)
 	  "-q"    -> (set! options.quiet #t)
 	  "-nr"   -> (set! options.no-range-check #t)
+          "-np"   -> (set! options.no-peephole #t)
+          "-sl"   -> (begin (inc! i) (set! options.src-limit (string->int argv[i])))
           ;; XXX make these mutually exclusive?
-	  "-llvm" -> (set! options.backend (backend:llvm))
+	  ;;"-llvm" -> (set! options.backend (backend:llvm))
+          "-C"    -> (set! options.backend (backend:c))
           "-b"    -> (set! options.backend (backend:bytecode))
+          "-arm"  -> (set! options.backend (backend:arm))
+          "-amd"  -> (set! options.backend (backend:amd))
+          "-rv"   -> (set! options.backend (backend:rv))
           "-h"    -> (usage)
           "-help" -> (usage)
           "-types" -> (set! options.dumptypes #t)
@@ -134,6 +144,9 @@
 
 (define (usage)
   (printf "
+
+This is the full Irken compiler, which includes C, bytecode, and native backends.
+
 Usage: compile <irken-src-file> [options]
  -c     : don't compile .c file
  -v     : verbose (very!) output
@@ -144,7 +157,7 @@ Usage: compile <irken-src-file> [options]
  -m     : debug macro expansion
  -dt    : debug typing
  -types : dump all type signatures (do not compile)
- -dump  : comma-separated list from (sexp,expand,ast,typed,cps)
+ -dump  : comma-separated list from (sexp,expand,ast,opt,typed,cps)
  -ni    : no inlining
  -p     : generate profile-printing code (C backend only)
  -n     : disable letreg optimization
@@ -153,8 +166,16 @@ Usage: compile <irken-src-file> [options]
  -q     : quiet the compiler
  -nr    : no range check (e.g. vector access)
  -h     : display this usage
- -llvm  : compile using the LLVM backend.
+"
+;; -llvm  : compile using the LLVM backend.
+"
+ -C     : compile using the C backend.
+ -arm   : compile using the arm64 backend.
+ -amd   : compile using the amd64 backend.
+ -rv    : compile using the riscv64 backend.
  -b     : compile using the bytecode backend.
+ (the default is this machine's native backend, if this compiler was
+  built with one; otherwise C.)
 
 default flags:
   CC='" CC "'
@@ -173,11 +194,28 @@ default flags:
 
 (define the-context (make-context))
 
+;; the default backend: native code for the machine this compiler was
+;;  itself compiled for.  (built as C or bytecode, we can't tell, so C.)
+(define (default-backend)
+  (%backend arm (backend:arm))
+  (%backend amd (backend:amd))
+  (%backend rv (backend:rv))
+  (%backend (c llvm bytecode) (backend:c)))
+
 (define (main)
   (when (< sys.argc 2)
         (usage)
         (raise (:NotEnoughArgs)))
+  (set! the-context.options.backend (default-backend))
   (let ((filearg (get-options sys.argv the-context.options))
+        ;; (after the options: they may choose another backend.)
+        (_ (platform-configure
+            (match the-context.options.backend with
+              (backend:arm) -> 'arm
+              (backend:amd) -> 'amd
+              (backend:rv)  -> 'rv
+              _ -> 'amd ;; sensible default
+              )))
         (transform (transformer))
         (path sys.argv[filearg])
         (base (find-base path))
@@ -200,25 +238,25 @@ default flags:
 	(_ (set! forms1 '()))
 	(_ (rename-variables node1))
 	(_ (optimize-nvcase node1))
+
+        ;;(_ (build-graphs node1))
+        ;; temp: trying to see if we can type earlier
+        ;;(node2 (do-simple-optimizations node1))
+        ;;(_ (if-dump 'xxx (pp-node node2)))
+        ;;(_ (notquiet (printf "typing 1...\n")))
+        ;; (_ (analyze node2))
+        ;; (_ (type-program node2))
         (noden (do-n-rounds node1 the-context.options.opt-rounds))
 	;; try to free up some memory
-	(_ (set! node0 (node/sequence '())))
-	(_ (set! node1 (node/sequence '())))
+	(_ (set! node0 (node/sequence '() (src:nil))))
+	(_ (set! node1 (node/sequence '() (src:nil))))
 	(_ (set! the-context.funs (tree/empty)))
 	(_ (find-tail noden))
 	(_ (find-leaves noden))
 	(_ (find-free-refs noden))
         (_ (if-dump 'opt (pp-node noden)))
-	;; build the graph again, so strongly will work.
-        (_ (notquiet (printf "depgraph...\n")))
-        (_ (build-dependency-graph noden))
-        ;;(_ (print-graph the-context.dep-graph))
-        ;; strongly-connected components is needed by the typing phase
-        ;;(_ (print-string "strongly-connected components:\n"))
-        (strong (strongly the-context.dep-graph))
-        (_ (verbose (printn strong)))
-        (_ (set! the-context.scc-graph strong))
-        (_ (notquiet (printf "typing...\n")))
+        (_ (build-graphs noden))
+        (_ (notquiet (printf "typing 2...\n")))
         (_ (type-program noden))
         ;;(type-map (collect-all-types noden))
         ;;(_ (print-type-tree noden))
@@ -275,10 +313,16 @@ default flags:
          (match the-context.options.backend with
            (backend:c)
            -> (compile-to-c base cps)
-           (backend:llvm)
-           -> (compile-to-llvm base cps)
+           ;; (backend:llvm)
+           ;; -> (compile-to-llvm base cps)
            (backend:bytecode)
            -> (compile-to-bytecode base cps)
+           (backend:arm)
+           -> (compile-to-arm base cps)
+           (backend:amd)
+           -> (compile-to-amd base cps)
+           (backend:rv)
+           -> (compile-to-rv base cps)
            )))
     (when (and (not (null? sources))
                (not the-context.options.nocompile))

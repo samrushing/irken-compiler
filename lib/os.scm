@@ -1,6 +1,9 @@
 ;; -*- Mode: Irken -*-
 
-(require-ffi 'posix)
+;; portable OS functions: these need only libc (whose interface is
+;;  the same on every platform), so the compiler can use them.  see
+;;  lib/dir.scm for listdir, which needs posix.
+
 (require-ffi 'libc)
 
 (define (system cmd)
@@ -10,8 +13,9 @@
   (libc/abort))
 
 (define (tmpnam)
-  (let ((buf* (make-char-buffer L_tmpnam))
-        (r* (libc/tmpnam buf*)))
+  ;; (L_tmpnam varies by platform, but is never more than PATH_MAX)
+  (let ((buf* (malloc char 4096))
+        (r* (libc/tmpnam (%c-aref char buf* 0))))
     (if (not (cref-null? r*))
         (let ((r (get-cstring buf*)))
           (free buf*)
@@ -19,6 +23,21 @@
         (begin
           (free buf*)
           (raise-system-error)))))
+
+;; the OS we're running on, e.g. "Linux", "Darwin", "FreeBSD".  The VM
+;;  knows; a native program always runs on the platform it was compiled
+;;  for, so it's decided at compile time.  (not posix uname(): see
+;;  lib/base.scm.)
+(define (platform-name)
+  (%backend bytecode (%%vminsn (-> string) 'plat))
+  (%backend (c llvm arm amd rv)
+    (%%platform
+     Darwin  "Darwin"
+     Linux   "Linux"
+     FreeBSD "FreeBSD"
+     OpenBSD "OpenBSD"
+     NetBSD  "NetBSD"
+     else    "Unknown")))
 
 (define (getenv name)
   (let ((val* (libc/getenv (%string->cref #f (zero-terminate name)))))
@@ -33,39 +52,24 @@
         default
         val)))
 
+;; remove(3) is unlink(2) for files, and is in C's stdio.
 (define (unlink name)
-  (syscall (posix/unlink (%string->cref #f (zero-terminate name)))))
+  (syscall (libc/remove (%string->cref #f (zero-terminate name)))))
 
-(make-enum dirent-file-type
-  (regular      DT_REG)
-  (directory    DT_DIR)
-  (fifo         DT_FIFO)
-  (socket       DT_SOCK)
-  (char         DT_CHR)
-  (block        DT_BLK)
-  (symlink      DT_LNK)
+(define path/join
+  "" ""	-> ""
+  "" x	-> x
+  x  ""	-> x
+  a  b
+  -> (match (string-ref a (- (string-length a) 1)) (string-ref b 0) with
+       #\/ #\/ -> (string-append a (substring b 1 (string-length b)))
+       #\/  _  -> (string-append a b)
+       _   #\/ -> (string-append a b)
+       _    _  -> (format a "/" b)
+       ))
+
+(defmacro path/make
+  (path/make a)         -> a
+  (path/make a b)       -> (path/join a b)
+  (path/make a b c ...) -> (path/join a (path/make b c ...))
   )
-
-(define (listdir path)
-
-  (define (get-file-type dirent*)
-    (let ((val (c-get-int (%c-sref dirent.d_type dirent*))))
-      (match (alist/lookup dirent-file-type-rev-alist val) with
-        (maybe:yes ft) -> (dirent-file-type->name ft)
-        (maybe:no) -> 'unknown
-        )))
-
-  (define (get-file-name dirent*)
-    (get-cstring (%c-sref dirent.d_name dirent*)))
-
-  (let ((DIR* (syscall-null (posix/opendir (cstring path))))
-        (result '()))
-    (printn DIR*)
-    (let loop ((dirent* (posix/readdir DIR*)))
-      (cond ((not (cref-null? dirent*))
-             (push! result {kind = (get-file-type dirent*) name = (get-file-name dirent*)})
-             (loop (posix/readdir DIR*)))
-            (else #u)))
-    (posix/closedir DIR*)
-    (reverse result)
-    ))

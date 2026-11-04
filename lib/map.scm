@@ -13,7 +13,11 @@
   (define (add self k v)
     (match (tree/member self.t self.cmp k) with
       ;;(maybe:yes _) -> (raise (:KeyError "key already present in map" k))
-      (maybe:yes _) -> (error1 "key already present in map" k)
+      (maybe:yes v) -> (begin
+                         (printn v)
+                         (printn (tree/keys self.t))
+                         (error1 "key already present in map" k)
+                         )
       (maybe:no) -> (set! self.t (tree/insert self.t self.cmp k v))))
 
   (define (maybe-add self k v)

@@ -28,10 +28,10 @@ get_typecode (object * ob)
     if (IS_INTEGER(ob)) {
       return TC_INT;
     } else {
-      return (irk_int)ob & 0xff;
+      return (irk_int)ob & TAGMASK;
     }
   } else {
-    return (irk_int)*((irk_int *)ob) & 0xff;
+    return (irk_int)*((irk_int *)ob) & TAGMASK;
   }
 }
 
@@ -48,7 +48,7 @@ get_case (object * ob)
       return (irk_int) ob;
     }
   } else {
-    return (irk_int)*((irk_int *)ob) & 0xff;
+    return (irk_int)*((irk_int *)ob) & TAGMASK;
   }
 }
 
@@ -61,7 +61,7 @@ get_case_noint (object * ob)
   if (is_immediate (ob)) {
     return (irk_int) ob;
   } else {
-    return (irk_int) * ((irk_int*) ob) & 0xff;
+    return (irk_int) * ((irk_int*) ob) & TAGMASK;
   }
 }
 
@@ -79,7 +79,7 @@ inline
 irk_int
 get_case_tup (object * ob)
 {
-  return (irk_int)*((irk_int *)ob) & 0xff;
+  return (irk_int)*((irk_int *)ob) & TAGMASK;
 }
 
 static
@@ -87,7 +87,7 @@ irk_int
 get_tuple_size (object * ob)
 {
   header * h = (header *) ob;
-  return (*h)>>8;
+  return (*h)>>TAGSIZE;
 }
 
 // for runtime reflection.
@@ -135,23 +135,30 @@ dump_object (object * ob, int depth)
     int tc = is_immediate (ob);
     switch (tc) {
     case TC_CHAR:
-      if ((irk_int)ob>>8 == 257) {
+      if ((irk_int)ob>>TAGSIZE == 257) {
 	// deliberately out-of-range character
 	fprintf (stdout, "#\\eof");
       } else {
-	char ch = ((char)((irk_int)ob>>8));
-	switch (ch) {
-	case '\000': fprintf (stdout, "#\\nul"); break;
-	case ' '   : fprintf (stdout, "#\\space"); break;
-	case '\n'  : fprintf (stdout, "#\\newline"); break;
-	case '\r'  : fprintf (stdout, "#\\return"); break;
-	case '\t'  : fprintf (stdout, "#\\tab"); break;
-	default    : fprintf (stdout, "#\\%c", ch);
-	}
+	char ch = ((char)((irk_int)ob>>TAGSIZE));
+        if (ch > 127) {
+          // on-the-fly utf-8
+          uint8_t ch_lo = 0x80 | (ch & 0x3f);
+          uint8_t ch_hi = 0xc0 | (ch >> 6);
+          fprintf (stdout, "#\\%c%c", ch_hi, ch_lo);
+        } else {
+          switch (ch) {
+          case '\000': fprintf (stdout, "#\\nul"); break;
+          case ' '   : fprintf (stdout, "#\\space"); break;
+          case '\n'  : fprintf (stdout, "#\\newline"); break;
+          case '\r'  : fprintf (stdout, "#\\return"); break;
+          case '\t'  : fprintf (stdout, "#\\tab"); break;
+          default    : fprintf (stdout, "#\\%c", ch);
+          }
+        }
       }
       break;
     case TC_BOOL:
-      fprintf (stdout, ((irk_int)ob >> 8) & 0xff ? "#t" : "#f");
+      fprintf (stdout, ((irk_int)ob >> TAGSIZE) & TAGMASK ? "#t" : "#f");
       break;
     case TC_NIL:
       fprintf (stdout, "()");
@@ -164,12 +171,12 @@ dump_object (object * ob, int depth)
       break;
     case TC_USERIMM:
       // a user immediate unit-type...
-      fprintf (stdout, "<u%" PRIuPTR ">", (((irk_int)ob)>>8));
+      fprintf (stdout, "<u%" PRIuPTR ">", (((irk_int)ob)>>TAGSIZE));
       break;
     case 0: {
       // structure
       header h = (header) (ob[0]);
-      int tc = h & 0xff;
+      int tc = h & TAGMASK;
       switch (tc) {
       case TC_SAVE: {
 	// XXX fix me - now holds saved registers
@@ -431,9 +438,10 @@ print_string (object * ob, int quoted)
     fputc ('"', stdout);
   }
   for (i=0; i < (s->len); i++, ps++) {
-    if (*ps == '"') {
+    if (*ps == '"' || (quoted && *ps == '\\')) {
+      // (escape backslashes too, or "a\\x41" and "a\x41" print the same)
       fputc ('\\', stdout);
-      fputc ('"', stdout);
+      fputc (*ps, stdout);
     } else {
       if (isprint(*ps)) {
 	fputc (*ps, stdout);
@@ -524,7 +532,7 @@ inline
 range_check (unsigned int length, unsigned int index)
 {
   if (index >= length) {
-    fprintf (stderr, "array/string reference out of range: %d[%d]\n", length, index);
+    fprintf (stderr, "array/string reference out of range: size=%d index=%d\n", length, index);
     abort();
   }
 }
@@ -539,22 +547,32 @@ range_check (unsigned int length, unsigned int index)
 
 irk_int verbose_gc = 1;
 irk_int clear_fromspace = 0;
+// see gc1.c: compiled code that doesn't need this sets it to 0.
 irk_int clear_tospace = 1;
 
 irk_int vm (int argc, char * argv[]);
 
 #include "rdtsc.h"
 
-#ifdef __aarch64__
-// disable llvm.readcyclecounter on arm, where it is expensive and privileged.
-#define USE_CYCLECOUNTER 0
-#else
 #define USE_CYCLECOUNTER 1
-#endif
 
 uint64_t gc_ticks = 0;
 
-#if 1
+#if defined(IRK_GC_POISON)
+// debugging: fill free heap space with a word the collector will notice
+//  (see copy() in gc1.c), to catch objects whose slots are still unset
+//  when a collection happens.  build with -DIRK_GC_POISON, and maybe a
+//  small -DIRK_HEAP_SIZE so that collections are frequent.
+#define IRK_POISON ((object) 0x00DEAD00DEAD0000ULL)
+static
+void
+clear_space (object * p, irk_int n)
+{
+  while (n--) {
+    *p++ = IRK_POISON;
+  }
+}
+#elif 1
 static
 void
 clear_space (object * p, irk_int n)
@@ -612,7 +630,20 @@ stack_depth_indent()
   }
 }
 
-static
+void
+dump_lenv (object * env, int depth)
+{
+  int elen = GET_TUPLE_LENGTH (env);
+  fprintf (stderr, "env {\n");
+  for (int i=0; i < (elen - 1); i++) {
+    dump_object (env[2+i], depth + 1);
+  }
+  if (env[1] != IRK_NIL) {
+    dump_lenv (env[1], depth + 1);
+  }
+  fprintf (stderr, "}\n");
+}
+
 object *
 varref (irk_int depth, irk_int index) {
   object * lenv0 = lenv;
@@ -622,7 +653,6 @@ varref (irk_int depth, irk_int index) {
   return (object*)lenv0[index+2];
 }
 
-static
 void
 varset (irk_int depth, irk_int index, object * val) {
   object * lenv0 = lenv;
@@ -638,7 +668,7 @@ static object *
 allocate (irk_int tc, irk_int size)
 {
   object * save = freep;
-  *freep = (object*) (size<<8 | (tc & 0xff));
+  *freep = (object*) (size<<TAGSIZE | (tc & TAGMASK));
 #if 0
   // at least on the g5, this technique is considerably faster than using memset
   //   in gc_flip() to 'pre-clear' the heap... probably a cache effect...
@@ -658,12 +688,22 @@ allocate (irk_int tc, irk_int size)
   return save;
 }
 
+// an object whose slots are filled in later, while something that can
+//  trigger a collection runs: zero them first (see clear_tospace in gc1.c).
+static object *
+alloc_cleared (irk_int tc, irk_int size)
+{
+  object * save = allocate (tc, size);
+  memset (save + 1, 0, sizeof (object) * size);
+  return save;
+}
+
   // this is emitted by the backend for %make-tuple
 static object *
 alloc_no_clear (irk_int tc, irk_int size)
 {
   object * save = freep;
-  *freep = (object*) (size<<8 | (tc & 0xff));
+  *freep = (object*) (size<<TAGSIZE | (tc & TAGMASK));
   freep += size + 1;
   return save;
 }
@@ -682,11 +722,31 @@ make_vector (irk_int size, object * val)
   }
 }
 
+// these 'foreign' functions manage pointers to external/C pointer data.
+// they are boxed with the tag TC_FOREIGN.
+// two flavors:
+//
+//  1) a raw external pointer
+//  2) a TC_BUFFER object plus an offset.
+
 object *
 make_foreign (void * ptr)
 {
   object * r = allocate (TC_FOREIGN, 1);
   r[1] = (object *) ptr;
+  return r;
+}
+
+// a pointer to a string's characters (%string->cref).  this is the
+//   <buffer> <offset> flavor, so the pointer follows the string when the
+//   collector moves it.  a raw pointer into the heap would go stale, and
+//   worse, the collector would take it for an object and try to copy it.
+object *
+make_string_foreign (object * s)
+{
+  object * r = allocate (TC_FOREIGN, 2);
+  r[1] = s;
+  r[2] = (object *) TAG_INTEGER ((uint8_t *) GET_STRING_POINTER (s) - (uint8_t *) (s + 1));
   return r;
 }
 
@@ -721,6 +781,21 @@ get_foreign (object * ob)
     irk_int offset = UNTAG_INTEGER (ob[2]);
     return (void *) (base + offset);
   }
+}
+
+// %c-get-ptr / %c-set-ptr for the native backends: read or write a
+//   pointer stored at a foreign address.  get-ptr allocates (the result
+//   is a new TC_FOREIGN), so callers must save/restore freep.
+object *
+irk_c_get_ptr (object * src)
+{
+  return make_foreign (*((void **) get_foreign (src)));
+}
+
+void
+irk_c_set_ptr (object * dst, object * src)
+{
+  *((void **) get_foreign (dst)) = get_foreign (src);
 }
 
 object *
@@ -891,6 +966,17 @@ void T (irk_int n)
   fprintf (stderr, "[%" PRIdPTR "]", n);
 }
 
+// this is called by the arm64 backend.
+// ideally, we'd like to actually have this raise an exception. TBD.
+// we'll need a saved continuation that we can invoke, that will raise
+// an exception for us.
+void
+out_of_range_exception (irk_int index, irk_int size)
+{
+  fprintf (stderr, "vector reference out of range: size=%ld index=%ld\n", size, index);
+  abort();
+}
+
 static uint64_t program_start_time;
 static uint64_t program_end_time;
 void prof_dump (void);
@@ -1016,21 +1102,19 @@ object *
 irk_copy_tuple (object * ob)
 {
   if (is_immediate (ob)) {
+    // XXX FIXME this check needed by the VM.
     return ob;
   } else {
     header h = (header) (ob[0]);
-    int tag  = h & 0xff;
+    int tag  = h & TAGMASK;
     irk_int len = GET_TUPLE_LENGTH (ob[0]);
-    //DO(ob);
     object * r = allocate (tag, len);
     for (int i=0; i < len; i++) {
-      // r[i+1] = copy(&ob[i+1]);
       r[i+1] = ob[i+1];
     }
     return r;
   }
 }
-
 
 object *
 irk_make_argv()
@@ -1057,6 +1141,18 @@ irk_make_string (object * len)
   irk_string * r = (irk_string*) alloc_no_clear (TC_STRING, string_tuple_length (len0));
   r->len = len0;
   return (object *) r;
+}
+
+object *
+irk_buffer_copy (object * src, object * sstart, object * n, object * dst, object * dstart)
+{
+  void * src0 = GET_STRING_POINTER (src);
+  irk_int sstart0 = unbox (sstart);
+  irk_int n0 = unbox (n);
+  void * dst0 = GET_STRING_POINTER (dst);
+  irk_int dstart0 = unbox (dstart);
+  memcpy (dst0 + dstart0, src0 + sstart0, n0);
+  return (object *) IRK_UNDEFINED;
 }
 
 object *
@@ -1151,7 +1247,8 @@ p_hash (uint32_t d, int k0, int k1)
   return d % irk_ambig_size;
 }
 
-static int lookup_field (int tag, int label)
+static
+int lookup_field (int tag, int label)
 {
   int32_t d = G[p_hash(0x01000193, tag, label)];
   if (d < 0) {
@@ -1162,7 +1259,6 @@ static int lookup_field (int tag, int label)
 }
 
 // replacement for backend.scm:hash2 & hash-item on 32-bit platforms.
-static
 uint32_t
 hash_item (uint32_t d, uint32_t k0, uint32_t k1, uint32_t size)
 {
@@ -1178,15 +1274,17 @@ void toplevel (void);
 int
 main (int argc, char * argv[])
 {
-  heap0 = (object *) malloc (sizeof (object) * heap_size);
-  heap1 = (object *) malloc (sizeof (object) * heap_size);
+  // calloc: the heaps start out zeroed, and (for big allocations) the
+  //  pages aren't touched until they're used.
+  heap0 = (object *) calloc (heap_size, sizeof (object));
+  heap1 = (object *) calloc (heap_size, sizeof (object));
   if (!heap0 || !heap1) {
     fprintf (stderr, "unable to allocate heap\n");
     return -1;
   } else {
-    if (clear_tospace) {
-      clear_space (heap0, heap_size);
-    }
+#if defined(IRK_GC_POISON)
+    clear_space (heap0, heap_size);
+#endif
     irk_argc = argc;
     irk_argv = argv;
     limit = heap0 + (heap_size - head_room);
@@ -1206,5 +1304,5 @@ main (int argc, char * argv[])
 #define IRK_RETURN(d) ((kfun)(k[3]))(r##d);
 #define O object *
 
-// With the C backend, generated code follow this point.
-// With the LLVM backend, this file is linked with the generated code.
+// With the C backend, generated code follows this point.
+// With the other backends/vm, this file is linked in.

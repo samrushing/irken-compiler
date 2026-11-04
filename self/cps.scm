@@ -28,10 +28,10 @@
   (:literal literal cont)
   ;; litcon <index> <value> <k>
   (:litcon int symbol cont)
-  ;; cexp <sig> <solved-type> <template> <args> <k>
-  (:cexp type type string (list int) cont)
-  ;; ffi <sig> <solved-type> <name> <args> <k>
-  (:ffi type type symbol (list int) cont)
+  ;; cexp <sig> <solved-type> <argtypes> <template> <args> <k>
+  (:cexp type type (list type) string (list int) cont)
+  ;; ffi <sig> <solved-type> <argtypes> <name> <args> <k>
+  (:ffi csig type (list type) symbol (list int) cont)
   ;; test <reg> <jump-number> <then> <else> <k>
   (:test int int insn insn cont)
   ;; testcexp <regs> <sig> <template> <jump-number> <then> <else> <k>
@@ -44,10 +44,13 @@
   (:varref int int cont)
   ;; varset <depth> <index> <reg> <k>
   (:varset int int int cont)
-  ;; new-env <size> <top?> <k>
-  (:new-env int bool (list type) cont)
-  ;; alloc <tag> <size> <k>
-  (:alloc int int cont)
+  ;; new-env <size> <top?> <init?> <types> <k>
+  ;;  init?: the slots must be initialized, because computing the args
+  ;;  that will fill them could trigger a collection.  (the heap is not
+  ;;  cleared in advance.)
+  (:new-env int bool bool (list type) cont)
+  ;; alloc <tag> <size> <init?> <k>
+  (:alloc int int bool cont)
   ;; store <offset> <arg> <tuple> <i> <k>
   (:store int int int int cont)
   ;; invoke <name> <closure> <args> <k>
@@ -97,38 +100,55 @@
   )
 
 ;; Note: this should match NREG in vm/irkvm.c.
+;; XXX also currently used for the arm64 backend.
 (define *max-bytecode-registers* 20)
 
-(define (make-register-allocator)
-  (match the-context.options.backend with
-    (backend:bytecode)
-    -> (let ((max-reg -1))
-         (define (allocate free)
-           (let loop ((i 0))
-             (if (member? i free =)
-                 (loop (+ i 1))
-                 (if (> i max-reg)
-                     (begin (set! max-reg i)
-                            (if (> i *max-bytecode-registers*)
-                                (begin
-                                  (printf "max reg of " (int i) " out of " (int *max-bytecode-registers*) "\n")
-                                  (raise (:TooManyRegisters "bytecode: ran out of registers!")))
-                                i))
-                     i))))
-         (define (get-max) max-reg)
-         (define (reset) (set! max-reg -1))
-         {alloc=allocate get-max=get-max reset=reset}
-         )
-    _
-    -> (let ((max-reg -1))
-         (define (allocate free)
-           (set! max-reg (+ max-reg 1))
-           max-reg)
-         (define (get-max) max-reg)
-         (define (reset) (set! max-reg -1))
-         {alloc=allocate get-max=get-max reset=reset}
-         )
+(define (make-actual-register-allocator)
+  (let ((max-reg -1))
+    (define (allocate free)
+      (let loop ((i 0))
+        (if (member? i free =)
+            (loop (+ i 1))
+            (if (> i max-reg)
+                (begin (set! max-reg i)
+                       (if (> i *max-bytecode-registers*)
+                           (begin
+                             (printf "max reg of " (int i) " out of " (int *max-bytecode-registers*) "\n")
+                             (raise (:TooManyRegisters "ran out of registers!")))
+                           i))
+                i))))
+    (define (get-max) max-reg)
+    (define (reset) (set! max-reg -1))
+    {alloc=allocate get-max=get-max reset=reset}
     ))
+
+(define (make-bogus-register-allocator)
+  (let ((max-reg -1))
+    (define (allocate free)
+      (set! max-reg (+ max-reg 1))
+      max-reg)
+    (define (get-max) max-reg)
+    (define (reset) (set! max-reg -1))
+    {alloc=allocate get-max=get-max reset=reset}
+    ))
+
+(define (make-register-allocator)
+  (if (member-eq? the-context.options.backend (list (backend:bytecode) (backend:arm) (backend:amd) (backend:rv)))
+      (make-actual-register-allocator)
+      (make-bogus-register-allocator)))
+
+;; can evaluating <node> trigger a collection?  Only calls (a function's
+;;  entry checks the heap) and some primops (e.g. %make-vector's
+;;  ensure-heap) can.  allocating a fixed-size object inline can't.
+(define (gc-free? node)
+  (and (match (noderec->t node) with
+         (node:varref _)  -> #t
+         (node:literal _) -> #t
+         (node:cexp _ _ _) -> #t
+         (node:primapp name _)
+         -> (member-eq? name '(%vcon %dtcon %rextend %rmake %raccess))
+         _ -> #f)
+       (every? gc-free? (noderec->subs node))))
 
 (define (compile exp)
 
@@ -179,13 +199,13 @@
 	(node:varref name)		-> (c-varref name lenv k)
 	(node:varset name)		-> (c-varset name (car (noderec->subs exp)) lenv k)
 	(node:cexp gens sig template)	-> (c-cexp sig template exp lenv k)
-	(node:ffi gens sig name)	-> (c-ffi sig name exp lenv k)
+	(node:ffi name sig)	        -> (c-ffi name sig exp lenv k)
 	(node:call)			-> (c-call tail? exp lenv k)
 	(node:primapp name params)	-> (c-primapp tail? name params exp lenv k)
 	(node:nvcase 'nil tags arities) -> (c-pvcase tail? tags arities (noderec->subs exp) lenv k)
 	(node:nvcase dt tags arities)	-> (c-nvcase tail? dt tags (noderec->subs exp) lenv k)
 	(node:fix formals)		-> (c-let-splat tail? formals (noderec->subs exp) lenv k)
-	(node:let formals)		-> (if (safe-for-let-reg exp formals)
+	(node:let formals)		-> (if (safe-for-let-reg exp formals k.free)
 					       (c-let-reg tail? formals (noderec->subs exp) lenv k)
 					       (c-let-splat tail? formals (noderec->subs exp) lenv k))
 	(node:subst _ _)		-> (impossible)
@@ -243,6 +263,9 @@
 	  -> (match (noderec->t test) the-context.options.backend with
 	       (node:cexp _ sig template) (backend:c)
 	       -> (c-simple-conditional tail? test then else sig template lenv k)
+               ;; could do something similar with arm64 backend here...
+               ;;(node:primapp '%llicmp param) (backend:arm)
+               ;; -> (c-simple-conditional ...)
 	       _ _
 	       -> (compile
 		   #f test lenv
@@ -338,7 +361,7 @@
 	(compile #f exp lenv (cont k.free kfun))))
 
     (define (get-cref-type arg)
-      (match (noderec->type arg) with
+      (match (get-node-type arg) with
         (type:pred 'cref (t1) _) -> t1
         _                        -> (impossible)
         ))
@@ -350,20 +373,20 @@
 	  '%fatbar  -> (c-fatbar tail? args lenv k)
 	  '%dtcon   -> (begin (if (> (length args) 0)
 				 (set-flag! VFLAG-ALLOCATES))
-			     (c-primargs args name params (noderec->type exp) lenv k))
+			     (c-primargs args name params (get-node-type exp) lenv k))
 	  '%vcon    -> (c-vcon params args lenv k)
 	  '%rextend -> (c-record-literal exp lenv k)
 	  '%raccess -> (let ((arg0 (nth args 0))
-			     (sig (get-record-sig-sexp (noderec->type arg0))))
+			     (sig (get-record-sig-sexp (get-node-type arg0))))
 			 (c-primargs args '%record-get
 				     (sexp params sig) ;; (field sig)
-				     (noderec->type exp)
+				     (get-node-type exp)
 				     lenv k))
 	  '%rset    -> (let ((arg0 (nth args 0))
-			     (sig (get-record-sig-sexp (noderec->type arg0))))
+			     (sig (get-record-sig-sexp (get-node-type arg0))))
 			 (c-primargs args '%record-set
 				     (sexp params sig) ;; (field sig)
-				     (noderec->type exp)
+				     (get-node-type exp)
 				     lenv k))
           ;; hack: the back end needs to know the type of the lval.
 	  '%c-get-int -> (c-primargs args name params (get-cref-type (nth args 0)) lenv k)
@@ -376,18 +399,22 @@
           '%c-cast     -> (compile tail? (first args) lenv k)
 	  ;; note: discards first argument...
 	  '%exn-handle -> (compile tail? (second args) lenv k)
-	  _ -> (c-primargs args name params (noderec->type exp) lenv k))))
+	  _ -> (c-primargs args name params (get-node-type exp) lenv k))))
 
     (define (c-cexp sig template exp lenv k)
-      ;;(print-string (format "c-cexp: sig = " (type-repr sig) " solved type = " (type-repr (noderec->type exp)) "\n"))
-      (collect-primargs (noderec->subs exp) lenv k
-			(lambda (regs)
-			  (insn:cexp sig (noderec->type exp) template regs k))))
+      ;;(print-string (format "c-cexp: sig = " (type-repr sig) " solved type = " (type-repr (get-node-type exp)) "\n"))
+      (let ((exptype (get-node-type exp))
+            (argtypes (map get-node-type (noderec->subs exp))))
+        (collect-primargs (noderec->subs exp) lenv k
+			  (lambda (regs)
+			    (insn:cexp sig exptype argtypes template regs k)))))
 
-    (define (c-ffi sig name exp lenv k)
-      (collect-primargs (noderec->subs exp) lenv k
-			(lambda (regs)
-			  (insn:ffi sig (noderec->type exp) name regs k))))
+    (define (c-ffi name sig exp lenv k)
+      (let ((exptype (get-node-type exp))
+            (argtypes (map get-node-type (noderec->subs exp))))
+        (collect-primargs (noderec->subs exp) lenv k
+			  (lambda (regs)
+			    (insn:ffi sig exptype argtypes name regs k)))))
 
     ;; collect-primargs is used by primops, simple-conditional, and tr-call.
     ;;   in order to avoid the needless consumption of registers, we re-arrange
@@ -432,10 +459,13 @@
       (collect-primargs args lenv k
 			(lambda (regs) (insn:primop op parm type regs k))))
 
-    (define (safe-for-let-reg exp names)
+    (define (safe-for-let-reg exp names free)
       (and (not the-context.options.noletreg)
 	   (node-get-flag exp NFLAG-LEAF)
-	   (< (length names) 15)
+           ;; don't hog registers near the top of a large expression.
+           ;; XXX need to do some testing to get a good value for this.
+           (< (noderec->size exp) 20)
+	   (< (+ (length free) (length names)) 7)
 	   (not (some?
 		 (lambda (name)
 		   (vars-get-flag name VFLAG-FREEREF))
@@ -489,12 +519,13 @@
     (define (compile-args args lenv k)
       (set-flag! VFLAG-ALLOCATES)
       (match args with
-	() -> (insn:new-env 0 (lenv-top? lenv) '() k)
+	() -> (insn:new-env 0 (lenv-top? lenv) #f '() k)
 	_  -> (let ((nargs (length args))
-		    (types (map (lambda (x) (noderec->type x)) args)))
+		    (types (map (lambda (x) (get-node-type x)) args)))
 		(insn:new-env
 		 nargs
 		 (lenv-top? lenv)
+		 (not (every? gc-free? args))
 		 types
                  (make-cont
                   k.target k.free
@@ -542,7 +573,7 @@
     (define (c-let-splat tail? formals subs lenv k)
       (let ((body (last subs)) ;; subs = (init0 init1 ... body)
 	    (inits (butlast subs))
-	    (types (map noderec->type inits))
+	    (types (map get-node-type inits))
 	    (nargs (length formals))
 	    (k-body (dead k.free
 			  (compile tail? body (extend-lenv formals lenv)
@@ -551,6 +582,7 @@
 	(insn:new-env
 	 nargs
 	 (lenv-top? lenv)
+	 (not (every? gc-free? inits))
 	 types
 	 (cont k.free
 	       (lambda (tuple-reg)
@@ -561,6 +593,15 @@
                                             (add-to-set tuple-reg k.free)
 					    (extend-lenv formals lenv)
 					    k-body))))))))
+
+    (define (incomplete-match dtalts alts node)
+      (let ((missing (list:nil)))
+        (for-list dtalt dtalts
+          (when (not (member-eq? dtalt alts))
+            (push! missing dtalt)))
+        (printf "incomplete match:  un-handled cases: " (join symbol->string ", " missing) "\n")
+        (cps-error "incomplete match" node)
+        ))
 
     (define (c-nvcase tail? dtname alt-formals subs lenv k)
       (let ((jump-num (jump-counter.inc)))
@@ -582,7 +623,7 @@
 		       (ealt1
 			(if (not (= (dt.get-nalts) (length alts)))
 			    (match (noderec->t eclause) with
-			      (node:primapp '%match-error _) -> (cps-error "incomplete match" value)
+			      (node:primapp '%match-error _) -> (incomplete-match (dt.get-alt-names) alt-formals value)
 			      ;; complete match, no ealt
 			      (node:primapp '%complete-match _) -> (maybe:no)
 			      ;; incomplete match with ealt
@@ -636,7 +677,7 @@
 
     (define (c-vcon params args lenv k)
       (match params with
-	(sexp:list ((sexp:symbol label) _))
+	(sexp:list ((sexp:symbol label _) _))
 	-> (let ((tag (alist/get the-context.variant-labels label "unknown variant label?"))
 		 (nargs (length args)))
 	     (if (> nargs 0)
@@ -647,6 +688,7 @@
 	     (if (> nargs 0)
 		 (insn:alloc
                   tag nargs
+                  (not (every? gc-free? args))
                   (make-cont
                    k.target k.free
                    (compile-store-args
@@ -654,7 +696,7 @@
                     (add-to-set k.target k.free)
                     lenv k)
                    ))
-		 (insn:alloc tag 0 k)))
+		 (insn:alloc tag 0 #f k)))
 	_ -> (error1 "bad %vcon params" params)))
 
     (define (c-record-literal exp lenv k)
@@ -662,7 +704,7 @@
 		 (fields '()))
         ;; (%rextend field0 (%rextend field1 (%rmake) ...)) => {field0=x field1=y}
 	(match (noderec->t exp) with
-	  (node:primapp '%rextend (sexp:symbol field)) ;; add another field
+	  (node:primapp '%rextend (sexp:symbol field _)) ;; add another field
 	  -> (match (noderec->subs exp) with
 	       (exp0 val) -> (loop exp0 (list:cons (:pair field val) fields))
 	       _	  -> (error1 "malformed %rextend" exp))
@@ -679,6 +721,7 @@
 	       (insn:alloc
                 tag
                 (length args)
+                (not (every? gc-free? args))
                 ;; this is a hack.  the issue is that <k> already holds the target for
                 ;;   the allocation... compile-store-args is broken in that it assigns
                 ;;   a target for a <stor> [rather than a dead cont].
@@ -694,17 +737,17 @@
     (define (c-record-extension field exp lenv k)
       (match field with
         (:pair new-field new-value)
-        -> (let ((osig (get-record-sig (noderec->type exp)))
+        -> (let ((osig (get-record-sig (get-node-type exp)))
                  (nsig (sort symbol<? (list:cons new-field osig)))
                  (otag (get-record-tag osig))
                  (ntag (get-record-tag nsig)))
              (c-primargs (list exp new-value)
                          '%record-ext
                          (sexp (int otag) (int ntag)
-                               (sexp:list (map sexp:symbol osig))
-                               (sexp:list (map sexp:symbol nsig))
-                               (sexp:symbol new-field))
-                         (noderec->type exp)
+                               (sexp:list (map make-sexp-symbol osig))
+                               (sexp:list (map make-sexp-symbol nsig))
+                               (sym new-field))
+                         (get-node-type exp)
                          lenv k))))
 
     (define (record-label-tag label)
@@ -796,7 +839,7 @@
 	     (match (noderec->t n) with
 	       (node:let formals)
 	       -> (for-each
-		   (lambda (x) (type-map::maybe-add (apply-subst (noderec->type x)) (noderec->id x)))
+		   (lambda (x) (type-map::maybe-add (get-node-type x) (noderec->id x)))
 		   (reverse (cdr (reverse (noderec->subs n)))))
 	       _ -> #u)
 	     (loop)
@@ -818,19 +861,12 @@
 (define (print-type-tree root)
   (for (n d x) (make-node-generator root)
        (indent d)
-       (printf (type-repr (noderec->type n)) "\n")))
+       (printf (type-repr (get-node-type n)) "\n")))
 
 ;; --------- printing ----------
 
 (define (fintlist args)
   (format "(" (join int->string " " args) ")"))
-
-  (define (mname msym)
-    (match msym with
-      (maybe:yes name) -> (symbol->string name)
-      (maybe:no)       -> "lambda"
-      ))
-
 
 (define print-insn
   (insn:return result)             -> (printf "ret " (int result))
@@ -838,18 +874,15 @@
   (insn:trcall d name args)        -> (printf "trcall " (int d) " " (sym name) " " (fintlist args))
   (insn:literal lit k)             -> (printf "lit " (literal->string lit))
   (insn:litcon i kind k)           -> (printf "litcon " (int i) " " (sym kind))
-  (insn:cexp sig typ tem args k)   -> (printf "cexp sig:" (type-repr sig) " type:" (type-repr typ) " "
-                                              (string tem) " args:" (fintlist args))
-  (insn:ffi sig typ name args k)   -> (printf "ffi " (type-repr sig) " " (type-repr typ) " " (sym name) " " (fintlist args))
   (insn:test reg jn then else k)   -> (printf "test " (int reg) "  L" (int jn))
   (insn:jump reg trg jn free)      -> (printf "jmp " (int reg) " trg:" (int trg) " L" (int jn) " free:" (fintlist free.val))
   (insn:close name nreg body k)    -> (printf "close " (sym name) " nreg:" (int nreg))
   (insn:varref d i k)              -> (printf "ref " (int d) "," (int i))
   (insn:varset d i v k)            -> (printf "set " (int d) "," (int i) " val:" (int v))
   (insn:store o a t i k)           -> (printf "stor off:" (int o) " arg:" (int a) " tup:" (int t) " idx:" (int i))
-  (insn:invoke n c a k)            -> (printf "invoke " (maybe n symbol->string "lambda") " cl:" (int c) " args:" (int a))
-  (insn:new-env n top? types k)    -> (printf "env n:" (int n) " top?:" (bool top?) " " (join type-repr " " types))
-  (insn:alloc tag size k)          -> (printf "alloc tag:" (int tag) " size:" (int size))
+  (insn:invoke n c a k)            -> (printf "invoke " (maybe n symbol->string "lambda") " cl:" (int c) " args:" (int a) " free: " (fintlist k.free))
+  (insn:new-env n top? init? types k) -> (printf "env n:" (int n) " top?:" (bool top?) " init?:" (bool init?) " " (join type-repr " " types))
+  (insn:alloc tag size init? k)    -> (printf "alloc tag:" (int tag) " size:" (int size) " init?:" (bool init?))
   (insn:push r k)                  -> (printf "push " (int r))
   (insn:pop r k)                   -> (printf "pop " (int r))
   (insn:primop name p t args k)    -> (printf "prim " (sym name) " " (repr p) " " (type-repr t) " " (fintlist args))
@@ -862,6 +895,16 @@
   (insn:pvcase tr labels arities jn alts ealt k)
   -> (printf "pvcase " (int tr) " (" (join symbol->string " " labels) ") arities:" (fintlist arities) " L" (int jn))
   (insn:label label next)          -> (printf "L" (int label) ":")
+  (insn:cexp sig typ ats tem args k)
+  -> (printf "cexp sig:" (type-repr sig) " type:" (type-repr typ) " "
+             " argtypes: (" (join type-repr " " ats) ") "
+             (string tem) " args:" (fintlist args))
+  (insn:ffi sig typ ats name args k)
+  -> (printf "ffi rtype: " (type-repr typ)
+             " sig: " (csig-repr sig)
+             " argtypes: (" (join type-repr " " ats) ")"
+             " name: " (sym name)
+             " args: " (fintlist args))
   )
 
 (define (print-cps insn d)
@@ -875,11 +918,16 @@
     )
 
   (let ((k (insn->cont insn)))
-    (printf "\n" (repeat d " ") (if (<= k.target 0) "-" (int->string k.target)) " ")
+    (printf "\n" (repeat d " ") (if (< k.target 0) "-" (int->string k.target)) " ")
+    (printf (rpad 20 (fintlist (sort < k.free))))
     (print-insn insn)
     ;; print sub-expressions
-    (for-list sub (insn->subexps insn)
-      (print-cps sub (+ 1 d)))
+    (let ((index 0))
+      (for-list sub (insn->subexps insn)
+        (printf "\n" (repeat d " ") " <" (int index) ">")
+        (print-cps sub (+ 2 d))
+        (inc! index)
+        ))
     (when (not (null-cont? k))
       (print-cps k.insn d))
     ))
@@ -889,8 +937,8 @@
   (insn:return result)             -> (list result)
   (insn:tail _ c a)                -> (list c a)
   (insn:trcall _ _ args)           -> args
-  (insn:cexp _ _ _ args _)         -> args
-  (insn:ffi _ _ _ args _)          -> args
+  (insn:cexp _ _ _ _ args _)       -> args
+  (insn:ffi _ _ _ _ args _)        -> args
   (insn:test reg _ _ _ _)          -> (list reg)
   (insn:jump reg trg _ _)          -> (list reg trg)
   (insn:varset _ _ v _)            -> (list v)
@@ -926,14 +974,14 @@
   (insn:pvcase _ _ _ _ _ _ k)   -> k
   (insn:literal _ k)            -> k
   (insn:litcon _ _ k)           -> k
-  (insn:cexp _ _ _ _ k)         -> k
-  (insn:ffi _ _ _ _ k)          -> k
+  (insn:cexp _ _ _ _ _ k)       -> k
+  (insn:ffi _ _ _ _ _ k)        -> k
   (insn:varref _ _ k)           -> k
   (insn:varset _ _ _ k)         -> k
   (insn:store _ _ _ _ k)        -> k
   (insn:invoke _ _ _ k)         -> k
-  (insn:new-env _ _ _ k)        -> k
-  (insn:alloc _ _ k)            -> k
+  (insn:new-env _ _ _ _ k)      -> k
+  (insn:alloc _ _ _ k)          -> k
   (insn:push _ k)               -> k
   (insn:pop _ k)                -> k
   (insn:primop _ _ _ _ k)       -> k
@@ -990,16 +1038,19 @@
         (for-list sub (reverse (insn->subexps insn))
           (set! refset (set/union int-cmp (W sub refset) refset))
           )
+        ;; note: we remove the target _before_ adding refs, because it's
+        ;; possible to have an insn that _consumes_ a register (therefore live _before_)
+        ;; and then overwrites it as the target.
+        ;; remove the target.
+        (when (>= cont.target 0)
+          (set/delete! refset int-cmp cont.target))
         ;; add any refs of this insn.
         (for-list ref (insn->refs insn)
-          (when (> ref 0)
+          (when (>= ref 0)
             (set/add! refset int-cmp ref)))
         ;; trim the continuation's free set.
         (when (not (null-cont? cont))
           (set! cont.free (trim-free refset cont.free)))
-        ;; remove the target.
-        (when (> cont.target 0)
-          (set/delete! refset int-cmp cont.target))
         ;; fetch refset for jump & fail from our table.
         (match insn with
           (insn:jump reg trg jn free)

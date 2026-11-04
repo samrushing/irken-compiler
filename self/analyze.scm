@@ -9,6 +9,20 @@
 ;;   attributes (e.g. `var.calls`), and there are also 1-bit flags
 ;;   stored in a bitmask (e.g. `(vars-get-flag name flag)` and VFLAG-RECURSIVE)
 
+;; in this file, we replace vars-get-var with node-get-var, in order to get
+;;  useful error messages (since nodes carry source information).
+
+(define (node-get-var node name)
+  (try
+   (vars-get-var name)
+   except
+   (:NoSuchVariable name)
+   -> (let ((src (noderec->src node)))
+        (printf "Unknown Variable " (bold (sym name)) ":\n"
+                (src-repr src the-context.options.src-limit) "\n")
+        (%exit #f -1))
+   ))
+
 (define (find-recursion exp)
 
   (define (walk exp fenv)
@@ -17,7 +31,7 @@
       -> (let ((rator (nth (noderec->subs exp) 0)))
 	   (match (noderec->t rator) with
 	     (node:varref name)
-	     -> (let ((var (vars-get-var name)))
+	     -> (let ((var (node-get-var rator name)))
 		  (cond ((member-eq? name fenv)
 			 (set! var.flags (bit-set var.flags VFLAG-RECURSIVE))
 			 (node-set-flag! exp NFLAG-RECURSIVE)))
@@ -36,7 +50,8 @@
       _ -> #u)
     (for-each (lambda (x) (walk x fenv)) (noderec->subs exp)))
 
-  (walk exp '()))
+  (walk exp '())
+  )
 
 (define (find-tail node)
 
@@ -116,18 +131,18 @@
 
 (define (find-refs node)
 
-  (define (add-ref name)
-    (let ((var (vars-get-var name)))
+  (define (add-ref node name)
+    (let ((var (node-get-var node name)))
       (set! var.refs (+ 1 var.refs))))
 
-  (define (add-set name)
-    (let ((var (vars-get-var name)))
+  (define (add-set node name)
+    (let ((var (node-get-var node name)))
       (set! var.sets (+ 1 var.sets))))
 
   (define (walk node)
     (match (noderec->t node) with
-      (node:varref name) -> (add-ref name)
-      (node:varset name) -> (add-set name)
+      (node:varref name) -> (add-ref node name)
+      (node:varset name) -> (add-set node name)
       _ -> #u)
     (for-each walk (noderec->subs node)))
 
@@ -207,8 +222,8 @@
 		  (maybe:yes _) -> #u)))
 	  (maybe:no) -> #u)))
 
-    (define (follow-aliases fenv name)
-      (let  ((var (vars-get-var name)))
+    (define (follow-aliases node fenv name)
+      (let  ((var (node-get-var node name)))
         (if (> var.sets 0)
             (maybe:no)
             (match (tree/member fenv symbol-index-cmp name) with
@@ -216,7 +231,7 @@
               (maybe:yes fun)
               -> (match (noderec->t fun) with
                    (node:varref name0)
-                   -> (follow-aliases fenv name0)
+                   -> (follow-aliases fun fenv name0)
                    _ -> (maybe:yes (:pair name fun)))))))
 
     (define (get-fun-calls name calls)
@@ -236,7 +251,7 @@
           (for-each build-fenv (noderec->subs node)))
 
         (define (safe-to-inline name fun)
-          (let ((var (vars-get-var name))
+          (let ((var (node-get-var fun name))
                 (escapes   (bit-get var.flags VFLAG-ESCAPES))
                 (recursive (bit-get var.flags VFLAG-RECURSIVE))
                 (getputcc  (bit-get var.flags VFLAG-GETCC))
@@ -257,7 +272,7 @@
               (set-multiplier name calls))
             result))
 
-        (define (walk node)
+        (define (walk0 node)
           (let/cc return
             (set-node-subs! node (map walk (noderec->subs node)))
             (match (noderec->t node) with
@@ -265,11 +280,13 @@
               -> (match (noderec->subs node) with
                    () -> (impossible)
                    ((noderec:t {t=(node:varref name) ...}) . rands)
-                   -> (match (follow-aliases fenv name) with
+                   -> (match (follow-aliases node fenv name) with
                         (maybe:no) -> #u
                         (maybe:yes (:pair name fun))
                         -> (when (safe-to-inline name fun)
                              (let ((r (inline-application fun rands)))
+                               ;; mark src with inlined info...
+                               (wrap-src name (noderec->src node) r)
                                ;; record the new variables...
                                (add-vars r)
                                (return (walk r)))))
@@ -285,10 +302,26 @@
             node
             ))
 
+        (define (walk node)
+          (try
+           (walk0 node)
+           except
+           (:OptimizeError msg _)
+           -> (begin (printf "Error during optimization: " msg "\n"
+                             (src-repr (noderec->src node) the-context.options.src-limit)
+                             "\n")
+                     (error "compiler error"))
+           ))
+
         ;; build a map to all functions
         (build-fenv node)
         ;; descend
         (walk node)
+        ))
+
+    (define (wrap-src name src body)
+      (for (n d) (make-node-generator body)
+        (set-node-src! n (src:inline name (noderec->src n) src))
         ))
 
     (define (instantiate fun)
@@ -335,7 +368,7 @@
     (define (safe-nvget-inline rands)
       (match rands with
 	((noderec:t {t=(node:primapp '%nvget _) subs=((noderec:t {t=(node:varref name) ...}) . _)  ...}) . _)
-	-> (let ((var (vars-get-var name)))
+	-> (let ((var (node-get-var (first rands) name)))
 	     (= 0 var.sets))
 	_ -> #f))
 
@@ -353,14 +386,32 @@
 	(match (noderec->t fun) with
 	  (node:function name formals)
           -> (if (not (= n (length formals)))
-                 (error1 "inline: bad arity" name)
                  (begin
+                   (printf "formals = " (join symbol->string " " formals) "\n")
+                   (raise (:OptimizeError "inline: bad arity" fun))
+                   )
+                 (let ((fun-type (noderec->type fun)))
+                   ;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+                   ;; this is/was an attemp to propagate user types during inlining.
+                   ;; currently rethinking this by moving typing before optimization.
+                   ;; (if (not (no-type? fun-type))
+                   ;;     ;; if a user-provided type was provided, propagate it to the arguments.
+                   ;;     (match fun-type with
+                   ;;       (type:pred 'arrow (rtype . arg-types) _)
+                   ;;       -> (for-range i (length rands)
+                   ;;            (let ((rand (nth rands i))
+                   ;;                  (rand-type (noderec->type rand))
+                   ;;                  (arg-type (nth arg-types i)))
+                   ;;              (if (and (no-type? rand-type) (not (is-tvar? arg-type)))
+                   ;;                  (set-node-type! rand arg-type))))
+                   ;;       _ -> (raise (:OptimizeError "strange type attached to function" fun))))
                    ;;(printf "inlining function " (sym name) " has " (int n) " formals\n")
                    ;; go through the arguments, deciding if each one is simple or complex.
                    ;; simple args can be substituted directly, complex one require a let.
+                   ;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
                    (for-range i n
                      (let ((formal (nth formals i))
-                           (fvar (vars-get-var formal))
+                           (fvar (node-get-var fun formal))
                            (rand (nth rands i)))
                        (if (or (> fvar.sets 0) (> fvar.refs 1))
                            ;; if a formal is assigned to, or referenced more than once...
@@ -369,13 +420,13 @@
                              (node:literal _)
                              -> (push! simple i)
                              (node:varref arg)
-                             -> (let ((avar (vars-get-var arg)))
+                             -> (let ((avar (node-get-var rand arg)))
                                   (if (> avar.sets 0)
                                       (push! complex i)
                                       (push! simple i)))
-                             _ -> (if (not (makes-funcalls? rand))
-                                      (push! simple i)
-                                      (push! complex i))
+                             _ -> (if (makes-funcalls? rand)
+                                      (push! complex i)
+                                      (push! simple i))
                              ))))
                    ;;(print-string "   simple, complex=") (print simple) (printn complex) (newline)
                    (let ((body (instantiate fun)) ;; alpha converted copy of the function
@@ -394,13 +445,13 @@
                                           (format "_i" (int (rename-counter.inc))))))
                                (push! names name)
                                (push! inits (nth rands i))
-                               (push! substs (:pair (nth formals i) (node/varref name)))
+                               (push! substs (:pair (nth formals i) (node/varref name (src:nil))))
                                ))
                            ;;(print-string "substs = ") (printn substs)
                            (let ((body (substitute body substs)))
                              (node/let (reverse names) (reverse inits) body)))
                          ))))
-	  _ -> (error1 "inline-application - inlining non-function?" fun)
+	  _ -> (raise (:OptimizeError "inline-application - inlining non-function?" fun))
 	  )))
 
     (define (substitute body substs)
@@ -423,8 +474,13 @@
 		      (maybe:no) -> node)
 		 (node:varset name)
 		 -> (match (lookup name) with
-		      (maybe:yes val) -> (node/varset (varref->name (noderec->t val)) (car (noderec->subs node)))
-		      (maybe:no) -> node)
+		      (maybe:yes val)
+                      -> (node/varset
+                          (varref->name (noderec->t val))
+                          (car (noderec->subs node)) (noderec->src node))
+		      (maybe:no)
+                      -> node
+                      )
 		 _ -> node)))
 	  (set-node-subs! node0 (map walk (noderec->subs node0)))
           (set-node-size! node0 (sum-size (noderec->subs node0)))
@@ -567,7 +623,8 @@
 		     -> (return
 			 (simpleopt
 			  (node/sequence
-			   (append (append (slice subs0 0 i) subs1) (slice subs0 (+ 1 i) n)))))
+			   (append (append (slice subs0 0 i) subs1) (slice subs0 (+ 1 i) n))
+                           (src:nil))))
 		     _ -> #u))
 	       #u))
 
@@ -610,7 +667,7 @@
                    (subs (noderec->subs node)))
                (for-range i (length names)
                  (let ((name (nth names i))
-                       (var (vars-get-var name)))
+                       (var (node-get-var node name)))
                    ;;(printf "name " (sym name) " refs " (int var.refs) " sets " (int var.sets) " escapes " (bool escapes) "\n")
                    (when (and (= var.refs 1) (= var.sets 0)
                               (not (bit-get var.flags VFLAG-FREEREF)))
@@ -720,7 +777,12 @@
 			      (set! fat-env (fatopt:cons name tags fat-env))
 			      ))
 			;; this nvcase is exhaustive, no need to extend fat-env
-			#u))
+                        (when (= (length tags) 1)
+                          ;; single-armed datatype.
+			  (assert (= 3 (length exp.subs)))
+			  (assert (is-match/fail? (noderec->rec (nth exp.subs 1))))
+			  (set! exp (noderec->rec (nth exp.subs 2))))
+			))
 	       ;; probably a manually-constructed nvcase
 	       _ -> (warning "non-standard nvcase expression.")
 	       ))
@@ -781,8 +843,8 @@
   (let ((g the-context.dep-graph)
 	(seen (symbol-set-maker '())))
 
-    ;;(print-string "do-trim:\n")
-    ;;(print-graph g)
+    ;; (print-string "do-trim:\n")
+    ;; (print-graph g)
 
     (define (walk name)
       (match (g::get name) with
@@ -834,17 +896,20 @@
   (set! the-context.funs (tree/empty))
   ;; rebuild it
   (build-vars exp)
+  ;;(printf "find-recursion\n")
   (find-recursion exp)
+  ;;(printf "find-refs\n")
   (find-refs exp)
+  ;;(printf "find-free-refs\n")
   (find-free-refs exp)
+  ;;(printf "escape-analysis\n")
   (escape-analysis exp)
   )
 
 (define (do-one-round node)
   (analyze node)
-  ;;(print-vars)
+  ;;(printf "build-dependency-graph...\n")
   (build-dependency-graph node)
-  ;;(print-graph the-context.dep-graph)
   ;; trim, simple, inline, simple
    (do-simple-optimizations
     (do-inlining
@@ -854,8 +919,16 @@
        )))))
 
 (define (do-n-rounds node n)
-  (if (= n 0)
-      node
-      (begin
-        (notquiet (printf "opt " (int n) " ...\n"))
-        (do-n-rounds (do-one-round node) (- n 1)))))
+  (let loop ((n0 n)
+             (node0 node)
+             (lastsize (noderec->size node)))
+    (let ((delta (- lastsize (noderec->size node0))))
+      ;; we stop at `n` _or_ if we reach a fixpoint.
+      (if (or (= n0 0) (and (< n0 n) (= delta 0)))
+          node0
+          (begin
+            (notquiet (printf "opt " (int n0) " ...\n"))
+            (loop (- n0 1)
+                  (do-one-round node0)
+                  (noderec->size node0)
+                  ))))))

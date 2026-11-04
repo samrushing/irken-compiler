@@ -2,9 +2,24 @@
 
 (require-ffi 'posix)
 
-(define (open path oflag mode)
-  (syscall
-   (posix/open (%string->cref #f (zero-terminate path)) oflag mode)))
+(define (open path oflag mode) : (string int int -> int)
+  (%backend (c llvm arm amd rv)
+    (syscall
+     (%%ffi open (%string->cref #f (zero-terminate path)) oflag
+            ;; this hack forces `mode` to be an integer, which is
+            ;; otherwise impossible to infer because of the variadic
+            ;; nature of open(2). [XXX remove this when type
+            ;; annotations are no longer lost]
+            (logior 0 mode)
+            ;;mode
+            )))
+  (%backend bytecode
+    ;; note: since open(2) is a variadic function, we have to construct the FFI
+    ;;  call manually for the VM backend.
+    (syscall
+     (let ((pfun (vm-get-sym-handle 'posix "open\x00")))
+       (%%ffi open pfun #\i 3 (%string->cref #f (zero-terminate path)) oflag mode))))
+  )
 
 (define (read fd size)
   (let ((buffer (make-string size))
@@ -47,8 +62,15 @@
     pos = 0
     end = 0 })
 
+;; we need something here like a datatype to capture valid write modes.
+
 (define (file/open-write path create? mode)
-  { fd = (open path (logior O_TRUNC (if create? (logior O_WRONLY O_CREAT) O_WRONLY)) mode)
+  { fd = (open path (logior* O_TRUNC (if create? (logior O_WRONLY O_CREAT) O_WRONLY)) mode)
+    wbuf = (make-string 16384)
+    pos = 0 })
+
+(define (file/open-append path mode)
+  { fd = (open path (logior* O_APPEND O_WRONLY O_CREAT) mode)
     wbuf = (make-string 16384)
     pos = 0 })
 
@@ -140,10 +162,10 @@
   (make-generator
    (lambda (consumer)
      (let loop ((buf (file/read-buffer ifile)))
-       (if (= 0 (string-length buf))
-           (consumer (maybe:no))
-           (consumer (maybe:yes buf)))
-       (loop (file/read-buffer ifile))))))
+       (when (> (string-length buf) 0)
+         (consumer (maybe:yes buf))
+	 (loop (file/read-buffer ifile))))
+     (forever (consumer (maybe:no))))))
 
 (define (file-char-generator file)
   (make-generator
@@ -154,6 +176,7 @@
            (if (eq? ch #\eof)
                (set! done #t)
                (consumer (maybe:yes ch)))))
+       ;; (file/close file)
        (forever (consumer (maybe:no)))
        ))))
 

@@ -26,7 +26,7 @@
 ;; and only three drawable elements:
 ;; U, L, UL
 
-(define (graph-svg-gen G m n S solution)
+(define (graph-svg-gen G m n S solution seed)
 
   (define SS (format (int S)))
 
@@ -109,7 +109,7 @@
 
     (emitf "<text x=\"40\" y=\"" (int (+ 20 (T n))) "\" class=\"small\">"
            (int m) "x" (int n)
-           " seed " (int *random-seed*) "</text>\n")
+           " seed " (int seed) "</text>\n")
 
     ;; draw the solution (if present)
     (when (not (null? solution))
@@ -124,7 +124,7 @@
     (emitf "</svg>\n")
     ))
 
-(define (graph->svg G m n S solution)
-  (for s (graph-svg-gen G m n S solution)
+(define (graph->svg G m n S solution seed)
+  (for s (graph-svg-gen G m n S solution seed)
     (print-string s)))
 

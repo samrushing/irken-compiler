@@ -19,8 +19,8 @@ Note: this is _not_ the same as Scheme's `or`, this returns a boolean.
 
 ```scheme
 (defmacro or
-  (or)			-> #f
-  (or test)		-> test
+  (or)                  -> #f
+  (or test)             -> test
   (or test1 test2 ...)	-> (if test1 #t (or test2 ...))
   )
 ```

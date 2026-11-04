@@ -6,34 +6,13 @@
 ;; needed by the runtime (in the case of the VM) and at compile time
 ;; (when using the C or LLVM backends).
 
-;; We can't use lib/basis.scm here, because we are trying to avoid
-;; 'unsafe' FFI's like posix that use constants/structs/etc
-;; that vary between platforms.  We stick to libc and stdio.
-;;
-;; Why?  Because we need to run this program in order to bootstrap
-;;  the compiler/runtime during initial build/install.
+;; We use lib/base.scm, not lib/basis.scm: this program generates the
+;;  platform's posix interface, so it can't depend on it.  (see lib/base.scm.)
 
-(require "lib/core.scm")
-(require "lib/pair.scm")
-(require "lib/string.scm")
-(require "lib/format.scm")
-(require "lib/symbol.scm")
-(%backend bytecode (require "lib/vmffi.scm"))
-(require "lib/queue.scm")
-(require "lib/set.scm")
-(require "lib/alist.scm")
-(require "lib/ctype.scm") ;; needed by os & io.
-(require "lib/sexp.scm")
-(require "lib/lisp_reader.scm") ;; needed by ctype
-(require "lib/stdio.scm")
-(require "lib/frb.scm")
+(require "lib/base.scm")
 (require "lib/getopt.scm")
-(require "lib/map.scm")
 (require "lib/cmap.scm")
-
 (require "lib/graph.scm") ;; for `strongly`.
-
-(require-ffi 'libc)
 
 (require "ffi/gen/cparse.scm")
 (require "ffi/gen/ctype.scm")
@@ -61,7 +40,17 @@
     (match t with
       (ctype2:name name)
       -> (match (tree/member map symbol-index-cmp name) with
-           (maybe:yes next) -> (map-type sub next)
+           ;; a typedef of a named struct/union becomes a reference to it,
+           ;;  not a copy of its definition: e.g. epoll_event's
+           ;;  `epoll_data_t data;` would otherwise define the union a second
+           ;;  time inside the struct.
+           (maybe:yes next)
+           -> (match next with
+                (ctype2:struct sname (maybe:yes _))
+                -> (if (eq? sname '%anonymous) (map-type sub next) (ctype2:struct sname (maybe:no)))
+                (ctype2:union uname (maybe:yes _))
+                -> (if (eq? uname '%anonymous) (map-type sub next) (ctype2:union uname (maybe:no)))
+                _ -> (map-type sub next))
            (maybe:no) -> t)
       _ -> t))
   (map-type sub type)
@@ -84,12 +73,12 @@
   (declarator:t type _) -> (declarator:t type (maybe:no)))
 
 (define remove-argnames
-  (ctype2:function rtype args) -> (ctype2:function rtype (map remove-declname args))
+  (ctype2:function rtype args var?) -> (ctype2:function rtype (map remove-declname args) var?)
   t -> t
   )
 (define remove-voidargs
-  (ctype2:function rtype ((declarator:t (ctype2:name 'void) _)))
-  -> (ctype2:function rtype '())
+  (ctype2:function rtype ((declarator:t (ctype2:name 'void) _)) var?)
+  -> (ctype2:function rtype '() var?)
   t -> t
   )
 (define (sanitize-sig t)
@@ -123,6 +112,8 @@
                         (ctype2:struct new-name (maybe:no))
                         (ctype2:union new-name (maybe:no)))))
       (tree/insert! types.structs magic-cmp (:tuple new-name struct?) new-type)
+      ;; there's no such type in the real headers.
+      (tree/insert! types.synthetic symbol-index-cmp new-name #t)
       ;; return a referral to our newly named top-level type
       ref-type
       ))
@@ -155,7 +146,9 @@
       (let ((parts (string-split line #\space)))
         (match parts with
           (_ name0 name1)
-          -> (when (and (paren-free? name0) (paren-free? name1))
+          ;; skip self-renames like glibc's `#define stdin stdin`.
+          -> (when (and (paren-free? name0) (paren-free? name1)
+                        (not (string=? name0 name1)))
                (tree/insert! renames string-compare name0 name1))
           _ -> #u
           )))
@@ -180,7 +173,8 @@
         (typedefs (tree/empty))
         (structs (tree/empty))
         (functions (tree/empty))
-        (enums (tree/empty)))
+        (enums (tree/empty))
+        (anon-typedefs (tree/empty)))
 
     (define (parse-toks toks root)
       (earley tdgram (prod:nt root) (list-generator toks)))
@@ -204,8 +198,13 @@
       -> (begin
            (match type with
              ;; name top-level anon typedef structs
-             (ctype2:struct '%anonymous sub) -> (set! type (ctype2:struct name sub))
-             (ctype2:union '%anonymous sub)  -> (set! type (ctype2:union name sub))
+             ;;  [in C these are referred to as plain `name`, not `struct name`]
+             (ctype2:struct '%anonymous sub) -> (begin
+                                                  (set! type (ctype2:struct name sub))
+                                                  (tree/insert! anon-typedefs symbol-index-cmp name #t))
+             (ctype2:union '%anonymous sub)  -> (begin
+                                                  (set! type (ctype2:union name sub))
+                                                  (tree/insert! anon-typedefs symbol-index-cmp name #t))
              (ctype2:enum '%anonymous sub)   -> (set! type (ctype2:enum name sub))
              _ -> #u
              )
@@ -259,7 +258,11 @@
             ))))
     (printf "...done.\n")
     ;; our result, a kind of database gleaned from the cpp file.
-    {typedefs=typedefs structs=structs functions=functions enums=enums}
+    {typedefs=typedefs structs=structs functions=functions enums=enums
+     ;; names of `typedef struct {...} name`
+     anon-typedefs=anon-typedefs
+     ;; names that name-anonymous made up for nested anonymous structs/unions
+     synthetic=(tree/empty)}
     ))
 
 (define (substitute-all-typedefs types)
@@ -326,12 +329,14 @@
     (define do-platform
       acc ()
       -> acc
-      acc ((sexp:symbol 'else) exp)
+      acc ((sexp:symbol 'else _) exp)
       -> (W acc exp)
-      acc ((sexp:symbol platform) exp . rest)
+      acc ((sexp:symbol platform _) exp . rest)
       -> (match *platform* with
            (maybe:yes name)
-           -> (if (eq? platform name) (W acc exp) (do-platform acc rest))
+           -> (begin
+                (if (string=? (symbol->string platform) name) (W acc exp) (do-platform acc rest))
+                )
            (maybe:no)
            -> (do-platform acc rest))
       acc x
@@ -339,7 +344,7 @@
       )
 
     (define W
-      acc (sexp:list ((sexp:symbol '%platform) . exps))
+      acc (sexp:list ((sexp:symbol '%platform _) . exps))
       -> (do-platform acc exps)
       acc (sexp:list items)
       -> (list:cons (sexp:list (W* '() items)) acc)
@@ -355,18 +360,18 @@
     exp -> (raise (:GenFFI/Error "expected string" exp))
     )
   (define sexp->symbol
-    (sexp:symbol s) -> s
+    (sexp:symbol s _) -> s
     exp -> (raise (:GenFFI/Error "expected symbol" exp))
     )
   (define sexp-starting-with
-    sym0 (sexp:list ((sexp:symbol sym1) . subs))
+    sym0 (sexp:list ((sexp:symbol sym1 _) . subs))
     -> (if (eq? sym0 sym1)
            (maybe:yes subs) ;; subs := (list sexp)
            (maybe:no))
     _ _ -> (maybe:no)
     )
   (match (scan-for-meta exp) with
-    (sexp:list ((sexp:symbol iface) . lists)) ;; lists := (list sexp)
+    (sexp:list ((sexp:symbol iface _) . lists)) ;; lists := (list sexp)
     -> (let ((includes '())
              (cflags '())
              (lflags '())
@@ -407,33 +412,19 @@
     _ -> (raise (:GenFFI/BadFFI exp))
     ))
 
-;; from os.scm
-(define (getenv name)
-  (let ((val* (libc/getenv (%string->cref #f (zero-terminate name)))))
-    (if (cref-null? val*)
-        ""
-        (%cref->string #f val* (libc/strlen val*))
-        )))
-
-(define (getenv-or var default)
-  (let ((val (getenv var)))
-    (if (= 0 (string-length val))
-        default
-        val)))
-
-(define *CC* (getenv-or "CC" "clang"))
-
-(define (system cmd)
-  (libc/system (%string->cref #f (zero-terminate cmd))))
+(define *CC* (getenv-or "CC" "cc"))
 
 (define (compile args)
-  (let ((cmd (format *CC* " " (join " " args))))
+  (let ((cmd (format *CC* " " (join " " (map ffi-path-expand args)))))
     (printf "CC: " cmd "\n")
     (let ((rcode (system cmd)))
       (if (not (= rcode 0))
           (raise (:GenFFI/CompileFailed "failed to invoke CC" cmd))
           #u))
     ))
+
+(define (get-platform)
+  (maybe:yes (platform-name)))
 
 ;; the foo_iface1.c file serves two purposes:
 ;; 1) when fed through 'cc -E', it gives the scanner something
@@ -519,7 +510,7 @@
            (:tuple name struct?)
            -> (begin
                 (printf "key->type failed on " (sym name) " struct? " (bool struct?) "\n")
-                (raise (:KeyError key)))
+                (raise (:Toposort/KeyError key)))
            )
       ))
 
@@ -541,9 +532,10 @@
 
   (define (write-sig type name)
     (match (sanitize-sig type) with
-      (ctype2:function rtype args)
+      (ctype2:function rtype args var?)
       -> (W (format " ("
                     (join declarator-repr " " args)
+                    (if var? " ..." "")
                     " -> "
                     (ctype2-repr rtype)
                     "))\n"))
@@ -624,12 +616,89 @@
 
     (define (W s) (stdio/write ofile s) #u)
 
+    ;; can we refer to this type in C, from the real headers?
+    (define (real-name? kind name)
+      (match (tree/member types.synthetic symbol-index-cmp name) with
+        (maybe:yes _) -> #f
+        (maybe:no)    -> #t))
+
+    ;; how C spells the real type.
+    (define (real-type kind name)
+      (match (tree/member types.anon-typedefs symbol-index-cmp name) with
+        (maybe:yes _) -> (format (sym name))
+        (maybe:no)    -> (format (sym kind) " " (sym name))))
+
+    (define (slot-repr type)
+      (ctype2-repr (map-type remove-argnames type)))
+
+    ;; sizes and offsets from the parsed copy (irk_xxx).
+    (define (emit-parsed kind name sname0 sname1 slots)
+      (W (format "  // offsets for " sname0 " (parsed copy only)\n"
+                 "  fprintf (stdout, \"(" sname0 " %\" PRIdPTR  \"\\n\", sizeof (" sname1 "));\n"))
+      (for-list slot slots
+        (match slot with
+          (declarator:t type (maybe:yes name))
+          -> (begin
+               (match type with
+                 (ctype2:array -1 _)
+                 -> (printf "warning: unknown array length for " sname0 "." (sym name) "\n")
+                 _ -> #u)
+               (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym name) " "
+                          (slot-repr type)
+                          ")\\n\", "
+                          (if (eq? kind 'struct)
+                              (format "offsetof(" sname1 ", " (sym name) ")")
+                              "(intptr_t)0")
+                          ");\n")))
+          (declarator:t type (maybe:no))
+          -> (W (format "  // un-named slot of type " (ctype2-repr type) "\n"))
+          )))
+
+    ;; sizes, offsets and array lengths from the real type, which may
+    ;;  differ from the parsed copy (e.g. glibc's sockaddr_in.sin_zero,
+    ;;  whose length is a sizeof expression).
+    (define (emit-real kind name sname0 sname1 slots)
+      (let ((real (real-type kind name)))
+        (W (format "  // offsets for " sname0 " (real type: " real ")\n"
+                   "  if (sizeof (" sname1 ") != sizeof (" real "))\n"
+                   "    fprintf (stderr, \"genffi: note: " sname0 ": parsed size %\" PRIdPTR \", real size %\" PRIdPTR \"\\n\",\n"
+                   "             (intptr_t) sizeof (" sname1 "), (intptr_t) sizeof (" real "));\n"
+                   "  fprintf (stdout, \"(" sname0 " %\" PRIdPTR  \"\\n\", (intptr_t) sizeof (" real "));\n"))
+        (for-list slot slots
+          (match slot with
+            (declarator:t type (maybe:yes fname))
+            -> (let ((field (format "((" real " *) 0)->" (sym fname)))
+                     (off (if (eq? kind 'struct)
+                              (format "(intptr_t) offsetof(" real ", " (sym fname) ")")
+                              "(intptr_t) 0")))
+                 (match type with
+                   ;; an array whose length isn't 0 (i.e. not `[]`): ask the compiler.
+                   (ctype2:array n elt)
+                   -> (if (= n 0)
+                          (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym fname) " "
+                                     (slot-repr type) ")\\n\", " off ");\n"))
+                          (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym fname)
+                                     " (array %\" PRIdPTR \" " (slot-repr elt) "))\\n\", " off ",\n"
+                                     "           (intptr_t) (sizeof (" field ") / sizeof (" field "[0])));\n")))
+                   _
+                   -> (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym fname) " "
+                                 (slot-repr type) ")\\n\", " off ");\n"))))
+            (declarator:t type (maybe:no))
+            -> (W (format "  // un-named slot of type " (ctype2-repr type) "\n"))
+            ))))
+
     (W (format "// generated by " sys.argv[0] "\n\n"
                "#include <stdio.h>\n"
                "#include <stdint.h>\n"
                "#include <stddef.h>\n"
                "#include <inttypes.h>\n"
                ))
+    ;; the real headers: sizes and offsets come from the real types where
+    ;;  they have a name we can use.  the parsed copies (irk_xxx) are only
+    ;;  a fallback, and a cross-check.
+    (W (format "// interface includes\n"))
+    (for-list include iface.includes
+      (W (format "#include <" include ">\n")))
     (substitute-all-typedefs types)
     (name-anonymous types iface.structs)
     (verbose (dump-types types))
@@ -655,22 +724,9 @@
                   (sname1 (format (sym kind) " irk_" (sym name1))) ;; with prefix
                   (empty? (= (length slots) 0)))
               (when (not empty?)
-                (W (format "  // offsets for " sname0 "\n"
-                           "  fprintf (stdout, \"(" sname0 " %\" PRIdPTR  \"\\n\", sizeof (" sname1 "));\n"))
-                (for-list slot slots
-                  (match slot with
-                    (declarator:t type (maybe:yes name))
-                    ;; (4 sin6_flowinfo (int (4 0)))
-                    -> (W (format "  fprintf (stdout, \"  (%\" PRIdPTR \" " (sym name) " "
-                                  (ctype2-repr (map-type remove-argnames type))
-                                  ")\\n\", "
-                                  (if (eq? kind 'struct)
-                                      (format "offsetof(" sname1 ", " (sym name) ")")
-                                      "(intptr_t)0")
-                                  ");\n"))
-                    (declarator:t type (maybe:no))
-                    -> (W (format "  // un-named slot of type " (ctype2-repr type) "\n"))
-                    ))
+                (if (real-name? kind name1)
+                    (emit-real kind name1 sname0 sname1 slots)
+                    (emit-parsed kind name1 sname0 sname1 slots))
                 (W "  fprintf (stdout, \" )\\n\");\n")
                 )
               )))
@@ -799,8 +855,10 @@
       (set! *typedefs-flag* #t))
     (when-maybe b (get-bool-opt opts 'tmp)
       (set! *keep-temps* #t))
-    (when-maybe plat (get-string-opt opts 'plat)
-      (set! *platform* (maybe:yes (string->symbol plat))))
+    (match (get-string-opt opts 'plat) with
+      (maybe:yes plat) -> (set! *platform* (maybe:yes plat))
+      (maybe:no)       -> (set! *platform* (get-platform))
+      )
     (when-maybe ffipath (get-string-opt opts 'gen)
       (genc1 ffipath)
       #u)

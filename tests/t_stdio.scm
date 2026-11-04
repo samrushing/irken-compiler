@@ -1,7 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
+(require "lib/basis.scm")
 
 (let ((FILE* (stdio/open-read sys.argv[1])))
   (for ch (stdio-char-generator FILE*)

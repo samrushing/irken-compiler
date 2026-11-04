@@ -1,7 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (require "lib/basis.scm")
-(require "demo/bignum.scm")
+(require "lib/bignum.scm")
 
 ;; This demo shows off the bignum library, but also irken's ability to do
 ;;  world dump/load.  Every 100 digits it saves the state of the computation

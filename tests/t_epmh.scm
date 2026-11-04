@@ -3,8 +3,7 @@
 ;; easy perfect minimal hash
 ;; http://stevehanov.ca/blog/index.php?id=119
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
+(require "lib/basis.scm")
 
 (define hash
   ()       d -> d
@@ -13,9 +12,9 @@
 ;; unrolled - our keys are always of length 2
 (define (hash2 d k0 k1)
   (logand #xffffffff
-    (logxor k1
+    (logxor k0
       (* (logand #xffffffff
-            (logxor k0 (* d #x01000193)))
+            (logxor k1 (* d #x01000193)))
          #x01000193))))
 
 ;; format: #(k0 k1 v) - the key is a pair of integers mapping to an integer.
@@ -29,6 +28,21 @@
      #(30 22 1) #(30 27 4) #(30 78 7) #(30 101 3) #(30 105 8) #(31 124 0) #(32 124 1)
      )))
 
+;; failure input.
+;; (define input-table
+;;   (literal
+;;    #(#(4 11 1)
+;;      #(13 11 3)
+;;      #(16 11 2)
+;;      #(18 11 3)
+;;      #(18 57 0)
+;;      #(18 58 1)
+;;      #(20 11 4)
+;;      #(26 11 2)
+;;      #(26 57 0)
+;;      #(26 58 1))
+;;    ))
+
 ;; (for-vector item input-table
 ;;   (printf "  " (int item[0]) "." (int item[1]) " = "
 ;;           (zpad 10 (hex (hash2 #x01000193 item[0] item[1])))
@@ -40,6 +54,10 @@
 
 (define (hash-item d item size)
   (mod (hash2 d item[0] item[1]) size))
+
+(define (retry-mph table)
+  (let ((t0 (list->vector (reverse (list:cons #(3141 5926 5358) (reverse (vector->list table)))))))
+    (create-minimal-perfect-hash t0)))
 
 (define (create-minimal-perfect-hash table)
 
@@ -67,6 +85,7 @@
           ;; Repeatedly try different values of d until we find a hash function
           ;; that places all items in the bucket into free slots
           (while (< item blen)
+            ;;(printn slots)
             (let ((slot (hash-item d (nth bucket item) size)))
               (if (or (not (= V[slot] not-there))
                       (member-eq? slot slots))

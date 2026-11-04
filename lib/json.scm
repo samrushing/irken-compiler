@@ -62,6 +62,62 @@
   (json:obj pairs)  -> (format "{" (join pair-repr ", " pairs) "}")
   )
 
+;; compact JSON text, with JSON (not Irken) string escapes.  for
+;;  JOSE, member order is preserved exactly as given.
+(define (json-escape s)
+  (let ((r (list:nil)))
+    (define (out str) (for-string ch str (push! r ch)))
+    (push! r #\")
+    (for-string ch s
+      (let ((n (char->int ch)))
+        (cond ((char=? ch #\") (out "\\\""))
+              ((char=? ch #\\) (out "\\\\"))
+              ((< n 32) (out (format "\\u00" (zpad 2 (hex n)))))
+              (else (push! r ch)))))
+    (push! r #\")
+    (list->string (reverse r))))
+
+(define json->string
+  (json:string s)   -> (json-escape s)
+  (json:number n)   -> (int->string n)
+  (json:bool #t)    -> "true"
+  (json:bool #f)    -> "false"
+  (json:null)       -> "null"
+  (json:array vals) -> (format "[" (join json->string "," vals) "]")
+  (json:obj pairs)  -> (format "{" (join (lambda (p)
+                                           (match p with
+                                             (:tuple k v) -> (format (json-escape k) ":" (json->string v))))
+                                         "," pairs) "}")
+  )
+
+;; member <key> of an object.
+(define (json/get j key)
+  (match j with
+    (json:obj pairs)
+    -> (let loop ((pairs pairs))
+         (match pairs with
+           () -> (maybe:no)
+           ((:tuple k v) . rest) -> (if (string=? k key) (maybe:yes v) (loop rest))))
+    _ -> (maybe:no)
+    ))
+
+;; string member <key>, or "".
+(define (json/get-string j key)
+  (match (json/get j key) with
+    (maybe:yes (json:string s)) -> s
+    _ -> ""
+    ))
+
+;; array member <key>, or the empty list.
+(define (json/get-array j key)
+  (match (json/get j key) with
+    (maybe:yes (json:array vals)) -> vals
+    _ -> (list:nil)
+    ))
+
+(define (json/parse-string s)
+  ((make-json-parser) (string-generator s)))
+
 ;; pretty-print a json object.
 
 ;; estimate the printed size of a json object

@@ -47,36 +47,48 @@ def copy_tree (src, dst, patterns):
 # copy library
 copy_tree ('lib', IRKENTOP, ['.scm'])
 # copy headers
-copy_tree ('include', IRKENTOP, ['.h', '.c', '.ll'])
+# (.s: the native backends' preambles, e.g. amd-mach-preamble.s)
+copy_tree ('include', IRKENTOP, ['.h', '.c', '.ll', '.s'])
 # copy ffi
 copy_tree ('ffi', IRKENTOP, ['_ffi.scm'])
 
-# we need a new binary with the new CFLAGS
-print ('building new binary with updated CFLAGS for install...')
-cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -g -I%s' % (IRKENINC,))
-flags = open ('self/flags.scm', 'r').read()
+# The installed compiler needs its own self/flags.scm, pointing at the
+#   installed headers.  Build it in a scratch directory, with that
+#   flags.scm there: -I puts the directory first in the search path, so
+#   it's found before this tree's.  Nothing in this tree is written (so
+#   nothing here ends up owned by root, under sudo).
+import shutil
+import tempfile
 
-# this way we pull in whatever decisions were made for bootstrap.py, updating only IRKENINC
-open ('self/flags.scm', 'w').write (
-    flags.replace ('./include', IRKENINC)
+for path in (IRKENBIN, IRKENLIB):
+    mkdir (path)
+
+scratch = tempfile.mkdtemp (prefix='irken-install-')
+try:
+    os.mkdir (PJ (scratch, 'self'))
+    flags = open ('self/flags.scm', 'r').read()
+    # this way we pull in whatever decisions were made for bootstrap.py, updating only IRKENINC
+    open (PJ (scratch, 'self', 'flags.scm'), 'w').write (flags.replace ('./include', IRKENINC))
+    shutil.copy ('self/compile.scm', PJ (scratch, 'irken.scm'))
+    src = PJ (scratch, 'irken.scm')
+
+    print ('building new binary with updated CFLAGS for install...')
+    system ('IRKENLIB=. self/compile -I %s %s -q' % (scratch, src))
+    print ('building new bytecode image...')
+    system ('IRKENLIB=. self/compile -I %s %s -b -q' % (scratch, src))
+
+    # copy binary
+    system ('cp -p %s %s/irken' % (PJ (scratch, 'irken'), IRKENBIN))
+    # copy byte compiler image
+    system ('cp -p %s %s/compile.byc' % (PJ (scratch, 'irken.byc'), IRKENLIB))
+    # copy vm
+    system ('cp -p vm/irkvm %s/irkvm' % (IRKENBIN,))
+    # make irkc script
+    irkc = PJ (scratch, 'irkc')
+    open (irkc, 'w').write (
+        "#!/bin/sh\n%s/irkvm %s/compile.byc $@\n" % (IRKENBIN, IRKENLIB)
     )
-
-system ('self/compile self/compile.scm -q')
-
-# rebuild bytecode
-print ('building new bytecode image...')
-system ('self/compile self/compile.scm -b -q')
-
-# copy binary
-system ('cp -p self/compile %s/irken' % (IRKENBIN,))
-# copy vm
-system ('cp -p vm/irkvm %s/irkvm' % (IRKENBIN,))
-# copy byte compiler image
-system ('cp -p self/compile.byc %s/' % (IRKENLIB,))
-# make irkc script
-open ('vm/irkc', 'w').write (
-    "#!/bin/sh\n%s/irkvm %s/compile.byc $@\n" % (IRKENBIN, IRKENLIB)
-)
-os.chmod ('vm/irkc', 0o755)
-system ('cp -p vm/irkc %s/' % (IRKENBIN,))
-
+    os.chmod (irkc, 0o755)
+    system ('cp -p %s %s/' % (irkc, IRKENBIN))
+finally:
+    shutil.rmtree (scratch, ignore_errors=True)

@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (require "lib/enum.scm")
+(require "lib/codecs/hex.scm")
 
 ;; This is a start on an ASN.1 BER/DER encoder.
 
@@ -11,8 +12,10 @@
 ;; DER note: no attempt is made (yet) to place encoded values in
 ;;   canonical order for SET. See section 5.15 of the "Layman's
 ;;   Guide..." for details.
-;; DER note: 'BINTEGER' (ints larger than 3 bytes) does not properly
-;;   check for canonical encoding yet.  User's responsibility for now.
+;; DER note: a 'BINTEGER' string is big-endian two's complement.  The
+;;   encoder strips redundant leading sign bytes, so the output is
+;;   minimal; but a caller with an unsigned value whose high bit is set
+;;   must still add a zero byte (see ber/uint).
 ;;
 ;; Safety Note: oversized OID elements raise an error.
 
@@ -77,14 +80,45 @@
   other            s -> (format "(" (sym (asn1string->name other)) "STRING " (string s) ")")
   )
 
+;; handy
+(define (OCTETSTRING s)
+  (ber:STRING (asn1string:OCTET) s))
+
+;; an INTEGER from an unsigned big-endian string (e.g. a 32-byte
+;;   ECDSA r or s): add a zero byte if the high bit is set, so it
+;;   isn't read as negative.  the encoder strips any extra zeros.
+(define (ber/uint s)
+  (if (and (> (string-length s) 0)
+           (>0 (logand #x80 (char->int (string-ref s 0)))))
+      (ber:BINTEGER (string-append "\x00" s))
+      (ber:BINTEGER s)))
+
+;; strip redundant leading bytes from a two's complement big-endian
+;;   integer: a 00 before a byte < 0x80, or an ff before a byte >= 0x80.
+(define (ber/minimal-int s)
+  (let ((len (string-length s)))
+    (let loop ((i 0))
+      (if (>= (+ i 1) len)
+          (if (= len 0) "\x00" (substring s i len))
+          (let ((b0 (char->int (string-ref s i)))
+                (hi (logand #x80 (char->int (string-ref s (+ i 1))))))
+            (if (or (and (= b0 #x00) (= hi 0))
+                    (and (= b0 #xff) (= hi #x80)))
+                (loop (+ i 1))
+                (substring s i len)))))))
+
+;; BITSTRING with zero padding
+(define (BITSTRING0 s)
+  (ber:STRING (asn1string:BIT) (string-append "\x00" s)))
+
 (define ber-repr
   (ber:NULL)                 -> "NULL"
   (ber:BOOLEAN b)            -> (if b "TRUE" "FALSE")
   (ber:INTEGER n)            -> (int->string n)
-  (ber:BINTEGER s)           -> (format "(INTEGER " (string->hex s) ")")
+  (ber:BINTEGER s)           -> (format "(INTEGER #x" (string->hex s) ")")
   (ber:STRING kind s)        -> (asn1-string-repr kind s)
   (ber:ENUMERATED n)         -> (format "(ENUMERATED " (int n) ")")
-  (ber:OID vals)             -> (format "(OID " (join int->string "." vals) ")")
+  (ber:OID vals)             -> (format "(OID " (join int->string " " vals) ")")
   (ber:SEQUENCE vals)        -> (format "(SEQUENCE " (join ber-repr " " vals) ")")
   (ber:SET vals)             -> (format "(SET " (join ber-repr " " vals) ")")
   (ber:CONTEXT tag vals)     -> (format "(CONTEXT " (int tag) " " (join ber-repr " " vals) ")")
@@ -219,7 +253,7 @@
     (ber:NULL)                 -> (emit "\x05\x00")
     (ber:BOOLEAN b)            -> (emit (if b "\x01\x01\xff" "\x01\x01\x00"))
     (ber:INTEGER n)            -> (encode-int emit n)
-    (ber:BINTEGER s)           -> (encode-raw emit (asn1class:univ) #f #x02 s)
+    (ber:BINTEGER s)           -> (encode-raw emit (asn1class:univ) #f #x02 (ber/minimal-int s))
     (ber:ENUMERATED n)         -> (encode-enumerated emit n)
     (ber:STRING k s)           -> (encode-string emit k s)
     (ber:SEQUENCE vals)        -> (encode-structured emit #x10 #x00 vals)
@@ -366,6 +400,48 @@
 ;; --------------------------------------------------------------------------------
 ;; utility
 ;; --------------------------------------------------------------------------------
+
+;; the raw encodings of the elements inside the constructed value
+;;   (e.g. a SEQUENCE) at the start of <der>, without decoding them.
+;; signatures are computed over the bytes as they were received, so
+;;   e.g. an X.509 tbsCertificate must be verified using its original
+;;   encoding: decoding and re-encoding it is only the same thing if
+;;   the sender used canonical DER.
+(define (ber/elements der)
+
+  (define (byte pos)
+    (when (>= pos (string-length der))
+      (raise (:BER/Underflow pos)))
+    (char->int (string-ref der pos)))
+
+  ;; -> (:tuple header-length content-length) of the TLV at <pos>.
+  (define (tlv pos)
+    (when (= #x1f (logand #x1f (byte pos)))
+      (raise (:BER/ExtendedTag "extended tags not supported" (byte pos))))
+    (let ((l0 (byte (+ pos 1))))
+      (cond ((< l0 #x80) (:tuple 2 l0))
+            ((or (= l0 #x80) (> l0 #x84))
+             (raise (:BER/BadLength "indefinite or oversized length" l0)))
+            (else
+             (let loop ((n (logand l0 #x7f)) (i (+ pos 2)) (len 0))
+               (if (= n 0)
+                   (:tuple (- i pos) len)
+                   (loop (- n 1) (+ i 1) (+ (<< len 8) (byte i)))))))))
+
+  (when (= 0 (logand #x20 (byte 0)))
+    (raise (:BER/NotConstructed (byte 0))))
+  (let (((hlen clen) (tlv 0))
+        (end (+ hlen clen))
+        (result '()))
+    (when (> end (string-length der))
+      (raise (:BER/Underflow end)))
+    (let loop ((pos hlen))
+      (cond ((= pos end) (reverse result))
+            ((> pos end) (raise (:BER/ExtraData end pos)))
+            (else
+             (let (((h c) (tlv pos)))
+               (push! result (substring der pos (+ pos h c)))
+               (loop (+ pos h c))))))))
 
 ;; sample producer
 (define (string-emitter s)

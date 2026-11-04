@@ -24,7 +24,7 @@
 			    _ -> (error1 "unknown raw type in %cexp" type))
 	 kind          -> (if (member-eq? kind c-int-types)
 			      (format "unbox(" arg ")")
-			      (error1 "wrap-in:" type))
+			      (error1 "wrap-in:" (type-repr type)))
 	 )))
 
 ;; (buffer (struct sockaddr_t)) => (struct sockaddr_t *)
@@ -55,14 +55,50 @@
     'ulonglong -> "unsigned long long"
     x -> (format (sym x)))
 
+
   (match t with
-    (type:pred 'struct (arg) _) -> (format "struct " (irken-type->c-type arg))
+    (type:pred 'struct ((type:pred name () _)) _) -> (typedef-struct-check name)
     (type:pred 'cref   (arg) _) -> (format (irken-type->c-type arg) "*")
     (type:pred 'buffer (arg) _) -> (format (irken-type->c-type arg) "*")
     (type:pred '*      (arg) _) -> (format (irken-type->c-type arg) "*")
     (type:pred name () _)       -> (decode-name name)
     (type:tvar _ _)             -> "void"
     _ -> (error1 "malformed ctype" (type-repr t))
+    ))
+
+;; XXX unused
+(define cint->c
+  (cint:char)      -> "char"
+  (cint:short)     -> "short"
+  (cint:int)       -> "int"
+  (cint:long)      -> "long"
+  (cint:longlong)  -> "long long"
+  (cint:width 8)   -> "int8_t"
+  (cint:width 16)  -> "int16_t"
+  (cint:width 32)  -> "int32_t"
+  (cint:width 64)  -> "int64_t"
+  (cint:width 128) -> "__int128_t" ;; extension
+  x -> (raise (:UnsupportedCIntType x))
+  )
+
+;; XXX unused
+(define ctype->c
+  (ctype:name n)      -> (format (sym n))
+  (ctype:int i #t)    -> (cint->c i)
+  (ctype:int i #f)    -> (format "unsigned " (cint->c i))
+  (ctype:array n t)   -> (format (ctype->c) "[" (int n) "]")
+  (ctype:pointer t)   -> (format (ctype->c t) "*")
+  (ctype:struct name) -> (format "struct " (sym name))
+  (ctype:union name)  -> (format "union " (sym name))
+  )
+
+;; this catches the case where we have renamed
+;;    `typedef struct { ... } typename`
+;; to `struct typename`.
+(define (typedef-struct-check name)
+  (match (ffi-info.tdefs::get name) with
+    (maybe:yes _) -> (format (sym name))
+    (maybe:no)    -> (format "struct " (sym name))
     ))
 
 ;;
@@ -78,6 +114,8 @@
     (type:pred 'cstring _ _) -> (format "(object*)" exp)
     (type:pred 'cref _ _)    -> (format "(make_foreign((void*)" exp "))")
     (type:pred '* _ _)       -> (format "(make_foreign((void*)" exp "))")
+    ;; irken doesn't have any concept of a function that returns NOTHING,
+    ;;   so these are typed as `-> undefined`
     (type:pred 'void _ _)    -> (format "((" exp "), IRK_UNDEFINED)")
     (type:pred kind _ _)     -> (if (member-eq? kind c-int-types)
 				    (format "box((irk_int)" exp ")")
@@ -102,19 +140,16 @@
 							  r)
 						 tl))))))
 
-
 (define (emit-c-lookup-field-hashtables o)
   (let ((ambig (build-ambig-table))
         (size (tree/size ambig))
         (table (make-vector size {k0=0 k1=0 v=0}))
         (i 0))
-    (tree/inorder
-     (lambda (k v)
-       (match k with
-         (:tuple tag label)
-         -> (set! table[i] {k0= tag k1=label v=v}))
-       (set! i (+ i 1)))
-     ambig)
+    (for-map k v ambig
+      (match k with
+        (:tuple tag label)
+        -> (set! table[i] {k0=tag k1=label v=v}))
+      (inc! i))
     (let (((G V) (create-minimal-perfect-hash table)))
       (oformat "uint32_t irk_ambig_size = " (int size) ";")
       (o.copy "int32_t G[] = {")
@@ -153,13 +188,13 @@
       (insn:test reg jn k0 k1 k)                   -> (emit-test reg jn k0 k1 k)
       (insn:testcexp regs sig tmpl jn k0 k1 k)     -> (emit-testcexp regs sig tmpl jn k0 k1 k)
       (insn:jump reg target jn free)               -> (emit-jump reg target jn free.val)
-      (insn:cexp sig type template args k)         -> (begin (emit-cexp sig type template args k.target) (emit k.insn))
-      (insn:ffi sig type name args k)              -> (error1 "no FFI in C backend" name)
+      (insn:cexp sig type ats template args k)     -> (begin (emit-cexp sig type ats template args k.target) (emit k.insn))
+      (insn:ffi sig type ats name args k)          -> (begin (emit-ffi sig type ats name args k.target) (emit k.insn))
       (insn:close name nreg body k)                -> (begin (emit-close name nreg body k.target) (emit k.insn))
       (insn:varref d i k)                          -> (begin (emit-varref d i k.target) (emit k.insn))
       (insn:varset d i v k)                        -> (begin (emit-varset d i v k.target) (emit k.insn))
-      (insn:new-env size top? types k)             -> (begin (emit-new-env size top? types k.target) (emit k.insn))
-      (insn:alloc tag size k)                      -> (begin (emit-alloc tag size k.target) (emit k.insn))
+      (insn:new-env size top? init? types k)       -> (begin (emit-new-env size top? init? types k.target) (emit k.insn))
+      (insn:alloc tag size init? k)                -> (begin (emit-alloc tag size init? k.target) (emit k.insn))
       (insn:store off arg tup i k)                 -> (begin (emit-store off arg tup i) (emit k.insn))
       (insn:invoke name fun args k)                -> (emit-call name fun args k)
       (insn:tail name fun args)                    -> (emit-tail name fun args)
@@ -247,7 +282,8 @@
 
     ;; XXX consider this: giving access to the set of free registers.
     ;;   would make it possible to do %ensure-heap in a %%cexp.
-    (define (emit-cexp sig type template args target)
+
+    (define (emit-cexp sig type argtypes template args target)
       (let ((exp
 	     (match sig with
 	       (type:pred 'arrow (result-type . arg-types) _)
@@ -263,6 +299,24 @@
 	(if (= target -1)
 	    (o.write (format exp ";"))
 	    (o.write (format "O r" (int target) " = " exp ";")))))
+
+    (define (emit-ffi csig rtype argtypes name args target)
+      ;;(printf "emit-ffi " (sym name) " argtypes: (" (join type-repr " " argtypes) ")\n")
+      (match csig with
+        (csig:fun name _ _ _) ;; consider using these ctypes rather than wrap-in,out.
+        -> (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
+                 (args1 (map2 wrap-in argtypes args0))
+                 (fcall (wrap-out rtype (format (sym name) "(" (join ", " args1) ")"))))
+             ;;(printf "fcall = " (string fcall) "\n")
+             (if (= target -1)
+                 (o.write (format fcall ";"))
+                 (o.write (format "O r" (int target) " = " fcall ";"))))
+        (csig:obj name ctype)
+        -> (begin
+             (printf "ffi obj ctype:" (ctype-repr ctype) " rtype: " (type-repr rtype) "\n")
+             (o.write (format "O r" (int target) " = " (wrap-out rtype (format "&" (sym name))) ";"))
+             )
+        ))
 
     (define (emit-check-heap free size)
       (let ((n (length free)))
@@ -377,20 +431,24 @@
 	    ;; the set! is a dead assignment, but we need to put something there
 	    (o.write (format "O r" (int target) " = (object *) TC_UNDEFINED;"))))
 
-    (define (emit-new-env size top? types target)
+    ;; init?: see insn:new-env in cps.scm.
+    (define (emit-new-env size top? init? types target)
       (let ((env-index (env-counter.inc)))
 	(o.write (format "// env " (int env-index) ":"))
 	(o.write (format "//   " (join type-repr " " types)))
-	(o.write (format "O r" (int target) " = allocate (TC_ENV, " (int (+ size 1)) ");"))
+	(o.write (format "O r" (int target) " = " (if init? "alloc_cleared" "allocate")
+                         " (TC_ENV, " (int (+ size 1)) ");"))
 	(if top?
 	    (o.write (format "top = r" (int target) ";")))))
 
-    (define (emit-alloc tag size target)
+    ;; init?: see insn:alloc in cps.scm.
+    (define (emit-alloc tag size init? target)
       (let ((tag-string (format (if (= size 0) "UITAG(" "UOTAG(") (int tag) ")")))
 	(if (= size 0)
 	    ;; unit type - use an immediate
 	    (o.write (format "O r" (int target) " = (object*)" tag-string ";"))
-	    (o.write (format "O r" (int target) " = allocate (" tag-string ", " (int size) ");")))))
+	    (o.write (format "O r" (int target) " = " (if init? "alloc_cleared" "allocate")
+                             " (" tag-string ", " (int size) ");")))))
 
     (define (emit-store off arg tup i)
       (o.write (format "r" (int tup) "[" (int (+ 1 (+ i off))) "] = r" (int arg) ";")))
@@ -589,13 +647,13 @@
             ))
 
         (define prim-record-get
-          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
+          (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg)
           -> (let ((refexp (record-slot-exp sig label rec-reg)))
                (oformat "O r" (int k.target) " = " refexp ";"))
           _ _ -> (primop-error))
 
         (define prim-record-set
-          (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg arg-reg)
+          (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg arg-reg)
           -> (let ((refexp (record-slot-exp sig label rec-reg)))
                (oformat refexp " = r" (int arg-reg) ";")
                (when (>= k.target 0)
@@ -605,7 +663,7 @@
         (define prim-record-ext
           (sexp:list ((sexp:int otag) (sexp:int ntag)
                       (sexp:list osig) (sexp:list nsig)
-                      (sexp:symbol nfield)))
+                      (sexp:symbol nfield _)))
           (src-reg arg-reg)
           -> (let ((mosig (guess-record-type osig))
                    (mnsig (guess-record-type nsig)))
@@ -615,7 +673,7 @@
                ;; copy old fields
                (for-list fs osig
                  (match fs with
-                   (sexp:symbol f)
+                   (sexp:symbol f _)
                    -> (oformat (record-slot-exp* mnsig f k.target) " = "
                                (record-slot-exp* mosig f src-reg) ";")
                    _ -> (raise (:Impossible))
@@ -672,25 +730,6 @@
                        (move rv k.target))
           _ -> (primop-error))
 
-        (define (prim-ffi2 parm args)
-          (match parm with
-            (sexp:symbol name)
-            -> (match (ffi-info.sigs::get name) with
-                 (maybe:yes (csig:fun name rtype argtypes))
-                 -> (let ((args0 (map (lambda (reg) (format "r" (int reg))) args))
-                          (argt0 (map ctype->irken-type argtypes))
-                          (args2 (map2 wrap-in argt0 args0))
-                          (call0 (format (sym name) "(" (join "," args2) ")"))
-                          (call1 (if (= k.target -1) call0 (wrap-out type call0))))
-                      (if (= k.target -1)
-                          (o.write (format call1 ";"))
-                          (o.write (format "O r" (int k.target) " = " call1 ";"))))
-                 (maybe:yes (csig:obj name obtype))
-                 -> (o.write (format "O r" (int k.target) " = make_foreign ((void*)&" (sym name) ");"))
-                 _ -> (primop-error))
-            _ -> (primop-error)
-            ))
-
         (define (prim-c-aref args)
           (match args type with
             (src index) (type:pred 'cref (subtype) _)
@@ -714,7 +753,7 @@
           -> (begin
                (o.write (format "// %c-set-ptr"))
                (o.write (format "*((void**)get_foreign (r" (int dst) ")) = get_foreign (r" (int src) ");"))
-               (when (> k.target 0)
+               (when (>= k.target 0)
                  (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error)
           )
@@ -776,16 +815,16 @@
           (dst src)
           -> (let ((ctype (irken-type->c-type type)))
                ;; XXX check against word size
-               (printf "c-set-int " ctype "\n")
+               ;;(printf "c-set-int " ctype "\n")
                (o.write (format "*((" ctype "*)get_foreign(r" (int dst) ")) = (" ctype ") UNTAG_INTEGER(r" (int src) ");"))
-               (when (> k.target 0)
+               (when (>= k.target 0)
                  (o.write (format "O r" (int k.target) " = (object *) TC_UNDEFINED;"))))
           _ -> (primop-error))
 
         (define sref->c
           ;; structname.field0.field1.field2...
-          (sexp:attr (sexp:symbol sname) fname) src
-          -> (format "((((struct " (sym sname) "*)" src "))->" (sym fname) ")")
+          (sexp:attr (sexp:symbol sname _) fname) src
+          -> (format "(((" (typedef-struct-check sname) "*)" src ")->" (sym fname) ")")
           (sexp:attr sub fname) src
           -> (format "(" (sref->c sub src) "." (sym fname) ")")
           _ _ -> (impossible)
@@ -808,7 +847,7 @@
           _ -> (primop-error))
 
         (define prim-string->cref
-          (src) -> (o.write (format "O r" (int k.target) " = make_foreign (GET_STRING_POINTER (r" (int src) "));"))
+          (src) -> (o.write (format "O r" (int k.target) " = make_string_foreign (r" (int src) ");"))
           _ -> (primop-error))
 
         ;; essentially a no-op.
@@ -842,7 +881,6 @@
           '%malloc       -> (prim-malloc parm args)
           '%halloc       -> (prim-halloc parm args)
           '%free         -> (prim-free args)
-          '%ffi2         -> (prim-ffi2 parm args)
           '%c-aref       -> (prim-c-aref args)
           '%c-get-int    -> (prim-c-get-int args)
           '%c-set-int    -> (prim-c-set-int args)
@@ -1013,6 +1051,9 @@
     ;; emit the top-level insns
     (o.write "void toplevel (void) {")
     (o.indent)
+    ;; we initialize any slot a collection could see before it's set:
+    ;;  see clear_tospace in gc1.c.
+    (o.write "clear_tospace = 0;")
     (when the-context.options.trace (o.write "TRACE(\"toplevel\");"))
     (emit insns)
     (o.dedent)

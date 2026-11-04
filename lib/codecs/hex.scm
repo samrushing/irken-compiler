@@ -32,3 +32,7 @@
                   (b1 (hexdigit (string-ref s (+ 1 (* 2 i))))))
               (string-set! r i (int->char (logior (<< b0 4) b1)))))
           r))))
+
+(defmacro hexcat
+  (hexcat a ...) -> (hex->string (string-concat (list a ...)))
+  )

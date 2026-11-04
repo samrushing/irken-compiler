@@ -1,8 +1,7 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/basis.scm")
-(include "lib/map.scm")
-(include "lib/random.scm")
+(require "lib/basis.scm")
+(require "lib/random.scm")
 
 ;; XXX test with more complicated keys (like records)
 ;; XXX test with magic-cmp

@@ -29,6 +29,21 @@
     -> (eq? name0 name)
     _ -> #f))
 
+(define is-tvar?
+  (type:tvar _ _) -> #t
+  _ -> #f
+  )
+
+;; only for FFI!
+(define variadic?
+  (type:pred 'arrow (arg) _)
+  -> #f
+  (type:pred 'arrow (arg . args) _)
+  -> (is-pred? (last args) '...)
+  _
+  -> #f
+  )
+
 (define type<? magic<?)
 
 ;; singleton base types
@@ -187,7 +202,7 @@
     (type:tvar index _)
     -> (sexp (sym 'quote) (sym (string->symbol (base26 (cmap->index tvar-cmap index)))))
     (type:pred name subs _)
-    -> (sexp:list (cons (sexp:symbol name) (map recur subs)))
+    -> (sexp:list (cons (sexp:symbol name null-src) (map recur subs)))
     )
   (recur t))
 
@@ -203,8 +218,8 @@
     (match trec.parent with
       (maybe:no)    -> t
       (maybe:yes t0) -> (let ((p (type-find t0)))
-                         (set! trec.parent (maybe:yes p)) ;; path compression
-                         p))))
+                          (set! trec.parent (maybe:yes p)) ;; path compression
+                          p))))
 
 (define (type-union a b)
   (let ((pa (type-find a))
@@ -231,15 +246,15 @@
                       r)))
 
   (define arrow-type?
-    ()                      -> #f
-    ((sexp:symbol '->) . _) -> #t
-    (_ . tl)                -> (arrow-type? tl)
+    ()                        -> #f
+    ((sexp:symbol '-> _) . _) -> #t
+    (_ . tl)                  -> (arrow-type? tl)
     )
 
   (define (parse-arrow-type t)
     (let loop ((args '()) (t0 t))
       (match t0 with
-        ((sexp:symbol '->) result-type) -> (arrow (parse result-type) (reverse args))
+        ((sexp:symbol '-> _) result-type) -> (arrow (parse result-type) (reverse args))
         (arg . rest) -> (loop (list:cons (parse arg) args) rest)
         () -> (error1 "bad arrow type" t)
         )))
@@ -248,7 +263,7 @@
     ;; ;; without alias check
     ;; ((sexp:symbol p) . rest) -> (pred p (map parse rest))
     ;; alias check...
-    ((sexp:symbol p) . rest)
+    ((sexp:symbol p _) . rest)
     -> (match (alist/lookup the-context.aliases p) with
     	 (maybe:yes scheme) -> (apply-alias p scheme rest)
     	 (maybe:no) -> (pred p (map parse rest)))
@@ -291,8 +306,8 @@
     (apply-scheme scheme (map parse-type pred-args)))
 
   (define parse-list
-    ((sexp:symbol 'quote) (sexp:symbol tvar)) -> (get-tvar tvar)
-    ((sexp:symbol 'quote) . x)  -> (error1 "malformed type?" x)
+    ((sexp:symbol 'quote _) (sexp:symbol tvar _)) -> (get-tvar tvar)
+    ((sexp:symbol 'quote _) . x)  -> (error1 "malformed type?" x)
     l -> (if (arrow-type? l)
              (parse-arrow-type l)
              (parse-predicate l))
@@ -305,7 +320,7 @@
 
   (define (parse t)
     (match t with
-      (sexp:symbol sym)
+      (sexp:symbol sym _)
       -> (match (alist/lookup base-types sym) with
 	   ;; known base type
 	   (maybe:yes t) -> t
@@ -360,7 +375,7 @@
 ;; as an sexp it can be attached to a primapp as a parameter.
 (define (get-record-sig-sexp t)
   (let ((sig (get-record-sig t)))
-    (sexp:list (map sexp:symbol sig))))
+    (sexp:list (map make-sexp-symbol sig))))
 
 (define c-int-types
   ;; XXX distinguish between signed and unsigned!
@@ -412,7 +427,6 @@
 
 ;; XXX we need the inverse of the above function for llvm.
 (define irken-type->ctype
-  ;; XXX detect cref, struct, etc
   (type:pred 'char _ _)      -> (ctype:int (cint:char)     #t)
   (type:pred 'uchar _ _)     -> (ctype:int (cint:char)     #f)
   (type:pred 'int _ _)       -> (ctype:int (cint:int)      #t)
@@ -435,6 +449,7 @@
   (type:pred 'u128 _ _)      -> (ctype:int (cint:width 16) #f)
   (type:pred 'i256 _ _)      -> (ctype:int (cint:width 32) #t)
   (type:pred 'u256 _ _)      -> (ctype:int (cint:width 32) #f)
+  (type:pred '* (sub) _)     -> (ctype:pointer (irken-type->ctype sub))
   (type:pred 'cref (sub) _)  -> (ctype:pointer (irken-type->ctype sub))
   (type:pred 'array (sub) _) -> (ctype:pointer (irken-type->ctype sub))
   (type:pred 'struct ((type:pred name _ _)) _) -> (ctype:struct name)

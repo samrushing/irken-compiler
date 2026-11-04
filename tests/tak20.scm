@@ -2,7 +2,7 @@
 
 ;; Tak, the Hideous New Girl!
 
-(include "lib/core.scm")
+(require "lib/basis.scm")
 
 (define (tak x y z)
   (if (>= y x)

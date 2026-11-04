@@ -1,0 +1,23 @@
+;; -*- Mode: Irken -*-
+
+;; looking to include enough here to perform p256 signatures for TLS
+
+(bearssl
+ (includes "bearssl.h" "bearssl_ec.h")
+ ;; for the VM:
+ (dll "/Users/rushing/src/BearSSL/build/libbearssl.so")
+ ;; for c/llvm:
+ (cflags "-I /Users/rushing/src/BearSSL/inc")
+ (lflags "-L /Users/rushing/src/BearSSL/build -lbearssl")
+ (constants BR_EC_secp256r1)
+ (structs br_ec_public_key br_ec_private_key)
+ (sigs br_ecdsa_i31_vrfy_raw
+       br_ecdsa_i31_sign_raw
+       br_ec_prime_i31
+       br_sha256_vtable
+       br_ec_p256_m31
+       br_ec_p256_m64_get
+       br_ec_compute_pub
+       )
+ )
+

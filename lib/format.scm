@@ -75,7 +75,7 @@
 
 (defmacro fitem
   (fitem (<int> n))		-> (int->string n)
-  (fitem (<char> ch))		-> (char->string ch)
+  (fitem (<char> ch))		-> (char->utf8 ch) ;;(char->string ch)
   (fitem (<bool> b))		-> (bool->string b)
   (fitem (<hex> n))		-> (int->hex-string n)
   (fitem (<oct> n))		-> (int->oct-string n)
@@ -92,7 +92,6 @@
   (fitem (<cpad> n item ...))	-> (cpad n (format item ...) #\space) ;; center-pad
   (fitem (<zpad> n item ...))	-> (lpad n (format item ...) #\0)     ;; zero-pad
   (fitem (<repeat> n item ...)) -> (string-concat (n-of n (format item ...)))
-  ;; maybe do more ansi codes?
   (fitem (<bold> item ...))     -> (format "\x1b[1;1m" item ... "\x1b[0m")
   (fitem (<ansi> spec item ...)) -> (ansi spec item ...)
   (fitem (<maybe> mob yes no))  -> (if-maybe $x mob (yes $x) no)

@@ -23,7 +23,8 @@
 (define (alist/get l k err)
   (match (alist/lookup l k) with
     (maybe:yes v) -> v
-    (maybe:no)    -> (error1 err k)))
+    (maybe:no)    -> (raise (:KeyError k))
+    ))
 
 (defmacro alist/make
   (alist/make)                     -> (alist:nil)

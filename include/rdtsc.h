@@ -3,8 +3,20 @@
 #ifndef IRK_RDTSC_H
 #define IRK_RDTSC_H
 
-#if defined(__llvm__)
-uint64_t rdtsc(void) __asm__ ("llvm.readcyclecounter");
+// at least on macos, this throws an illegal instruction.
+// instead, we want CNTVCNT_EL0, a "virtual count".
+// #if defined(__llvm__)
+// uint64_t rdtsc(void) __asm__ ("llvm.readcyclecounter");
+
+#if defined (__aarch64__)
+
+// tested on macos m1 and arm64 freebsd-14.
+static __inline__ unsigned long long rdtsc(void)
+{
+  uint64_t x;
+  __asm__ __volatile__ ("isb\n mrs %0, CNTVCT_EL0" : "=r" (x));
+  return x;
+}
 
 #elif defined(__i386__)
 

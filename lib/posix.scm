@@ -17,3 +17,98 @@
     (free utsname*)
     result
     ))
+
+(make-enum stat-mode
+  (pipe    S_IFIFO)
+  (char    S_IFCHR)
+  (dir     S_IFDIR)
+  (block   S_IFBLK)
+  (regular S_IFREG)
+  (symlink S_IFLNK)
+  (socket  S_IFSOCK)
+  )
+
+(define (isdir? path)
+  (try
+   (let ((info (stat path)))
+     (not (zero? (logand info.mode S_IFDIR))))
+   except (:OSError _)
+   -> #f
+   ))
+
+(define (isfile? path)
+  (try
+   (let ((info (stat path)))
+     (not (zero? (logand info.mode S_IFREG))))
+   except (:OSError _)
+   -> #f
+   ))
+
+
+(define (stat path)
+
+  ;; unfortunately some of these slots are not portable between systems.
+  ;; i.e. on macos we have this lovely macro:
+  ;; #define st_atime st_atimespec.tv_sec
+  ;; and on freebsd we have:
+  ;; #define st_atime st_atim.tv_sec
+  ;; and glibc on linux uses the same st_atim names as freebsd.
+  ;; maybe eventually I'll add '%platform to the compiler?
+  
+  (define (get-atime stat*)
+    (c-get-int
+     (%%platform
+      Darwin
+      (%c-sref stat.st_atimespec.tv_sec stat*)
+      (FreeBSD Linux)
+      (%c-sref stat.st_atim.tv_sec stat*)
+      else
+      (%c-sref stat.st_atime stat*))
+     ))
+
+  (define (get-mtime stat*)
+    (c-get-int
+     (%%platform
+      Darwin
+      (%c-sref stat.st_mtimespec.tv_sec stat*)
+      (FreeBSD Linux)
+      (%c-sref stat.st_mtim.tv_sec stat*)
+      else
+      (%c-sref stat.st_mtime stat*))
+     ))
+
+  (define (get-ctime stat*)
+    (c-get-int
+     (%%platform
+      Darwin
+      (%c-sref stat.st_ctimespec.tv_sec stat*)
+      (FreeBSD Linux)
+      (%c-sref stat.st_ctim.tv_sec stat*)
+      else
+      (%c-sref stat.st_ctime stat*))
+     ))
+
+  (let ((stat* (halloc (struct stat))))
+    (syscall (posix/stat (cstring path) stat*))
+    { mode	= (c-get-int (%c-sref stat.st_mode stat*))
+      ;;ino	= (c-get-int (%c-sref stat.st_in stat*))
+      ;;dev	= (c-get-int (%c-sref stat.st_dev stat*))
+      nlink	= (c-get-int (%c-sref stat.st_nlink stat*))
+      uid	= (c-get-int (%c-sref stat.st_uid stat*))
+      gid	= (c-get-int (%c-sref stat.st_gid stat*))
+      size	= (c-get-int (%c-sref stat.st_size stat*))
+      atime	= (get-atime stat*)
+      mtime	= (get-mtime stat*)
+      ctime	= (get-ctime stat*)
+      }
+    ))
+
+(define (signal/ignore signum)
+  (%backend bytecode (posix/signal signum SIG_IGN))
+  ;; signal's handler is a function pointer: through the FFI, SIG_IGN
+  ;;  would be an int, which C compilers now reject.  so in C, call it
+  ;;  with the real SIG_IGN.
+  (%backend c (%%cexp (int -> int) "(irk_int) signal (%0, SIG_IGN)" signum))
+  (%backend (llvm arm amd rv) (%%ffi signal signum SIG_IGN)))
+
+

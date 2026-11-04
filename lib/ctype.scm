@@ -44,8 +44,13 @@
   (:union symbol)
   )
 
+(define ctype-signed?
+  (ctype:int _ signed?) -> signed?
+  _                     -> #f
+  )
+
 (define ctype-repr
-  (ctype:name name)    -> (format "(type " (symbol->string name) ")")
+  (ctype:name name)    -> (symbol->string name)
   (ctype:int cint s?)  -> (cint-repr cint s?)
   (ctype:array size t) -> (format "(array " (int size) " " (ctype-repr t) ")")
   (ctype:pointer t)    -> (format "(* " (ctype-repr t) ")")
@@ -84,54 +89,54 @@
 
 ;; c function/object signature
 (datatype csig
-  (:fun symbol ctype (list ctype)) ;; name return-type arg-types
-  (:obj symbol ctype)              ;; name type
+  (:fun symbol ctype (list ctype) bool) ;; name return-type arg-types variadic?
+  (:obj symbol ctype)                   ;; name type
   )
 
-(define csig-print
-  (csig:fun name rtype argtypes)
-  -> (printf "(" (sym name) " " (join ctype-repr " " argtypes) " -> " (ctype-repr rtype) ")\n")
+(define csig-repr
+  (csig:fun name rtype argtypes var?)
+  -> (format "(" (sym name) " " (join ctype-repr " " argtypes) (if var? " ..." "") " -> " (ctype-repr rtype) ")")
   (csig:obj name otype)
-  -> (printf "(" (sym name) " " (ctype-repr otype) ")\n")
+  -> (format "(" (sym name) " " (ctype-repr otype) ")")
   )
 
 (define parse-ctype
   ;; many integer types
-  (sexp:symbol 'int)       -> (ctype:int (cint:int) #t)
-  (sexp:symbol 'uint)      -> (ctype:int (cint:int) #f)
-  (sexp:symbol 'short)     -> (ctype:int (cint:short) #t)
-  (sexp:symbol 'ushort)    -> (ctype:int (cint:short) #f)
-  (sexp:symbol 'long)      -> (ctype:int (cint:long) #t)
-  (sexp:symbol 'ulong)     -> (ctype:int (cint:long) #f)
-  (sexp:symbol 'longlong)  -> (ctype:int (cint:longlong) #t)
-  (sexp:symbol 'ulonglong) -> (ctype:int (cint:longlong) #f)
-  (sexp:symbol 'i8)        -> (ctype:int (cint:width 1) #t)
-  (sexp:symbol 'u8)        -> (ctype:int (cint:width 1) #f)
-  (sexp:symbol 'i16)       -> (ctype:int (cint:width 2) #t)
-  (sexp:symbol 'u16)       -> (ctype:int (cint:width 2) #f)
-  (sexp:symbol 'i32)       -> (ctype:int (cint:width 4) #t)
-  (sexp:symbol 'u32)       -> (ctype:int (cint:width 4) #f)
-  (sexp:symbol 'i64)       -> (ctype:int (cint:width 8) #t)
-  (sexp:symbol 'u64)       -> (ctype:int (cint:width 8) #f)
-  (sexp:symbol 'i256)      -> (ctype:int (cint:width 32) #t)
-  (sexp:symbol 'u256)      -> (ctype:int (cint:width 32) #f)
-  (sexp:list ((sexp:symbol 'int) (sexp:list ((sexp:int size) (sexp:int signed?)))))
+  (sexp:symbol 'int _)       -> (ctype:int (cint:int) #t)
+  (sexp:symbol 'uint _)      -> (ctype:int (cint:int) #f)
+  (sexp:symbol 'short _)     -> (ctype:int (cint:short) #t)
+  (sexp:symbol 'ushort _)    -> (ctype:int (cint:short) #f)
+  (sexp:symbol 'long _)      -> (ctype:int (cint:long) #t)
+  (sexp:symbol 'ulong _)     -> (ctype:int (cint:long) #f)
+  (sexp:symbol 'longlong _)  -> (ctype:int (cint:longlong) #t)
+  (sexp:symbol 'ulonglong _) -> (ctype:int (cint:longlong) #f)
+  (sexp:symbol 'i8 _)        -> (ctype:int (cint:width 1) #t)
+  (sexp:symbol 'u8 _)        -> (ctype:int (cint:width 1) #f)
+  (sexp:symbol 'i16 _)       -> (ctype:int (cint:width 2) #t)
+  (sexp:symbol 'u16 _)       -> (ctype:int (cint:width 2) #f)
+  (sexp:symbol 'i32 _)       -> (ctype:int (cint:width 4) #t)
+  (sexp:symbol 'u32 _)       -> (ctype:int (cint:width 4) #f)
+  (sexp:symbol 'i64 _)       -> (ctype:int (cint:width 8) #t)
+  (sexp:symbol 'u64 _)       -> (ctype:int (cint:width 8) #f)
+  (sexp:symbol 'i256 _)      -> (ctype:int (cint:width 32) #t)
+  (sexp:symbol 'u256 _)      -> (ctype:int (cint:width 32) #f)
+  (sexp:list ((sexp:symbol 'int _) (sexp:list ((sexp:int size) (sexp:int signed?)))))
   -> (ctype:int (cint:width size) (if (= signed? 1) #t #f))
-  (sexp:list ((sexp:symbol '*) sub))
+  (sexp:list ((sexp:symbol '* _) sub))
   -> (ctype:pointer (parse-ctype sub))
-  (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
+  (sexp:list ((sexp:symbol 'struct _) (sexp:symbol name _)))
   -> (ctype:struct name)
-  (sexp:list ((sexp:symbol 'union) (sexp:symbol name)))
+  (sexp:list ((sexp:symbol 'union _) (sexp:symbol name _)))
   -> (ctype:union name)
-  (sexp:list ((sexp:symbol 'array) sub (sexp:list ((sexp:int size)))))
+  (sexp:list ((sexp:symbol 'array _) sub (sexp:list ((sexp:int size)))))
   -> (ctype:array size (parse-ctype sub))
   ;; new array form (i.e. ctype2-repr)
-  (sexp:list ((sexp:symbol 'array) (sexp:int size) sub))
+  (sexp:list ((sexp:symbol 'array _) (sexp:int size) sub))
   -> (ctype:array size (parse-ctype sub))
   ;; temporary, all function types are void
-  (sexp:list ((sexp:symbol 'fun) . _))
+  (sexp:list ((sexp:symbol 'fun _) . _))
   -> (ctype:name 'void)
-  (sexp:symbol name)
+  (sexp:symbol name _)
   -> (ctype:name name)
   x -> (error1 "malformed type" (repr x))
   )
@@ -139,23 +144,29 @@
 (define (parse-spec info forms)
 
   (define parse-field
-    (sexp:list ((sexp:int size) (sexp:symbol name) ftype))
+    (sexp:list ((sexp:int size) (sexp:symbol name _) ftype))
     -> (cfield:t size name (parse-ctype ftype))
     x -> (error1 "malformed field" (repr x))
     )
 
   (define parse-struct
-    'struct ((sexp:symbol name) (sexp:int size) . fields)
+    'struct ((sexp:symbol name _) (sexp:int size) . fields)
     -> (info.structs::add name (cdef:struct size name (map parse-field fields)))
-    'union ((sexp:symbol name) (sexp:int size) . fields)
+    'union ((sexp:symbol name _) (sexp:int size) . fields)
     -> (info.unions::add name (cdef:union size name (map parse-field fields)))
     kind x -> (error1 "malformed struct" (:pair kind x))
     )
 
   (define arrow-type?
-    ()                    -> #f
-    ((sexp:symbol '->) _) -> #t
-    (hd . tl)             -> (arrow-type? tl)
+    ()                      -> #f
+    ((sexp:symbol '-> _) _) -> #t
+    (_ . tl)                -> (arrow-type? tl)
+    )
+
+  (define variadic?
+    ()                         -> #f
+    ((sexp:symbol '... _) . _) -> #t
+    (_ . tl)                   -> (variadic? tl)
     )
 
   ;; convert all integer arguments to 'int' type.
@@ -169,13 +180,14 @@
     name (sexp:list sig)
     -> (if (arrow-type? sig)
            (let ((siglen (length sig))
+                 (var? (variadic? sig))
                  (rtype (nth sig (- siglen 1)))
-                 (args (slice sig 0 (- siglen 2))))
+                 (args (slice sig 0 (- siglen (if var? 3 2)))))
              (csig:fun name
-                       (parse-ctype rtype)
-                       ;;(map frob-int-arg (map parse-ctype args))
-                       (map parse-ctype args)
-                       ))
+                   (parse-ctype rtype)
+                   (map parse-ctype args)
+                   (variadic? sig)
+                   ))
            (csig:obj name (parse-ctype (sexp:list sig))))
     name sig
     -> (csig:obj name (parse-ctype sig))
@@ -183,23 +195,27 @@
     )
 
   (define parse-sig
-    ((sexp:symbol name) sig)
+    ((sexp:symbol name _) sig)
     -> (info.sigs::add name (parse-sig* name sig))
-    ((sexp:list ((sexp:symbol name0) (sexp:symbol name1))) sig)
+    ((sexp:list ((sexp:symbol name0 _) (sexp:symbol name1 _))) sig)
     -> (let ((sig0 (parse-sig* name1 sig)))
+         ;; add both names
+         (info.sigs::add name1 sig0)
          (info.sigs::add name0 sig0))
     x -> (error1 "malformed sig" (repr (sexp:list x)))
     )
 
   (define parse-con
-    ((sexp:symbol name) (sexp:int val))
+    ((sexp:symbol name _) (sexp:int val))
     -> (info.cons::add name val)
     x -> (error1 "malformed constant" x)
     )
 
   (define parse-tdef
-    ((sexp:symbol name) t)
-    -> (info.tdefs::add name (parse-ctype t))
+    ((sexp:symbol name _) t)
+    -> (begin
+         (printf "adding tdef for " (sym name) "\n")
+         (info.tdefs::add name (parse-ctype t)))
     x -> (error1 "malformed tdef" x)
     )
 
@@ -213,23 +229,23 @@
     )
 
   (define parse-form
-    (sexp:list ((sexp:symbol 'struct) . rest))
+    (sexp:list ((sexp:symbol 'struct _) . rest))
     -> (parse-struct 'struct rest)
-    (sexp:list ((sexp:symbol 'union) . rest))
+    (sexp:list ((sexp:symbol 'union _) . rest))
     -> (parse-struct 'union rest)
-    (sexp:list ((sexp:symbol 'sig) . rest))
+    (sexp:list ((sexp:symbol 'sig _) . rest))
     -> (parse-sig rest)
-    (sexp:list ((sexp:symbol 'con) . rest))
+    (sexp:list ((sexp:symbol 'con _) . rest))
     -> (parse-con rest)
-    (sexp:list ((sexp:symbol 'tdef) . rest))
+    (sexp:list ((sexp:symbol 'tdef _) . rest))
     -> (parse-tdef rest)
-    (sexp:list ((sexp:symbol 'includes) . rest))
+    (sexp:list ((sexp:symbol 'includes _) . rest))
     -> (set! info.includes (parse-string-list '() rest))
-    (sexp:list ((sexp:symbol 'cflags) . rest))
-    -> (set! info.cflags (parse-string-list '() rest))
-    (sexp:list ((sexp:symbol 'lflags) . rest))
-    -> (set! info.lflags (parse-string-list '() rest))
-    (sexp:list ((sexp:symbol 'dll) (sexp:string dll)))
+    (sexp:list ((sexp:symbol 'cflags _) . rest))
+    -> (set! info.cflags (map ffi-path-expand (parse-string-list '() rest)))
+    (sexp:list ((sexp:symbol 'lflags _) . rest))
+    -> (set! info.lflags (map ffi-path-expand (parse-string-list '() rest)))
+    (sexp:list ((sexp:symbol 'dll _) (sexp:string dll)))
     -> (set! info.dll dll)
     x -> (error1 "malformed spec file" (repr x))
     )
@@ -274,8 +290,8 @@
   (printf "cflags: " (join " " ffi-info.cflags) "\n")
   (printf "lflags: " (join " " ffi-info.lflags) "\n")
   (printf "dll: " (string ffi-info.dll) "\n")
-  (printf "sigs:\n")
-  (map csig-print (ffi-info.sigs::values))
+  (printf "sigs:\n  ")
+  (printf (join csig-repr "\n  " (ffi-info.sigs::values)) "\n")
   (printf "defs:\n")
   (map cdef-print (ffi-info.structs::values))
   (map cdef-print (ffi-info.unions::values))
@@ -289,24 +305,33 @@
      (printf "  " (sym k) " " (ctype-repr v) "\n")))
   )
 
-(define FFI-PATH (getenv-or "IRKENLIB" "/usr/local/lib/irken/ffi/"))
+(define FFI-PATH (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
+;; cflags and lflags in an interface may refer to files that live in the
+;;   irken tree (e.g. include/p256/p256_ec.c) as "$IRKENLIB/...".
+(define (ffi-path-expand s)
+  (let ((var "$IRKENLIB/")
+        (root (if (ends-with FFI-PATH "/") FFI-PATH (format FFI-PATH "/"))))
+    ;; string-split-string raises if s is shorter than var.
+    (if (< (string-length s) (string-length var))
+        s
+        (string-replace-all s var root))))
 
 (define (read-spec name)
-  (let ((path0 (format FFI-PATH (sym name) "_ffi.scm")))
+  (let ((path0 (format FFI-PATH "ffi/" (sym name) "_ffi.scm")))
     ;;(printf "loading ffi spec for " (sym name) "\n")
     ;;(printf "  from " path0 "\n")
     (%backend bytecode
-      (let ((fparts0 (%%cexp (string -> (list string)) "readf" path0)))
+      (let ((fparts0 (%%vminsn (string -> (list string)) 'readf path0)))
         (if (null? fparts0)
             ;; VM failed to read the file.  Try local copy (bootstrapping).
             (let ((path1 (format "ffi/" (sym name) "_ffi.scm"))
-                  (fparts1 (%%cexp (string -> (list string)) "readf" path1)))
+                  (fparts1 (%%vminsn (string -> (list string)) 'readf path1)))
               (if (null? fparts1)
                   ;; give up
                   (raise (:NoFFI "unable to read FFI" name))
                   (set! fparts0 fparts1))))
         (read-string (string-concat fparts0))))
-    (%backend (c llvm)
+    (%backend (c llvm arm amd rv)
       ;; using stdio avoids a circular dependency on posix.ffi.
       (try
        (let ((file0 (stdio/open-read path0)))
@@ -354,6 +379,26 @@
                  (raise (:OSError x)))
             )
         ))))
+
+;; in the VM we need to make sure all the interfaces are loaded up front
+;;   in order to avoid some malloc(0) calls for objects of unknown size.
+(%backend bytecode
+(define (load-all-ffi-interfaces)
+  ;;(printf "loading ffi interfaces...\n")
+  (match (%%compile-time-meta 'ffi-interfaces) with
+    (sexp:list ifaces)
+    -> (for-list iface ifaces
+         (match iface with
+           (sexp:symbol name _)
+           -> (require-ffi* name)
+           x
+           -> (error1 "bad result from %%compile-time-meta" (repr x))
+           ))
+    x
+    -> (error1 "bad result from %%compile-time-meta" (repr x))
+    ))
+(load-all-ffi-interfaces)
+)
 
 ;; this is meant for *runtime* use.
 ;; XXX this distinction not needed.
@@ -446,7 +491,7 @@
 (define expand-cref
   ref0 ()
   -> ref0
-  ref0 ((sexp:symbol fname) . tl)
+  ref0 ((sexp:symbol fname _) . tl)
   -> (expand-cref (cref-field fname ref0) tl)
   ref0 ((sexp:int index) . tl)
   -> (expand-cref (cref-aref index ref0) tl)
@@ -469,7 +514,7 @@
   (ctype:int (cint:long) #f)        -> #\l
   (ctype:int (cint:long) #t)        -> #\L
   (ctype:int (cint:longlong) #f)    -> #\n
-  (ctype:int (cint:longlong) #f)    -> #\N
+  (ctype:int (cint:longlong) #t)    -> #\N
   (ctype:int (cint:width 1) #f)     -> #\B
   (ctype:int (cint:width 1) #t)     -> #\b
   (ctype:int (cint:width 2) #f)     -> #\H
@@ -510,6 +555,7 @@
      'i64       -> #\q
      'string    -> #\s
      'char      -> #\c
+     '*         -> #\p
      x          -> (raise (:StrangeType x))
      )))
 
@@ -521,16 +567,16 @@
 ;;   is done at compile-time.  The bytecode is more complex because
 ;;   information about sizes/structs/etc is only available at runtime.
 
-(%backend (c llvm)
+(%backend (c llvm arm amd rv)
 
   (defmacro build-ffi-fun
     (build-ffi-fun iface name ztname rtype rcode nargs argtypes (formal0 ...))
-    -> (lambda (formal0 ...) (%ffi2 name formal0 ...))
+    -> (lambda (formal0 ...) (%%ffi name formal0 ...))
     )
 
   (defmacro build-ffi-ob
     (build-ffi-ob iface name ztname obtype obcode)
-    -> (%ffi2 name)
+    -> (%%ffi name)
     )
 
   (defmacro fetch-ffi-constant
@@ -544,19 +590,18 @@
 
 (%backend bytecode
 
+  ;; note that we insert 3 args in front of the actual args.  if you change this,
+  ;;  be sure to change the definition of `fixed-args` in `bytecode.scm`.
+
   (defmacro build-ffi-fun
     (build-ffi-fun iface name ztname rtype rcode nargs (argtype0 ...) (formal0 ...))
     -> (let (($pfun (vm-get-sym-handle (quote iface) ztname)))
          (lambda (formal0 ...)
-           (%%cexp ((cref void) char int argtype0 ... -> rtype)
-                   "ffi"
-                   $pfun rcode nargs
-                   formal0 ...))))
-
+           (%%ffi name $pfun rcode nargs formal0 ...))))
 
   (defmacro build-ffi-ob
     (build-ffi-ob iface name ztname obtype obcode)
-    -> (%%cexp (string -> (cref obtype)) "dlsym0" ztname))
+    -> (%%vminsn (string -> (cref obtype)) 'dlsym0 ztname))
 
   (defmacro fetch-ffi-constant
     ;; we need to fetch the correct value at runtime.
@@ -566,23 +611,25 @@
   )
 
 (define sexp->ref
-  (sexp:attr (sexp:symbol sname) fname)
+  (sexp:attr (sexp:symbol sname _) fname)
   -> (let ((ref0 {off=0 ctype=(ctype:struct sname)}))
        (cref-field fname ref0))
   (sexp:attr sub fname)
   -> (let ((ref0 (sexp->ref sub)))
        (cref-field fname ref0))
-  x -> (raise (:SexpRefError x))
+  x -> (raise (:SexpRefError (repr x)))
   )
 
 ;; compute the size/offset of a type at runtime (VM).
 
 (define sexp->sizeoff
-  (sexp:list ((sexp:symbol 'struct) (sexp:symbol name)))
+  (sexp:list ((sexp:symbol 'struct _) (sexp:symbol name _)))
   -> (ctype->size (ctype:struct name))
-  (sexp:list ((sexp:symbol 'union) (sexp:symbol name)))
+  (sexp:list ((sexp:symbol 'union _) (sexp:symbol name _)))
   -> (ctype->size (ctype:union name))
-  (sexp:symbol tdef)
+  (sexp:list ((sexp:symbol '* _) _))
+  -> *word-size*
+  (sexp:symbol tdef _)
   -> (ctype->size (ctype:name tdef))
   exp
   -> (let ((ref (sexp->ref exp)))
@@ -600,7 +647,7 @@
   ;;   seven times.
   ;; this will be replaced by the VM with the contents of the sizeoff table.
 
-  (define sizeoff-table (literal #((sexp:symbol &&sizeoff-sentinel&&))))
+  (define sizeoff-table (literal #((sexp:symbol &&sizeoff-sentinel&& (src:nil)))))
 
   (define (update-sizeoff-table)
 
@@ -611,7 +658,7 @@
 
     (for-range i (vector-length sizeoff-table)
       (let ((val (sexp->sizeoff sizeoff-table[i])))
-        (%%cexp (int int -> undefined) "sizeoff" (+ 5 i) val)))
+        (%%vminsn (int int -> undefined) 'sizeoff (+ 5 i) val)))
     )
 
   )
@@ -647,10 +694,18 @@
 
 ;; ---------- utility -----------
 
+;; (cref char) -> string
 (define (get-cstring s*)
   (let ((s0* (%c-aref char s* 0))
         (slen (libc/strlen s0*)))
     (%cref->string #f s0* slen)))
+
+;; (cref char *) -> (cref char) -> string
+(define (get-cstring* char**)
+  (let ((p (c-get-ptr char**))
+        (plen (libc/strlen p)))
+    (%cref->string #f p plen)
+    ))
 
 (define (cref->string s* slen)
   (%cref->string #f s* slen))
@@ -682,7 +737,9 @@
 (define (get-errno)
   (%backend c (%%cexp (-> int) "errno"))
   (%backend llvm (%llvm-call ("@irk_get_errno" (-> int))))
-  (%backend bytecode (%%cexp (-> int) "errno"))
+  (%backend bytecode (%%vminsn (-> int) 'errno))
+  ;; irk_get_errno already returns a tagged integer, so no conversion.
+  (%backend (arm amd rv) (%asm-c-call ("irk_get_errno" (-> int) #f)))
   )
 
 (define (raise-system-error)
@@ -692,6 +749,10 @@
     ;;         " " (string (%cref->string #f msg (libc/strlen msg)))
     ;;         "\n")
     (raise (:OSError errno))))
+
+(define (strerror errno)
+  (let ((msg (libc/strerror errno)))
+    (%cref->string #f msg (libc/strlen msg))))
 
 (define (syscall val)
   (if (< val 0)

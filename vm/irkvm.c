@@ -1,7 +1,6 @@
 // -*- Mode: C -*-
 
 #include "header1.c"
-
 #include "irken.h"
 #include <stdio.h>
 #include "rdtsc.h"
@@ -18,6 +17,7 @@
 
 static object * allocate (irk_int tc, irk_int size);
 static object * alloc_no_clear (irk_int tc, irk_int size);
+static object * alloc_cleared (irk_int tc, irk_int size);
 static object * dump_object (object * ob, int depth);
 static void print_object (object * ob);
 static object do_gc (int nroots);
@@ -272,10 +272,9 @@ typedef int32_t bytecode_t;
 static irk_int bytecode_len;
 static bytecode_t * bytecode;
 
-// NOTE: because we are using computed gotos in the main VM loop,
-//  any opcode that is out of range causes a segfault.  here we
-//  scan the bytecode here to ensure that all are in range before
-//  execution.
+// NOTE: because we are using computed gotos in the main VM loop, any
+//  opcode that is out of range causes a segfault.  here we scan the
+//  bytecode to ensure that all are in range before execution.
 
 static
 irk_int
@@ -309,6 +308,10 @@ scan_bytecode()
       case IRK_OP_FFI:
         nvar = bytecode[i+4];
         nargs = 4 + nvar;
+        break;
+      case IRK_OP_FFIV:
+        nvar = bytecode[i+5];
+        nargs = 5 + nvar;
         break;
       default:
         nargs = code.nargs;
@@ -565,7 +568,7 @@ vm_read_file (irk_string * path, object ** result)
 }
 
 irk_int
-vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
+vm_do_ffi (object * vm_regs, irk_int pc, int nfixed, irk_int nargs, object * result)
 {
   // FFI target pfun rtype nargs arg0 ...
   ffi_cif cif;
@@ -575,8 +578,19 @@ vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
   void * vals[nargs];
   void * pvals[nargs];
   int good = 1;
+
+  // vm_do_ffi is used for both the FFI and FFIV insns.
+  // for FFIV an additional arg is included at the front, such that the
+  // remaining arguments are in identical positions but shifted by one.
+
+  irk_int pc0 = pc;
+  if (nfixed >= 0) {
+    // FFIV - adjust program counter
+    pc0 += 1;
+  }
+
   for (int i=0; i < nargs; i++) {
-    object * ob = vm_regs[bytecode[pc+5+i]];
+    object * ob = vm_regs[bytecode[pc0+5+i]];
     switch (get_case (ob)) {
     case TC_INT:
       // Note: we can't use sint here, because it is not a synonym for 'intptr_t',
@@ -608,7 +622,8 @@ vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
       break;
     case TC_FOREIGN:
       args[i] = &ffi_type_pointer;
-      vals[i] = ob[1];
+      // either a raw pointer, or <buffer> <offset> (halloc, %string->cref).
+      vals[i] = get_foreign (ob);
       pvals[i] = vals + i;
       break;
     default:
@@ -623,7 +638,7 @@ vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
   if (good) {
     ffi_type * rtype;
     // parse rtype
-    unsigned char rcode = (unsigned char) GET_CHAR (vm_regs[bytecode[pc+3]]);
+    unsigned char rcode = (unsigned char) GET_CHAR (vm_regs[bytecode[pc0+3]]);
     switch (rcode) {
     case 'i':
       rtype = &ffi_type_pointer;
@@ -642,8 +657,14 @@ vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
       fprintf (stderr, "unknown return type\n");
       return -1;
     }
-    if (FFI_OK == ffi_prep_cif (&cif, FFI_DEFAULT_ABI, nargs, rtype, args)) {
-      void * pfun = (void*) get_foreign (vm_regs[bytecode[pc+2]]);
+    ffi_status prep_result = 0;
+    if (nfixed < 0) {
+      prep_result = ffi_prep_cif (&cif, FFI_DEFAULT_ABI, nargs, rtype, args);
+    } else {
+      prep_result = ffi_prep_cif_var (&cif, FFI_DEFAULT_ABI, nfixed, nargs, rtype, args);
+    }
+    if (prep_result == FFI_OK) {
+      void * pfun = (void*) get_foreign (vm_regs[bytecode[pc0+2]]);
       if (pfun) {
         ffi_arg rc;
         ffi_call (&cif, pfun, &rc, pvals);
@@ -671,7 +692,7 @@ vm_do_ffi (object * vm_regs, irk_int pc, irk_int nargs, object * result)
         }
         return 0;
       } else {
-        fprintf (stderr, "ffi: null function address\n");
+        fprintf (stderr, "ffi: null function address: %p\n", get_foreign (vm_regs[bytecode[pc0+2]]));
         return -1;
       }
     } else {
@@ -858,12 +879,12 @@ vm_go (void)
     &&l_pop0, &&l_epop, &&l_tron, &&l_troff, &&l_gc, &&l_imm, &&l_make,
     &&l_makei, &&l_exit, &&l_nvcase, &&l_tupref, &&l_vlen, &&l_vref,
     &&l_vset, &&l_vmake, &&l_alloc, &&l_rref, &&l_rset, &&l_getcc,
-    &&l_putcc, &&l_ffi, &&l_smake, &&l_sfromc, &&l_slen,
+    &&l_putcc, &&l_ffi, &&l_ffiv, &&l_smake, &&l_sfromc, &&l_slen,
     &&l_sref, &&l_sset, &&l_scopy, &&l_unchar, &&l_gist, &&l_argv,
     &&l_quiet, &&l_heap, &&l_readf, &&l_malloc, &&l_halloc, &&l_cget,
     &&l_cset, &&l_free, &&l_sizeoff, &&l_sgetp, &&l_caref, &&l_csref,
     &&l_dlopen, &&l_dlsym0, &&l_dlsym, &&l_csize, &&l_cref2int, &&l_int2cref,
-    &&l_ob2int, &&l_obptr2int, &&l_errno, &&l_meta, &&l_hash
+    &&l_ob2int, &&l_obptr2int, &&l_errno, &&l_meta, &&l_hash, &&l_plat
   };
 
   assert ((sizeof (dispatch_table) / sizeof (void *)) == (sizeof (irk_opcodes) / sizeof (opcode_info_t)));
@@ -879,7 +900,7 @@ vm_go (void)
 
 
   //#define DISPATCH() DEBUG_DISPATCH()
-#define DISPATCH() NORMAL_DISPATCH()
+  #define DISPATCH() NORMAL_DISPATCH()
 
   // print_regs ((object*)vm_regs, 10);
   // print_stack (vm_k);
@@ -991,7 +1012,7 @@ vm_go (void)
   DISPATCH();
  l_env:
   // ENV <target> <size>
-  REG1 = allocate (TC_VM_LENV, BC2+1);
+  REG1 = alloc_cleared (TC_VM_LENV, BC2+1);
   pc += 3;
   DISPATCH();
  l_stor:
@@ -1186,7 +1207,7 @@ vm_go (void)
   DISPATCH();
  l_makei:
   // MAKEI target tag payload
-  REG1 = (object*)((UNTAG_INTEGER(REG3)<<8) | (UNTAG_INTEGER(REG2) & 0xff));
+  REG1 = (object*)((UNTAG_INTEGER(REG3)<<TAGSIZE) | (UNTAG_INTEGER(REG2) & TAGMASK));
   pc += 4;
   DISPATCH();
  l_exit:
@@ -1252,7 +1273,7 @@ vm_go (void)
   DISPATCH();
  l_alloc:
   // ALLOC <target> <tag> <size>
-  REG1 = allocate (BC2, BC3);
+  REG1 = alloc_cleared (BC2, BC3);
   pc += 4;
   DISPATCH();
  l_rref: {
@@ -1300,14 +1321,34 @@ vm_go (void)
     irk_int nargs = UNTAG_INTEGER (REG4);
     // XXX concerned that passing vm_regs defeats the register decl above.
     object result;
-    irk_int success = vm_do_ffi ((object *) vm_regs, pc, nargs, &result);
+    irk_int success = vm_do_ffi ((object *) vm_regs, pc, -1, nargs, &result);
     if (success == 0) {
-      REG1 = result;
+      if (BC1 != 99) { // sentinel for dead target
+        REG1 = result;
+      }
     } else {
       fprintf (stderr, "op_ffi failed\n");
       return TAG_INTEGER ((unsigned)-1);
     }
     pc += nargs + 5;
+  }
+  DISPATCH();
+ l_ffiv: {
+    // FFIV nfixed target pfun rtype nargs arg0 ...
+    irk_int nfixed = BC1;
+    irk_int nargs = UNTAG_INTEGER (REG5);
+    // XXX concerned that passing vm_regs defeats the register decl above.
+    object result;
+    irk_int success = vm_do_ffi ((object *) vm_regs, pc, (int)nfixed, nargs, &result);
+    if (success == 0) {
+      if (BC2 != 99) { // sentinel for dead target
+        REG2 = result;
+      }
+    } else {
+      fprintf (stderr, "op_ffiv failed\n");
+      return TAG_INTEGER ((unsigned)-1);
+    }
+    pc += nargs + 6;
   }
   DISPATCH();
  l_smake: {
@@ -1437,11 +1478,13 @@ vm_go (void)
     irk_int sindex = BC2;
     irk_int nelem = UNTAG_INTEGER (REG3);
     irk_int sizeoff = get_sizeoff_entry (sindex);
+    fprintf (stderr, "sizeoff index = %ld value = %ld\n", sindex, sizeoff);
     result = (object*) malloc (sizeoff * nelem);
     if (!result) {
       fprintf (stderr, "malloc failed.\n");
       return TAG_INTEGER ((unsigned)-1);
     } else {
+      fprintf (stderr, "malloc(%ld) => %p\n", (sizeoff*nelem), result);
       REG1 = make_foreign (result);
       pc += 4;
       DISPATCH();
@@ -1482,6 +1525,10 @@ vm_go (void)
   }
  l_free: {
     // FREE src
+    object * foreign = REG1;
+    if (GET_TUPLE_LENGTH (*foreign) == 1) {
+      fprintf (stderr, "free %p\n", (void*) foreign[1]);
+    }
     free_foreign (REG1);
     pc += 2;
     DISPATCH();
@@ -1496,8 +1543,7 @@ vm_go (void)
   }
  l_sgetp: {
     // SGETP dst src
-    irk_string * s = (irk_string *) REG1;
-    REG2 = make_foreign (s->data);
+    REG2 = make_string_foreign (REG1);
     pc += 3;
     DISPATCH();
   }
@@ -1582,18 +1628,39 @@ vm_go (void)
     pc += 6;
     DISPATCH();
   }
+ l_plat: {
+    // PLAT target
+    struct utsname U;
+    char * result = "unknown";
+    if (0 == uname (&U)) {
+      result = U.sysname;
+    }
+    irk_int slen = strlen (result);
+    irk_string * dst = (irk_string *) alloc_no_clear (TC_STRING, string_tuple_length (slen));
+    dst->len = slen;
+    memcpy (GET_STRING_POINTER (dst), result, slen);
+    REG1 = (object*) dst;
+    pc += 2;
+    DISPATCH();
+  }
 }
 
 void
 toplevel (void) {
+  // the objects the VM fills in later (ENV, ALLOC) are cleared when
+  //  they're allocated: no need to clear the heap after a collection.
+  clear_tospace = 0;
   if (irk_argc < 2) {
     fprintf (stderr, "Usage: %s <bytecode-file> <arg0> <arg1> ...\n", irk_argv[0]);
   } else if (-1 == read_bytecode_file (irk_argv[1])) {
     fprintf (stderr, "failed to read bytecode file: %s\n", irk_argv[1]);
   } else {
     object * result = vm_go();
-    //print_object (result);
-    //fprintf (stdout, "\n");
+    if ((result != (object*) IRK_UNDEFINED) && !IS_INTEGER(result)) {
+      // only print the result object if it's "interesting".
+      print_object (result);
+      fprintf (stdout, "\n");
+    }
     if (is_int (result)) {
       exit ((int)(intptr_t)UNTAG_INTEGER(result));
     } else {

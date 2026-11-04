@@ -1,8 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-(include "lib/core.scm")
-(include "lib/pair.scm")
-(include "lib/string.scm")
+(require "lib/basis.scm")
 
 (for-range x (+ 5 5)
    (for-range y 10

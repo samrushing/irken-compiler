@@ -25,7 +25,7 @@
   () ()
   -> #t
   ;; ellipsis pattern
-  (p0 (sexp:symbol '...)) el
+  (p0 (sexp:symbol '... _)) el
   -> (every? (lambda (x) (matches-pattern? p0 x)) el)
   ;; any other list
   (p0 . pl) (e0 . el)
@@ -52,10 +52,10 @@
 
 (define matches-pattern?
   ;; symbol usually means a variable, unless surround by <brackets>
-  (sexp:symbol v0) v1
+  (sexp:symbol v0 _) v1
   -> (if (bracketed? v0)
 	 (match v1 with
-	   (sexp:symbol v1)
+	   (sexp:symbol v1 _)
 	   -> (angle-bracket-equal? v0 v1) ;; both literal symbols
 	   _ -> #f) ;; literal symbol matched against a non-symbol
 	 #t) ;; non-literal symbol matches anything
@@ -81,16 +81,17 @@
 
 (define (get-ellipsis-nestings p) ;; (sexp) -> (list sexp)
   (define dolist ;; (list sexp) -> (list sexp)
-    (p0 (sexp:symbol '...)) -> (list (sexp:list (get-ellipsis-nestings p0)))
-    (hd . tl)		    -> (append (get-ellipsis-nestings hd) (dolist tl))
-    _			    -> '())
+    (p0 (sexp:symbol '... _)) -> (list (sexp:list (get-ellipsis-nestings p0)))
+    (hd . tl)		      -> (append (get-ellipsis-nestings hd) (dolist tl))
+    _			      -> '())
   (match p with
     (sexp:list pl)    -> (dolist pl)
-    (sexp:symbol sym) -> (list p)
+    (sexp:symbol _ _) -> (list p)
     _		      -> '()))
 
 (define intersect?
-  (sexp:symbol v) (sexp:symbol y) -> (eq? v y)
+  (sexp:symbol v _) (sexp:symbol y _)
+  -> (eq? v y)
   (sexp:list vl)  (sexp:list yl)
   -> (some? (lambda (vi)
 	      (some? (lambda (yj)
@@ -120,7 +121,7 @@
 
 (define (get-bindings p e) ;; -> (list sexp)
   (define dolist
-    (p (sexp:symbol '...)) e
+    (p (sexp:symbol '... _)) e
     -> (list (sexp (sexp:list (get-ellipsis-nestings p))
 		   (sexp:list (map (lambda (ei)
 				      (sexp:list (get-bindings p ei)))
@@ -131,7 +132,7 @@
     _ _ -> '()
     )
   (match p e with
-     (sexp:symbol k) e           -> (list (sexp p e))
+     (sexp:symbol k _) e         -> (list (sexp p e))
      (sexp:list p) (sexp:list e) -> (dolist p e)
      _ _ -> '()
      )
@@ -142,7 +143,7 @@
   (let loop ((r r))
     (match r with
       () -> (maybe:no)
-      ((sexp:list ((sexp:symbol k1) v1)) . tl)
+      ((sexp:list ((sexp:symbol k1 _) v1)) . tl)
       -> (if (eq? k0 k1)
 	     (maybe:yes v1)
 	     (loop tl))
@@ -152,8 +153,8 @@
 ;; this is only used to allow attribute reference names to be macro args.
 (define (expand-name sym0 r)
   (match (mbe/assoc sym0 r) with
-    (maybe:no)                     -> sym0
-    (maybe:yes (sexp:symbol sym1)) -> sym1
+    (maybe:no)                       -> sym0
+    (maybe:yes (sexp:symbol sym1 _)) -> sym1
     (maybe:yes x) -> (error (format "name " (sym sym0) " did not expand to a symbol " (repr x)))
     ))
 
@@ -168,7 +169,7 @@
     (sexp:vector pl)    -> (sexp:vector (expand-list pl r))
     (sexp:record fs)    -> (sexp:record (map (lambda (f) (expand-field f r)) fs))
     (sexp:attr exp sym) -> (sexp:attr (expand-pattern exp r) (expand-name sym r))
-    (sexp:symbol sym)   -> (match (mbe/assoc sym r) with
+    (sexp:symbol sym _) -> (match (mbe/assoc sym r) with
                              (maybe:yes v) -> v
                              (maybe:no)    -> p)
     x                   -> x
@@ -179,7 +180,7 @@
     (sexp:list al) bl -> (append al bl)
     _ _ -> (error "expected list"))
   (match p with
-    (p (sexp:symbol '...) . tl)
+    (p (sexp:symbol '... _) . tl)
     -> (let ((nestings (get-ellipsis-nestings p))
 	     (rr0 (ellipsis-sub-envs nestings r))
 	     ;; rr0 is always a list of lists
@@ -215,11 +216,12 @@
 	     new)))
 
     (define walk
-      (sexp:symbol s)
+      (sexp:symbol s src)
       -> (sexp:symbol
 	  (if (eq? (string-ref (symbol->string s) 0) #\$)
 	      (T s)
-	      s))
+	      s)
+          src)
       (sexp:list l)
       -> (sexp:list (map walk l))
       x -> x
@@ -228,8 +230,32 @@
     (walk out-pat)
     ))
 
+(define (annotate-macroexpansion out name src0)
+  ;; some macros (like `let`) expand repeatedly in a way
+  ;;   where recording each one is error spam.
+  (define (maybe-add src1)
+    (match src1 with
+      (src:macro name1 _ _)
+      -> (if (eq? name name1)
+             src1
+             (src:macro name src0 src1))
+      _
+      -> (src:macro name src0 src1)
+      ))
+  (define Wf (field:t name val) -> (field:t name (W val)))
+  (define W
+    (sexp:list l)        -> (sexp:list (map W l))
+    (sexp:vector l)      -> (sexp:vector (map W l))
+    (sexp:record fs)     -> (sexp:record (map Wf fs))
+    (sexp:attr b a)      -> (sexp:attr (W b) a)
+    (sexp:symbol s src1) -> (sexp:symbol s (maybe-add src1))
+    x                    -> x
+    )
+  (W out)
+  )
+
 (define (make-macro name patterns)
-  (define (apply exp debug?)
+  (define (apply exp src debug?)
     (let loop ((l patterns))
       (match l with
 	((:pair in-pat out-pat) . tl)
@@ -239,7 +265,7 @@
 		 (let ((out-pat0 (gen-syms out-pat))
 		       (r (expand-pattern out-pat0 (get-bindings in-pat exp))))
 		   (if debug? (printf "  -> " (repr r) "\n"))
-		   r))
+		   (annotate-macroexpansion r name src)))
 	       (loop tl))
 	()
 	-> (error1 "no matching clause for macro" (repr exp)))))

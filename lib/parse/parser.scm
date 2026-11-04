@@ -16,13 +16,13 @@
   ;; (filter name ...)
 
   (define p-filter
-    (sexp:symbol name)
+    (sexp:symbol name _)
     -> name
     exp -> (raise (:Parser/Error "p-filter" exp))
     )
 
   (define p-filters
-    (sexp:list ((sexp:symbol 'filter) . names))
+    (sexp:list ((sexp:symbol 'filter _) . names))
     -> (map p-filter names)
     exp -> (raise (:Parser/Error "p-filters" exp))
     )
@@ -31,7 +31,7 @@
   ;; (parser (lexicon ...) (filter ...) (grammar ...))
 
   (define p-parser
-    ((sexp:list ((sexp:symbol 'parser) lexicon filters grammar)))
+    ((sexp:list ((sexp:symbol 'parser _) lexicon filters grammar)))
     -> (let ((l0 (sexp->lexicon lexicon))
              (f0 (p-filters filters))
              (g0 (sexp->grammar grammar))
@@ -45,7 +45,7 @@
     (alist:entry start _ _)
     -> start
     (alist:nil)
-    -> (raise (:Parser/Error "no grammar?" (sexp:symbol '?)))
+    -> (raise (:Parser/Error "no grammar?" (sexp:symbol '? null-src)))
     )
 
   (p-parser exp)

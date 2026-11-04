@@ -77,12 +77,12 @@
       (match insn with
         (insn:literal lit k)			      -> (emitk (emit-literal lit k.target) k)
         (insn:return target)                          -> (emit-return target)
-        (insn:cexp sig type template args k)          -> (emitk (emit-cexp sig type template args k.target) k)
+        (insn:cexp sig type ats template args k)      -> (emitk (emit-vminsn sig type ats template args k.target) k)
         (insn:move dst var k)                         -> (emitk (emit-move dst var k.target) k)
         (insn:test reg jn k0 k1 k)                    -> (emit-test reg jn k0 k1 k)
         (insn:jump reg target jn free)                -> (emit-jump reg target jn free.val)
         (insn:close name nreg body k)                 -> (emitk (emit-close name nreg body k.target) k)
-        (insn:new-env size top? types k)              -> (emitk (emit-new-env size top? types k.target) k)
+        (insn:new-env size top? _ types k)            -> (emitk (emit-new-env size top? types k.target) k)
         (insn:push r k)                               -> (emitk (emit-push r) k)
         (insn:store off arg tup i k)                  -> (emitk (emit-store off arg tup i) k)
         (insn:varref d i k)                           -> (emitk (emit-varref d i k.target) k)
@@ -97,9 +97,9 @@
         (insn:nvcase tr dt tags jn alts ealt k)       -> (emit-nvcase tr dt tags jn alts ealt k)
         (insn:pvcase tr tags arities jn alts ealt k)  -> (emit-pvcase tr tags arities jn alts ealt k)
         (insn:litcon i kind k)                        -> (emitk (emit-litcon i kind k.target) k)
-        (insn:alloc tag size k)                       -> (emitk (emit-alloc tag size k.target) k)
+        (insn:alloc tag size _ k)                     -> (emitk (emit-alloc tag size k.target) k)
         (insn:testcexp regs sig tmpl jn k0 k1 k)      -> (impossible)
-        (insn:ffi sig type name args k)               -> (error1 "ffi being redesigned." insn)
+        (insn:ffi sig type ats name args k)           -> (emitk (emit-ffi sig type ats name args k.target) k)
         (insn:label label next)                       -> (emit next)
         ))
 
@@ -126,7 +126,7 @@
                    (raise (:IntegerTooBig n))
                    r)))))
 
-    (define (UITAG n) (+ TC_USERIMM (<< n 8)))
+    (define (UITAG n) (+ TC_USERIMM (<< n TAGSIZE)))
     (define (UOTAG n) (+ TC_USEROBJ (<< n 2)))
 
     ;; hacks for datatypes known by the runtime
@@ -156,17 +156,24 @@
     (define (emit-return reg)
       (LINSN 'ret reg))
 
-    ;; %%cexp is really more like 'builtin primapp' here. [consider renaming]
-
-    (define (emit-cexp sig type template args target)
+    (define (emit-vminsn sig type ats template args target)
       ;; Note: is it bad that you can use this to call any insn?
       (let ((opcode (string->symbol template))
             (info (name->info opcode)))
-        (list (stream:insn
-               (string->symbol template)
-               (if info.target
-                   (cons target args)
-                   args)))
+        (list (stream:insn opcode (if info.target (cons target args) args)))))
+
+    (define (emit-ffi csig rtype argtypes name args target)
+      ;;(printf "emit-ffi " (sym name) " csig: " (csig-repr csig) " argtypes: (" (join type-repr " " argtypes) ")\n")
+      (match csig with
+        (csig:fun name frtype fargtypes #t) ;; varargs
+        -> (let ((nfixed (length fargtypes))
+                 (args0 (list:cons nfixed (list:cons (if (= target -1) 99 target) args))))
+             ;;(printf "varargs ffi nfixed = " (int nfixed) " args0 " (join int->string " " args0) "\n")
+             (list (stream:insn 'ffiv args0)))
+        (csig:fun name frtype fargtypes #f)
+        -> (list (stream:insn 'ffi (list:cons (if (= target -1) 99 target) args)))
+        (csig:obj name obtype)
+        -> (list (stream:insn 'dlsym0 (list:cons target args)))
         ))
 
     (define (move src dst)
@@ -269,7 +276,7 @@
             (LINSN 'trcall0 label (+ 1 npop))
             (list (stream:insn
                    'trcall
-                   (prepend label npop (length args) args)
+                   (prepend label npop nargs args)
                    )))))
 
     (define (emit-call name fun args k)
@@ -289,20 +296,20 @@
 
     (define get-sizeoff
       ;; XXX handle all 'sorta known' sizes like pointer, int, char, etc.
-      (sexp:symbol 'char) -> 1
-      (sexp:symbol 'i8)   -> 1
-      (sexp:symbol 'u8)   -> 1
-      (sexp:symbol 'i16)  -> 2
-      (sexp:symbol 'u16)  -> 2
-      (sexp:symbol 'i32)  -> 4
-      (sexp:symbol 'u32)  -> 4
-      (sexp:symbol 'i64)  -> 8
-      (sexp:symbol 'u64)  -> 8
-      (sexp:list ((sexp:symbol 'cref) _)) -> 50 ;; (cref 'a) == pointer
-      (sexp:symbol 'short)                -> 51
-      (sexp:symbol 'int)                  -> 52
-      (sexp:symbol 'long)                 -> 53
-      (sexp:symbol 'longlong)             -> 54
+      (sexp:symbol 'char _) -> 1
+      (sexp:symbol 'i8 _)   -> 1
+      (sexp:symbol 'u8 _)   -> 1
+      (sexp:symbol 'i16 _)  -> 2
+      (sexp:symbol 'u16 _)  -> 2
+      (sexp:symbol 'i32 _)  -> 4
+      (sexp:symbol 'u32 _)  -> 4
+      (sexp:symbol 'i64 _)  -> 8
+      (sexp:symbol 'u64 _)  -> 8
+      (sexp:list ((sexp:symbol 'cref _) _)) -> 50 ;; (cref 'a) == pointer
+      (sexp:symbol 'short _)                -> 51
+      (sexp:symbol 'int _)                  -> 52
+      (sexp:symbol 'long _)                 -> 53
+      (sexp:symbol 'longlong _)             -> 54
       sexp
       -> (+ 55 (cmap/add sizeoff-map sexp))
       )
@@ -368,7 +375,7 @@
          (tree/insert! the-context.ambig-rec int-cmp code #u))
 
        (define prim-record-get
-         (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg)
+         (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg)
          -> (let ((label-code (lookup-label-code label)))
               (match (guess-record-type sig) with
                 (maybe:yes sig0)
@@ -381,7 +388,7 @@
          _ _ -> (primop-error))
 
        (define prim-record-set
-         (sexp:list ((sexp:symbol label) (sexp:list sig))) (rec-reg arg-reg)
+         (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg arg-reg)
          -> (let ((label-code (lookup-label-code label)))
               (match (guess-record-type sig) with
                 (maybe:yes sig0)
@@ -424,7 +431,7 @@
        ;; this is a limited-remit function needed only to 'fill in' missing
        ;;   params for a handful of FFI-related primops.
        (define irken-type->sexp
-         (type:pred sym () _)   -> (sexp:symbol sym)
+         (type:pred sym () _)   -> (sexp:symbol sym null-src)
          (type:pred sym subs _) -> (sexp1 sym (map irken-type->sexp subs))
          x                      -> (raise (:Types/IrkenType2Sexp (type-repr x)))
          )
@@ -434,11 +441,11 @@
          _ (src index)
          -> (let ((tsexp (irken-type->sexp (un-cref type)))
                   (sindex (get-sizeoff tsexp)))
-              (printf "c-aref parm = " (repr parm) " sizeoff " (int sindex) "\n"
-                      "       type = " (type-repr type) "\n"
-                      "       sexp = " (repr tsexp) "\n"
-                      "     sindex = " (int sindex) "\n"
-                      )
+              ;; (printf "c-aref parm = " (repr parm) " sizeoff " (int sindex) "\n"
+              ;;         "       type = " (type-repr type) "\n"
+              ;;         "       sexp = " (repr tsexp) "\n"
+              ;;         "     sindex = " (int sindex) "\n"
+              ;;         )
               (LINSN 'caref target src sindex index))
          _ _ -> (primop-error))
 
@@ -451,7 +458,7 @@
          (char->int (ctype->code (irken-type->ctype type))))
 
        (define prim-cget-int
-         ;;(sexp:symbol itype) (src)
+         ;;(sexp:symbol itype _) (src)
          _ (src)
          ;; CGET target src code
          -> (begin
@@ -462,13 +469,34 @@
          )
 
        (define prim-cset-int
-         ;;(sexp:symbol itype) (src dst)
+         ;;(sexp:symbol itype _) (dst src)
          _ (dst src)
          ;; CSET dst code val
          -> (begin
               (printf "c-set-int type = " (type-repr type) "\n"
                       "          code = " (char (int->char (irken-type->bytecode type))) "\n")
               (LINSN 'cset dst (irken-type->bytecode type) src))
+         _ _ -> (primop-error)
+         )
+
+       (define prim-cget-ptr
+         ;;(sexp:symbol itype _) (src)
+         _ (src)
+         ;; CGET target src code
+         -> (begin
+              (printf "c-get-int type = " (type-repr type) "\n")
+              (LINSN 'cget target src (char->int #\p)))
+         _ _ -> (primop-error)
+         )
+
+       (define prim-cset-ptr
+         ;;(sexp:symbol itype _) (dst src)
+         _ (dst src)
+         ;; CSET dst code val
+         -> (begin
+              (printf "c-set-ptr type = " (type-repr type) "\n")
+              ;; we know it's a pointer
+              (LINSN 'cset dst (char->int #\p) src))
          _ _ -> (primop-error)
          )
 
@@ -509,8 +537,6 @@
          '%putcc       -> (prim-putcc args)
          '%ensure-heap -> (prim-heap args k.free)
          ;; -------------------- FFI --------------------
-         ;; currently done with %%cexp (needs to be fixed)
-         ;; '%ffi2         ->
          '%malloc       -> (prim-malloc parm args)
          '%halloc       -> (prim-halloc parm args)
          '%free         -> (prim-free args)
@@ -519,6 +545,8 @@
          '%string->cref -> (prim-string->cref args)
          '%c-get-int    -> (prim-cget-int parm args)
          '%c-set-int    -> (prim-cset-int parm args)
+         '%c-get-ptr    -> (prim-cget-ptr parm args)
+         '%c-set-ptr    -> (prim-cset-ptr parm args)
          '%c-sref       -> (prim-c-sref parm args)
          '%c-sizeof     -> (prim-c-sizeof parm)
          '%cref->int    -> (prim-cref->int args)
@@ -779,6 +807,9 @@
             -> (push! r (INSN 'jmp (resolve index)))
             (stream:insn 'fun (target index))
             -> (push! r (INSN 'fun target (resolve index)))
+            ;; since the label for trcall is always negative, we are tempted to negate it
+            ;;  here and in the VM to save a few bytes.  I tried it, it's not really worth it.
+            ;;  [it saved about 100 bytes in a 84Kb byc file]
             (stream:insn 'trcall (index depth nregs . args))
             -> (push! r (stream:insn 'trcall (prepend (resolve index) depth nregs args)))
             (stream:insn 'trcall0 (index depth))
@@ -804,8 +835,8 @@
     (define (encode-insn name args)
       (let ((info (name->info name)))
         (match (int-cmp (length args) info.nargs) info.varargs with
-          (cmp:<)  _ -> (raise (:BadArity name))
-          (cmp:>) #f -> (raise (:BadArity name))
+          (cmp:<)  _ -> (raise (:Bytecode/BadArity name))
+          (cmp:>) #f -> (raise (:Bytecode/BadArity name))
           _ _        -> (string-concat (map encode-int (cons info.code args)))
           )))
 
@@ -886,11 +917,11 @@
 
     (define (build-sizeoff-literal)
       (let ((r '()))
-        (printf "build sizeoff vector...")
+        ;;(printf "build sizeoff vector...")
         (for-range i sizeoff-map.count
-          (printf "  " (int i) " " (repr (cmap->item sizeoff-map i)) "\n")
+          ;;(printf "  " (int i) " " (repr (cmap->item sizeoff-map i)) "\n")
           (push! r (unsexp (cmap->item sizeoff-map i))))
-        (printf "done...\n")
+        ;;(printf "done...\n")
         (reverse r)))
 
     (define (walk-literal lit p)
@@ -910,7 +941,11 @@
            _ -> 0))))
 
     (define sizeoff-sentinel
-      (literal:vector (list (literal:cons 'sexp 'symbol (list (literal:symbol '&&sizeoff-sentinel&&))))))
+      (literal:vector
+       (list (literal:cons
+              'sexp 'symbol
+              (list (literal:symbol '&&sizeoff-sentinel&&)
+                    (literal:cons 'src 'nil '()))))))
 
     (define (get-sizeoff-sentinel-index)
       (if (cmap/present? the-context.literals sizeoff-sentinel)

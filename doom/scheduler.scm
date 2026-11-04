@@ -1,6 +1,5 @@
 ;; -*- Mode: Irken -*-
 
-(require "doom/kqueue.scm")
 (require "doom/timeq.scm")
 
 ;; XXX there's a strong argument here for using vectors rather than a
@@ -10,25 +9,12 @@
 
 ;; XXX we will need a priority queue.
 
-;; for each EVFILT, we have separate map of ident=>continuation
-
-(define (make-poller)
-  { kqfd	= (kqueue/kqueue)
-    runnable	= (queue/make)
-    nwait	= 0 ;; how many events are waiting?
-    filters	= (make-vector EVFILT_SYSCOUNT (tree/empty))
-    ievents	= (make-changelist 1000)
-    oevents	= (make-changelist 1000)
-    })
-
-(define the-poller (make-poller))
-
 ;; store the thread-id and current exc handler along with the continuation.
 (define (poller/enqueue k)
-  (queue/add! the-poller.runnable (:tuple *thread-id* *the-exception-handler* k)))
+  (queue/push! the-poller.runnable (:tuple *thread-id* *the-exception-handler* k)))
 
 (define (poller/enqueue* thread-id exc-handler k)
-  (queue/add! the-poller.runnable (:tuple thread-id exc-handler k)))
+  (queue/push! the-poller.runnable (:tuple thread-id exc-handler k)))
 
 (define (protect thunk thread-id)
   ;; (printf "starting thread " (int thread-id) "\n")
@@ -81,7 +67,7 @@
   (:tuple *thread-id* *the-exception-handler* k))
 
 (define (poller/schedule save)
-  (queue/add! the-poller.runnable save))
+  (queue/push! the-poller.runnable save))
 
 (define poller/restore
   (:tuple thread-id exn-handler k)
@@ -90,6 +76,34 @@
        (set! *the-exception-handler* exn-handler)
        (set! *thread-id* thread-id)
        (putcc k #u)))
+
+;; --------------------------------------------------------------------------------
+;; the platform-specific part: the-poller, and
+;;   poller/wait-for-read, poller/wait-for-write, poller/forget,
+;;   poller/wait-and-schedule.
+;; --------------------------------------------------------------------------------
+
+;; Linux: epoll
+(%platform Linux
+  (require "doom/epoll.scm"))
+
+;; the BSDs and macOS: kqueue
+(%platform (FreeBSD Darwin)
+
+(require "doom/kqueue.scm")
+
+;; for each EVFILT, we have separate map of ident=>continuation
+
+(define (make-poller)
+  { kqfd	= (kqueue/kqueue)
+    runnable	= (queue/make)
+    nwait	= 0 ;; how many events are waiting?
+    filters	= (make-vector EVFILT_SYSCOUNT (tree/empty))
+    ievents	= (make-changelist 1000)
+    oevents	= (make-changelist 1000)
+    })
+
+(define the-poller (make-poller))
 
 ;; these funs know that EVFILT values are consecutive small negative ints
 
@@ -114,8 +128,8 @@
 ;; put the current thread to sleep while waiting for the kevent (ident, filter).
 (define (poller/wait-for ident filter)
   (let ((k (getcc)))
-    (when (= filter EVFILT_WRITE)
-      (printf (ansi red (int ident))))
+    ;; (when (= filter EVFILT_WRITE)
+    ;;   (printf (ansi red (int ident))))
     (match (poller/lookup-event ident filter) with
       (maybe:no)
       -> (begin
@@ -133,6 +147,15 @@
 (define (poller/wait-for-write fd)
   (poller/wait-for fd EVFILT_WRITE))
 
+;; can we wait for signals?  (on Linux, not yet.)
+(define poller/signals? #t)
+
+;; wait for the signal <signum>.  the signal should be ignored
+;;  (signal/ignore): kqueue records it even so, and ignoring it keeps
+;;  its default action (e.g. exiting, for SIGHUP) from happening.
+(define (poller/wait-for-signal signum)
+  (poller/wait-for signum EVFILT_SIGNAL))
+
 (define (poller/forget fd)
   (poller/delete-event fd EVFILT_READ)
   (poller/delete-event fd EVFILT_WRITE)
@@ -143,14 +166,14 @@
   -> (match (poller/lookup-event ident filter) with
        (maybe:yes (:tuple thread-id exc-handler k))
        -> (begin
-           (when (= filter EVFILT_WRITE)
-             (printf (ansi blue (int ident)))
-             (for-map k v (kfilt filter)
-               (printf (ansi yellow (int k)))))
+           ;; (when (= filter EVFILT_WRITE)
+           ;;   (printf (ansi blue (int ident)))
+           ;;   (for-map k v (kfilt filter)
+           ;;     (printf (ansi yellow (int k)))))
             (poller/delete-event ident filter)
-            (when (= filter EVFILT_WRITE)
-              (for-map k v (kfilt filter)
-                (printf (ansi cyan (int k)))))
+            ;; (when (= filter EVFILT_WRITE)
+            ;;   (for-map k v (kfilt filter)
+            ;;     (printf (ansi cyan (int k)))))
             (poller/enqueue* thread-id exc-handler k))
        (maybe:no)
        -> (begin
@@ -161,6 +184,7 @@
 
 (define (poller/wait-and-schedule)
   ;; all the runnable threads have done their bit, now throw it to kevent().
+  ;;(poller/dump)
   (when (and (eq? the-timeq (tree:empty)) (= the-poller.nwait 0))
     (debugf "no more events, exiting.\n")
     (%exit #f 1))
@@ -174,3 +198,21 @@
       (poller/dispatch)
       ))
 
+(define (filters/dump)
+  (let ((result (list:nil)))
+    (for-range i (vector-length the-poller.filters)
+      (push! result (format "(" (int i) ": " (join int->string " " (tree/keys the-poller.filters[i])) ")")))
+    (format "{" (join " " (reverse result)) "}")
+    ))
+
+(define (poller/dump)
+  (printf "poller {\n"
+          "  fd: " (int the-poller.kqfd) "\n"
+          "  [runnable]: " (int the-poller.runnable.len) "\n"
+          "  nwait: " (int the-poller.nwait) "\n"
+          "  filters: " (filters/dump) "\n"
+          "  [ievents]: " (int the-poller.ievents.index) "\n"
+          "  [oevents]: " (int the-poller.oevents.index) "\n"
+          "}\n"))
+
+) ;; %platform kqueue

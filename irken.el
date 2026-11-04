@@ -19,7 +19,7 @@
 	      "else" "if" "lambda"
 	      "let" "let*" "letrec" "let-values"
 	      "define" "set!"
-	      "include"
+	      "include" "require"
 	      "typealias"
               "letcc" "getcc" "putcc" "let/cc"
               "make-enum" "try" "except"

@@ -68,6 +68,9 @@
             )))
       )))
 
+;; note: there's an issue here with incorrect (extra) padding.
+;;       this decoder will not hide its existence.
+;;
 ;; b64 * 4 -> u26 * 1
 ;; 00,11,22,33 -> AABBCC.N
 (define (b64->u26 genb64)
@@ -114,3 +117,25 @@
       (string-set! dst i ch)
       (inc! i))
     dst))
+
+;; base64url, without padding (rfc4648 section 5), as JOSE uses.
+(define (b64url-encode s)
+  (let ((r (list:nil)))
+    (for-string ch (b64-encode s)
+      (match ch with
+        #\+ -> (push! r #\-)
+        #\/ -> (push! r #\_)
+        #\= -> #u
+        _   -> (push! r ch)))
+    (list->string (reverse r))))
+
+(define (b64url-decode s)
+  (let ((r (list:nil)))
+    (for-string ch s
+      (push! r (match ch with
+                 #\- -> #\+
+                 #\_ -> #\/
+                 _   -> ch)))
+    (for-range i (mod (- 4 (mod (string-length s) 4)) 4)
+      (push! r #\=))
+    (b64-decode (list->string (reverse r)))))

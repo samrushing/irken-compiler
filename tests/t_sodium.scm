@@ -75,6 +75,22 @@
 
 (define ed25519-skey (hex->string "b84ffaaf6fd47d62113b61df1fbb994d61848168a7dece5e151140c6bdfb4073"))
 
+(define (curve25519-scalarmult-base k)
+  (let ((qlen (sodium/crypto_scalarmult_curve25519_bytes))
+        (q (make-string qlen)))
+    (sodium/crypto_scalarmult_curve25519_base
+     (%c-cast uchar (%string->cref #f q))
+     (%c-cast uchar (%string->cref #f k)))
+    q))
+
+(define (test-c25519-scalarmult)
+  (let ((skey (hex->string "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"))
+        (pkey (curve25519-scalarmult-base skey)))
+    (printf "scalarmult:\n")
+    (printf "pkey " (string->hex pkey) "\n")
+    (printf "     8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a\n")
+    ))
+
 (define msg "testing, testing!\n")
 
 (sha256 msg)
@@ -91,3 +107,5 @@
   (printf "sig  " (string->hex sig) "\n")
   (printf "verify: " (bool (ed25519-verify sig msg pk)) "\n")
   )
+
+(test-c25519-scalarmult)

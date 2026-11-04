@@ -2,6 +2,8 @@
 
 (require "lib/codecs/base64.scm")
 
+;; ---- reading PEM -----
+
 ;; XXX figure out how to combine push/pull with
 ;;  generators so we can feed the base64 decoder
 ;;  as a stream.
@@ -40,7 +42,7 @@
                           (push! data line)))
           )))))
 
-(define (pem-gen chargen)
+(define (pem-read-gen chargen)
   (makegen emit
     (for section (pem-b64-gen (line-gen chargen))
       (match section with
@@ -48,3 +50,21 @@
         -> (emit (:tuple label (b64-decode b64)))
         ))))
 
+;; ---- writing PEM -----
+
+(define (pem-write-gen chargen kind)
+  (makegen emit
+    (let ((line '())
+          (len 0))
+      (emit (format "-----BEGIN " kind "-----\n"))
+      (for ch (b64-enc chargen)
+        (push! line ch)
+        (inc! len 1)
+        (when (= len 64)
+          (emit (list->string (reverse (list:cons #\newline line))))
+          (set! line '())
+          (set! len 0)))
+      (when (>0 (length line))
+        (emit (list->string (reverse (list:cons #\newline line)))))
+      (emit (format "-----END " kind "-----\n"))
+      )))

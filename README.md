@@ -1,7 +1,7 @@
 The Irken Compiler
 ------------------
 
-![irken logo](https://dark.nightmare.com/rushing/irken/irken/irken.svg "logo")
+![irken logo](irken.svg "logo")
 
 [![Build Status](https://travis-ci.com/samrushing/irken-compiler.svg?branch=master)](https://travis-ci.com/samrushing/irken-compiler)
 
@@ -20,6 +20,27 @@ and a higher degree of safety than languages like C/C++.
 
 News:
 -----
+
+202611: Native backends, and a new bootstrap.
+
+  * the compiler now emits assembly directly for arm64, amd64 and
+    riscv64 (`-arm`, `-amd`, `-rv`), in addition to C and bytecode.
+    the LLVM backend is gone.
+  * `make bootstrap` builds a native compiler, using the VM only once;
+    on an M2 Pro mac mini it takes about 40 seconds.
+  * a new test suite in `test/` (`python3 util/test.py`).
+  * the garbage collector no longer clears the heap after every
+    collection: a small program uses ~10MB, not ~400MB.
+
+  Tested on:
+
+  * arm64 macOS (M1 Pro, M2 Pro)
+  * amd64 macOS
+  * arm64 freebsd-14
+  * amd64 freebsd-14
+  * arm64 linux
+  * amd64 linux
+  * riscv64 linux (StarFive)
 
 20180829: Merged the FFI branch in.
 
@@ -48,10 +69,25 @@ News:
 Introduction/Tutorial:
 ----------------------
 
-  [http://dark.nightmare.com/rushing/irken/irken/lang.html](http://dark.nightmare.com/rushing/irken/irken/lang.html)
+  [https://dark.nightmare.com/rushing/irken/irken/lang.html](https://dark.nightmare.com/rushing/irken/irken/lang.html)
 
 The best way to get familiar with the language is to read the source code in
 the 'self' directory, and browse over the files in "tests".
+
+Requirements:
+-------------
+
+* a 64-bit machine: arm64 or amd64 (macOS, Linux, FreeBSD), or riscv64 (Linux).
+  Others should work with the C backend.
+* python3, make, and a C compiler (clang or gcc).
+* libffi, with its headers, for the bytecode VM:
+  * macOS: nothing extra (the Xcode command line tools have it).
+  * Debian/Ubuntu: `apt install libffi-dev`.  Fedora: `dnf install libffi-devel`.
+  * FreeBSD: `pkg install libffi`.
+* optional, for the crypto and HTTP/2 demos: libsodium and zlib
+  (e.g. `apt install libsodium-dev zlib1g-dev`, `pkg install libsodium`,
+  or `brew install libsodium`).  Without them, the bootstrap just skips
+  their interfaces.
 
 Bootstrap:
 ----------
@@ -62,16 +98,37 @@ Just run ``make bootstrap``:
 
     $ make bootstrap
 
-The default compiler is 'clang', to use gcc:
+It uses clang if it can find it, otherwise `cc`.  To choose:
 
     $ CC=gcc make bootstrap
 
-Which does the following:
+It starts by printing the host, OS, git commit and compiler, then the
+time at each step.  It does the following:
 
-1. use self/bootstrap.byc to generate and compile self/compile.c.
-2. this binary will be used to recompile the compiler.
-3. that binary will recompile the compiler again.
-4. the output from steps 2 and 3 are compared, they should be identical.
+1. builds the bytecode VM, and uses it to run self/bootstrap.byc once:
+   it compiles the native compiler for this machine (self/irken; arm64,
+   amd64 or riscv64.  elsewhere, the C backend).
+2. that binary recompiles the compiler, and the result recompiles it
+   again: the output from these two steps should be identical.
+3. compiles genffi (ffi/gen/genffi), and uses it to generate this
+   platform's FFI interfaces (posix, sockets, kqueue/epoll, ...).
+4. builds self/compile, which has all the backends.
+
+The compiler itself only needs C's libc and stdio (see lib/base.scm),
+so nothing platform-specific has to be generated before step 1.
+
+You end up with two compilers: `self/irken`, which has only this
+machine's native backend (and is the quickest to rebuild while working
+on the compiler), and `self/compile`, which has them all.
+
+Testing:
+--------
+
+    $ python3 util/test.py
+
+runs the suite in `test/` with every backend this machine can run (C,
+bytecode, and the native one), and should end with no failures: a few
+known bugs are marked as expected failures.  See `test/README.md`.
 
 Note: It is not possible to compile with optimization off, because
 this disables the tail call optimization that Irken relies on -
@@ -124,18 +181,28 @@ using a relatively small example:
 
     $ irken -v tests/t_while.scm
 
-Irken will use the CC and CFLAGS environment variables when compiling the C output.  You may
-try out another compiler like this:
+Irken will use the CC and CFLAGS environment variables when compiling or assembling its
+output.  You may try out another compiler like this:
 
     $ CC="gcc" CFLAGS="-std=c99 -O2 -I." irken ...
 
-LLVM Backend:
--------------
+Backends:
+---------
 
-To use the LLVM backend, add the `-llvm` arg:
+The compiler (`irken` once installed, `self/compile` before) emits native
+code for the machine it's running on: arm64 (macOS, Linux, FreeBSD),
+amd64 or riscv64 (Linux).  Elsewhere, it emits C.  The output is
+assembled or compiled, and linked, with the C compiler, along with the
+runtime in `include/`.  To choose a backend:
 
-    $ self/compile demo/parse/synlight.scm -llvm
-    $ demo/parse/synlight demo/parse/irken-lex.sg tests/tak20.scm
+    $ irken -C demo/maze/maze.scm       # C
+    $ irken -b demo/maze/maze.scm       # bytecode, for the VM (see below)
+    $ irken -arm demo/maze/maze.scm     # arm64
+    $ irken -amd demo/maze/maze.scm     # amd64
+    $ irken -rv demo/maze/maze.scm      # riscv64
+
+`self/irken`, left by the bootstrap, has only this machine's native
+backend, which makes it quicker to rebuild while working on the compiler.
 
 
 Bytecode Backend:
@@ -146,7 +213,7 @@ Irken now comes with a VM and bytecode backend.  The VM runs about
 the edit-compile-run loop skips calling the C compiler.  Turnaround
 while working on the compiler (on my machine) is ~5s.
 
-To use the bytecode/VM:
+To use the bytecode/VM (before installing, the VM is `vm/irkvm`):
 
     $ irken myfile.scm -b
     $ irkvm myfile.byc
@@ -155,19 +222,6 @@ You can also run the compiler in the VM:
 
     $ irkvm self/compile.byc myfile.scm -b
     $ irkvm myfile.byc
-
-ARMv8
------
-
-I was able to get Irken running on a Raspberry Pi 3, using
-the [pi64](https://github.com/bamarni/pi64) distribution.  Good news:
-the llvm `readcyclecounter` intrinsic seems to work just fine on ARM.
-Bad news: user mode doesn't have permission to read it.  I was able to
-get everything working by commenting all rdtsc-related code in
-include/{header1.c,gc1.c}.  My understanding is that reading this
-register is a Bad Idea on the ARM, so I may conditionalize it in the
-source.
-
 
 32-bit platforms
 ----------------

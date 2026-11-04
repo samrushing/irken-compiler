@@ -2,9 +2,15 @@
 
 (datatype backend
   (:c)
-  (:llvm)
+;;  (:llvm)
   (:bytecode)
+  (:arm)
+  (:amd)
+  (:rv)
   )
+
+(define (get-platform)
+  (string->symbol (platform-name)))
 
 (define (make-options)
   {verbose		= #f
@@ -21,9 +27,14 @@
    dump                 = '()
    quiet                = #f
    no-range-check       = #f
+   no-peephole          = #f
    opt-rounds           = 5
    inline-threshold     = 13
+   src-limit            = 10
    backend              = (backend:c)
+   platform             = (get-platform)
+   asm-comment          = ";; "
+   asm-underscores      = #f
    include-dirs		= (list "." (getenv-or "IRKENLIB" "/usr/local/lib/irken/"))
    libraries            = '()
    })
@@ -57,11 +68,41 @@
     }
   )
 
+(define platform->abi
+  ;; windows is COFF I think. TBD.
+  'Darwin -> 'Mach-O
+  _       -> 'ELF
+  )
+
+;; make platform-specific changes
+(define (platform-configure mach)
+  (let ((plat the-context.options.platform))
+    ;; complications: there are actually THREE inputs to this:
+    ;; platform, architecture, and COMPILER.  clang and gcc sometimes differ.
+    (set! the-context.options.asm-comment
+          (match plat mach with
+            _        'rv  -> "# " ;; only tested on Linux so far...
+            'Darwin  'arm -> "// "
+            'FreeBSD 'arm -> "# "
+            'Linux   'arm -> "# "
+            'Darwin  'amd -> "// "
+            'FreeBSD 'amd -> "// "
+            'Linux   'amd -> "// "
+            _        _    -> "# " ;; quasi-universal
+            ))
+    (set! the-context.options.asm-underscores
+          (match (platform->abi the-context.options.platform) with
+            'Mach-O -> #t
+            'ELF    -> #f
+            _       -> #f
+            ))
+    ))
+
 ;; XXX a builtin flags object would be nice...
 
 (define (vars-get-var name)
   (match (tree/member the-context.vars symbol-index-cmp name) with
-    (maybe:no) -> (error1 "vars-get-var: no such var" name)
+    (maybe:no) -> (raise (:NoSuchVariable name))
     (maybe:yes v) -> v))
 
 (define (vars-get-flag name flag)
@@ -88,35 +129,36 @@
 (define VFLAG-NFLAGS    9)
 
 ;; urgh, needs to be an object
-(define (add-var name)
+(define (add-var name src)
   (match (tree/member the-context.vars symbol-index-cmp name) with
     (maybe:no) -> (set! the-context.vars
 			(tree/insert the-context.vars
-				     symbol-index-cmp name {flags=0 calls=0 refs=0 sets=0 mult=0}))
+				     symbol-index-cmp name {flags=0 calls=0 refs=0 sets=0 mult=0 src=src}))
     ;; <fix> then <function>, shows up twice, ignore.
     (maybe:yes _) -> #u))
 
 (define (add-vars root)
 
-  (define (add name)
-    (add-var name))
-
   (define (search exp)
-    (match (noderec->t exp) with
-      ;; only these three bind names.
-      (node:fix names)		   -> (for-each add names)
-      (node:let names)		   -> (for-each add names)
-      (node:function name formals) -> (begin (for-each add formals)
-					     (add name))
-      _ -> #u)
+    (let ((src (noderec->src exp)))
+      (define (add name)
+        (add-var name src))
+      (match (noderec->t exp) with
+        ;; only these three bind names.
+        (node:fix names)             -> (for-each add names)
+        (node:let names)             -> (for-each add names)
+        (node:function name formals) -> (begin (for-each add formals)
+					       (add name))
+        _ -> #u)
     (for-each search (noderec->subs exp)))
+    )
 
   (search root)
   )
 
 (define (build-vars root)
   (add-vars root)
-  (add-var 'top))
+  (add-var 'top null-src))
 
 (define (lookup-label-code label)
   (cmap->index the-context.labels label))

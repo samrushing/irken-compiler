@@ -123,7 +123,7 @@
   (sexp:char ch)     -> (html ((span (class "c")) (&f (char ch))))
   (sexp:bool b)      -> (html ((span (class "b")) (&f (bool b))))
   (sexp:string s)    -> (html ((span (class "s")) (&f (string s))))
-  (sexp:symbol s)    -> (html ((span (class "y")) (&f (sym s))))
+  (sexp:symbol s _)  -> (html ((span (class "y")) (&f (sym s))))
   (sexp:cons 'nil c) -> (html ((span (class "C")) (&f ":" (sym c))))
   (sexp:cons dt c)   -> (html ((span (class "C")) (&f (sym dt) ":" (sym c))))
   (sexp:list l)      -> (html ((span (class "p")) "(") (&join sexp->html " " l) ((span (class "p")) ")"))

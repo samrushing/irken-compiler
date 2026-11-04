@@ -76,6 +76,11 @@
 (datatype tls-hsk
   (:client-hello {legver=int random=string sessid=string suites=(list int) exts=(list tlsext)})
   (:server-hello {legver=int random=string sessid=string suite=int exts=(list tlsext)})
+  (:enc-exts (list tlsext))
+  (:cert (list string))   ;; the DER of each certificate, leaf first
+  (:cert-request)
+  (:cert-verify int string) ;; signature scheme, signature
+  (:new-session-ticket)
   (:finished string) ;; verify-data
   (:key-update bool)
   (:other string)
