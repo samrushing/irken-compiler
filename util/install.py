@@ -47,32 +47,44 @@ def copy_tree (src, dst, patterns):
 # copy library
 copy_tree ('lib', IRKENTOP, ['.scm'])
 # copy headers
-copy_tree ('include', IRKENTOP, ['.h', '.c', '.ll'])
+# (.s: the native backends' preambles, e.g. amd-mach-preamble.s)
+copy_tree ('include', IRKENTOP, ['.h', '.c', '.ll', '.s'])
 # copy ffi
 copy_tree ('ffi', IRKENTOP, ['_ffi.scm'])
 
-# we need a new binary with the new CFLAGS
-print ('building new binary with updated CFLAGS for install...')
-cflags = getenv_or ('CFLAGS', '-std=c99 -O3 -fomit-frame-pointer -g -I%s' % (IRKENINC,))
-flags = open ('self/flags.scm', 'r').read()
+# we need a new binary with the new CFLAGS.  it's built in place, so
+#   save this tree's own flags and compilers, and put them back after:
+#   otherwise this tree's self/compile would use the installed headers.
+import shutil
+saved_flags = open ('self/flags.scm', 'r').read()
+saved = [p for p in ('self/compile', 'self/compile.byc') if os.path.isfile (p)]
+for p in saved:
+    shutil.copy2 (p, p + '.pre-install')
 
-# this way we pull in whatever decisions were made for bootstrap.py, updating only IRKENINC
-open ('self/flags.scm', 'w').write (
-    flags.replace ('./include', IRKENINC)
-    )
+try:
+    print ('building new binary with updated CFLAGS for install...')
+    # this way we pull in whatever decisions were made for bootstrap.py, updating only IRKENINC
+    open ('self/flags.scm', 'w').write (
+        saved_flags.replace ('./include', IRKENINC)
+        )
 
-system ('self/compile self/compile.scm -q')
+    system ('self/compile self/compile.scm -q')
 
-# rebuild bytecode
-print ('building new bytecode image...')
-system ('self/compile self/compile.scm -b -q')
+    # rebuild bytecode
+    print ('building new bytecode image...')
+    system ('self/compile self/compile.scm -b -q')
 
-# copy binary
-system ('cp -p self/compile %s/irken' % (IRKENBIN,))
+    # copy binary
+    system ('cp -p self/compile %s/irken' % (IRKENBIN,))
+    # copy byte compiler image
+    system ('cp -p self/compile.byc %s/' % (IRKENLIB,))
+finally:
+    open ('self/flags.scm', 'w').write (saved_flags)
+    for p in saved:
+        os.replace (p + '.pre-install', p)
+
 # copy vm
 system ('cp -p vm/irkvm %s/irkvm' % (IRKENBIN,))
-# copy byte compiler image
-system ('cp -p self/compile.byc %s/' % (IRKENLIB,))
 # make irkc script
 open ('vm/irkc', 'w').write (
     "#!/bin/sh\n%s/irkvm %s/compile.byc $@\n" % (IRKENBIN, IRKENLIB)
