@@ -122,8 +122,8 @@
         (method (ssh-pkt/get-string pkt 'method)))
     (match service with
       "ssh-connection"
-      -> (let loop ((auths auths))
-           (match auths with
+      -> (let loop ((remaining auths))
+           (match remaining with
              ()
              -> (:tuple #f (build-userauth-suggest (map (lambda (x) x.name) auths)))
              (auth . tl)

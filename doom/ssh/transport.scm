@@ -12,6 +12,7 @@
         (cipher none-cipher)
         (codec-send (none-cipher-make-codec "" "" ""))
         (codec-recv (none-cipher-make-codec "" "" ""))
+        (sendm (mutex/make))
         )
 
     (define (assure n)
@@ -101,9 +102,13 @@
         (inc! sequence-counter-send)
         ))
 
+    ;; several threads may send on one connection (e.g. a chat
+    ;; broadcast), and sock.send can yield.  the sequence number
+    ;; must match wire order, so encrypt+send is a critical section.
     (define (send payload)
       (let ((pkt (ssh-unpack* (rope->string payload) ">>> ")))
-        (send* payload)))
+        (with-mutex sendm
+          (send* payload))))
 
     (define (set-session-id sid)
       (set! session-id sid))
@@ -319,22 +324,35 @@
           (maybe:no)       -> (raise (:SSH/Error "data for unknown channel")) ;; XXX do better
           )))
 
+    (define (handle-channel-eof pkt)
+      (when-maybe chan (chan-man.lookup (ssh-pkt/get-u32 pkt 'rchan))
+        (chan.eof)))
+
     (define (handle-authed-packet kind payload)
       (let ((pkt (ssh-unpack payload)))
         (match kind with
           (ssh-mtype:channel-open)    -> (handle-channel-open pkt)
           (ssh-mtype:channel-data)    -> (handle-channel-data pkt)
           (ssh-mtype:channel-request) -> (handle-channel-request pkt)
+          (ssh-mtype:channel-eof)     -> (handle-channel-eof pkt)
+          (ssh-mtype:channel-close)   -> (handle-channel-eof pkt)
           (ssh-mtype:kexinit)         -> (handle-kexinit payload) ;; rekey
           _ -> #u)
         ))
 
-    (let loop ()
-      (let ((payload (trans.get-packet))
-            (kind (code->msg-type (char->int (string-ref payload 0)))))
-        (tstate-transition kind payload)
-        (if (not quit)
-            (loop)
-            (printf "exiting ssh packet loop...\n"))
-        ))
+    (try
+     (let loop ()
+       (let ((payload (trans.get-packet))
+             (kind (code->msg-type (char->int (string-ref payload 0)))))
+         (tstate-transition kind payload)
+         (if (not quit)
+             (loop)
+             (printf "exiting ssh packet loop...\n"))
+         ))
+     except
+     (:SSH/EOF) -> (printf "connection closed by peer.\n")
+     )
+    ;; wake up any session threads still reading, and stop writes to them.
+    (chan-man.eof-all)
+    (s.close)
     ))

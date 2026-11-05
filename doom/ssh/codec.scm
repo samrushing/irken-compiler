@@ -117,6 +117,8 @@
    ((ssh-mtype:channel-open-no)  (ssh-pkt (rchan u32) (reason u32) (why s) (lang s)))
    ((ssh-mtype:channel-request)  (ssh-pkt (rchan u32) (type s) (want bool)))
    ((ssh-mtype:channel-data)     (ssh-pkt (rchan u32) (data s)))
+   ((ssh-mtype:channel-window-adjust) (ssh-pkt (rchan u32) (bytes u32)))
+   ((ssh-mtype:channel-eof)      (ssh-pkt (rchan u32)))
    ((ssh-mtype:channel-close)    (ssh-pkt (rchan u32)))
    ((ssh-mtype:channel-success)  (ssh-pkt (rchan u32)))
    ((ssh-mtype:channel-failure)  (ssh-pkt (rchan u32)))

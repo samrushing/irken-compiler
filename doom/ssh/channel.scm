@@ -11,6 +11,7 @@
         (wqueue (queue/make))
         (env (tree/empty))
         (term-size (:tuple 80 40))
+        (eof? #f)
         )
 
     (define (recv data)
@@ -18,8 +19,9 @@
       (read-cv.wake-one)
       )
 
+    ;; returns "" at end-of-file.
     (define (read)
-      (when (= rqueue.len 0)
+      (when (and (= rqueue.len 0) (not eof?))
         (read-cv.wait))
       (let ((pieces (list:nil)))
         (while (> rqueue.len 0)
@@ -33,8 +35,18 @@
     ;;   (queue/push! wqueue data)
     ;;   (write-cv.wake_one))
 
+    ;; other threads may write to us (e.g. a chat broadcast), so a
+    ;;  dead connection must not raise in *their* thread.
     (define (write data)
-      (channel-write c2s-id data))
+      (when (not eof?)
+        (try
+         (begin (channel-write c2s-id data) #u)
+         except
+         (:OSError e) -> (set! eof? #t))))
+
+    (define (eof)
+      (set! eof? #t)
+      (read-cv.wake-all))
 
     ;; [maybe] this stuff really belongs in transport, but with callbacks into
     ;;  the channel object?  on the other hand, if we want different channel types
@@ -88,7 +100,10 @@
       )
 
     (define (close)
-      (trans-send (build-channel-close c2s-id)))
+      (when (not eof?)
+        (set! eof? #t)
+        (try (begin (trans-send (build-channel-close c2s-id)) #u)
+             except (:OSError e) -> #u)))
 
     (define (getenv) env)
 
@@ -112,6 +127,7 @@
       maxpkt = maxpkt
       recv = recv
       request = request
+      eof = eof
       }
 
     ))
@@ -138,8 +154,13 @@
     (define (lookup s2c-id)
       (tree/member map int-cmp s2c-id))
 
+    (define (eof-all)
+      (for-map k chan map
+        (chan.eof)))
+
     { new = new
       lookup = lookup
-      close = close }
+      close = close
+      eof-all = eof-all }
 
     ))
