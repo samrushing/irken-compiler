@@ -107,11 +107,13 @@ def step (msg):
 # say where this is, so a pasted log identifies itself.
 def describe_build ():
     import subprocess
-    def git (*args):
+    def run (*args):
         try:
-            return subprocess.run (('git',) + args, capture_output=True, text=True).stdout.strip()
+            return subprocess.run (args, capture_output=True, text=True).stdout.strip()
         except OSError:
             return ''
+    def git (*args):
+        return run ('git', *args)
     u = os.uname()
     print ('host: %s  (%s %s, %s)' % (u.nodename, u.sysname, u.release, u.machine))
     branch, commit = git ('branch', '--show-current'), git ('log', '-1', '--format=%h %s')
@@ -122,6 +124,16 @@ def describe_build ():
         dirty = ' (with local changes)' if changed else ''
         print ('git:  %s %s%s' % (branch or '(detached)', commit, dirty))
     print ('cc:   %s %s' % (gcc, cflags))
+    # the compiler's own idea of what it is (first line of --version).
+    version = run (gcc, '--version').split ('\n')[0]
+    if version:
+        print ('      %s' % (version,))
+    if u.sysname == 'Darwin':
+        # the compiler, linker and SDK can come from different places
+        #   (Xcode vs the Command Line Tools), and must agree.
+        print ('      developer dir: %s' % (run ('xcode-select', '-p') or '?',))
+        print ('      SDK: %s%s' % (run ('xcrun', '--show-sdk-path') or '?',
+                                    ' (SDKROOT is set)' if os.getenv ('SDKROOT') else ''))
 
 describe_build ()
 step ('building VM')
