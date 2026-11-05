@@ -1,7 +1,6 @@
 ;; -*- Mode: Irken -*-
 
 (require "lib/basis.scm")
-(require "lib/deque.scm")
 (require "doom/ssh/test/csi.scm")
 
 ;; can we slap together a quick line editor using ANSI/vt100 escape sequences?
@@ -9,7 +8,7 @@
 ;; let's start with just backspace.
 ;; then move on to cursor positioning.
 
-(define (line-edit chan)
+(define (make-line-editor chan)
 
   (define (chargen)
     (makegen emit
@@ -20,14 +19,34 @@
           (loop (chan.read))))))
 
   (let ((gen (chargen))
-        (history (deque/empty))
+        (history (list:nil)) ;; most recent first
+        (hpos -1)            ;; -1: not browsing history
+        (len 1024)
+        (line (make-string len))
+        (pos 0)
+        (prompt "")
+        (reading? #f)
         (cx 0)
         (cy 0))
 
+    (define erase-line (csi->string (csi:el 2)))
+
+    ;; print a message on its own line *above* the line being edited,
+    ;;  then redraw the prompt and whatever the user has typed so far.
+    ;;  safe to call from another thread (e.g. a chat broadcast).
+    (define (interject msg)
+      (chan.write
+       (if reading?
+           (string-append "\r" erase-line msg "\r\n" prompt (substring line 0 pos))
+           (string-append msg "\r\n"))))
+
+    ;; move through history: up? goes to older entries.
     (define (history-rotate up?)
-      (let ((hist0 ((if up? deque/rotate-forward deque/rotate-backward) history)))
-        (set! history hist0)
-        (deque/peek-front history)))
+      (let ((n (length history)))
+        (set! hpos (if up? (min (+ hpos 1) (- n 1)) (max (- hpos 1) -1)))
+        (if (< hpos 0)
+            (maybe:no)
+            (maybe:yes (nth history hpos)))))
 
     (define (getch)
       (match (gen) with
@@ -37,9 +56,8 @@
 
     (define (read-line)
 
-      (let ((len 1024)
-            (line (make-string len)) ;; may want to clear it.
-            (pos 0))
+      (let ((_ (set! pos 0))
+            (_ (set! reading? #t)))
 
         (define (handle-escape)
           (match (gen) with
@@ -91,7 +109,7 @@
            (csi->string (csi:el 0)))) ;; erase line to end
 
         (define (replace-line val)
-          (chan.write (string-append "\r" (csi->string (csi:el 2)) val))
+          (chan.write (string-append "\r" erase-line prompt val))
           (set-line! val)
           (set! pos (string-length val)))
 
@@ -116,10 +134,16 @@
             -> (raise (:LineEdit/EOF))
             (maybe:yes ch)
             -> (match ch with
-                 #\return -> (maybe:yes (substring line 0 pos))
-                 #\u04 -> (maybe:no)                                    ;; ctrl-d
+                 #\return -> (let ((result (substring line 0 pos)))
+                              (set! hpos -1)
+                              (set! pos 0)
+                              (set! reading? #f)
+                              (when (> (string-length result) 0)
+                                (push! history result))
+                              (maybe:yes result))
+                 #\u04 -> (begin (set! reading? #f) (maybe:no))       ;; ctrl-d
                  #\u0c -> (begin (clear-display) (loop))                ;; ctrl-l
-                 #\u01 -> (begin (set! pos 0) (chan.write "\r") (loop)) ;; ctrl-a
+                 #\u01 -> (begin (set! pos 0) (chan.write (string-append "\r" prompt)) (loop)) ;; ctrl-a
                  #\u10 -> (begin (next-or-prev-line #t) (loop))         ;; ctrl-p
                  #\u0e -> (begin (next-or-prev-line #f) (loop))         ;; ctrl-n
                  #\u7f -> (cond ((= pos 0) (chan.write "\x07") (loop))  ;; backspace
@@ -133,5 +157,16 @@
                  )
             ))))
 
-    read-line
+    ;; like read-line, but displays `p` first, and redraws it as needed.
+    (define (prompt-read p)
+      (set! prompt p)
+      (chan.write p)
+      (read-line))
+
+    {read-line=read-line prompt-read=prompt-read interject=interject}
     ))
+
+;; the original interface: just the read-line function.
+(define (line-edit chan)
+  (let ((ed (make-line-editor chan)))
+    ed.read-line))

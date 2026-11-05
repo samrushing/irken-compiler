@@ -33,10 +33,28 @@
       ))
     )))
 
-;; echoing sort of for now
+;; a line-editing echo server.
 (define (session-handler chan)
-  (line-edit chan)
-  )
+  (let ((read-line (line-edit chan)))
+    (chan.write (format (ansi (bold blue) "irken echo server.") " ctrl-d or 'exit' to leave.\r\n"))
+    (try
+     (let loop ()
+       (chan.write "> ")
+       (match (read-line) with
+         (maybe:no) -> #u
+         (maybe:yes "exit") -> #u
+         (maybe:yes "quit") -> #u
+         (maybe:yes line)
+         -> (begin
+              (chan.write (format "\r\n>>> " line "\r\n"))
+              (loop))))
+     except
+     (:LineEdit/EOF) -> #u
+     )
+    (chan.write (format "\r\n" (ansi (bold blue) "bye.") "\r\n"))
+    (chan.close)
+    (printf "exiting echo session...\n")
+    ))
 
 (define (serve ip port)
   (let ((sock (doom/make (tcp4-sock)))
