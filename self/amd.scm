@@ -995,8 +995,11 @@
             (else (list:nil))))
 
     ;; zero words 1..n of the object in register <reg>.
+    ;;  (<reg> may be in the register file in memory, so go through (s 0),
+    ;;   as emit-store does.)
     (define (amd-zero-slots reg n)
-      (map-range i n (AMDINSN 'movq (i 0) (ind (* 8 (+ i 1)) (n reg)))))
+      (list:cons (AMDINSN 'movq (n reg) (s 0))
+                 (map-range i n (AMDINSN 'movq (i 0) (ind (* 8 (+ i 1)) (s 0))))))
 
     ;; init?: see insn:alloc in cps.scm.
     (define (emit-alloc tag size init? target)
