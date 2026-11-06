@@ -12,6 +12,7 @@
 (require "lib/posix.scm")
 (require "doom/ssh/ssh.scm")
 (require "doom/ssh/test/linedit.scm")
+(require "lib/csi.scm")
 
 (define server-host-pkey
   (hex->string "38e9939f5fa259b474172924db12efddb2e78e9e1363587440b03d355123ea29"))
@@ -89,17 +90,22 @@
 ;; formatting
 ;; ------------------------------------------------------------
 
+;; wrap `text` in the given SGR attributes, then reset.
+(define (styled attrs text)
+  (format (csi (csi:sgr attrs)) text (csi (csi:sgr (list SGR-reset)))))
+
 ;; a stable color per nick, so conversations are easier to follow.
-(define nick-colors #("31" "32" "33" "34" "35" "36"))
+(define nick-colors
+  (list->vector (list SGR-red SGR-green SGR-yellow SGR-blue SGR-magenta SGR-cyan)))
 
 (define (color-nick nick)
   (let ((h 0))
     (for-string ch nick
       (set! h (+ (* h 31) (char->int ch))))
-    (format "\x1b[1;" nick-colors[(mod h (vector-length nick-colors))] "m" nick "\x1b[0m")))
+    (styled (list SGR-bold (sgr-fg nick-colors[(mod h (vector-length nick-colors))])) nick)))
 
 (define (notice text)
-  (format "\x1b[2m*** " text "\x1b[0m"))
+  (styled (list SGR-dim) (format "*** " text)))
 
 (define (say-line nick text)
   (format "<" (color-nick nick) "> " text))
@@ -191,7 +197,7 @@
     ;; returns #f when the user wants to leave.
     (define (handle-line line)
       ;; replace the echoed input with the transcript line.
-      (chan.write (string-append "\r" (csi->string (csi:el 2))))
+      (chan.write (format "\r" (csi (csi:el 2))))
       (cond ((= (string-length line) 0) #t)
             ((starts-with line "/") (do-command line))
             (else (room/broadcast (say-line nick line)) #t)))
@@ -201,7 +207,7 @@
         (maybe:no) -> #u
         (maybe:yes line) -> (when (handle-line line) (chat-loop))))
 
-    (chan.write (format "\r\n" "\x1b[1mwelcome to the irken party line.\x1b[0m"
+    (chan.write (format "\r\n" (styled (list SGR-bold) "welcome to the irken party line.")
                         "  type /help for commands.\r\n\r\n"))
     (try
      (match (choose-nick) with
