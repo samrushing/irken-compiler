@@ -794,7 +794,9 @@
          ('sub (s 0) (s 0) (n size) (lsl 2)) ;; N.B. hidden 'untag', nearly.
          ('cmp freep (s 0))
          ('blt (l L0))
-         ;; need to gc
+         ;; need to gc.  say how much (in words), so the heap can grow to fit.
+         ('asr (s 1) (n size) (i 1))
+         ('str_addr (s 0) (s 1) (g "heap_request"))
          ;; add free vars as roots
          ('ldr_addr (s 0) (g "heap1"))
          @ (map-range i nfree (ARMINSN 'str (n (nth free i)) (ind (s 0) (i (* 8 (+ i 3))))))

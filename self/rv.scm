@@ -696,7 +696,9 @@
          ('slli (s 1) (n size) (i 2)) ;; N.B. hidden 'untag', nearly.
          ('sub (s 0) (s 0) (s 1))
          ('blt freep (s 0) (l L0))
-         ;; need to gc
+         ;; need to gc.  say how much (in words), so the heap can grow to fit.
+         ('srai (s 1) (n size) (i 1))
+         ('str_addr (s 1) (l "heap_request"))
          ;; add free vars as roots
          ('ldr_addr (s 0) (l "heap1"))
          @ (map-range i nfree (RVINSN 'sd (n (nth free i)) (ind (* 8 (+ i 3)) (s 0))))

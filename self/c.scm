@@ -322,6 +322,9 @@
       (let ((n (length free)))
 	(o.write (format "if (freep + " size " >= limit) {"))
 	(o.indent)
+	;; say how much is needed, so the heap can grow to fit.
+	(when (not (string=? size "0"))
+	  (o.write (format "heap_request = " size ";")))
 	;; copy free variables into tospace
 	(for-range
 	    i n

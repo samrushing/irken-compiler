@@ -723,7 +723,9 @@
          ('subq (s 1) (s 0))
          ('cmp freep (s 0))   ;; flags from (limit - size*8) - freep
          ('jge (l L0))
-         ;; need to gc
+         ;; need to gc.  say how much (in words), so the heap can grow to fit.
+         ('shrq (i 3) (s 1))
+         ('movq (s 1) (grel "heap_request"))
          ;; add free vars as roots
          ('movq (grel "heap1") (s 0))
          @ (map-range i nfree (AMDINSN 'movq (n (nth free i)) (ind (* 8 (+ i 3)) (s 0))))

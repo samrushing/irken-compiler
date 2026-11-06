@@ -1257,7 +1257,7 @@ vm_go (void)
   DISPATCH();
  l_vmake: {
     // VMAKE target size val
-    // XXX heap check.
+    // (no heap check: make-vector (lib/core.scm) does %ensure-heap first.)
     irk_int nelems = UNTAG_INTEGER(REG2);
     if (nelems == 0) {
       REG1 = (object *) TC_EMPTY_VECTOR;
@@ -1453,6 +1453,7 @@ vm_go (void)
     irk_int size = UNTAG_INTEGER (REG1);
     if (freep + size >= limit) {
       irk_int nreg = BC2;
+      heap_request = size;
       for (int i=0; i < nreg; i++) {
         heap1[N_VM_ROOTS + i] = vm_regs[i];
       }

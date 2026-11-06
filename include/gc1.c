@@ -3,6 +3,8 @@
 // cheney copying garbage collector
 // --------------------------------------------------
 
+#include <unistd.h> // sysconf
+
 static
 int
 sitting_duck (object * p)
@@ -11,6 +13,7 @@ sitting_duck (object * p)
 }
 
 static object * scan;
+static void grow_heap (int nroots);
 
 static
 object *
@@ -122,11 +125,14 @@ do_gc (int nroots)
     }
   }
   // swap heaps
-  { object * temp = heap0; heap0 = heap1; heap1 = temp; }
+  {
+    object * temp = heap0; heap0 = heap1; heap1 = temp;
+    size_t stemp = heap_size; heap_size = heap1_size; heap1_size = stemp;
+  }
 
   if (clear_fromspace) {
     // zero the from-space
-    clear_space (heap1, heap_size);
+    clear_space (heap1, heap1_size);
   }
 
 #if defined(IRK_GC_POISON)
@@ -144,7 +150,114 @@ do_gc (int nroots)
   if (verbose_gc) {
     fprintf (stderr, "collected %" PRIuPTR " words]\n", freep - heap0);
   }
+  grow_heap (nroots);
   return (object) box (freep - heap0);
+}
+
+// a growing heap.
+//
+// the cost of a collection is proportional to the live data it copies,
+//  and the collections come as often as the free space after one runs
+//  out.  so if a program's live data fills much of the heap, it spends
+//  most of its time collecting: give it a bigger heap.  (the heaps come
+//  from calloc, so a heap a program never fills costs little.)
+//
+// grow when the live data is more than 1/GROW_WHEN of the heap, or what
+//  %ensure-heap is about to allocate won't fit; to GROW_TO times the live
+//  data (or twice the old size, whichever is bigger).  it never shrinks.
+
+// (in tenths, so they can be fractional; -D to experiment.)
+#ifndef GROW_WHEN
+#define GROW_WHEN 30
+#endif
+#ifndef GROW_TO
+#define GROW_TO 40
+#endif
+
+static
+void
+heap_exhausted (size_t words)
+{
+  fprintf (stderr, "Irken: out of memory: couldn't allocate a %" PRIuPTR " MB heap.\n",
+           (uintptr_t) (words * sizeof (object) / (1024 * 1024)));
+  exit (1);
+}
+
+static
+object *
+new_space (size_t words)
+{
+  object * p = (object *) calloc (words, sizeof (object));
+  if (!p) {
+    heap_exhausted (words);
+  }
+  return p;
+}
+
+// growing only for speed stops at 1/8 of physical memory for each space
+//  (so the heap never takes more than 1/4 of it).  growing because the
+//  live data (or a big allocation) needs the room ignores this.
+static
+size_t
+optional_growth_limit (void)
+{
+  static size_t limit_words = 0;
+  if (limit_words == 0) {
+    long pages = sysconf (_SC_PHYS_PAGES);
+    long page_size = sysconf (_SC_PAGESIZE);
+    if (pages > 0 && page_size > 0) {
+      limit_words = (size_t) pages * (size_t) page_size / 8 / sizeof (object);
+    } else {
+      limit_words = (size_t) -1;
+    }
+  }
+  return limit_words;
+}
+
+static
+void
+grow_heap (int nroots)
+{
+  size_t live = freep - heap0;
+  size_t need = live + heap_request + head_room;
+  size_t target;
+  heap_request = 0;
+  if (need <= heap_size && live * GROW_WHEN <= heap_size * 10) {
+    return;
+  }
+  target = live * GROW_TO / 10 + (need - live);
+  // (at least half again as big, so it doesn't grow a little at a time.)
+  if (target < heap_size + heap_size / 2) {
+    target = heap_size + heap_size / 2;
+  }
+  if (need <= heap_size) {
+    // it should grow (for speed), if there's memory to spare.
+    size_t most = optional_growth_limit();
+    if (heap_size >= most) {
+      return;
+    } else if (target > most) {
+      target = most;
+    }
+  }
+  {
+    if (verbose_gc) {
+      fprintf (stderr, "[gc...heap grows to %" PRIuPTR " MB]\n",
+               (uintptr_t) (target * sizeof (object) / (1024 * 1024)));
+    }
+    // copy everything again, into a new, bigger space.  (the roots are
+    //  at the front of heap0.)
+    free (heap1);
+    heap1 = new_space (target);
+    heap1_size = target;
+    for (int i = 0; i < nroots; i++) {
+      heap1[i] = heap0[i];
+    }
+    do_gc (nroots);
+    // and the other space, ready for the next collection.
+    free (heap1);
+    heap1 = new_space (heap_size);
+    heap1_size = heap_size;
+  }
 }
 
 object
@@ -296,6 +409,11 @@ load_image (char * filename) {
     read_header (load_file);	// XXX verify header...
     fread (&start, sizeof(irk_int), 1, load_file);
     fread (&size, sizeof(irk_int), 1, load_file);
+    if ((size_t) size + head_room > heap1_size) {
+      free (heap1);
+      heap1_size = (size + head_room) * GROW_TO / 10;
+      heap1 = new_space (heap1_size);
+    }
     fread (heap1, sizeof(irk_int), size, load_file);
     fprintf (stderr, "size=%d\n", (int) size);
     // relocate heap0
@@ -307,7 +425,16 @@ load_image (char * filename) {
     thunk = (object *) heap1[3];
     freep = heap1 + size;
     // swap heaps
-    { object * temp = heap0; heap0 = heap1; heap1 = temp; }
+    {
+      object * temp = heap0; heap0 = heap1; heap1 = temp;
+      size_t stemp = heap_size; heap_size = heap1_size; heap1_size = stemp;
+    }
+    if (heap1_size < heap_size) {
+      free (heap1);
+      heap1 = new_space (heap_size);
+      heap1_size = heap_size;
+    }
+    limit = heap0 + (heap_size - 1024);
     return thunk;
   }
 }

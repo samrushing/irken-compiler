@@ -12,12 +12,19 @@
 typedef intptr_t irk_int;
 typedef void * object;
 
+// the heap is two semispaces, heap0 (in use) and heap1.  they start at
+//  this size, and grow when a collection finds them too full: see
+//  grow_heap() in gc1.c.  (heap1 is always at least as big as heap0.)
 #if defined(IRK_HEAP_SIZE)
-const size_t heap_size = IRK_HEAP_SIZE;
+size_t heap_size = IRK_HEAP_SIZE;
 #else
-const size_t heap_size = 50000000; // about 400MB on 64-bit machine
+size_t heap_size = 50000000; // about 400MB on 64-bit machine
 #endif
+size_t heap1_size = 0;
 const size_t head_room = 8192;
+// set (in words) by %ensure-heap before it asks for a collection, so the
+//  heap can be made big enough for what's about to be allocated.
+irk_int heap_request = 0;
 
 object * heap0 = NULL;
 object * heap1 = NULL;

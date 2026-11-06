@@ -633,6 +633,8 @@
     (%ensure-heap #f n)
     (%make-vector #f n val))
   (%backend bytecode
+    ;; (VMAKE doesn't check the heap itself.)
+    (%ensure-heap #f n)
     (%%vminsn (int 'a -> (vector 'a)) 'vmake n val))
   (%backend arm
     (%ensure-heap #f n)

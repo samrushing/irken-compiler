@@ -1278,6 +1278,7 @@ main (int argc, char * argv[])
   //  pages aren't touched until they're used.
   heap0 = (object *) calloc (heap_size, sizeof (object));
   heap1 = (object *) calloc (heap_size, sizeof (object));
+  heap1_size = heap_size;
   if (!heap0 || !heap1) {
     fprintf (stderr, "unable to allocate heap\n");
     return -1;

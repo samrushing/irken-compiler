@@ -162,8 +162,10 @@ move ('self/irken' + ext, 'self/irken.1' + ext)
 #   backends; util/test.py uses it), and genffi.  stage1 and stage2 are
 #   the same compiler, so self/compile and genffi are built with a copy
 #   of stage1 while stage2 is replacing self/irken.
-# Each Irken process can use ~800MB (two semispaces, which are cleared),
-#   so how much runs at once depends on how much memory there is.
+# A small Irken program uses little memory, but the compiler's heap
+#   grows to ~1.7GB (or 1/4 of the machine's memory, whichever is less:
+#   see grow_heap() in include/gc1.c).  so how much runs at once depends
+#   on how much memory there is.
 import subprocess
 copy ('self/irken', 'self/irken-stage1')
 
