@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+;; written entirely by Claude (Anthropic's AI model, Claude Opus 5.5), in
+;;  November 2026, on top of Sam's doom/ssh and line-editing code.
+
 ;; party line: a tiny chat room over ssh.
 ;;
 ;; everyone who connects is in the same room.  lines you type go to
