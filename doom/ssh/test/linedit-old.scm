@@ -2,7 +2,7 @@
 
 (require "lib/basis.scm")
 (require "lib/deque.scm")
-(require "doom/ssh/test/csi.scm")
+(require "lib/csi.scm")
 
 (require "demo/maze/gen.scm")
 (require "demo/maze/utf8.scm")

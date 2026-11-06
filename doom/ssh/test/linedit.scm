@@ -1,7 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (require "lib/basis.scm")
-(require "doom/ssh/test/csi.scm")
+(require "lib/csi.scm")
 
 ;; can we slap together a quick line editor using ANSI/vt100 escape sequences?
 ;; what's the minimum necessary?
@@ -82,8 +82,8 @@
 
         (define (handle-csi csi)
           (match csi with
-            (csi:cuu 0) -> (next-or-prev-line #t)
-            (csi:cud 0) -> (next-or-prev-line #f)
+            (csi:cuu _) -> (next-or-prev-line #t)  ;; up arrow
+            (csi:cud _) -> (next-or-prev-line #f)  ;; down arrow
             (csi:ds x y) -> (handle-device-status x y)
             _ -> (printf (bold (repr (csi->sexp csi))) "\n")
             ))
