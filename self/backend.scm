@@ -128,7 +128,13 @@
 (define TC_SYMBOL       (<<  7 2)) ;; 00011100  1c
 (define TC_BUFFER       (<<  8 2)) ;; 00100000  20
 (define TC_FOREIGN      (<<  9 2)) ;; 00100100  24
-(define TC_USEROBJ      (<< 10 2)) ;; 00100100  24
+(define TC_USEROBJ      (<< 10 2)) ;; 00101000  28
+
+;; the highest number a variant (a polymorphic variant label, or one of a
+;;  datatype's alternatives) can have.  a variant with arguments is an object
+;;  whose type code is TC_USEROBJ + (n << 2) (UOTAG in include/irken.h),
+;;  which must fit in TAGSIZE bits: with TAGSIZE 16, n can be 0..16373.
+(define max-variant-index (>> (- (<< 1 TAGSIZE) 4 TC_USEROBJ) 2))
 
 (define (find-jumps insns)
   (let ((used (map-maker int-cmp)))

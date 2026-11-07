@@ -412,6 +412,10 @@
 	(alt-map::get-err tag "no such alt in datatype"))
 
       (define (add alt)
+	(when (> nalts max-variant-index)
+	  (error1 (format "too many alternatives in datatype " (sym name)
+	                  " (the most is " (int (+ 1 max-variant-index)) ")")
+	          alt.name))
 	(alt-map::add alt.name alt)
 	(set! alt.index nalts)
 	(set! nalts (+ 1 nalts))

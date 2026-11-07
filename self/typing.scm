@@ -113,6 +113,11 @@
   (match (alist/lookup the-context.variant-labels label) with
     (maybe:yes _) -> #u
     (maybe:no) -> (let ((index (alist/length the-context.variant-labels)))
+                    ;; labels are numbered for the whole program.
+                    (when (> index max-variant-index)
+                      (error1 (format "too many polymorphic variant labels in this program (the most is "
+                                      (int (+ 1 max-variant-index)) ")")
+                              label))
 		    (alist/push the-context.variant-labels label index))))
 
 (define (type-program root-node)

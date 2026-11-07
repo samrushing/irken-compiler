@@ -64,8 +64,13 @@ object * heap1 = NULL;
 // alias
 #define TC_CONTINUATION TC_SAVE
 
-// the range TC_USEROBJ to 252 is available for variant records,
-//   leaving a max of 59 variants in any one type.
+// the type codes from TC_USEROBJ up (multiples of 4, up to TAGMASK) are
+//   for variants with arguments: UOTAG(n) below.  with TAGSIZE 16, that's
+//   16374 of them (n = 0..16373): for polymorphic variants, in the whole
+//   program, since their labels are numbered globally; for a datatype's
+//   alternatives, in that datatype.  the compiler checks this
+//   (max-variant-index in self/backend.scm).  variants without arguments
+//   are immediates (UITAG), whose number is in the payload.
 
 // immediate constants
 #define IRK_FALSE		(object *) (0 << TAGSIZE | TC_BOOL)
