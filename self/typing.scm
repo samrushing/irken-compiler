@@ -948,6 +948,8 @@
 		    )))))
 
   ;;(build-graphs node)
+  ;; (not for typing: for the order the inits run in.  see graph.scm.)
+  (order-fix-inits root-node)
   (type-of root-node (tenv/make))
   )
 

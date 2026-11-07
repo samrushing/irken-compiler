@@ -229,3 +229,74 @@
 	 ))
      partition)
     (:reordered (reverse names0) (reverse inits0) (nth inits n) (reverse r))))
+
+;; put each fix's definitions in an order that works at run time.
+;;
+;; the inits of a fix (the top level, or a letrec) are evaluated in order,
+;;  so a value whose init uses another (directly, or by calling a function
+;;  that does) has to come after it.  the source order may not do that:
+;;
+;;    (define (foo) (alist/lookup thing1 2))
+;;    (define g {foo=foo})
+;;    (define thing2 (g.foo))   ;; thing1 isn't set yet
+;;    (define thing1 (alist/make ...))
+;;
+;; (the order typing uses, from <strongly>, groups mutually-recursive
+;;  functions for polymorphism; it isn't used for this.)  so: keep the
+;;  source order, except that everything a definition depends on (through
+;;  the dependency graph, transitively, including through functions that
+;;  aren't in this fix) goes before it.  functions moving earlier is
+;;  harmless; values move only as far as they must.  [issue #86]
+
+(define (order-fix-inits root)
+  (let ((g the-context.dep-graph))
+
+    (define (deps name)
+      (match (g::get name) with
+        (maybe:yes s) -> (s::get)
+        (maybe:no)    -> '()))
+
+    (define (reorder-one exp names)
+      (let ((subs (list->vector (noderec->subs exp)))
+            (names-v (list->vector names))
+            (n (length names))
+            (index (map-maker symbol-index-cmp))
+            (state (make-vector n 0)) ;; 0: not yet, 1: in progress, 2: placed
+            (order '()))
+        ;; the definitions of this fix that <name0> uses: directly, or
+        ;;  through things that aren't in this fix.  (through one that is,
+        ;;  visit will find the rest.)  in source order: not symbol order,
+        ;;  which depends on the compiler doing the compiling.
+        (define (uses name0)
+          (let ((seen (symbol-set-maker '()))
+                (found '()))
+            (define (walk name)
+              (match (index::get name) with
+                (maybe:yes j) -> (push! found j)
+                (maybe:no)
+                -> (when (not (seen::in name))
+                     (seen::add name)
+                     (for-each walk (deps name)))))
+            (for-each walk (deps name0))
+            (sort < found)))
+        (define (visit i)
+          (when (= state[i] 0)
+            (set! state[i] 1)
+            (for-each visit (uses names-v[i]))
+            (set! state[i] 2)
+            (push! order i)))
+        (for-range i n (index::add names-v[i] i))
+        (for-range i n (visit i))
+        (let ((order0 (reverse order)))
+          (set-node-t! exp (node:fix (map (lambda (i) names-v[i]) order0)))
+          (set-node-subs! exp (append (map (lambda (i) subs[i]) order0)
+                                      (list subs[n]))))))
+
+    (define (search exp)
+      (match (noderec->t exp) with
+        (node:fix names) -> (reorder-one exp names)
+        _ -> #u)
+      (for-each search (noderec->subs exp)))
+
+    (search root)))
+
