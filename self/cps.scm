@@ -675,7 +675,16 @@
 	  (cpsenv:reg _ _ lenv) -> (loop depth lenv)
 	  (cpsenv:fat label _)	-> (insn:fail label depth (make-cell k.free)))))
 
-    (define (c-vcon params args lenv k)
+    ;; if nothing uses the object (k.target is -1, the 'dead' target), we
+    ;;  still have to make it (its args may do things), so make it in a
+    ;;  register of its own: the backends can't allocate into -1.
+    (define (live-target k)
+      (if (= k.target -1)
+          (cont k.free (lambda (reg) k.insn))
+          k))
+
+    (define (c-vcon params args lenv k0)
+      (define k (live-target k0))
       (match params with
 	(sexp:list ((sexp:symbol label _) _))
 	-> (let ((tag (alist/get the-context.variant-labels label "unknown variant label?"))
@@ -699,7 +708,8 @@
 		 (insn:alloc tag 0 #f k)))
 	_ -> (error1 "bad %vcon params" params)))
 
-    (define (c-record-literal exp lenv k)
+    (define (c-record-literal exp lenv k0)
+      (define k (live-target k0))
       (let loop ((exp exp)
 		 (fields '()))
         ;; (%rextend field0 (%rextend field1 (%rmake) ...)) => {field0=x field1=y}
