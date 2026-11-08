@@ -135,30 +135,50 @@
       ))
   )
 
-;; See https://en.wikipedia.org/wiki/Modulo for details
-;; this code is from Daan Leijen, "Division and Modulus for Computer Scientists"
+;; ---------- integer division ----------
+;;
+;; the names follow SRFI 141 (and R7RS): each way of rounding the
+;;  quotient has a family of three, `X/` (both, as a tuple), `X-quotient`
+;;  and `X-remainder`, and a quotient and remainder always come from the
+;;  same family, so that n = d*q + r.
+;;
+;;   truncate:  q rounds toward zero; r has the sign of n.  (C, and the
+;;              machines' own divide instructions.)
+;;   floor:     q rounds down; r has the sign of d.
+;;   euclidean: r is never negative: 0 <= r < |d|.  (R6RS div/mod.)
+;;
+;; (when d doesn't divide n:) floor and euclidean differ only when d is
+;;  negative; truncate differs from floor when n and d have different
+;;  signs, and from euclidean when n is negative.
+;;
+;; `/`, `mod` and `divmod` are euclidean: Irken's decision.
+;; `quotient`, `remainder` and `modulo` are scheme's (R7RS keeps them):
+;;  quotient and remainder truncate, modulo floors.
+;;
+;; See https://en.wikipedia.org/wiki/Modulo for details.  the code is from
+;; Daan Leijen, "Division and Modulus for Computer Scientists"
 ;; https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/divmodnote-letter.pdf
 
-(define (divmod-truncated n d)
+(define (unsafe-divmod n d)
   (%backend (arm amd rv) (%divmod #f n d)) ;; llvm probably also has a divmod prim
-  (%backend (c llvm bytecode)
-    (if (zero? d)
-        (raise (:DivideByZero n))
-        (:tuple (unsafe-div n d) (unsafe-rem n d)))))
+  (%backend (c llvm bytecode) (:tuple (unsafe-div n d) (unsafe-rem n d))))
 
-;; this matches R6RS div-and-mod
-(define (divmod-euclidean n d)
+(define (truncate/ n d)
   (if (zero? d)
       (raise (:DivideByZero n))
-      (let ((q (unsafe-div n d))
-            (r (unsafe-rem n d)))
-        (match (int-cmp r 0) (int-cmp d 0) with
-          (cmp:<) (cmp:>) -> (:tuple (- q 1) (+ r d))
-          (cmp:<) _       -> (:tuple (+ q 1) (- r d))
-          _       _       -> (:tuple q r)
-          ))))
+      (unsafe-divmod n d)))
 
-(define (divmod-floored n d)
+(define (truncate-quotient n d)
+  (if (zero? d)
+      (raise (:DivideByZero n))
+      (unsafe-div n d)))
+
+(define (truncate-remainder n d)
+  (if (zero? d)
+      (raise (:DivideByZero n))
+      (unsafe-rem n d)))
+
+(define (floor/ n d)
   (if (zero? d)
       (raise (:DivideByZero n))
       (let ((q (unsafe-div n d))
@@ -169,36 +189,51 @@
           _       _       -> (:tuple q r)
           ))))
 
-(define divmod divmod-euclidean)
-
-(define (div-euclidean n d)
-  (let (((q r) (divmod-euclidean n d)))
+(define (floor-quotient n d)
+  (let (((q r) (floor/ n d)))
     q))
 
-(define (mod-euclidean n d)
-  (let (((q r) (divmod-euclidean n d)))
+(define (floor-remainder n d)
+  (let (((q r) (floor/ n d)))
     r))
 
-(define (div-floored n d)
-  (let (((q r) (divmod-floored n d)))
-    q))
-
-(define (mod-floored n d)
-  (let (((q r) (divmod-floored n d)))
-    r))
-
-;; scheme < R6RS, truncated
-(define (remainder n d)
+(define (euclidean/ n d)
   (if (zero? d)
       (raise (:DivideByZero n))
-      (unsafe-rem n d)))
+      (let ((q (unsafe-div n d))
+            (r (unsafe-rem n d)))
+        (match (int-cmp r 0) (int-cmp d 0) with
+          (cmp:<) (cmp:>) -> (:tuple (- q 1) (+ r d))
+          (cmp:<) _       -> (:tuple (+ q 1) (- r d))
+          _       _       -> (:tuple q r)
+          ))))
 
-;; scheme < R6R6, floored
-(define modulo mod-floored)
+(define (euclidean-quotient n d)
+  (let (((q r) (euclidean/ n d)))
+    q))
 
-;; let's call this Irken's decision.
-(define /   div-euclidean)
-(define mod mod-euclidean)
+(define (euclidean-remainder n d)
+  (let (((q r) (euclidean/ n d)))
+    r))
+
+;; Irken's own.
+(define /      euclidean-quotient)
+(define mod    euclidean-remainder)
+(define divmod euclidean/)
+
+;; scheme's.
+(define quotient  truncate-quotient)
+(define remainder truncate-remainder)
+(define modulo    floor-remainder)
+
+;; older names.
+(define divmod-truncated truncate/)
+(define divmod-floored   floor/)
+(define divmod-euclidean euclidean/)
+(define div-floored      floor-quotient)
+(define mod-floored      floor-remainder)
+(define div-euclidean    euclidean-quotient)
+(define mod-euclidean    euclidean-remainder)
 
 (define (<< a b)
   (%backend c (%%cexp (int int -> int) "%0<<%1" a b))
