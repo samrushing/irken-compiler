@@ -83,7 +83,7 @@
 		 ;; nullary constructor - immediate
                  (format (int (itag dt variant tag)))))
         (literal:vector ())
-        -> (format (int (encode-immediate exp)))
+        -> (encode-immediate-string exp)
 	(literal:vector args)
 	-> (let ((args0 (map (partial (walk _ litnum)) args))
 		 (nargs (length args))
@@ -109,7 +109,7 @@
         -> (litref0 (cmap->index lits exp))
         ;; NOTE: sexp is missing from here.  without that, no sexp literals.
         ;;    also also: sexps now have records embedded with them, so...
-        _ -> (format (int (encode-immediate exp)))
+        _ -> (encode-immediate-string exp)
 	))
     (o.indent)
     (for-map i lit lits.rev

@@ -95,8 +95,23 @@
     -> (let ((alt (dt.get altname)))
          (+ TC_USERIMM (<< alt.index TAGSIZE)))))
 
+;; an integer n is stored as the word 2n+1.  the compiler is an irken
+;;  program too, so it can compute that word only when it fits in an
+;;  irken integer: for -2^61 <= n < 2^61.  for the rest of the range
+;;  (2^61 <= |n| <= 2^62) the word must be written out in hex (see
+;;  encode-immediate-hex) and loaded as a full 64-bit constant.
+(define (wide-int? n)
+  (let ((top (>> n 61)))
+    (not (or (= top 0) (= top -1)))))
+
+(define wide-literal?
+  (literal:int n) -> (wide-int? n)
+  _               -> #f)
+
 (define encode-immediate
-  (literal:int n)              -> (logior 1 (<< n 1))
+  (literal:int n)              -> (if (wide-int? n)
+                                      (error1 "encode-immediate: integer too wide, use encode-immediate-hex" n)
+                                      (logior 1 (<< n 1)))
   (literal:char ch)            -> (logior 2 (<< (char->ascii ch) TAGSIZE))
   (literal:undef)              -> #x0e
   (literal:bool #t)            -> (logior 6 (<< 1 TAGSIZE))
@@ -105,6 +120,28 @@
   (literal:cons 'list 'nil ()) -> TC_NIL
   (literal:cons dt alt ())     -> (encode-user-immediate dt alt)
   x -> (error1 "expected immediate literal " x))
+
+;; a 64-bit word as "0x" and 16 hex digits, given its two 32-bit halves.
+(define (hex64 hi lo)
+  (define (h32 n) (format (zpad 8 (hex (logand n #xffffffff)))))
+  (format "0x" (h32 hi) (h32 lo)))
+
+;; any irken integer (a negative one too) as a 64-bit word in hex.
+(define (int->hex64 w)
+  (hex64 (>> w 32) w))
+
+;; the 64-bit word for an immediate, in hex.  for a wide integer it's
+;;  built from two halves, neither of which can overflow.
+(define (encode-immediate-hex lit)
+  (match lit with
+    (literal:int n) -> (hex64 (>> n 31) (logior 1 (<< (logand n #x7fffffff) 1)))
+    _               -> (int->hex64 (encode-immediate lit))))
+
+;; an immediate as text for C or assembly: decimal, or hex if wide.
+(define (encode-immediate-string lit)
+  (if (wide-literal? lit)
+      (encode-immediate-hex lit)
+      (int->string (encode-immediate lit))))
 
 (define immediate-true  (encode-immediate (literal:bool #t)))
 (define immediate-false (encode-immediate (literal:bool #f)))
@@ -272,7 +309,7 @@ void prof_dump (void)
 		 ;; nullary constructor - immediate
 		 (uitag dt variant tag)))
         (literal:vector ())
-        -> (int->string (encode-immediate exp))
+        -> (encode-immediate-string exp)
 	(literal:vector args)
 	-> (let ((args0 (map (partial (walk _ litnum)) args))
 		 (nargs (length args))
@@ -297,7 +334,7 @@ void prof_dump (void)
 	(literal:string s)
 	->  (format "UPTR0(" (int (cmap->index lits exp)) ")")
         ;; NOTE: sexp is missing from here.  without that, no sexp literals.
-	_ -> (int->string (encode-immediate exp))
+	_ -> (encode-immediate-string exp)
 	))
     (o.dedent) ;; XXX fix this by defaulting to zero indent
     (for-map i lit lits.rev

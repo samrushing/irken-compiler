@@ -222,11 +222,11 @@
 	  (o.write (format "O r" (int dst) " = r" (int src) ";"))))
 
     (define (emit-literal lit target)
-      (let ((val (encode-immediate lit))
+      (let ((val (encode-immediate-string lit))
 	    (prefix (if (= target -1)
 			"// dead " ;; why bother with a dead literal?
 			(format "O r" (int target)))))
-	(o.write (format prefix " = (object *) " (int val) ";"))
+	(o.write (format prefix " = (object *) " val ";"))
 	))
 
     (define (emit-litcon index kind target)

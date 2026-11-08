@@ -378,9 +378,20 @@
     (define (emit-literal lit trg)
       (if (= trg -1)
           (list:nil) ;; dead literal
-          (AMD
-           (com "lit")
-           ('movq (i (encode-immediate lit)) (n trg)))))
+          (if (or (wide-literal? lit) (not (imm32? (encode-immediate lit))))
+              ;; a full 64-bit constant: only movabsq to a register can do it.
+              (AMD
+               (com "lit")
+               ('movabsq (l (format "$" (encode-immediate-hex lit))) (s 0))
+               ('movq (s 0) (n trg)))
+              (AMD
+               (com "lit")
+               ('movq (i (encode-immediate lit)) (n trg))))))
+
+    ;; does n fit in a sign-extended 32-bit immediate?
+    (define (imm32? n)
+      (let ((top (>> n 31)))
+        (or (= top 0) (= top -1))))
 
     ;; most (all?) llvm ariths are the same as amd64.
     ;; main difference is the 'q' suffix.

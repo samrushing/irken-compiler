@@ -146,7 +146,7 @@
     (define (emit-literal lit target)
       (if (= target -1)
           '() ;; pointless dead literal.
-          (let ((enc (encode-immediate lit)))
+          (let ((enc (if (wide-literal? lit) -1 (encode-immediate lit))))
             (if (and (> enc 0) (< enc #x3fffffff)) ;; will it fit in a bytecode_t?
                 (LINSN 'imm target enc)
                 (LINSN 'lit
@@ -701,9 +701,10 @@
         (maybe:no)
         -> (match ob with
              (literal:int n)
-             -> (if (< n 0)
-                    (o.copy (format "-" (encode-int (- 0 n))))
-                    (o.copy (format "+" (encode-int n))))
+             -> (cond ((>= n 0) (o.copy (format "+" (encode-int n))))
+                      ((> n smallest-int) (o.copy (format "-" (encode-int (- 0 n)))))
+                      ;; -2^62 has no positive twin: its magnitude, by hand.
+                      (else (o.copy "-\xff\x08\x40\x00\x00\x00\x00\x00\x00\x00")))
              (literal:char ch) -> (o.copy (format "c" (encode-int (char->ascii ch))))
              (literal:undef)   -> (o.copy "u")
              (literal:string s)

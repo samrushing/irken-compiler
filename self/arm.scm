@@ -343,23 +343,27 @@
       ;; immediates are tricky on arm, because of the fixed-size insns
       ;; there are several different ways to load immediates, depending
       ;; on their size (and even bit patterns).
-      (if (< imm (<< 1 16))
-          (ARM ('mov (n trg) (i imm)))
-          (if (< imm (<< 1 32))
-              (let ((lo (logand #xffff imm))
-                    (hi (>> imm 16)))
-                (ARM ('movz (n trg) (i lo))
-                     ('movk (n trg) (i hi) (lsl 16))))
-              (begin
-                (set! ltorg-flag #t)
-                (ARM
-                 ('ldr (n trg) (l (format "=0x" (hex imm))))))
-              )))
+      (cond ((and (>= imm (- 0 (<< 1 16))) (< imm (<< 1 16)))
+             ;; (a negative one is a movn)
+             (ARM ('mov (n trg) (i imm))))
+            ((and (> imm 0) (< imm (<< 1 32)))
+             (let ((lo (logand #xffff imm))
+                   (hi (>> imm 16)))
+               (ARM ('movz (n trg) (i lo))
+                    ('movk (n trg) (i hi) (lsl 16)))))
+            (else
+             (set! ltorg-flag #t)
+             (ARM
+              ('ldr (n trg) (l (format "=" (int->hex64 imm))))))))
 
     (define (emit-literal lit trg)
       (if (= trg -1)
           (list:nil) ;; dead literal
-          (emit-immediate (encode-immediate lit) trg)))
+          (if (wide-literal? lit)
+              (begin
+                (set! ltorg-flag #t)
+                (ARM ('ldr (n trg) (l (format "=" (encode-immediate-hex lit))))))
+              (emit-immediate (encode-immediate lit) trg))))
 
     ;; I think obsolete now.
     ;; llvm -> arm64 arithmetic insns

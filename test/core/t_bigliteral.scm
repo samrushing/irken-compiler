@@ -1,19 +1,42 @@
 ;; -*- Mode: Irken -*-
 
-;; integer constants beyond +/-2^61.  fixnums go up to 2^62-1 at run time
-;;  (see t_arith), but the compiler tags a constant with its own fixnum
-;;  arithmetic, (n << 1) | 1, which overflows for |n| >= 2^61.  folded
-;;  constants hit this too.
-
-;; xfail: c arm amd rv -- compile-time constants >= 2^61 wrap around
+;; integer constants beyond +/-2^61.  integers go up to 2^62-1 and down
+;;  to -2^62, but the compiler (an irken program) can't compute the word
+;;  2n+1 for |n| >= 2^61, so it writes those out in hex.  folded
+;;  constants and literal data (lists, vectors) take the same path.
 
 (include "lib/basis.scm")
 
-(printn 2305843009213693952)
-(printn 4611686018427387903)
+(printn 2305843009213693952)            ;; 2^61
+(printn 4611686018427387903)            ;; 2^62-1, the largest
+(printn -2305843009213693953)           ;; -2^61-1
+(printn -4611686018427387904)           ;; -2^62, the smallest
+(printn #x3fffffffffffffff)
+(printn #x-4000000000000000)
+(printn #b11111111111111111111111111111111111111111111111111111111111111)
 (printn (<< 1 61))
 (printn (+ 2305843009213693951 1))
+(printn (- 4611686018427387903 1))
+(printn '(2305843009213693952 -4611686018427387904))
+(printn #(1 4611686018427387903))
+(printn (= (- 4611686018427387903 2305843009213693952) 2305843009213693951))
+;; just inside the old range, and small ones, are unchanged.
+(printn 2305843009213693951)
+(printn -2305843009213693952)
+(printn -1000000)
 ;; => 2305843009213693952
+;; => 4611686018427387903
+;; => -2305843009213693953
+;; => -4611686018427387904
+;; => 4611686018427387903
+;; => -4611686018427387904
 ;; => 4611686018427387903
 ;; => 2305843009213693952
 ;; => 2305843009213693952
+;; => 4611686018427387902
+;; => (2305843009213693952 -4611686018427387904)
+;; => #(1 4611686018427387903)
+;; => #t
+;; => 2305843009213693951
+;; => -2305843009213693952
+;; => -1000000

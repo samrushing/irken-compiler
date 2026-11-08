@@ -269,7 +269,9 @@
     (define (emit-literal lit trg)
       (if (= trg -1)
           (list:nil) ;; dead literal
-          (emit-immediate (encode-immediate lit) trg)))
+          (if (wide-literal? lit)
+              (RV ('li (n trg) (l (encode-immediate-hex lit))))
+              (emit-immediate (encode-immediate lit) trg))))
 
     ;; llvm -> rv64 arithmetic insns
     (define llop->rvop
