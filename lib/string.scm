@@ -426,20 +426,40 @@
    (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7)
    ))
 
-;; XXX this currently does not check that the literal will fit in an irken integer!
+;; the smallest irken integer: -2^62 (a 64-bit word holds 2n+1).
+;; [computed in a loop rather than written as a constant: a compiler
+;;  from before the big-literal fix would get that constant wrong.]
+(define smallest-int
+  (let loop ((n -1) (i 0))
+    (if (= i 62) n (loop (* n 2) (+ i 1)))))
 
-;; maybe parse integer in base <b> from string <s>
+;; maybe parse integer in base <b> from string <s>.
+;; (result:err (:IntegerTooBig s)) if it won't fit in an irken integer.
 (define (parse-integer b s)
+  ;; the digits are accumulated as a negative number, so that the
+  ;; smallest integer (which has no positive twin) can be read too.
+  ;; before each step, check that r*b - digit won't go below the
+  ;; smallest integer: r >= ceiling((smallest + digit) / b).
+  (define (min-r digit)
+    (let ((lim (+ smallest-int digit))
+          (q (/ lim b)))
+      ;; whichever way `/` rounds, this gets the ceiling.
+      (if (< (* q b) lim) (+ q 1) q)))
   (let ((neg? (eq? (string-ref s 0) #\-))
 	(start (if neg? 1 0))
         (n (string-length s)))
     (let loop ((i start)
 	       (r 0))
       (if (= i n)
-	  (result:ok (if neg? (- 0 r) r))
+          (cond (neg? (result:ok r))
+                ((= r smallest-int) (result:err (:IntegerTooBig s)))
+                (else (result:ok (- 0 r))))
 	  (match (alist/lookup hex-map (string-ref s i)) with
-	    (maybe:no)        -> (result:err (:BadInteger s))
-	    (maybe:yes digit) -> (loop (+ i 1) (+ (* r b) digit)))
+	    (maybe:no) -> (result:err (:BadInteger s))
+	    (maybe:yes digit)
+            -> (cond ((>= digit b) (result:err (:BadInteger s)))
+                     ((< r (min-r digit)) (result:err (:IntegerTooBig s)))
+                     (else (loop (+ i 1) (- (* r b) digit)))))
 	  ))))
 
 

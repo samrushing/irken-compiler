@@ -327,7 +327,12 @@
       (if parse-ints?
           (match (parse-integer base val) with
             (result:ok r) -> (sexp:int r)
-            (result:err _) -> (ERR "error reading base " (int base) " integer:" (string val)))
+            (result:err why)
+            -> (match why with
+                 (:IntegerTooBig _)
+                 -> (ERR "integer literal too big (irken integers are 63 bits): " (string val))
+                 (:BadInteger _)
+                 -> (ERR "error reading base " (int base) " integer:" (string val))))
           (sexp (sym '%int) (int base) (string val))))
 
 
