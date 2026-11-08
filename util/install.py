@@ -46,6 +46,8 @@ def copy_tree (src, dst, patterns):
 
 # copy library
 copy_tree ('lib', IRKENTOP, ['.scm'])
+# copy doom (threads, sockets, TLS, HTTP): programs require "doom/..."
+copy_tree ('doom', IRKENTOP, ['.scm'])
 # copy headers
 # (.s: the native backends' preambles, e.g. amd-mach-preamble.s)
 copy_tree ('include', IRKENTOP, ['.h', '.c', '.ll', '.s'])
