@@ -119,6 +119,7 @@
      })
 
   (let ((streams (tree/empty)) ;; int -> stream map.
+        (bodies (tree/empty))  ;; int -> request body in progress
         (priorities (tree/empty))
         (encoder (hpack/encoder 4096))
         (decoder (hpack/decoder 4096))
@@ -132,6 +133,23 @@
     (define (make-stream)
       {window-size=settings.initial-window-size}
       )
+
+    ;; a request body, as DATA frames arrive.
+    (define (make-body)
+      {parts=(list:nil) size=0 done=#f too-big=#f aborted=#f cv=(cv/make)})
+
+    (define (u32-payload n)
+      (let ((s (make-string 4)))
+        (pu32 s 0 n)
+        s))
+
+    ;; wake any handlers waiting for bodies that will never finish.
+    (define (abort-bodies)
+      (for-list sid (tree/keys bodies)
+        (match (tree/member bodies int-cmp sid) with
+          (maybe:yes b) -> (begin (set! b.aborted #t) (set! b.done #t) (b.cv.wake-all))
+          (maybe:no) -> #u))
+      (set! bodies (tree/empty)))
 
     (define (write-thread)
       (while (not done)
@@ -204,13 +222,17 @@
         (when (not (string=? preface h2-preface))
           (raise (:H2/BadPreface preface)))
         (send-settings)
-        (while (not done)
-          (let (((flen ftype flags stream-id) (unpack-frame-header (conn.recv-exact 9)))
-                (payload (if (> flen 0) (conn.recv-exact flen) ""))
-                (frame {type=ftype flags=flags stream-id=stream-id payload=payload}))
-            ;;(print-frame frame)
-            (dispatch frame)
-            ))
+        (try
+         (while (not done)
+           (let (((flen ftype flags stream-id) (unpack-frame-header (conn.recv-exact 9)))
+                 (payload (if (> flen 0) (conn.recv-exact flen) ""))
+                 (frame {type=ftype flags=flags stream-id=stream-id payload=payload}))
+             ;;(print-frame frame)
+             (dispatch frame)
+             ))
+         except
+         EXN -> (begin (abort-bodies) (raise EXN)))
+        (abort-bodies)
         ))
 
     (define (send-frame type flags stream-id payload)
@@ -297,7 +319,8 @@
           (when (not (eq? buf (list:nil)))
             (emit (string-concat (reverse buf)))))))
 
-    (define (make-request stream-id iheaders)
+    ;; <body> is (maybe body): see make-body.
+    (define (make-request stream-id iheaders body)
 
       (let ((bytes-sent 0)
             (status "000")
@@ -333,6 +356,19 @@
           (for (last? chunk) (notify-last-gen (chunk-gen gen 16384))
             (send-data chunk last?)))
 
+        ;; the whole request body ("" if there isn't one).  waits for
+        ;;  it to arrive.
+        (define (recv-body)
+          (match body with
+            (maybe:no) -> ""
+            (maybe:yes b)
+            -> (begin
+                 (while (not b.done)
+                   (b.cv.wait))
+                 (cond (b.aborted (raise (:H2/StreamReset stream-id)))
+                       (b.too-big (raise (:H2/BodyTooLarge b.size)))
+                       (else (string-concat (reverse b.parts)))))))
+
         (define (get-bytes-sent)
           bytes-sent)
 
@@ -355,7 +391,7 @@
         {send-headers        = send-headers
          send-data           = send-data
          send-with-generator = send-with-generator
-         ;;recv-data         = recv-data
+         recv-body           = recv-body
          stream-id           = stream-id
          headers             = iheaders
          get-info            = get-info
@@ -386,11 +422,24 @@
         (let ((headers (decoder (substring f.payload pos (- (string-length f.payload) pad-len)))))
           ;;(print-headers headers)
           ;; create & spawn a request object
-          (poller/fork (lambda () (handler (make-request f.stream-id headers))))
+          (let ((body (if (flag-set? H2-FLAGS-END-STREAM f.flags)
+                          (maybe:no)
+                          (let ((b (make-body)))
+                            (tree/insert! bodies int-cmp f.stream-id b)
+                            (maybe:yes b)))))
+            (poller/fork (lambda () (handler (make-request f.stream-id headers body)))))
           )))
 
     (define (handle-rst-stream f)
       (let ((code (uu32 f.payload 0)))
+        (match (tree/member bodies int-cmp f.stream-id) with
+          (maybe:yes b)
+          -> (begin
+               (set! b.aborted #t)
+               (set! b.done #t)
+               (tree/delete! bodies int-cmp f.stream-id)
+               (b.cv.wake-all))
+          (maybe:no) -> #u)
         (debugf "    RST_STREAM " (int code) " " (sym (H2-ERROR->name (int->H2-ERROR code))) "\n")
         (when (= f.stream-id 0) (set! done #t))
         ))
@@ -412,13 +461,38 @@
         #u
         ))
 
+    ;; the largest request body we'll accept.
+    (define max-request-body (* 1024 1024))
+
     (define (handle-data f)
-      (let ((padlen (ubyte f.payload 0)))
-        ;; XXX data + padding
-        ;; XXX need a way to feed this into a request.
-        ;;(printf "    DATA unhandled " (int (- (string-length f.payload) padlen 1)) " bytes.\n")
-        #u
-        ))
+      (let ((plen (string-length f.payload))
+            (padded? (flag-set? H2-FLAGS-PADDED f.flags))
+            (padlen (if (and padded? (> plen 0)) (ubyte f.payload 0) 0))
+            (start (if padded? 1 0))
+            (end-stream? (flag-set? H2-FLAGS-END-STREAM f.flags)))
+        (when (> (+ start padlen) plen)
+          (raise (:H2/BadFrame f)))
+        ;; return the flow-control credit for the whole frame (padding
+        ;;  included) as it arrives.
+        (when (> plen 0)
+          (send-frame (H2-FRAME:WINDOW_UPDATE) 0 0 (u32-payload plen))
+          (when (not end-stream?)
+            (send-frame (H2-FRAME:WINDOW_UPDATE) 0 f.stream-id (u32-payload plen))))
+        (match (tree/member bodies int-cmp f.stream-id) with
+          (maybe:yes b)
+          -> (let ((data (substring f.payload start (- plen padlen))))
+               (inc! b.size (string-length data))
+               (if (> b.size max-request-body)
+                   (set! b.too-big #t) ;; keep reading, but discard.
+                   (push! b.parts data))
+               (when end-stream?
+                 (set! b.done #t)
+                 (tree/delete! bodies int-cmp f.stream-id)
+                 (b.cv.wake-all)))
+          ;; XXX DATA on a stream without a body in progress: should be
+          ;;  a STREAM_CLOSED error.
+          (maybe:no) -> #u
+          )))
 
     (define (handle-push-promise f)
       (let ((padlen (ubyte f.payload 0))
