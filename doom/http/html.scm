@@ -44,8 +44,24 @@
 (define (html-wrap tag params contents)
   (rope-bracket (open-tag tag params) contents (close-tag tag)))
 
+;; text for HTML: anything that isn't ours (a request path, a header,
+;;  a DNS name...) must go through this, or it can inject markup.
+(define (html-escape s)
+  (let ((r (list:nil)))
+    (define (out str) (for-string ch str (push! r ch)))
+    (for-string ch s
+      (match ch with
+        #\& -> (out "&amp;")
+        #\< -> (out "&lt;")
+        #\> -> (out "&gt;")
+        #\" -> (out "&quot;")
+        #\' -> (out "&#39;")
+        _   -> (push! r ch)))
+    (list->string (reverse r))))
+
+;; attribute values are escaped (and quoted).
 (defmacro hparam
-  (hparam (k v)) -> (format (sym (quote (%%symbol k))) "=" (string v))
+  (hparam (k v)) -> (format (sym (quote (%%symbol k))) "=\"" (html-escape v) "\"")
   )
 
 (defmacro hparams
@@ -56,11 +72,13 @@
   )
 
 (defmacro hitem
-  ;; '&=' means 'escape html language'
+  ;; '&=' means 'escape the html language': x is a rope, used as is.
   (hitem (<&=> x))          -> x
-  ;; string
+  ;; text: formatted, then escaped.  use this for anything untrusted.
+  (hitem (<&t> x ...))      -> (rope:leaf (html-escape (format x ...)))
+  ;; string (NOT escaped: see &t)
   (hitem (<&s> s))          -> (rope:leaf s)
-  ;; format
+  ;; format (NOT escaped: see &t)
   (hitem (<&f> x ...))      -> (rope:leaf (format x ...))
   ;; cat
   (hitem (<&cat> x))        -> (rope/cat x)
@@ -85,7 +103,8 @@
   -> (html-wrap (quote (%%symbol tag))
                 (list:nil)
                 (html sub ...))
-  ;; lone items must be strings.
+  ;; lone items must be strings (NOT escaped: they're for markup and
+  ;;  constant text; see &t).
   (hitem item)         -> (rope:leaf item)
   )
 
@@ -100,7 +119,7 @@
 
 (define field->html
   (field:t '... _)   -> (html "...")
-  (field:t name val) -> (html (&f (sym name) "=") (&= (sexp->html val)))
+  (field:t name val) -> (html (&t (sym name) "=") (&= (sexp->html val)))
   )
 
 ;; (define sexp-css
@@ -120,16 +139,16 @@
 (define sexp->html
   (sexp:undef)       -> (html ((span (class "u")) "#u"))
   (sexp:int n)       -> (html ((span (class "i")) (&f (int n))))
-  (sexp:char ch)     -> (html ((span (class "c")) (&f (char ch))))
+  (sexp:char ch)     -> (html ((span (class "c")) (&t (char ch))))
   (sexp:bool b)      -> (html ((span (class "b")) (&f (bool b))))
-  (sexp:string s)    -> (html ((span (class "s")) (&f (string s))))
-  (sexp:symbol s _)  -> (html ((span (class "y")) (&f (sym s))))
-  (sexp:cons 'nil c) -> (html ((span (class "C")) (&f ":" (sym c))))
-  (sexp:cons dt c)   -> (html ((span (class "C")) (&f (sym dt) ":" (sym c))))
+  (sexp:string s)    -> (html ((span (class "s")) (&t (string s))))
+  (sexp:symbol s _)  -> (html ((span (class "y")) (&t (sym s))))
+  (sexp:cons 'nil c) -> (html ((span (class "C")) (&t ":" (sym c))))
+  (sexp:cons dt c)   -> (html ((span (class "C")) (&t (sym dt) ":" (sym c))))
   (sexp:list l)      -> (html ((span (class "p")) "(") (&join sexp->html " " l) ((span (class "p")) ")"))
   (sexp:vector v)    -> (html "#(" (&join sexp->html " " v) ")")
   (sexp:record fl)   -> (html "{" (&join field->html " " fl) "}")
-  (sexp:attr lhs a)  -> (html (&= (sexp->html lhs)) "." ((span (class "y")) (&f (sym a))))
+  (sexp:attr lhs a)  -> (html (&= (sexp->html lhs)) "." ((span (class "y")) (&t (sym a))))
   )
 
 (define (pp-html exp width)
