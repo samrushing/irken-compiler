@@ -38,9 +38,12 @@
 
 (define *thread-id* 0)
 
+;; debugging output: set *debugf* to #f to silence it.
+(define *debugf* #t)
+
 (defmacro debugf
   (debugf x ...)
-  -> (printf (bold "[" (int *thread-id*) "] ") x ...)
+  -> (when *debugf* (printf (bold "[" (int *thread-id*) "] ") x ...))
   )
 
 ;; TODO: since this code is using getcc/putcc directly, it's possible
