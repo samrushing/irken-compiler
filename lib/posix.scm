@@ -111,4 +111,28 @@
   (%backend c (%%cexp (int -> int) "(irk_int) signal (%0, SIG_IGN)" signum))
   (%backend (llvm arm amd rv) (%%ffi signal signum SIG_IGN)))
 
+;; --- users ---
 
+;; {uid gid} for the user <name>.
+(define (user-ids name)
+  (let ((pw* (posix/getpwnam (cstring name))))
+    (if (cref-null? pw*)
+        (raise (:Posix/NoSuchUser name))
+        {uid = (c-get-int (%c-sref passwd.pw_uid pw*))
+         gid = (c-get-int (%c-sref passwd.pw_gid pw*))})))
+
+;; give up root for good: become the user <name>, with its groups.
+;;  call this after binding privileged ports and opening anything that
+;;  needs root.  raises (:OSError errno) if we can't (e.g. not root).
+(define (drop-privileges name)
+  (let ((ids (user-ids name)))
+    ;; the groups first (replacing root's supplementary groups, e.g.
+    ;;  wheel), then the gid, then the uid: after that, we couldn't.
+    (syscall (posix/initgroups (cstring name) ids.gid))
+    (syscall (posix/setgid ids.gid))
+    (syscall (posix/setuid ids.uid))
+    ;; there must be no way back.
+    (when (and (not (= ids.uid 0))
+               (or (= 0 (posix/getuid)) (= 0 (posix/geteuid))))
+      (raise (:Posix/StillRoot name)))
+    ids))
