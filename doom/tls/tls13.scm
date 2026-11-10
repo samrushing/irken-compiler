@@ -430,6 +430,8 @@
 
     ;; --- create socket object ---
     ;; XXX TODO?: half-closed connections.
+    ;; anything unexpected: close the socket (don't leak the fd) and re-raise.
+    (try
     (try
      ;; get connected
      (while (not (eq? state (tls-state:cnctd)))
@@ -451,6 +453,8 @@
      -> (begin (debugf "OSError " (int n) "\n")
                #u)
      )
+    except
+    EXN -> (begin (sock.close) (raise EXN)))
     (when (not (eq? state (tls-state:cnctd)))
       (sock.close)
       (raise (:TLS/Failed alert-desc)))

@@ -198,7 +198,7 @@
             (flags (ubyte h 4))
             ((_ stream-id) (ustreamid h 5)))
         (:tuple (>> lentype 8)
-                (int->H2-FRAME (logand lentype #xff))
+                (alist/lookup H2-FRAME-rev-alist (logand lentype #xff))
                 flags
                 stream-id)))
 
@@ -224,11 +224,14 @@
         (send-settings)
         (try
          (while (not done)
-           (let (((flen ftype flags stream-id) (unpack-frame-header (conn.recv-exact 9)))
-                 (payload (if (> flen 0) (conn.recv-exact flen) ""))
-                 (frame {type=ftype flags=flags stream-id=stream-id payload=payload}))
-             ;;(print-frame frame)
-             (dispatch frame)
+           (let (((flen mtype flags stream-id) (unpack-frame-header (conn.recv-exact 9)))
+                 (payload (if (> flen 0) (conn.recv-exact flen) "")))
+             ;; RFC 9113 4.1: unknown frame types (e.g. browsers' GREASE
+             ;;  frames) must be ignored.
+             (match mtype with
+               (maybe:yes ftype)
+               -> (dispatch {type=ftype flags=flags stream-id=stream-id payload=payload})
+               (maybe:no) -> #u)
              ))
          except
          EXN -> (begin (abort-bodies) (raise EXN)))

@@ -256,9 +256,10 @@
     (define (unpack-alert)
       (let ((level (get-u8))
             (desc (get-u8)))
-        (tls-record:alert
-         (int->tls-alert-level level)
-         (int->tls-alert-desc desc))))
+        (match (alist/lookup tls-alert-level-rev-alist level)
+               (alist/lookup tls-alert-desc-rev-alist desc) with
+          (maybe:yes level) (maybe:yes desc) -> (tls-record:alert level desc)
+          _ _ -> (raise (:TLS/Alert (tls-alert-desc:decode-error) "unknown alert")))))
 
     (define (unpack-appdata)
       (tls-record:appdata (get-opaque (- blen pos))))
@@ -267,7 +268,7 @@
       (let ((kind (get-u8))
             (len (get-u24)))
         (tls-record:hsk
-         (match (int->tls-hsk-type kind) with
+         (match (alist/lookup* tls-hsk-type-rev-alist kind (tls-hsk-type:message-hash)) with ;; unknown -> _ below
            (tls-hsk-type:client-hello) -> (unpack-client-hello len)
            (tls-hsk-type:server-hello) -> (unpack-server-hello len)
            (tls-hsk-type:enc-exts)     -> (unpack-enc-exts len)
@@ -288,14 +289,14 @@
 
     (define (unpack-record kind)
       ;; (printf "unpack record kind = " (int kind) "\n")
-      (let ((ctype (int->tls-ctype kind)))
-        (match ctype with
-          (tls-ctype:hsk)                -> (unpack-hsk)
-          (tls-ctype:alert)              -> (unpack-alert)
-          (tls-ctype:change-cipher-spec) -> (unpack-change-cipher-spec)
-          (tls-ctype:appdata)            -> (unpack-appdata)
-          x                              -> (raise (:NotImplemented)) ;; XXX raise alert
-          )))
+      ;; anything else (e.g. 0x80: an SSLv2-style hello) is an error.
+      (match (alist/lookup tls-ctype-rev-alist kind) with
+        (maybe:yes (tls-ctype:hsk))                -> (unpack-hsk)
+        (maybe:yes (tls-ctype:alert))              -> (unpack-alert)
+        (maybe:yes (tls-ctype:change-cipher-spec)) -> (unpack-change-cipher-spec)
+        (maybe:yes (tls-ctype:appdata))            -> (unpack-appdata)
+        _ -> (raise (:TLS/Alert (tls-alert-desc:unexpected-message) "unexpected record type"))
+        ))
 
     ;; read one or more full records.
     (let ((records '())
