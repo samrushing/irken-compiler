@@ -26,7 +26,10 @@
    EXN
    -> (begin
         (printf "unhandled exception in thread: " (int thread-id) "\n")
-        (print-exception EXN))
+        (print-exception EXN)
+        (printf "\n")
+        (flush)
+        #u)
    ))
 
 (define next-thread-id
@@ -160,29 +163,26 @@
   (poller/wait-for signum EVFILT_SIGNAL))
 
 (define (poller/forget fd)
+  (remove-kevents the-poller.ievents fd)
   (poller/delete-event fd EVFILT_READ)
   (poller/delete-event fd EVFILT_WRITE)
   )
 
 (define poller/enqueue-waiting-thread
-  (:kev ident filter)
+  (:kev ident filter flags)
   -> (match (poller/lookup-event ident filter) with
        (maybe:yes (:tuple thread-id exc-handler k))
        -> (begin
-           ;; (when (= filter EVFILT_WRITE)
-           ;;   (printf (ansi blue (int ident)))
-           ;;   (for-map k v (kfilt filter)
-           ;;     (printf (ansi yellow (int k)))))
+            ;; an EV_ERROR event (e.g. the fd was closed) also wakes the
+            ;;  waiter: its next read/write will report the error.
             (poller/delete-event ident filter)
-            ;; (when (= filter EVFILT_WRITE)
-            ;;   (for-map k v (kfilt filter)
-            ;;     (printf (ansi cyan (int k)))))
-            (poller/enqueue* thread-id exc-handler k))
+            (poller/enqueue* thread-id exc-handler k)
+            #u)
        (maybe:no)
-       -> (begin
-            (printf "poller: no such event: " (int ident) " " (int filter) "\n")
-            (printf " keys for that filter: " (join int->string " " (tree/keys (kfilt filter))) "\n")
-            (raise (:PollerNoSuchEvent ident filter)))
+       ;; nobody is waiting for this one (e.g. the fd was forgotten before
+       ;;  its change was submitted).  it's oneshot, so just drop it.
+       -> (debugf "poller: dropping unwanted event: " (int ident) " " (int filter)
+                  " flags " (hex flags) "\n")
        ))
 
 (define (poller/wait-and-schedule)

@@ -24,7 +24,29 @@
     (:kev
      (c-get-int (%c-sref kevent.ident kev*))
      (c-get-int (%c-sref kevent.filter kev*))
+     (c-get-int (%c-sref kevent.flags kev*))
      )))
+
+;; drop any not-yet-submitted changes for fd <ident> (read and write
+;;  filters only).  if a closed fd's change stayed in the list, the next
+;;  kevent() would report it back as an EV_ERROR (EBADF) event - or, if
+;;  the fd number had been reused, register it on someone else's socket.
+(define (remove-kevents changes ident)
+  (let ((j 0))
+    (for-range i changes.index
+      (let ((src* (c-aref changes.karray i))
+            (id (c-get-int (%c-sref kevent.ident src*)))
+            (filter (c-get-int (%c-sref kevent.filter src*)))
+            (flags (c-get-int (%c-sref kevent.flags src*))))
+        (when (not (and (= id ident)
+                        (or (= filter EVFILT_READ) (= filter EVFILT_WRITE))))
+          (when (< j i)
+            (let ((dst* (c-aref changes.karray j)))
+              (c-set-int (%c-sref kevent.ident dst*) id)
+              (c-set-int (%c-sref kevent.filter dst*) filter)
+              (c-set-int (%c-sref kevent.flags dst*) flags)))
+          (inc! j))))
+    (set! changes.index j)))
 
 (define (kevent kqfd changes-in changes-out timeout)
   (let ((ts* (halloc (struct timespec)))
