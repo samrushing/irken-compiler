@@ -506,6 +506,63 @@
       () -> (error "empty call?")
       ))
 
+;; the value restriction: a binding is generalized only if its init is a
+  ;;  syntactic value (it can't allocate anything mutable) and it is never
+  ;;  assigned.  otherwise its type stays monomorphic, and its uses decide it.
+  ;; a value is a function, a constant (not a vector: vectors are mutable),
+  ;;  a variable, a constructor applied to values, or NULL.  records are mutable,
+  ;;  so building one is not a value.
+  (define (syntactic-value? node)
+    (match (noderec->t node) with
+      (node:function _ _)  -> #t
+      (node:varref _)      -> #t
+      (node:literal (literal:vector _))   -> #f
+      (node:literal (literal:record _ _)) -> #f
+      (node:literal _)     -> #t
+      (node:primapp '%dtcon _) -> (every? syntactic-value? (noderec->subs node))
+      (node:primapp '%vcon _)  -> (every? syntactic-value? (noderec->subs node))
+      ;; a pointer made from an int (NULL) can't be changed: it's a constant.
+      (node:primapp '%int->cref _) -> (every? syntactic-value? (noderec->subs node))
+      ;; the native backends call a constructor's function instead of %dtcon.
+      (node:call)
+      -> (match (noderec->subs node) with
+           (rator . rands)
+           -> (match (noderec->t rator) with
+                (node:varref name)
+                -> (and (constructor-function? name) (every? syntactic-value? rands))
+                _ -> #f)
+           _ -> #f)
+      _ -> #f
+      ))
+
+  ;; `dt:alt`, the function made for each datatype constructor.
+  (define (constructor-function? name)
+    (let ((s (symbol->string name)))
+      (let loop ((i 0))
+        (cond ((= i (string-length s)) #f)
+              ((eq? (string-ref s i) #\:) #t)
+              (else (loop (+ i 1)))))))
+
+  (define (assigned? name)
+    (try
+     (let ((var (vars-get-var name)))
+       (> var.sets 0))
+     except
+     (:NoSuchVariable _) -> #f
+     ))
+
+  ;; the one exception: *the-exception-handler* is assigned by every `try`
+  ;;  but stays polymorphic, ((rsum 'a) -> 'b).  that's sound: each
+  ;;  exception's payload type is fixed in a global table (see
+  ;;  unify-exception-types), like ML's `exn`, and the handler never
+  ;;  returns, so 'b is never a value.
+  (define (generalize? name init)
+    (or (exception-handler? name)
+        (and (syntactic-value? init) (not (assigned? name)))))
+
+  (define (exception-handler? name)
+    (starts-with (symbol->string name) "*the-exception-handler*"))
+
   (define (type-of-fix names exp tenv)
     ;; reorder fix into dependency order
     (match (reorder-fix names (noderec->subs exp) the-context.scc-graph) with
@@ -534,7 +591,17 @@
                ;; now extend the environment with type schemes instead
                (for-list i part
                  (let ((scheme (build-type-scheme init-types[i] tenv)))
-                   (tenv/extend! tenv names[i] scheme)))
+                   (if (generalize? names[i] inits[i])
+                       (tenv/extend! tenv names[i] scheme)
+                       (begin
+                         (when the-context.options.debugtyping
+                           (match scheme with
+                             (:scheme () _) -> #u
+                             (:scheme gens t)
+                             -> (printf "not generalized (value restriction): " (sym names[i])
+                                        " : " (type-repr t) "  "
+                                        (src-repr (noderec->src inits[i]) 1))))
+                         (tenv/extend! tenv names[i] (:scheme '() init-types[i]))))))
                part))
 	   ;; type the body in the new polymorphic environment
 	   (type-of body tenv))))
