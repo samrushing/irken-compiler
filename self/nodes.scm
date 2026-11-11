@@ -565,6 +565,20 @@
   (define (make-list vals)
     (foldr make-list* (sexp (sexp:cons 'list 'nil null-src)) vals))
 
+  ;; dt:alt must name a datatype and one of its constructors.
+  (define (check-constructor dt alt src)
+    (when (not (eq? dt 'nil)) ;; (nil:alt is a polymorphic variant)
+      (match (alist/lookup the-context.datatypes dt) with
+        (maybe:no)
+        -> (begin
+             (report-error src (format "unknown datatype `" (sym dt) "`"))
+             (%exit #f -1))
+        (maybe:yes dtob)
+        -> (when (not (member-eq? alt (dtob.get-alt-names)))
+             (report-error src (format "datatype `" (sym dt) "` has no constructor `" (sym alt)
+                                       "` (it has: " (join symbol->string ", " (reverse (dtob.get-alt-names))) ")"))
+             (%exit #f -1)))))
+
   ;; sexp->node actual
   (define walk*
     (sexp:symbol s src) -> (node/varref s src)
@@ -576,7 +590,10 @@
     (sexp:record fl _)  -> (build-record fl)
     (sexp:vector l _)   -> (build-vector l)
     (sexp:attr exp sym _) -> (node/primapp '%raccess (sexp:symbol sym null-src) (list (walk exp)) (src:nil))
-    (sexp:cons dt alt _)  -> (node/varref (string->symbol (format (sym dt) ":" (sym alt))) (src:nil))
+    (sexp:cons dt alt src)
+    -> (begin
+         (check-constructor dt alt src)
+         (node/varref (string->symbol (format (sym dt) ":" (sym alt))) (src:nil)))
     (sexp:list l _)
     -> (match l with
          ((sexp:symbol 'begin src) . exps)                  -> (node/sequence (map walk exps) src)
@@ -630,8 +647,9 @@
          -> (error1 "syntax error (let-subst)" (format (join repr " " l)))
          ((sexp:cons 'nil alt _) . rands)
          -> (node/primapp '%vcon (sexp (sym alt) (sexp:int (length rands) null-src)) (map walk rands) (src:nil))
-         ((sexp:cons dt alt _) . rands)
-         -> (if (can-haz-literal? (sexp:list l null-src))
+         ((sexp:cons dt alt csrc) . rands)
+         -> (if (begin (check-constructor dt alt csrc)
+                       (can-haz-literal? (sexp:list l null-src)))
                 (node/literal (build-literal (sexp:list l null-src)))
                 (match the-context.options.backend with
                   (backend:bytecode) -> (node/call (walk (sexp:cons dt alt null-src)) (map walk rands) (src:nil))

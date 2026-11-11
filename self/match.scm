@@ -343,8 +343,13 @@
       (for-alist tag rules-stack alts
         (let ((arity (match mdt with
                        (maybe:no) -> (length (pattern->subs (car (rule->pats (rules-stack.top)))))
-                       (maybe:yes dt) -> (let ((alt (dt.get tag)))
-                                           alt.arity)))
+                       (maybe:yes dt)
+                       -> (if (member-eq? tag (dt.get-alt-names))
+                              (let ((alt (dt.get tag)))
+                                alt.arity)
+                              (rule-error (rules-stack.top)
+                                          (format "datatype `" (sym dt.name) "` has no constructor `" (sym tag)
+                                                  "` (it has: " (join symbol->string ", " (reverse (dt.get-alt-names))) ")")))))
               (vars0 (nthunk arity new-match-var))
               (wild (make-vector arity #t))
               (rules1 '()))

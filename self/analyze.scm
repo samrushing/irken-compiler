@@ -180,7 +180,7 @@
                (ktest (nth subs 0))
                (kfail (nth subs 1)))
            (when (not (has-fail? ktest))
-             (raise (:Analyze/MissingFail (noderec->id kfail))))
+             (raise (:Analyze/MissingFail kfail)))
            (has-fail? kfail))
       (node:primapp '%fail _) -> #t
       else                    -> (any? has-fail? (noderec->subs node))
@@ -188,13 +188,11 @@
   (try
    (has-fail? node)
    except
-   (:Analyze/MissingFail id)
-   -> (let ((funpath (get-node-funpath node id)))
-        (printf (join "\n" (get-node-context node id 30))
-                "node id=" (int id) "\n"
-                "in function: " (bold (join symbol->string "|" funpath)) "\n"
-                "Overly Exhaustive Pattern Match.\n  Patterns are complete, no need for fall-through.\n")
-        (error "overly-exhaustive"))
+   (:Analyze/MissingFail kfail)
+   -> (begin
+        (report-error (noderec->src kfail)
+                      "this case can never be reached: the patterns before it already cover everything")
+        (%exit #f -1))
    )
   )
 

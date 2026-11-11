@@ -122,6 +122,12 @@
 
 (define (type-program root-node)
 
+  (define current-label (maybe:no))
+
+  (define absent?
+    (type:pred 'abs _ _) -> #t
+    _ -> #f)
+
   (define (unify exp t0 t1)
 
     ;; [the node tree around the error, with types: -v]
@@ -132,10 +138,17 @@
       (let ((ut0 (apply-subst t0))
 	    (ut1 (apply-subst t1)))
         (report-error (noderec->src exp)
+                      (match current-label (absent? ut0) (absent? ut1) with
+                        ;; a field (or a variant) that one side has and the other doesn't.
+                        (maybe:yes (type:pred label _ _)) #t _
+                        -> (format "type error: no field (or variant) `" (sym label) "` here")
+                        (maybe:yes (type:pred label _ _)) _ #t
+                        -> (format "type error: no field (or variant) `" (sym label) "` here")
+                        _ _ _ ->
                       (if checking-annotation
                           (format "type error: this doesn't match its type annotation: "
                                   (type-repr ut0) " vs. " (type-repr ut1))
-                          (format "type error: " (type-repr ut0) " vs. " (type-repr ut1))))))
+                          (format "type error: " (type-repr ut0) " vs. " (type-repr ut1)))))))
 
     (define (type-error t0 t1)
       (print-type-error t0 t1)
@@ -178,13 +191,20 @@
       (type:pred na _ _) (type:pred nb _ _) -> (eq? na nb)
       _ _ -> #f)
 
+    ;; the label whose presence is being unified, for the error message.
+    (define (U-label label t0 t1)
+      (let ((saved current-label))
+        (set! current-label (maybe:yes label))
+        (U t0 t1)
+        (set! current-label saved)))
+
     (define (U-row u v)
       (match u v with
         ;; u and v are both rlabel
         (type:pred 'rlabel (l0 t0 d0) _) (type:pred 'rlabel (l1 t1 d1) _)
         -> (cond ((label=? l0 l1)
                   ;; identical labels, unify presence.
-                  (U t0 t1)
+                  (U-label l0 t0 t1)
                   (U d0 d1))
                  (else
                   ;; distinct head labels, C-MUTATE-LL
@@ -195,7 +215,7 @@
 	(type:pred 'rlabel (l0 t0 d0) _) (type:pred p1 s1 _)
 	-> (cond ((eq? p1 'rdefault)
 		  ;; C-MUTATE-DL
-		  (U (car s1) t0)
+		  (U-label l0 (car s1) t0)
 		  (U v d0))
 		 (else
 		  ;; some other predicate
