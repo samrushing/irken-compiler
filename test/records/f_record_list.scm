@@ -3,7 +3,7 @@
 ;; records of different shapes are different types, so they can't
 ;;  share a list.
 
-;; expect-error: Type Error
+;; expect-error: f_record_list.scm:10:17: error: type error
 
 (include "lib/basis.scm")
 

@@ -2,7 +2,7 @@
 
 ;; reading a field the record doesn't have is a type error.
 
-;; expect-error: Type Error
+;; expect-error: f_record_missing.scm:10:16: error: type error
 
 (include "lib/basis.scm")
 

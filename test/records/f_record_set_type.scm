@@ -2,7 +2,7 @@
 
 ;; set! of a field to a value of another type is a type error.
 
-;; expect-error: Type Error
+;; expect-error: f_record_set_type.scm:10:11: error: type error
 
 (include "lib/basis.scm")
 
