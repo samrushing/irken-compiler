@@ -23,7 +23,7 @@
 
 (define (build-variant-label-map)
   (let ((variants (fetch-metadata 'variants)))
-    (set! the-variant-label-map (make-vector (length variants) ""))
+    (set! the-variant-label-map (make-vector (length variants) 'unknown))
     (let loop ((vls variants))
       (match vls with
         ((sexp:list ((sexp:symbol name _) (sexp:int tag _)) _) . tl)
