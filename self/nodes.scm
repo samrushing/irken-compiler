@@ -175,8 +175,18 @@
   (let ((node (make-node (node:function name formals) (list body) src)))
     (match type with
       (sexp:bool #f _) -> node
-      _ -> (begin (set-node-type! node (parse-type type))
-		  node))))
+      _ -> (let ((t (parse-type type)))
+             ;; (#38: `(define (f x) : (int) ...)` was silently accepted.)
+             (match t with
+               (type:pred 'arrow _ _) -> #u
+               _ -> (begin
+                      (report-error (guess-location type)
+                                    (format "the type annotation of `" (sym name)
+                                            "` should be a function type, like (int -> int), not "
+                                            (repr type)))
+                      (%exit #f -1)))
+             (set-node-type! node t)
+             node))))
 
 (define function?
   (noderec:t node)
@@ -486,7 +496,16 @@
         () -> (:pair (reverse names) (reverse inits))
         ((sexp:list ((sexp:symbol name _) init) _) . l)
         -> (loop l (list:cons name names) (list:cons init inits))
-        _ -> (error1 "unpack-bindings" (format (join repr " " l)))
+        ;; (let ((x:int 3)) ...): an annotated init.  [`x:int` reads as
+        ;;  constructor syntax; `x:(list int)` as (%typed x (list int)),
+        ;;  which the let macro handles.]
+        ((sexp:list ((sexp:cons name tname src) init) _) . l)
+        -> (loop l (list:cons name names)
+                 (list:cons (sexp:list (list (sexp:symbol '%typed src) (sexp:symbol tname src) init) src) inits))
+        (x . _)
+        -> (begin
+             (report-error (guess-location x) (format "malformed binding: " (repr x)))
+             (%exit #f -1))
         )))
 
   (define join-cexp-template

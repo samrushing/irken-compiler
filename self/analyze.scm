@@ -376,6 +376,25 @@
         _ -> (all? makes-funcalls? (noderec->subs node))
         ))
 
+    ;; inlining drops the function node, and with it any type annotation
+    ;;  the user gave it (#24).  so pass the annotation on: its argument
+    ;;  types to the arguments, its result type to the inlined body.
+    ;;  (typing checks each against what it infers.)
+    (define (propagate-annotation fun rands result)
+      (match (noderec->type fun) with
+        (type:pred 'arrow (rtype . arg-types) _)
+        -> (begin
+             (when (= (length arg-types) (length rands))
+               (for-range i (length rands)
+                 (let ((rand (nth rands i)))
+                   (when (no-type? (noderec->type rand))
+                     (set-node-type! rand (nth arg-types i))))))
+             (when (no-type? (noderec->type result))
+               (set-node-type! result rtype))
+             result)
+        _ -> result
+        ))
+
     (define (inline-application fun rands)
       (let ((simple '())
 	    (complex '())
@@ -388,22 +407,7 @@
                                  " argument" (if (= 1 (length formals)) "" "s")
                                  ", but is called with " (int n))
                          fun))
-                 (let ((fun-type (noderec->type fun)))
-                   ;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-                   ;; this is/was an attemp to propagate user types during inlining.
-                   ;; currently rethinking this by moving typing before optimization.
-                   ;; (if (not (no-type? fun-type))
-                   ;;     ;; if a user-provided type was provided, propagate it to the arguments.
-                   ;;     (match fun-type with
-                   ;;       (type:pred 'arrow (rtype . arg-types) _)
-                   ;;       -> (for-range i (length rands)
-                   ;;            (let ((rand (nth rands i))
-                   ;;                  (rand-type (noderec->type rand))
-                   ;;                  (arg-type (nth arg-types i)))
-                   ;;              (if (and (no-type? rand-type) (not (is-tvar? arg-type)))
-                   ;;                  (set-node-type! rand arg-type))))
-                   ;;       _ -> (raise (:OptimizeError "strange type attached to function" fun))))
-                   ;;(printf "inlining function " (sym name) " has " (int n) " formals\n")
+                 (begin
                    ;; go through the arguments, deciding if each one is simple or complex.
                    ;; simple args can be substituted directly, complex one require a let.
                    ;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -429,6 +433,8 @@
                    ;;(print-string "   simple, complex=") (print simple) (printn complex) (newline)
                    (let ((body (instantiate fun)) ;; alpha converted copy of the function
                          (substs (map (lambda (i) (:pair (nth formals i) (nth rands i))) simple)))
+                     (propagate-annotation
+                      fun rands
                      (if (null? complex)
                          ;; simple - substitute arguments directly
                          (substitute body substs)
@@ -448,7 +454,7 @@
                            ;;(print-string "substs = ") (printn substs)
                            (let ((body (substitute body substs)))
                              (node/let (reverse names) (reverse inits) body)))
-                         ))))
+                         )))))
 	  _ -> (raise (:OptimizeError "inline-application - inlining non-function?" fun))
 	  )))
 

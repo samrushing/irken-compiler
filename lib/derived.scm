@@ -36,6 +36,14 @@
   -> (letrec ((tag (function tag (name ...) #f body1 body2 ...)))
        (tag val ...))
 
+  ;; a typed binding, (let ((x:(list int) val)) ...): the init is annotated.
+  ;;  [this has to come before multiple-value-bind, which it looks like.]
+  (let (((<%typed> name type) val)) body ...)
+  -> (let-splat ((name (%typed type val))) body ...)
+  (let (((<%typed> name type) val) bind ...) body ...)
+  -> (let-splat ((name (%typed type val)))
+       (let (bind ...) body ...))
+
   ;; multiple-value-bind
   ;; functions using this construct must return their multiple
   ;;  values using the (:tuple ...) polyvariant.

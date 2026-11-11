@@ -132,7 +132,10 @@
       (let ((ut0 (apply-subst t0))
 	    (ut1 (apply-subst t1)))
         (report-error (noderec->src exp)
-                      (format "type error: " (type-repr ut0) " vs. " (type-repr ut1)))))
+                      (if checking-annotation
+                          (format "type error: this doesn't match its type annotation: "
+                                  (type-repr ut0) " vs. " (type-repr ut1))
+                          (format "type error: " (type-repr ut0) " vs. " (type-repr ut1))))))
 
     (define (type-error t0 t1)
       (print-type-error t0 t1)
@@ -230,6 +233,22 @@
     (%exit #f -1)
     )
 
+  (define (instantiate-annotation type)
+    (let ((tvars '()))
+      (define (walk t)
+        (match t with
+          (type:tvar _ _)      -> (set! tvars (list:cons t tvars))
+          (type:pred _ args _) -> (for-each walk args)))
+      (walk type)
+      (instantiate-type-scheme tvars type)))
+
+  ;; unify, but say so when it's the annotation that disagrees.
+  (define checking-annotation #f)
+  (define (unify-annotation exp inferred annotated)
+    (set! checking-annotation #t)
+    (unify exp inferred annotated)
+    (set! checking-annotation #f))
+
   (define (instantiate-type-scheme gens type)
     ;; map from gens->fresh
     (when the-context.options.debugtyping
@@ -291,6 +310,12 @@
       (printf "( type-of* " (int (noderec->id exp)) " " (format-node-type (noderec->t exp)) " :\n"))
     (let ((texp0 (noderec->type exp))
           (texp1 (type-of* exp tenv)))
+      ;; a type annotation (`: type`) is checked against the type inferred.
+      ;;  (#38: it used to be ignored.)  its type variables are fresh for
+      ;;  each node, so the copies an inlined function leaves behind don't
+      ;;  constrain each other.
+      (when (not (no-type? texp0))
+        (unify-annotation exp texp1 (instantiate-annotation texp0)))
       (set-node-type! exp texp1)
       (when the-context.options.debugtyping
         (printf "  type-of* " (int (noderec->id exp)) " " (type-repr (apply-subst texp1)) ")\n"))
