@@ -675,13 +675,13 @@
       '%dtcon       -> (match params with
 			 ;; e.g. list := nil | cons X list
 			 ;; %dtcon/list/cons := ∀X.(X,list(X)) → list(X)
-			 (sexp:cons dtname altname)
+			 (sexp:cons dtname altname _)
 			 -> (match (alist/lookup the-context.datatypes dtname) with
 			      (maybe:no) -> (error1 "lookup-primapp: no such datatype" dtname)
 			      (maybe:yes dt) -> (dt.get-alt-scheme altname))
 			 _ -> (prim-error name))
       '%vcon        -> (match params with
-			 (sexp:list ((sexp:symbol label _) (sexp:int arity)))
+			 (sexp:list ((sexp:symbol label _) (sexp:int arity _)) _)
 			 -> (let ((plabel (make-label label)))
 			      (remember-variant-label label)
 			      (match arity with
@@ -697,7 +697,7 @@
 						       targs)))))
 			 _ -> (prim-error name))
       '%nvget       -> (match params with
-			 (sexp:list ((sexp:cons dtname altname) (sexp:int index) (sexp:int arity)))
+			 (sexp:list ((sexp:cons dtname altname _) (sexp:int index _) (sexp:int arity _)) _)
 			 -> (if (eq? dtname 'nil)
 				;; polymorphic variant
 				(let ((argvars (n-tvars arity))
@@ -793,9 +793,9 @@
 
   (define get-sref
     ;; structname.field0.field1.field2 ...
-    (sexp:attr (sexp:symbol sname _) fname)
+    (sexp:attr (sexp:symbol sname _) fname _)
     -> (:tuple (lookup-field fname (lookup-struct-fields sname)) sname)
-    (sexp:attr sub fname)
+    (sexp:attr sub fname _)
     -> (let (((ref sname) (get-sref sub)))
          (:tuple (cref-field fname ref) sname))
     x -> (error1 "get-sref: malformed struct/union reference" (repr x))
@@ -833,17 +833,17 @@
 
   (define make-llvm-scheme
     ;; after the sig are optional metadata
-    (sexp:list ((sexp:string _) sig . _)) -> (parse-cexp-sig sig)
+    (sexp:list ((sexp:string _ _) sig . _) _) -> (parse-cexp-sig sig)
     x -> (error1 "make-llvm-scheme: malformed" (repr x))
     )
 
   (define make-asm-c-call-scheme
-    (sexp:list ((sexp:string _) sig . _)) -> (parse-cexp-sig sig)
+    (sexp:list ((sexp:string _ _) sig . _) _) -> (parse-cexp-sig sig)
     x -> (error1 "make-asm-c-call-scheme: malformed" (repr x))
     )
 
   (define make-asm-inline-scheme
-    (sexp:list (sig . _)) -> (parse-cexp-sig sig)
+    (sexp:list (sig . _) _) -> (parse-cexp-sig sig)
     x -> (error1 "make-asm-inline-scheme: malformed" (repr x))
     )
 

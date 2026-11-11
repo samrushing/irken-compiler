@@ -13,7 +13,7 @@
   (dt-numalts name)
   -> (let ((dtsexp (datatype->sexp name)))
        (match dtsexp with
-         (sexp:list ((sexp:symbol name) (sexp:list alts)))
+         (sexp:list ((sexp:symbol name) (sexp:list alts _)) _)
          -> (length alts)
          _ -> (impossible)
          ))

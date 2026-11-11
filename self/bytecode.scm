@@ -305,7 +305,7 @@
       (sexp:symbol 'u32 _)  -> 4
       (sexp:symbol 'i64 _)  -> 8
       (sexp:symbol 'u64 _)  -> 8
-      (sexp:list ((sexp:symbol 'cref _) _)) -> 50 ;; (cref 'a) == pointer
+      (sexp:list ((sexp:symbol 'cref _) _) _) -> 50 ;; (cref 'a) == pointer
       (sexp:symbol 'short _)                -> 51
       (sexp:symbol 'int _)                  -> 52
       (sexp:symbol 'long _)                 -> 53
@@ -323,7 +323,7 @@
 	    (nargs (length args)))
 
         (define prim-dtcon
-          (sexp:cons dtname altname)
+          (sexp:cons dtname altname _)
           -> (match (alist/lookup the-context.datatypes dtname) with
                (maybe:no) -> (error1 "emit-primop: no such datatype" dtname)
                (maybe:yes dt)
@@ -352,7 +352,7 @@
           (LINSN 'exit (car args)))
 
         (define prim-nvget
-          (sexp:list (_ (sexp:int index) _)) (reg)
+          (sexp:list (_ (sexp:int index _) _) _) (reg)
           -> (LINSN 'tupref target reg index)
           _ _ -> (primop-error))
 
@@ -375,7 +375,7 @@
          (tree/insert! the-context.ambig-rec int-cmp code #u))
 
        (define prim-record-get
-         (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg)
+         (sexp:list ((sexp:symbol label _) (sexp:list sig _)) _) (rec-reg)
          -> (let ((label-code (lookup-label-code label)))
               (match (guess-record-type sig) with
                 (maybe:yes sig0)
@@ -388,7 +388,7 @@
          _ _ -> (primop-error))
 
        (define prim-record-set
-         (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg arg-reg)
+         (sexp:list ((sexp:symbol label _) (sexp:list sig _)) _) (rec-reg arg-reg)
          -> (let ((label-code (lookup-label-code label)))
               (match (guess-record-type sig) with
                 (maybe:yes sig0)
@@ -906,7 +906,7 @@
        (lambda (insn depth)
          (match insn with
            (insn:primop name parm _ _ _)
-           -> (if (and (member-eq? name sizeoff-prims) (not (eq? parm (sexp:bool #f))))
+           -> (if (and (member-eq? name sizeoff-prims) (not (eq? parm (sexp:bool #f null-src))))
                   (let ((sindex (get-sizeoff parm)))
                     ;;(printf "find-sizeoff-prims parm = " (repr parm) " sindex = " (int sindex) "\n")
                     (if (not (< sindex 55))

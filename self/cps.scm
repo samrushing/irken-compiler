@@ -686,7 +686,7 @@
     (define (c-vcon params args lenv k0)
       (define k (live-target k0))
       (match params with
-	(sexp:list ((sexp:symbol label _) _))
+	(sexp:list ((sexp:symbol label _) _) _)
 	-> (let ((tag (alist/get the-context.variant-labels label "unknown variant label?"))
 		 (nargs (length args)))
 	     (if (> nargs 0)
@@ -754,8 +754,8 @@
              (c-primargs (list exp new-value)
                          '%record-ext
                          (sexp (int otag) (int ntag)
-                               (sexp:list (map make-sexp-symbol osig))
-                               (sexp:list (map make-sexp-symbol nsig))
+                               (sexp:list (map make-sexp-symbol osig) null-src)
+                               (sexp:list (map make-sexp-symbol nsig) null-src)
                                (sym new-field))
                          (get-node-type exp)
                          lenv k))))

@@ -52,8 +52,8 @@
 (define rule->code (rule:t _ code) -> code)
 (define rule->pats (rule:t pats _) -> pats)
 
-(define match-error (sexp (sym '%match-error) (sexp:bool #f)))
-(define match-fail  (sexp (sym '%fail) (sexp:bool #f)))
+(define match-error (sexp (sym '%match-error) (sexp:bool #f null-src)))
+(define match-fail  (sexp (sym '%fail) (sexp:bool #f null-src)))
 
 (define match-counter (make-counter 0))
 (define (new-match-var)
@@ -71,24 +71,24 @@
 
     (define parse-record-fields
       acc ()                        -> (pattern:record acc #f)
-      acc ((field:t '... _))        -> (pattern:record acc #t)
-      acc ((field:t '... _) . tl)   -> (m-error1 "malformed record pattern" (format "... " (join repr-field " " tl) "}"))
-      acc ((field:t name pat) . tl) -> (parse-record-fields (list:cons (fieldpair:t name (kind pat)) acc) tl)
+      acc ((field:t '... _ _))        -> (pattern:record acc #t)
+      acc ((field:t '... _ _) . tl)   -> (m-error1 "malformed record pattern" (format "... " (join repr-field " " tl) "}"))
+      acc ((field:t name pat _) . tl) -> (parse-record-fields (list:cons (fieldpair:t name (kind pat)) acc) tl)
       )
 
     (define kind
       (sexp:symbol s _)    -> (pattern:variable s)
-      (sexp:record fields) -> (parse-record-fields '() fields)
+      (sexp:record fields _) -> (parse-record-fields '() fields)
       ;;(sexp:vector subs)   -> (pattern:vector (map kind subs))
       ;; we prefer this over pattern:literal because it is a complete datatype.
-      (sexp:bool b)	   -> (pattern:constructor 'bool (if b 'true 'false) '())
-      (sexp:list l)
+      (sexp:bool b _)	   -> (pattern:constructor 'bool (if b 'true 'false) '())
+      (sexp:list l _)
       -> (match l with
 	   () -> (pattern:constructor 'list 'nil '())
 	   ((sexp:symbol 'quote _) (sexp:symbol s src)) -> (pattern:literal (sexp:symbol s src))
-	   ((sexp:cons dt alt) . args) -> (pattern:constructor dt alt (map kind args))
+	   ((sexp:cons dt alt _) . args) -> (pattern:constructor dt alt (map kind args))
 	   ((sexp:symbol '. _) last) -> (kind last)
-	   (hd . tl) -> (pattern:constructor 'list 'cons (list (kind hd) (kind (sexp:list tl))))
+	   (hd . tl) -> (pattern:constructor 'list 'cons (list (kind hd) (kind (sexp:list tl null-src))))
 	   ;;_ -> (m-error1 "malformed pattern" (format (join repr " " l)))
            )
       x -> (pattern:literal x))
@@ -163,7 +163,7 @@
     (cond ((eq? e1 match-fail) e2)
 	  ((eq? e2 match-fail) e1)
 	  (else
-	   (sexp1 '%fatbar (list (sexp:bool #f) e1 e2)))))
+	   (sexp1 '%fatbar (list (sexp:bool #f null-src) e1 e2)))))
 
   (define (subst var0 pat code)
     (match pat with
@@ -224,9 +224,9 @@
 	     (map-range
 		 i (length vars0)
 		 (sexp (sym (nth vars0 i))
-		       (sexp:attr (sexp:symbol var0 null-src) (nth sig0 i))))))
+		       (sexp:attr (sexp:symbol var0 null-src) (nth sig0 i) null-src)))))
 	(sexp (sym 'let)
-	      (sexp:list bindings)
+	      (sexp:list bindings null-src)
 	      (compile-match (append vars0 (cdr vars))
 			     rules0
 			     default)))))
@@ -260,7 +260,7 @@
 	-> (let ((lit (pattern->literal (car (rule->pats (car rules0)))))
 		 (comp-fun
 		  (match lit with
-		    (sexp:string _) -> (sexp:symbol 'string=? null-src)
+		    (sexp:string _ _) -> (sexp:symbol 'string=? null-src)
 		    _ -> (sexp:symbol 'eq? null-src))))
 	     (loop groups
 		   (fatbar (sexp (sym 'if)
@@ -350,7 +350,7 @@
                   ;; ((:tag var0 var1 ...) (match ...))
                   (sexp
                    (sexp:list
-                    (list:cons (sexp:cons 'nil tag) (map make-sexp-symbol vars1)))
+                    (list:cons (sexp:cons 'nil tag null-src) (map make-sexp-symbol vars1)) null-src)
                    ;; we don't reverse rules1 because we popped it off a reversed stack already
                    (compile-match (append vars0 (cdr vars)) rules1 default0))))))
       (let ((result
@@ -361,13 +361,13 @@
 			 (sexp:list (append (list (sexp:symbol 'vcase null-src)
                                                   (sexp:symbol dt.name null-src)
                                                   (sexp:symbol (car vars) null-src))
-					    (reverse cases))))
+					    (reverse cases)) null-src))
 	       (maybe:no)
 	       -> (begin (if (not (eq? default match-error))
 			     (push! cases (sexp (sexp:symbol 'else null-src) match-fail)))
 			 (sexp:list (append (list (sexp:symbol 'vcase null-src)
                                                   (sexp:symbol (car vars) null-src))
-					    (reverse cases)))))
+					    (reverse cases)) null-src)))
 	     ))
 	(if (not (eq? default match-error))
 	    (fatbar result default)

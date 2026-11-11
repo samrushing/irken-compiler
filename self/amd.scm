@@ -190,30 +190,30 @@
   (sexp:symbol 'lenv _)                                    -> (amdop:lenv)
   (sexp:symbol 'freep _)                                   -> (amdop:freep)
   (sexp:symbol 'retval _)                                  -> (amdop:retval)
-  (sexp:string label)                                      -> (amdop:dir label)
-  (sexp:list ((sexp:symbol 'g _) (sexp:string name)))      -> (amdop:g name)
-  (sexp:list ((sexp:symbol 'grel _) (sexp:string name)))   -> (amdop:grel name)
-  (sexp:list ((sexp:symbol 's _) (sexp:int num)))          -> (amdop:s num)
-  (sexp:list ((sexp:symbol 'a _) (sexp:int num)))          -> (amdop:a num)
-  (sexp:list ((sexp:symbol 'i _) (sexp:int num)))          -> (amdop:imm num)
-  (sexp:list ((sexp:symbol 'c _) (sexp:int num)))          -> (amdop:c num)
-  (sexp:list ((sexp:symbol 'r _) (sexp:symbol reg _)))     -> (amdop:reg (amdreg->int reg))
-  (sexp:list ((sexp:symbol 'B _) one))                     -> (amdop:B (parse-amdop one))
-  (sexp:list ((sexp:symbol 'H _) one))                     -> (amdop:H (parse-amdop one))
-  (sexp:list ((sexp:symbol 'W _) one))                     -> (amdop:W (parse-amdop one))
-  (sexp:list ((sexp:symbol 'rel _) (sexp:string label)))   -> (amdop:rel label)
-  (sexp:list ((sexp:symbol '* _) one))                     -> (amdop:* (parse-amdop one))
-  (sexp:list ((sexp:symbol 'ind _) one))                   -> (amdop:ind (parse-amdop one))
-  (sexp:list ((sexp:symbol 'ind _) (sexp:int num) op))     -> (amdop:indd num (parse-amdop op))
-  (sexp:list ((sexp:symbol 'ind _) (sexp:int num0) op0 op1 (sexp:int num1)))
+  (sexp:string label _)                                    -> (amdop:dir label)
+  (sexp:list ((sexp:symbol 'g _) (sexp:string name _)) _)    -> (amdop:g name)
+  (sexp:list ((sexp:symbol 'grel _) (sexp:string name _)) _) -> (amdop:grel name)
+  (sexp:list ((sexp:symbol 's _) (sexp:int num _)) _)        -> (amdop:s num)
+  (sexp:list ((sexp:symbol 'a _) (sexp:int num _)) _)        -> (amdop:a num)
+  (sexp:list ((sexp:symbol 'i _) (sexp:int num _)) _)        -> (amdop:imm num)
+  (sexp:list ((sexp:symbol 'c _) (sexp:int num _)) _)        -> (amdop:c num)
+  (sexp:list ((sexp:symbol 'r _) (sexp:symbol reg _)) _)   -> (amdop:reg (amdreg->int reg))
+  (sexp:list ((sexp:symbol 'B _) one) _)                   -> (amdop:B (parse-amdop one))
+  (sexp:list ((sexp:symbol 'H _) one) _)                   -> (amdop:H (parse-amdop one))
+  (sexp:list ((sexp:symbol 'W _) one) _)                   -> (amdop:W (parse-amdop one))
+  (sexp:list ((sexp:symbol 'rel _) (sexp:string label _)) _) -> (amdop:rel label)
+  (sexp:list ((sexp:symbol '* _) one) _)                   -> (amdop:* (parse-amdop one))
+  (sexp:list ((sexp:symbol 'ind _) one) _)                 -> (amdop:ind (parse-amdop one))
+  (sexp:list ((sexp:symbol 'ind _) (sexp:int num _) op) _)   -> (amdop:indd num (parse-amdop op))
+  (sexp:list ((sexp:symbol 'ind _) (sexp:int num0 _) op0 op1 (sexp:int num1 _)) _)
   -> (amdop:inds num0 (parse-amdop op0) (parse-amdop op1) num1)
   x -> (raise (:Amd/BadExpression (repr x)))
   )
 
 (define parse-amd-inline
-  (sexp:list ((sexp:symbol 'com _) (sexp:string comment))) -> (amd:comment comment)
-  (sexp:list ((sexp:symbol 'label _) (sexp:string label))) -> (amd:label label)
-  (sexp:list ((sexp:symbol rator _) . rands))              -> (amd:insn rator (map parse-amdop rands))
+  (sexp:list ((sexp:symbol 'com _) (sexp:string comment _)) _) -> (amd:comment comment)
+  (sexp:list ((sexp:symbol 'label _) (sexp:string label _)) _) -> (amd:label label)
+  (sexp:list ((sexp:symbol rator _) . rands) _)            -> (amd:insn rator (map parse-amdop rands))
   x -> (raise (:AmdAsm/BadExpression (repr x)))
   )
 
@@ -915,9 +915,9 @@
         '%divmod  _                  (arg0 arg1)           -> (emit-divmod arg0 arg1 k.target)
         '%llicmp  (sexp:symbol cc _) (arg0 arg1)           -> (emit-icmp cc arg0 arg1 k.target)
         '%lleq    _                  (arg0 arg1)           -> (emit-icmp 'eq arg0 arg1 k.target)
-        '%dtcon   (sexp:cons dtname altname) args          -> (emit-dtcon dtname altname args k.target)
-	'%nvget   (sexp:list (_ (sexp:int index) _)) (reg) -> (emit-nvget k.target reg index)
-        '%amd (sexp:list (sig . inline)) args              -> (emit-amd-inline inline args k.target)
+        '%dtcon   (sexp:cons dtname altname _) args          -> (emit-dtcon dtname altname args k.target)
+	'%nvget   (sexp:list (_ (sexp:int index _) _) _) (reg) -> (emit-nvget k.target reg index)
+        '%amd (sexp:list (sig . inline) _) args              -> (emit-amd-inline inline args k.target)
 	'%array-ref _ (vec index)                          -> (emit-array-ref vec index k.target)
 	'%array-set _ (vec index val)                      -> (emit-array-set vec index val)
         '%exit _ (arg)                                     -> (emit-exit arg)
@@ -939,16 +939,16 @@
         '%free _ (ref)                                     -> (emit-free ref k.free)
         '%c-sizeof ctexp ()                                -> (emit-c-sizeof ctexp k.target)
 
-	'%record-get (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec)
+	'%record-get (sexp:list ((sexp:symbol label _) (sexp:list sig _)) _) (rec)
         -> (emit-record-get label sig rec k.target k.free)
 
-        '%record-set (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec val)
+        '%record-set (sexp:list ((sexp:symbol label _) (sexp:list sig _)) _) (rec val)
         -> (emit-record-set label sig rec val k.free)
 
-        '%asm-c-call (sexp:list ((sexp:string name) sig)) args
+        '%asm-c-call (sexp:list ((sexp:string name _) sig) _) args
         -> (emit-c-call (parse-type sig) name args k.target k.free #t)
 
-        '%asm-c-call (sexp:list ((sexp:string name) sig (sexp:bool convert?))) args
+        '%asm-c-call (sexp:list ((sexp:string name _) sig (sexp:bool convert? _)) _) args
         -> (emit-c-call (parse-type sig) name args k.target k.free convert?)
 
         _ _ _

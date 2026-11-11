@@ -65,7 +65,7 @@
         (client-share "")
         (client-verify "")
         (info (list:nil))
-        (client-hello-sexp (sexp:undef))
+        (client-hello-sexp (sexp:undef null-src))
         (selected-suite (cipher-suite:chacha20-poly1305-sha256))
         (signer (make-signer skey))
         (extensions-to-push (list:nil))

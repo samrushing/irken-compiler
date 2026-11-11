@@ -120,21 +120,21 @@
   (sexp:symbol 'u64 _)       -> (ctype:int (cint:width 8) #f)
   (sexp:symbol 'i256 _)      -> (ctype:int (cint:width 32) #t)
   (sexp:symbol 'u256 _)      -> (ctype:int (cint:width 32) #f)
-  (sexp:list ((sexp:symbol 'int _) (sexp:list ((sexp:int size) (sexp:int signed?)))))
+  (sexp:list ((sexp:symbol 'int _) (sexp:list ((sexp:int size _) (sexp:int signed? _)) _)) _)
   -> (ctype:int (cint:width size) (if (= signed? 1) #t #f))
-  (sexp:list ((sexp:symbol '* _) sub))
+  (sexp:list ((sexp:symbol '* _) sub) _)
   -> (ctype:pointer (parse-ctype sub))
-  (sexp:list ((sexp:symbol 'struct _) (sexp:symbol name _)))
+  (sexp:list ((sexp:symbol 'struct _) (sexp:symbol name _)) _)
   -> (ctype:struct name)
-  (sexp:list ((sexp:symbol 'union _) (sexp:symbol name _)))
+  (sexp:list ((sexp:symbol 'union _) (sexp:symbol name _)) _)
   -> (ctype:union name)
-  (sexp:list ((sexp:symbol 'array _) sub (sexp:list ((sexp:int size)))))
+  (sexp:list ((sexp:symbol 'array _) sub (sexp:list ((sexp:int size _)) _)) _)
   -> (ctype:array size (parse-ctype sub))
   ;; new array form (i.e. ctype2-repr)
-  (sexp:list ((sexp:symbol 'array _) (sexp:int size) sub))
+  (sexp:list ((sexp:symbol 'array _) (sexp:int size _) sub) _)
   -> (ctype:array size (parse-ctype sub))
   ;; temporary, all function types are void
-  (sexp:list ((sexp:symbol 'fun _) . _))
+  (sexp:list ((sexp:symbol 'fun _) . _) _)
   -> (ctype:name 'void)
   (sexp:symbol name _)
   -> (ctype:name name)
@@ -144,15 +144,15 @@
 (define (parse-spec info forms)
 
   (define parse-field
-    (sexp:list ((sexp:int size) (sexp:symbol name _) ftype))
+    (sexp:list ((sexp:int size _) (sexp:symbol name _) ftype) _)
     -> (cfield:t size name (parse-ctype ftype))
     x -> (error1 "malformed field" (repr x))
     )
 
   (define parse-struct
-    'struct ((sexp:symbol name _) (sexp:int size) . fields)
+    'struct ((sexp:symbol name _) (sexp:int size _) . fields)
     -> (info.structs::add name (cdef:struct size name (map parse-field fields)))
-    'union ((sexp:symbol name _) (sexp:int size) . fields)
+    'union ((sexp:symbol name _) (sexp:int size _) . fields)
     -> (info.unions::add name (cdef:union size name (map parse-field fields)))
     kind x -> (error1 "malformed struct" (:pair kind x))
     )
@@ -177,7 +177,7 @@
     )
 
   (define parse-sig*
-    name (sexp:list sig)
+    name (sexp:list sig _)
     -> (if (arrow-type? sig)
            (let ((siglen (length sig))
                  (var? (variadic? sig))
@@ -188,7 +188,7 @@
                    (map parse-ctype args)
                    (variadic? sig)
                    ))
-           (csig:obj name (parse-ctype (sexp:list sig))))
+           (csig:obj name (parse-ctype (sexp:list sig null-src))))
     name sig
     -> (csig:obj name (parse-ctype sig))
     name _ -> (error1 "malformed sig" name)
@@ -197,16 +197,16 @@
   (define parse-sig
     ((sexp:symbol name _) sig)
     -> (info.sigs::add name (parse-sig* name sig))
-    ((sexp:list ((sexp:symbol name0 _) (sexp:symbol name1 _))) sig)
+    ((sexp:list ((sexp:symbol name0 _) (sexp:symbol name1 _)) _) sig)
     -> (let ((sig0 (parse-sig* name1 sig)))
          ;; add both names
          (info.sigs::add name1 sig0)
          (info.sigs::add name0 sig0))
-    x -> (error1 "malformed sig" (repr (sexp:list x)))
+    x -> (error1 "malformed sig" (repr (sexp:list x null-src)))
     )
 
   (define parse-con
-    ((sexp:symbol name _) (sexp:int val))
+    ((sexp:symbol name _) (sexp:int val _))
     -> (info.cons::add name val)
     x -> (error1 "malformed constant" x)
     )
@@ -222,30 +222,30 @@
   (define parse-string-list
     acc ()
     -> (reverse acc)
-    acc ((sexp:string item) . rest)
+    acc ((sexp:string item _) . rest)
     -> (parse-string-list (list:cons item acc) rest)
     acc x
     -> (raise (:FFISpec/malformed x))
     )
 
   (define parse-form
-    (sexp:list ((sexp:symbol 'struct _) . rest))
+    (sexp:list ((sexp:symbol 'struct _) . rest) _)
     -> (parse-struct 'struct rest)
-    (sexp:list ((sexp:symbol 'union _) . rest))
+    (sexp:list ((sexp:symbol 'union _) . rest) _)
     -> (parse-struct 'union rest)
-    (sexp:list ((sexp:symbol 'sig _) . rest))
+    (sexp:list ((sexp:symbol 'sig _) . rest) _)
     -> (parse-sig rest)
-    (sexp:list ((sexp:symbol 'con _) . rest))
+    (sexp:list ((sexp:symbol 'con _) . rest) _)
     -> (parse-con rest)
-    (sexp:list ((sexp:symbol 'tdef _) . rest))
+    (sexp:list ((sexp:symbol 'tdef _) . rest) _)
     -> (parse-tdef rest)
-    (sexp:list ((sexp:symbol 'includes _) . rest))
+    (sexp:list ((sexp:symbol 'includes _) . rest) _)
     -> (set! info.includes (parse-string-list '() rest))
-    (sexp:list ((sexp:symbol 'cflags _) . rest))
+    (sexp:list ((sexp:symbol 'cflags _) . rest) _)
     -> (set! info.cflags (map ffi-path-expand (parse-string-list '() rest)))
-    (sexp:list ((sexp:symbol 'lflags _) . rest))
+    (sexp:list ((sexp:symbol 'lflags _) . rest) _)
     -> (set! info.lflags (map ffi-path-expand (parse-string-list '() rest)))
-    (sexp:list ((sexp:symbol 'dll _) (sexp:string dll)))
+    (sexp:list ((sexp:symbol 'dll _) (sexp:string dll _)) _)
     -> (set! info.dll dll)
     x -> (error1 "malformed spec file" (repr x))
     )
@@ -346,7 +346,7 @@
 ;; how many interfaces are needed in this compilation unit?
 (define (interface-count)
   (match (%%compile-time-meta 'ffi-interfaces) with
-    (sexp:list ifaces)
+    (sexp:list ifaces _)
     -> (length ifaces)
     x -> (error1 "bad result from %%compile-time-meta" (repr x))
     ))
@@ -386,7 +386,7 @@
 (define (load-all-ffi-interfaces)
   ;;(printf "loading ffi interfaces...\n")
   (match (%%compile-time-meta 'ffi-interfaces) with
-    (sexp:list ifaces)
+    (sexp:list ifaces _)
     -> (for-list iface ifaces
          (match iface with
            (sexp:symbol name _)
@@ -493,7 +493,7 @@
   -> ref0
   ref0 ((sexp:symbol fname _) . tl)
   -> (expand-cref (cref-field fname ref0) tl)
-  ref0 ((sexp:int index) . tl)
+  ref0 ((sexp:int index _) . tl)
   -> (expand-cref (cref-aref index ref0) tl)
   ref0 (sexp . _)
   -> (error1 "cref: elems must be symbol or integer" (repr sexp))
@@ -611,10 +611,10 @@
   )
 
 (define sexp->ref
-  (sexp:attr (sexp:symbol sname _) fname)
+  (sexp:attr (sexp:symbol sname _) fname _)
   -> (let ((ref0 {off=0 ctype=(ctype:struct sname)}))
        (cref-field fname ref0))
-  (sexp:attr sub fname)
+  (sexp:attr sub fname _)
   -> (let ((ref0 (sexp->ref sub)))
        (cref-field fname ref0))
   x -> (raise (:SexpRefError (repr x)))
@@ -623,11 +623,11 @@
 ;; compute the size/offset of a type at runtime (VM).
 
 (define sexp->sizeoff
-  (sexp:list ((sexp:symbol 'struct _) (sexp:symbol name _)))
+  (sexp:list ((sexp:symbol 'struct _) (sexp:symbol name _)) _)
   -> (ctype->size (ctype:struct name))
-  (sexp:list ((sexp:symbol 'union _) (sexp:symbol name _)))
+  (sexp:list ((sexp:symbol 'union _) (sexp:symbol name _)) _)
   -> (ctype->size (ctype:union name))
-  (sexp:list ((sexp:symbol '* _) _))
+  (sexp:list ((sexp:symbol '* _) _) _)
   -> *word-size*
   (sexp:symbol tdef _)
   -> (ctype->size (ctype:name tdef))

@@ -569,7 +569,7 @@
       (let ((nargs (length args)))
 
         (define prim-dtcon
-          (sexp:cons dtname altname)
+          (sexp:cons dtname altname _)
           -> (match (alist/lookup the-context.datatypes dtname) with
                (maybe:no) -> (error1 "emit-primop: no such datatype" dtname)
                (maybe:yes dt)
@@ -593,7 +593,7 @@
           _ -> (primop-error))
 
         (define prim-nvget
-          (sexp:list (_ (sexp:int index) _)) (reg)
+          (sexp:list (_ (sexp:int index _) _) _) (reg)
           -> (o.write (format "O r" (int k.target) " = UOBJ_GET(r" (int reg) "," (int index) ");"))
           _ _ -> (primop-error))
 
@@ -650,13 +650,13 @@
             ))
 
         (define prim-record-get
-          (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg)
+          (sexp:list ((sexp:symbol label _) (sexp:list sig _)) _) (rec-reg)
           -> (let ((refexp (record-slot-exp sig label rec-reg)))
                (oformat "O r" (int k.target) " = " refexp ";"))
           _ _ -> (primop-error))
 
         (define prim-record-set
-          (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec-reg arg-reg)
+          (sexp:list ((sexp:symbol label _) (sexp:list sig _)) _) (rec-reg arg-reg)
           -> (let ((refexp (record-slot-exp sig label rec-reg)))
                (oformat refexp " = r" (int arg-reg) ";")
                (when (>= k.target 0)
@@ -664,9 +664,9 @@
           _ _ -> (primop-error))
 
         (define prim-record-ext
-          (sexp:list ((sexp:int otag) (sexp:int ntag)
-                      (sexp:list osig) (sexp:list nsig)
-                      (sexp:symbol nfield _)))
+          (sexp:list ((sexp:int otag _) (sexp:int ntag _)
+                      (sexp:list osig _) (sexp:list nsig _)
+                      (sexp:symbol nfield _)) _)
           (src-reg arg-reg)
           -> (let ((mosig (guess-record-type osig))
                    (mnsig (guess-record-type nsig)))
@@ -826,9 +826,9 @@
 
         (define sref->c
           ;; structname.field0.field1.field2...
-          (sexp:attr (sexp:symbol sname _) fname) src
+          (sexp:attr (sexp:symbol sname _) fname _) src
           -> (format "(((" (typedef-struct-check sname) "*)" src ")->" (sym fname) ")")
-          (sexp:attr sub fname) src
+          (sexp:attr sub fname _) src
           -> (format "(" (sref->c sub src) "." (sym fname) ")")
           _ _ -> (impossible)
           )

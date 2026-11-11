@@ -340,14 +340,14 @@
            (maybe:no)
            -> (do-platform acc rest))
       acc x
-      -> (raise (:BadPlatform "malformed %platform expression: " (repr (sexp:list x))))
+      -> (raise (:BadPlatform "malformed %platform expression: " (repr (sexp:list x null-src))))
       )
 
     (define W
-      acc (sexp:list ((sexp:symbol '%platform _) . exps))
+      acc (sexp:list ((sexp:symbol '%platform _) . exps) _)
       -> (do-platform acc exps)
-      acc (sexp:list items)
-      -> (list:cons (sexp:list (W* '() items)) acc)
+      acc (sexp:list items _)
+      -> (list:cons (sexp:list (W* '() items) null-src) acc)
       acc item
       -> (list:cons item acc)
       )
@@ -356,7 +356,7 @@
     )
 
   (define sexp->string
-    (sexp:string s) -> s
+    (sexp:string s _) -> s
     exp -> (raise (:GenFFI/Error "expected string" exp))
     )
   (define sexp->symbol
@@ -364,14 +364,14 @@
     exp -> (raise (:GenFFI/Error "expected symbol" exp))
     )
   (define sexp-starting-with
-    sym0 (sexp:list ((sexp:symbol sym1 _) . subs))
+    sym0 (sexp:list ((sexp:symbol sym1 _) . subs) _)
     -> (if (eq? sym0 sym1)
            (maybe:yes subs) ;; subs := (list sexp)
            (maybe:no))
     _ _ -> (maybe:no)
     )
   (match (scan-for-meta exp) with
-    (sexp:list ((sexp:symbol iface _) . lists)) ;; lists := (list sexp)
+    (sexp:list ((sexp:symbol iface _) . lists) _) ;; lists := (list sexp)
     -> (let ((includes '())
              (cflags '())
              (lflags '())

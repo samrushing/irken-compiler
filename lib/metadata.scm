@@ -7,14 +7,14 @@
 
 (define (fetch-metadata key)
   (define search-sexp-list
-    key ((sexp:list ((sexp:symbol name _) . data)) . tl)
+    key ((sexp:list ((sexp:symbol name _) . data) _) . tl)
     -> (if (eq? name key)
            data
            (search-sexp-list key tl))
     key _ -> (raise (:Metadata/KeyError key))
     )
   (match (get-metadata) with
-    (sexp:list ((sexp:symbol 'metadata _) . items))
+    (sexp:list ((sexp:symbol 'metadata _) . items) _)
     -> (search-sexp-list key items)
     x -> (raise (:Metadata/Malformed x))
     ))
@@ -26,7 +26,7 @@
     (set! the-variant-label-map (make-vector (length variants) ""))
     (let loop ((vls variants))
       (match vls with
-        ((sexp:list ((sexp:symbol name _) (sexp:int tag))) . tl)
+        ((sexp:list ((sexp:symbol name _) (sexp:int tag _)) _) . tl)
         -> (begin
              (set! the-variant-label-map[tag] name)
              (loop tl))

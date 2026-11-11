@@ -6,7 +6,7 @@ This file is a quick description of the compiler.
 
 The phases of the compiler - and how each source file is named.
 
-1) lisp_reader
+1) read (lib/read.scm)
 2) transform
   2.1) mbe
   2.2) match
@@ -18,28 +18,30 @@ The phases of the compiler - and how each source file is named.
 7) backend
 
 
-1) lisp_reader:
+1) read (lib/read.scm):
 
 Reads from a file or string a sequence of s-expressions.  There are
 some slight differences here from a 'classical' Scheme/Lisp
-s-expression, but the basics are the same.
+s-expression, but the basics are the same.  Every s-expression carries
+the source location of its first character (see `src` in lib/sexp.scm),
+which later phases use to report errors.
 
 (datatype field
-  (:t symbol sexp)
+  (:t symbol sexp src)
   )
 
 (datatype sexp
-  (:list (list sexp))
-  (:symbol symbol)
-  (:string string)
-  (:char char)
-  (:bool bool)
-  (:int int)
-  (:undef)
-  (:vector (list sexp))
-  (:record (list field))
-  (:cons symbol symbol) ;; constructor ':' syntax
-  (:attr sexp symbol)	;; attribute '.' syntax
+  (:list (list sexp) src)
+  (:symbol symbol src)
+  (:string string src)
+  (:char char src)
+  (:bool bool src)
+  (:int int src)
+  (:undef src)
+  (:vector (list sexp) src)
+  (:record (list field) src)
+  (:cons symbol symbol src) ;; constructor ':' syntax
+  (:attr sexp symbol src)   ;; attribute '.' syntax
   )
 
 2) transform:

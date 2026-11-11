@@ -92,9 +92,9 @@
   (csi:su n)    -> (sexp (sym 'su) (int n))
   (csi:sd n)    -> (sexp (sym 'sd) (int n))
   (csi:hvp n m) -> (sexp (sym 'hvp) (int n) (int m))
-  (csi:sgr ns)  -> (sexp (sym 'sgr) (list (map sexp:int ns)))
+  (csi:sgr ns)  -> (sexp (sym 'sgr) (list (map make-sexp-int ns)))
   (csi:dsr)     -> (sexp (sym 'dsr))
-  (csi:other ch nums) -> (sexp (sym 'other) (char ch) (list (map sexp:int nums)))
+  (csi:other ch nums) -> (sexp (sym 'other) (char ch) (list (map make-sexp-int nums)))
   )
 
 ;; ------------------------------------------------------------

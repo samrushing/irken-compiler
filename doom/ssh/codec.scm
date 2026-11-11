@@ -33,19 +33,19 @@
   )
 
 (define sshD->sexp
-  (sshD:byte1 n)     -> (sexp:int n)
+  (sshD:byte1 n)     -> (sexp:int n null-src)
   (sshD:byten bytes) -> (sexp (sym 'byten) (string (string->hex bytes)))
-  (sshD:bool bool)   -> (sexp:bool bool)
+  (sshD:bool bool)   -> (sexp:bool bool null-src)
   (sshD:uint32 n)    -> (sexp (sym 'u32) (int n))
   (sshD:uint64 a b)  -> (sexp (sym 'u64) (int a) (int b))
-  (sshD:string s)    -> (sexp:string s)
+  (sshD:string s)    -> (sexp:string s null-src)
   (sshD:mpint n)     -> (sexp (sym 'mpint) (string (big->hex n)))
-  (sshD:namelist nl) -> (sexp1 'namelist (map sexp:string nl))
+  (sshD:namelist nl) -> (sexp1 'namelist (map make-sexp-string nl))
   )
 
 (define (ssh-data->sexp data)
   (define R
-    acc (alist:nil)          -> (sexp:list (reverse acc))
+    acc (alist:nil)          -> (sexp:list (reverse acc) null-src)
     acc (alist:entry k v tl) -> (R (list:cons (sexp (sym k) (sshD->sexp v)) acc) tl)
     )
   (R (list:nil) data))

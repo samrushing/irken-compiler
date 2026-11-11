@@ -60,7 +60,7 @@
 	   _ -> #f) ;; literal symbol matched against a non-symbol
 	 #t) ;; non-literal symbol matches anything
   ;; list pattern
-  (sexp:list pl) (sexp:list el) -> (matches-list? pl el)
+  (sexp:list pl _) (sexp:list el _) -> (matches-list? pl el)
   ;; other objects, e.g. sexp:cons.
   p e				-> (sexp=? p e)
   )
@@ -81,18 +81,18 @@
 
 (define (get-ellipsis-nestings p) ;; (sexp) -> (list sexp)
   (define dolist ;; (list sexp) -> (list sexp)
-    (p0 (sexp:symbol '... _)) -> (list (sexp:list (get-ellipsis-nestings p0)))
+    (p0 (sexp:symbol '... _)) -> (list (sexp:list (get-ellipsis-nestings p0) null-src))
     (hd . tl)		      -> (append (get-ellipsis-nestings hd) (dolist tl))
     _			      -> '())
   (match p with
-    (sexp:list pl)    -> (dolist pl)
+    (sexp:list pl _)  -> (dolist pl)
     (sexp:symbol _ _) -> (list p)
     _		      -> '()))
 
 (define intersect?
   (sexp:symbol v _) (sexp:symbol y _)
   -> (eq? v y)
-  (sexp:list vl)  (sexp:list yl)
+  (sexp:list vl _)  (sexp:list yl _)
   -> (some? (lambda (vi)
 	      (some? (lambda (yj)
 		       (intersect? vi yj))
@@ -102,8 +102,8 @@
   )
 
 (define ellipsis-sub-envs ;; (list sexp), (list sexp) -> sexp
-  nestings ()                       -> (sexp:list '())
-  nestings ((sexp:list (k v)) . tl) -> (if (intersect? (sexp:list nestings) k)
+  nestings ()                       -> (sexp:list '() null-src)
+  nestings ((sexp:list (k v) _) . tl) -> (if (intersect? (sexp:list nestings null-src) k)
 					   v
 					   (ellipsis-sub-envs nestings tl))
   _ _ -> (error "unexpected args to ellipsis-sub-envs")
@@ -122,10 +122,10 @@
 (define (get-bindings p e) ;; -> (list sexp)
   (define dolist
     (p (sexp:symbol '... _)) e
-    -> (list (sexp (sexp:list (get-ellipsis-nestings p))
+    -> (list (sexp (sexp:list (get-ellipsis-nestings p) null-src)
 		   (sexp:list (map (lambda (ei)
-				      (sexp:list (get-bindings p ei)))
-				    e))))
+				      (sexp:list (get-bindings p ei) null-src))
+				    e) null-src)))
     (hdp . tlp) (hde . tle)
     -> (append (get-bindings hdp hde)
 	       (dolist tlp tle))
@@ -133,7 +133,7 @@
     )
   (match p e with
      (sexp:symbol k _) e         -> (list (sexp p e))
-     (sexp:list p) (sexp:list e) -> (dolist p e)
+     (sexp:list p _) (sexp:list e _) -> (dolist p e)
      _ _ -> '()
      )
   )
@@ -143,7 +143,7 @@
   (let loop ((r r))
     (match r with
       () -> (maybe:no)
-      ((sexp:list ((sexp:symbol k1 _) v1)) . tl)
+      ((sexp:list ((sexp:symbol k1 _) v1) _) . tl)
       -> (if (eq? k0 k1)
 	     (maybe:yes v1)
 	     (loop tl))
@@ -159,16 +159,16 @@
     ))
 
 (define expand-field
-  (field:t name exp) r
-  -> (field:t name (expand-pattern exp r))
+  (field:t name exp _) r
+  -> (field:t name (expand-pattern exp r) null-src)
   )
 
 (define (expand-pattern p r) ;; sexp, (list sexp) -> sexp
   (match p with
-    (sexp:list pl)      -> (sexp:list (expand-list pl r))
-    (sexp:vector pl)    -> (sexp:vector (expand-list pl r))
-    (sexp:record fs)    -> (sexp:record (map (lambda (f) (expand-field f r)) fs))
-    (sexp:attr exp sym) -> (sexp:attr (expand-pattern exp r) (expand-name sym r))
+    (sexp:list pl _)    -> (sexp:list (expand-list pl r) null-src)
+    (sexp:vector pl _)  -> (sexp:vector (expand-list pl r) null-src)
+    (sexp:record fs _)  -> (sexp:record (map (lambda (f) (expand-field f r)) fs) null-src)
+    (sexp:attr exp sym _) -> (sexp:attr (expand-pattern exp r) (expand-name sym r) null-src)
     (sexp:symbol sym _) -> (match (mbe/assoc sym r) with
                              (maybe:yes v) -> v
                              (maybe:no)    -> p)
@@ -177,7 +177,7 @@
 
 (define (expand-list p r) ;; (list sexp), (list sexp) -> (list sexp)
   (define sexp/append
-    (sexp:list al) bl -> (append al bl)
+    (sexp:list al _) bl -> (append al bl)
     _ _ -> (error "expected list"))
   (match p with
     (p (sexp:symbol '... _) . tl)
@@ -185,7 +185,7 @@
 	     (rr0 (ellipsis-sub-envs nestings r))
 	     ;; rr0 is always a list of lists
 	     (rr1 (match rr0 with
-		    (sexp:list rrl) -> (map
+		    (sexp:list rrl _) -> (map
 					(lambda (ri)
 					  ;; so ri is always a list
 					  (expand-pattern p (sexp/append ri r)))
@@ -222,8 +222,8 @@
 	      (T s)
 	      s)
           src)
-      (sexp:list l)
-      -> (sexp:list (map walk l))
+      (sexp:list l _)
+      -> (sexp:list (map walk l) null-src)
       x -> x
       )
 
@@ -242,12 +242,12 @@
       _
       -> (src:macro name src0 src1)
       ))
-  (define Wf (field:t name val) -> (field:t name (W val)))
+  (define Wf (field:t name val _) -> (field:t name (W val) null-src))
   (define W
-    (sexp:list l)        -> (sexp:list (map W l))
-    (sexp:vector l)      -> (sexp:vector (map W l))
-    (sexp:record fs)     -> (sexp:record (map Wf fs))
-    (sexp:attr b a)      -> (sexp:attr (W b) a)
+    (sexp:list l _)      -> (sexp:list (map W l) null-src)
+    (sexp:vector l _)    -> (sexp:vector (map W l) null-src)
+    (sexp:record fs _)   -> (sexp:record (map Wf fs) null-src)
+    (sexp:attr b a _)    -> (sexp:attr (W b) a null-src)
     (sexp:symbol s src1) -> (sexp:symbol s (maybe-add src1))
     x                    -> x
     )

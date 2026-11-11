@@ -174,7 +174,7 @@
 (define (node/function name formals type body src)
   (let ((node (make-node (node:function name formals) (list body) src)))
     (match type with
-      (sexp:bool #f) -> node
+      (sexp:bool #f _) -> node
       _ -> (begin (set-node-type! node (parse-type type))
 		  node))))
 
@@ -299,7 +299,7 @@
       (node:primapp name params)     -> (sexp (sym 'primapp) (sym name) params (list subs))
       (node:let formals)             -> (sexp (sym 'let) (list (map make-sexp-symbol formals)) (list subs))
       (node:nvcase dt tags arities)  -> (sexp (sym 'nvcase) (sym dt) (list (map make-sexp-symbol tags))
-                                              (list (map sexp:int arities))
+                                              (list (map make-sexp-int arities))
                                               (list subs))
       )))
 
@@ -375,21 +375,21 @@
 
 (define can-haz-literal-fields?
   () -> #t
-  ((field:t sym val) . rest)
+  ((field:t sym val _) . rest)
   -> (and (can-haz-literal? val)
           (can-haz-literal-fields? rest)))
 
 (define can-haz-literal?
-  (sexp:string s)   -> #t
-  (sexp:int n)      -> #t
-  (sexp:char c)     -> #t
-  (sexp:bool b)     -> #t
-  (sexp:undef)      -> #t
+  (sexp:string s _) -> #t
+  (sexp:int n _)    -> #t
+  (sexp:char c _)   -> #t
+  (sexp:bool b _)   -> #t
+  (sexp:undef _)    -> #t
   (sexp:symbol s _) -> #f ;; i.e., varref
-  (sexp:list ((sexp:symbol 'quote _) . _)) -> #t
-  (sexp:list ((sexp:cons _ _) . args))     -> (every? can-haz-literal? args)
-  (sexp:list l)                            -> (every? can-haz-literal? l)
-  (sexp:vector l)                          -> (every? can-haz-literal? l)
+  (sexp:list ((sexp:symbol 'quote _) . _) _) -> #t
+  (sexp:list ((sexp:cons _ _ _) . args) _)   -> (every? can-haz-literal? args)
+  (sexp:list l _)                          -> (every? can-haz-literal? l)
+  (sexp:vector l _)                        -> (every? can-haz-literal? l)
   ;; note: we cannot have embedded record literals (because mutability)
   ;;(sexp:record fields)                   -> (can-haz-literal-fields? fields)
   _                                      -> #f
@@ -398,35 +398,35 @@
 (define (sexp->node sexp)
 
   (define build-list-literal
-    ((sexp:cons dt alt) . args)   -> (literal:cons dt alt (map build-literal args))
+    ((sexp:cons dt alt _) . args)   -> (literal:cons dt alt (map build-literal args))
     ((sexp:symbol 'quote _) arg)  -> (build-literal arg)
     (hd . tl)                     -> (literal:cons 'list 'cons (list (build-literal hd) (build-list-literal tl)))
     ()                            -> (literal:cons 'list 'nil '())
     )
 
   (define build-field
-    (field:t name val)
+    (field:t name val _)
     -> (litfield:t name (build-literal val))
     )
 
   (define (build-record-literal fields)
     (let ((fields0 (sort field<? fields))
-          (sig (map (lambda (x) (match x with (field:t name _) -> name)) fields0))
+          (sig (map (lambda (x) (match x with (field:t name _ _) -> name)) fields0))
           (tag (cmap/add the-context.records sig)))
       (for-each (lambda (label) (cmap/add the-context.labels label)) sig)
       (cmap/add the-context.records sig)
       (literal:record tag (map build-field fields0))))
 
   (define build-literal
-    (sexp:string s)   -> (literal:string s)
-    (sexp:int n)      -> (literal:int n)
-    (sexp:char c)     -> (literal:char c)
-    (sexp:bool b)     -> (literal:bool b)
-    (sexp:undef)      -> (literal:undef)
+    (sexp:string s _) -> (literal:string s)
+    (sexp:int n _)    -> (literal:int n)
+    (sexp:char c _)   -> (literal:char c)
+    (sexp:bool b _)   -> (literal:bool b)
+    (sexp:undef _)    -> (literal:undef)
     (sexp:symbol s _) -> (literal:symbol s)
-    (sexp:list l)     -> (build-list-literal l)
-    (sexp:vector l)   -> (literal:vector (map build-literal l))
-    (sexp:record fs)  -> (build-record-literal fs)
+    (sexp:list l _)   -> (build-list-literal l)
+    (sexp:vector l _) -> (literal:vector (map build-literal l))
+    (sexp:record fs _)  -> (build-record-literal fs)
     ;; XXX the rest
     exp -> (error1 "unhandled literal type" exp)
     )
@@ -448,7 +448,7 @@
   ;;   be moved to another file.
   (define get-compile-time-meta
     'ffi-interfaces
-    -> (sexp:list (map make-sexp-symbol (cmap/keys the-context.ffi-map)))
+    -> (sexp:list (map make-sexp-symbol (cmap/keys the-context.ffi-map)) null-src)
     x
     -> (error1 "get-compile-time-meta: unknown key" x)
     )
@@ -482,19 +482,19 @@
                (inits '()))
       (match l with
         () -> (:pair (reverse names) (reverse inits))
-        ((sexp:list ((sexp:symbol name _) init)) . l)
+        ((sexp:list ((sexp:symbol name _) init) _) . l)
         -> (loop l (list:cons name names) (list:cons init inits))
         _ -> (error1 "unpack-bindings" (format (join repr " " l)))
         )))
 
   (define join-cexp-template
-    (sexp:string result) -> result
-    (sexp:list parts)
+    (sexp:string result _) -> result
+    (sexp:list parts _)
     -> (string-join
         (map
          (lambda (x)
            (match x with
-             (sexp:string part) -> part
+             (sexp:string part _) -> part
              _ -> (error1 "cexp template must be a list of strings" x)))
          parts)
         ", "
@@ -508,42 +508,42 @@
         (node/literal (build-record-literal fields))
         (foldr (lambda (field rest)
                  (match field with
-                   (field:t name value)
+                   (field:t name value _)
                    -> (node/primapp '%rextend
                                     (sexp:symbol name null-src)
                                     (list rest (walk value))
                                     (src:nil)
                                     )))
-               (node/primapp '%rmake (sexp:bool #f) '() (src:nil))
+               (node/primapp '%rmake (sexp:bool #f null-src) '() (src:nil))
                fields)))
 
   (define (build-vector vals)
     (if (every? can-haz-literal? vals)
-        (node/literal (build-literal (sexp:vector vals)))
+        (node/literal (build-literal (sexp:vector vals null-src)))
         ;; last-second magic here
         (walk (sexp (sym 'list->vector) (make-list vals)))))
 
   ;; given a list of sexp, return runtime code to build that as a list.
   ;; (i.e., this is the compiler's version of the LIST macro).
   (define (make-list* val acc)
-    (sexp (sexp:cons 'list 'cons) val acc))
+    (sexp (sexp:cons 'list 'cons null-src) val acc))
 
   (define (make-list vals)
-    (foldr make-list* (sexp (sexp:cons 'list 'nil)) vals))
+    (foldr make-list* (sexp (sexp:cons 'list 'nil null-src)) vals))
 
   ;; sexp->node actual
   (define walk*
     (sexp:symbol s src) -> (node/varref s src)
-    (sexp:string s)     -> (node/literal (literal:string s))
-    (sexp:int n)        -> (node/literal (literal:int n))
-    (sexp:char c)       -> (node/literal (literal:char c))
-    (sexp:bool b)       -> (node/literal (literal:bool b))
-    (sexp:undef)        -> (node/literal (literal:undef))
-    (sexp:record fl)    -> (build-record fl)
-    (sexp:vector l)     -> (build-vector l)
-    (sexp:attr exp sym) -> (node/primapp '%raccess (sexp:symbol sym null-src) (list (walk exp)) (src:nil))
-    (sexp:cons dt alt)  -> (node/varref (string->symbol (format (sym dt) ":" (sym alt))) (src:nil))
-    (sexp:list l)
+    (sexp:string s _)   -> (node/literal (literal:string s))
+    (sexp:int n _)      -> (node/literal (literal:int n))
+    (sexp:char c _)     -> (node/literal (literal:char c))
+    (sexp:bool b _)     -> (node/literal (literal:bool b))
+    (sexp:undef _)      -> (node/literal (literal:undef))
+    (sexp:record fl _)  -> (build-record fl)
+    (sexp:vector l _)   -> (build-vector l)
+    (sexp:attr exp sym _) -> (node/primapp '%raccess (sexp:symbol sym null-src) (list (walk exp)) (src:nil))
+    (sexp:cons dt alt _)  -> (node/varref (string->symbol (format (sym dt) ":" (sym alt))) (src:nil))
+    (sexp:list l _)
     -> (match l with
          ((sexp:symbol 'begin src) . exps)                  -> (node/sequence (map walk exps) src)
          ((sexp:symbol 'set! src) (sexp:symbol name _) arg) -> (node/varset name (walk arg) src)
@@ -572,41 +572,41 @@
               -> (node/ffi name sig (map walk args))
               (maybe:no)
               -> (raise (:Node/UnknownFFI name)))
-         ((sexp:symbol '%%compile-time-meta _) (sexp:list ((sexp:symbol 'quote _) (sexp:symbol name _))))
+         ((sexp:symbol '%%compile-time-meta _) (sexp:list ((sexp:symbol 'quote _) (sexp:symbol name _)) _))
          -> (node/literal (unsexp (get-compile-time-meta name)))
-         ((sexp:symbol '%nvcase _) (sexp:symbol dt _) val-exp (sexp:list tags) (sexp:list arities) (sexp:list alts) ealt)
+         ((sexp:symbol '%nvcase _) (sexp:symbol dt _) val-exp (sexp:list tags _) (sexp:list arities _) (sexp:list alts _) ealt)
          -> (node/nvcase dt (map sexp->symbol tags) (map sexp->int arities) (walk val-exp) (map walk alts) (walk ealt))
-         ((sexp:symbol 'function _) (sexp:symbol name src) (sexp:list formals) type . body)
+         ((sexp:symbol 'function _) (sexp:symbol name src) (sexp:list formals _) type . body)
          -> (node/function name (get-formals formals) type (node/sequence (map walk body) (src:nil)) src)
-         ((sexp:symbol 'fix src) (sexp:list names) (sexp:list inits) . body)
+         ((sexp:symbol 'fix src) (sexp:list names _) (sexp:list inits _) . body)
          -> (match (sort-fix-inits (get-formals names) (map walk inits)) with
               (:sorted-fix names inits)
               -> (node/fix names inits (node/sequence (map walk body) src)))
-         ((sexp:symbol 'let-splat _) (sexp:list bindings) . body)
+         ((sexp:symbol 'let-splat _) (sexp:list bindings _) . body)
          -> (match (unpack-bindings bindings) with
               (:pair names inits)
               -> (node/let names (map walk inits) (node/sequence (map walk body) (src:nil))))
-         ((sexp:symbol 'letrec _) (sexp:list bindings) . body)
+         ((sexp:symbol 'letrec _) (sexp:list bindings _) . body)
          -> (match (unpack-bindings bindings) with
               (:pair names inits)
               -> (node/fix names (map walk inits) (node/sequence (map walk body) (src:nil))))
-         ((sexp:symbol 'let-subst _) (sexp:list ((sexp:symbol from _) (sexp:symbol to _))) body)
+         ((sexp:symbol 'let-subst _) (sexp:list ((sexp:symbol from _) (sexp:symbol to _)) _) body)
          -> (node/subst from to (walk body))
          ((sexp:symbol 'let-subst _) . _)
          -> (error1 "syntax error (let-subst)" (format (join repr " " l)))
-         ((sexp:cons 'nil alt) . rands)
-         -> (node/primapp '%vcon (sexp (sym alt) (sexp:int (length rands))) (map walk rands) (src:nil))
-         ((sexp:cons dt alt) . rands)
-         -> (if (can-haz-literal? (sexp:list l))
-                (node/literal (build-literal (sexp:list l)))
+         ((sexp:cons 'nil alt _) . rands)
+         -> (node/primapp '%vcon (sexp (sym alt) (sexp:int (length rands) null-src)) (map walk rands) (src:nil))
+         ((sexp:cons dt alt _) . rands)
+         -> (if (can-haz-literal? (sexp:list l null-src))
+                (node/literal (build-literal (sexp:list l null-src)))
                 (match the-context.options.backend with
-                  (backend:bytecode) -> (node/call (walk (sexp:cons dt alt)) (map walk rands) (src:nil))
-                  (backend:arm)      -> (node/call (walk (sexp:cons dt alt)) (map walk rands) (src:nil))
-                  (backend:amd)      -> (node/call (walk (sexp:cons dt alt)) (map walk rands) (src:nil))
-                  (backend:rv)       -> (node/call (walk (sexp:cons dt alt)) (map walk rands) (src:nil))
+                  (backend:bytecode) -> (node/call (walk (sexp:cons dt alt null-src)) (map walk rands) (src:nil))
+                  (backend:arm)      -> (node/call (walk (sexp:cons dt alt null-src)) (map walk rands) (src:nil))
+                  (backend:amd)      -> (node/call (walk (sexp:cons dt alt null-src)) (map walk rands) (src:nil))
+                  (backend:rv)       -> (node/call (walk (sexp:cons dt alt null-src)) (map walk rands) (src:nil))
                   ;; this will inline all constructors.  not a good idea with the bytecode
                   ;;  backend because it leads to runaway register allocation.
-                  _                  -> (node/primapp '%dtcon (sexp:cons dt alt) (map walk rands) (src:nil)))
+                  _                  -> (node/primapp '%dtcon (sexp:cons dt alt null-src) (map walk rands) (src:nil)))
                 )
          ((sexp:symbol name src) . rands)
          -> (if (eq? (string-ref (symbol->string name) 0) #\%)
@@ -642,17 +642,20 @@
   (hd . tl) -> (literal:cons 'list 'cons (list (unsexp hd) (unsexp-list tl)))
   )
 
+(define nil-src-literal (literal:cons 'src 'nil '()))
+
+;; a sexp as literal data.  [quoted data keeps no source location]
 (define unsexp
-  (sexp:string s)   -> (literal:cons 'sexp 'string (list (literal:string s)))
-  (sexp:int n)      -> (literal:cons 'sexp 'int (list (literal:int n)))
-  (sexp:char c)     -> (literal:cons 'sexp 'char (list (literal:char c)))
-  (sexp:bool b)     -> (literal:cons 'sexp 'bool (list (literal:bool b)))
-  (sexp:undef)      -> (literal:cons 'sexp 'undef '())
-  (sexp:symbol s _) -> (literal:cons 'sexp 'symbol (list (literal:symbol s) (literal:cons 'src 'nil '())))
-  (sexp:list l)     -> (literal:cons 'sexp 'list (list (unsexp-list l)))
-  (sexp:vector l)   -> (literal:cons 'sexp 'vector (map unsexp l))
-  (sexp:attr b n)   -> (literal:cons 'sexp 'attr (list (unsexp b) (literal:symbol n)))
-  (sexp:cons d a)   -> (literal:cons 'sexp 'cons (list (literal:symbol d) (literal:symbol a)))
+  (sexp:string s _) -> (literal:cons 'sexp 'string (list (literal:string s) nil-src-literal))
+  (sexp:int n _)    -> (literal:cons 'sexp 'int (list (literal:int n) nil-src-literal))
+  (sexp:char c _)   -> (literal:cons 'sexp 'char (list (literal:char c) nil-src-literal))
+  (sexp:bool b _)   -> (literal:cons 'sexp 'bool (list (literal:bool b) nil-src-literal))
+  (sexp:undef _)    -> (literal:cons 'sexp 'undef (list nil-src-literal))
+  (sexp:symbol s _) -> (literal:cons 'sexp 'symbol (list (literal:symbol s) nil-src-literal))
+  (sexp:list l _)   -> (literal:cons 'sexp 'list (list (unsexp-list l) nil-src-literal))
+  (sexp:vector l _) -> (literal:cons 'sexp 'vector (list (unsexp-list l) nil-src-literal))
+  (sexp:attr b n _) -> (literal:cons 'sexp 'attr (list (unsexp b) (literal:symbol n) nil-src-literal))
+  (sexp:cons d a _) -> (literal:cons 'sexp 'cons (list (literal:symbol d) (literal:symbol a) nil-src-literal))
   exp -> (error1 "unsexp: unhandled literal type" exp)
   )
 

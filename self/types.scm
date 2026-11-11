@@ -202,7 +202,7 @@
     (type:tvar index _)
     -> (sexp (sym 'quote) (sym (string->symbol (base26 (cmap->index tvar-cmap index)))))
     (type:pred name subs _)
-    -> (sexp:list (cons (sexp:symbol name null-src) (map recur subs)))
+    -> (sexp:list (cons (sexp:symbol name null-src) (map recur subs)) null-src)
     )
   (recur t))
 
@@ -267,7 +267,7 @@
     -> (match (alist/lookup the-context.aliases p) with
     	 (maybe:yes scheme) -> (apply-alias p scheme rest)
     	 (maybe:no) -> (pred p (map parse rest)))
-    ((sexp:cons 'nil pvar) . rest)
+    ((sexp:cons 'nil pvar _) . rest)
     -> (begin
          (printf "pvar in type: (:" (sym pvar) " " (join repr " " rest) ")\n")
          ;; (rsum (rlabel plabel (rpre T0) T1))
@@ -314,8 +314,8 @@
     )
 
   (define parse-field-list
-    ((field:t '... _))  -> (gen-tvar)
-    ((field:t name type) . tl) -> (rlabel (make-label name) (rpre (parse type)) (parse-field-list tl))
+    ((field:t '... _ _))  -> (gen-tvar)
+    ((field:t name type _) . tl) -> (rlabel (make-label name) (rpre (parse type)) (parse-field-list tl))
     () -> (rdefault (rabs)))
 
   (define (parse t)
@@ -332,8 +332,8 @@
 			   -> atype
 			   ;; allow nullary predicates
 			   (maybe:no) -> (pred sym '())))
-      (sexp:list l) -> (parse-list l)
-      (sexp:record fl) -> (rproduct (parse-field-list fl))
+      (sexp:list l _) -> (parse-list l)
+      (sexp:record fl _) -> (rproduct (parse-field-list fl))
       _ -> (error1 "bad type" exp)))
 
   (parse exp)
@@ -375,7 +375,7 @@
 ;; as an sexp it can be attached to a primapp as a parameter.
 (define (get-record-sig-sexp t)
   (let ((sig (get-record-sig t)))
-    (sexp:list (map make-sexp-symbol sig))))
+    (sexp:list (map make-sexp-symbol sig) null-src)))
 
 (define c-int-types
   ;; XXX distinguish between signed and unsigned!

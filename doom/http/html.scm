@@ -118,8 +118,8 @@
 ;; we also want to pprint it. hmmm...
 
 (define field->html
-  (field:t '... _)   -> (html "...")
-  (field:t name val) -> (html (&t (sym name) "=") (&= (sexp->html val)))
+  (field:t '... _ _) -> (html "...")
+  (field:t name val _) -> (html (&t (sym name) "=") (&= (sexp->html val)))
   )
 
 ;; (define sexp-css
@@ -137,18 +137,18 @@
 ;;    "\n"))
 
 (define sexp->html
-  (sexp:undef)       -> (html ((span (class "u")) "#u"))
-  (sexp:int n)       -> (html ((span (class "i")) (&f (int n))))
-  (sexp:char ch)     -> (html ((span (class "c")) (&t (char ch))))
-  (sexp:bool b)      -> (html ((span (class "b")) (&f (bool b))))
-  (sexp:string s)    -> (html ((span (class "s")) (&t (string s))))
+  (sexp:undef _)     -> (html ((span (class "u")) "#u"))
+  (sexp:int n _)     -> (html ((span (class "i")) (&f (int n))))
+  (sexp:char ch _)   -> (html ((span (class "c")) (&t (char ch))))
+  (sexp:bool b _)    -> (html ((span (class "b")) (&f (bool b))))
+  (sexp:string s _)  -> (html ((span (class "s")) (&t (string s))))
   (sexp:symbol s _)  -> (html ((span (class "y")) (&t (sym s))))
-  (sexp:cons 'nil c) -> (html ((span (class "C")) (&t ":" (sym c))))
-  (sexp:cons dt c)   -> (html ((span (class "C")) (&t (sym dt) ":" (sym c))))
-  (sexp:list l)      -> (html ((span (class "p")) "(") (&join sexp->html " " l) ((span (class "p")) ")"))
-  (sexp:vector v)    -> (html "#(" (&join sexp->html " " v) ")")
-  (sexp:record fl)   -> (html "{" (&join field->html " " fl) "}")
-  (sexp:attr lhs a)  -> (html (&= (sexp->html lhs)) "." ((span (class "y")) (&t (sym a))))
+  (sexp:cons 'nil c _) -> (html ((span (class "C")) (&t ":" (sym c))))
+  (sexp:cons dt c _) -> (html ((span (class "C")) (&t (sym dt) ":" (sym c))))
+  (sexp:list l _)    -> (html ((span (class "p")) "(") (&join sexp->html " " l) ((span (class "p")) ")"))
+  (sexp:vector v _)  -> (html "#(" (&join sexp->html " " v) ")")
+  (sexp:record fl _) -> (html "{" (&join field->html " " fl) "}")
+  (sexp:attr lhs a _)  -> (html (&= (sexp->html lhs)) "." ((span (class "y")) (&t (sym a))))
   )
 
 (define (pp-html exp width)
@@ -162,9 +162,9 @@
         (if (< size width)
             (emit (sexp->html exp))
             (match exp with
-              (sexp:list ())
-              -> (emit (sexp->html (sexp:list (list:nil))))
-              (sexp:list (hd . tl))
+              (sexp:list () _)
+              -> (emit (sexp->html (sexp:list (list:nil) null-src)))
+              (sexp:list (hd . tl) _)
               -> (begin (emit (html ((span (class "p")) "(")))
                         (recur d hd)
                         (for-list item tl

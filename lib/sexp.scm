@@ -2,22 +2,26 @@
 
 ;; an s-expression datatype.
 
+;; every arm carries the source location of its first character (or
+;;  (src:nil) for one made by a program rather than read).  equality and
+;;  printing ignore it.
+
 (datatype sexp
-  (:list (list sexp))
+  (:list (list sexp) src)
   (:symbol symbol src)
-  (:string string)
-  (:char char)
-  (:bool bool)
-  (:int int)
-  (:undef)
-  (:vector (list sexp))
-  (:record (list field))
-  (:cons symbol symbol) ;; constructor ':' syntax
-  (:attr sexp symbol)	;; attribute '.' syntax
+  (:string string src)
+  (:char char src)
+  (:bool bool src)
+  (:int int src)
+  (:undef src)
+  (:vector (list sexp) src)
+  (:record (list field) src)
+  (:cons symbol symbol src) ;; constructor ':' syntax
+  (:attr sexp symbol src)	;; attribute '.' syntax
   )
 
 (datatype field
-  (:t symbol sexp)
+  (:t symbol sexp src)  ;; name=value, src at the name
   )
 
 ;; metadata about the source location of an s-expression.
@@ -52,15 +56,15 @@
   (let/cc return
 
     (define Wf
-      (field:t name val) -> (W val)
+      (field:t name val _) -> (W val)
       )
 
     (define W
       (sexp:symbol _ src) -> (return src)
-      (sexp:list l)       -> (for-list x l (W x))
-      (sexp:vector v)     -> (for-list x v (W x))
-      (sexp:record fl)    -> (for-list x fl (Wf x))
-      (sexp:attr lhs a)   -> (W lhs)
+      (sexp:list l _)     -> (for-list x l (W x))
+      (sexp:vector v _)   -> (for-list x v (W x))
+      (sexp:record fl _)  -> (for-list x fl (Wf x))
+      (sexp:attr lhs a _) -> (W lhs)
       _ -> #u
       )
 
@@ -75,24 +79,24 @@
   (sexprec) -> '()
   (sexprec (name val) rest ...)
   -> (list:cons
-      (field:t (quote name) (sexpf val))
+      (field:t (quote name) (sexpf val) null-src)
       (sexprec rest ...))
   )
 
 ;; format one sexp
 (defmacro sexpf
-  (sexpf (<int> n))         -> (sexp:int n)
-  (sexpf (<char> ch))       -> (sexp:char ch)
-  (sexpf (<bool> b))        -> (sexp:bool b)
+  (sexpf (<int> n))         -> (sexp:int n null-src)
+  (sexpf (<char> ch))       -> (sexp:char ch null-src)
+  (sexpf (<bool> b))        -> (sexp:bool b null-src)
   (sexpf (<sym> s))         -> (sexp:symbol s null-src)
   (sexpf (<symsrc> s src))  -> (sexp:symbol s src)
-  (sexpf (<string> s))      -> (sexp:string s)
-  (sexpf (<list> exp))      -> (sexp:list exp) ;; exp is (list sexp)
-  (sexpf (<rec> field ...)) -> (sexp:record (sexprec field ...))
-  (sexpf (<undef>))         -> (sexp:undef)
-  (sexpf (<cons> dt tag))   -> (sexp:cons dt tag)
-  (sexpf (<attr> exp name)) -> (sexp:attr (sexpf exp) name)
-  (sexpf (<vec> exp ...))   -> (sexp:vector (sexpl exp ...))
+  (sexpf (<string> s))      -> (sexp:string s null-src)
+  (sexpf (<list> exp))      -> (sexp:list exp null-src) ;; exp is (list sexp)
+  (sexpf (<rec> field ...)) -> (sexp:record (sexprec field ...) null-src)
+  (sexpf (<undef>))         -> (sexp:undef null-src)
+  (sexpf (<cons> dt tag))   -> (sexp:cons dt tag null-src)
+  (sexpf (<attr> exp name)) -> (sexp:attr (sexpf exp) name null-src)
+  (sexpf (<vec> exp ...))   -> (sexp:vector (sexpl exp ...) null-src)
   ;; XXX append & splice?
   (sexpf exp)               -> exp ;; already a sexp
   )
@@ -105,8 +109,8 @@
 
 ;; build a sexp:list
 (defmacro sexp
-  (sexp)         -> (sexp:list '())
-  (sexp exp ...) -> (sexp:list (sexpl exp ...))
+  (sexp)         -> (sexp:list '() null-src)
+  (sexp exp ...) -> (sexp:list (sexpl exp ...) null-src)
   )
 
 ;; ------------------------------
@@ -118,45 +122,81 @@
 (define (make-sexp-symbol s)
   (sexp:symbol s null-src))
 
+(define (make-sexp-int n)
+  (sexp:int n null-src))
+
+(define (make-sexp-string s)
+  (sexp:string s null-src))
+
+;; the source location of any sexp.
+(define sexp/src
+  (sexp:list _ src)     -> src
+  (sexp:symbol _ src)   -> src
+  (sexp:string _ src)   -> src
+  (sexp:char _ src)     -> src
+  (sexp:bool _ src)     -> src
+  (sexp:int _ src)      -> src
+  (sexp:undef src)      -> src
+  (sexp:vector _ src)   -> src
+  (sexp:record _ src)   -> src
+  (sexp:cons _ _ src)   -> src
+  (sexp:attr _ _ src)   -> src
+  )
+
+;; the same sexp, at another location (the outermost form only).
+(define sexp/at
+  src (sexp:list l _)       -> (sexp:list l src)
+  src (sexp:symbol s _)     -> (sexp:symbol s src)
+  src (sexp:string s _)     -> (sexp:string s src)
+  src (sexp:char c _)       -> (sexp:char c src)
+  src (sexp:bool b _)       -> (sexp:bool b src)
+  src (sexp:int n _)        -> (sexp:int n src)
+  src (sexp:undef _)        -> (sexp:undef src)
+  src (sexp:vector v _)     -> (sexp:vector v src)
+  src (sexp:record fl _)    -> (sexp:record fl src)
+  src (sexp:cons dt alt _)  -> (sexp:cons dt alt src)
+  src (sexp:attr lhs a _)   -> (sexp:attr lhs a src)
+  )
+
 (define sexp->int
-  (sexp:int n) -> n
+  (sexp:int n _) -> n
   x -> (error1 "sexp->int" x))
 
 ;; utility functions
 (define field=?
-  (field:t sa va) (field:t sb vb)
+  (field:t sa va _) (field:t sb vb _)
   -> (and (eq? sa sb) (sexp=? va vb)))
 
 (define field<?
-  (field:t sa va) (field:t sb vb)
+  (field:t sa va _) (field:t sb vb _)
   -> (symbol<? sa sb))
 
 (define sexp=?
   (sexp:symbol s0 _)   (sexp:symbol s1 _)   -> (eq? s0 s1)
-  (sexp:char ch0)      (sexp:char ch1)      -> (eq? ch0 ch1)
-  (sexp:bool b0)       (sexp:bool b1)       -> (eq? b0 b1)
-  (sexp:int n0)        (sexp:int n1)        -> (= n0 n1)
-  (sexp:undef)         (sexp:undef)         -> #t
-  (sexp:cons dt0 c0)   (sexp:cons dt1 c1)   -> (and (eq? dt0 dt1) (eq? c0 c1))
-  (sexp:string s0)     (sexp:string s1)     -> (string=? s0 s1)
-  (sexp:vector v0)     (sexp:vector v1)     -> (every2? sexp=? v0 v1)
-  (sexp:record fl0)    (sexp:record fl1)    -> (every2? field=? fl0 fl1)
-  (sexp:attr lhs0 a0)  (sexp:attr lhs1 a1)  -> (and (eq? a0 a1) (sexp=? lhs0 lhs1))
-  (sexp:list l0)       (sexp:list l1)       -> (every2? sexp=? l0 l1)
+  (sexp:char ch0 _)    (sexp:char ch1 _)    -> (eq? ch0 ch1)
+  (sexp:bool b0 _)     (sexp:bool b1 _)     -> (eq? b0 b1)
+  (sexp:int n0 _)      (sexp:int n1 _)      -> (= n0 n1)
+  (sexp:undef _)       (sexp:undef _)       -> #t
+  (sexp:cons dt0 c0 _) (sexp:cons dt1 c1 _) -> (and (eq? dt0 dt1) (eq? c0 c1))
+  (sexp:string s0 _)   (sexp:string s1 _)   -> (string=? s0 s1)
+  (sexp:vector v0 _)   (sexp:vector v1 _)   -> (every2? sexp=? v0 v1)
+  (sexp:record fl0 _)  (sexp:record fl1 _)  -> (every2? field=? fl0 fl1)
+  (sexp:attr lhs0 a0 _)  (sexp:attr lhs1 a1 _)  -> (and (eq? a0 a1) (sexp=? lhs0 lhs1))
+  (sexp:list l0 _)     (sexp:list l1 _)     -> (every2? sexp=? l0 l1)
   _ _                                       -> #f
   )
 
 (define (sexp1 sym rest)
   ;; build an s-expression with <sym> at the front followed by <rest>
-  (sexp:list (list:cons (sexp:symbol sym null-src) rest)))
+  (sexp:list (list:cons (sexp:symbol sym null-src) rest) null-src))
 
 (define (sexp1src sym src rest)
   ;; build an s-expression with <sym> at the front followed by <rest>
-  (sexp:list (list:cons (sexp:symbol sym src) rest)))
+  (sexp:list (list:cons (sexp:symbol sym src) rest) null-src))
 
 (define repr-field
-  (field:t '... _)   -> "..."
-  (field:t name val) -> (format (sym name) "=" (repr val)))
+  (field:t '... _ _) -> "..."
+  (field:t name val _) -> (format (sym name) "=" (repr val)))
 
 (define repr-char
   #\newline -> "#\\newline"
@@ -169,39 +209,39 @@
   )
 
 (define repr
-  (sexp:list ((sexp:symbol 'quote _) x)) -> (format "'" (repr x))
-  (sexp:list l)     -> (format "(" (join repr " " l) ")")
+  (sexp:list ((sexp:symbol 'quote _) x) _) -> (format "'" (repr x))
+  (sexp:list l _)   -> (format "(" (join repr " " l) ")")
   (sexp:symbol s _) -> (format (sym s))
-  (sexp:string s)   -> (repr-string s)
-  (sexp:char ch)    -> (repr-char ch)
-  (sexp:bool #t)    -> "#t"
-  (sexp:bool #f)    -> "#f"
-  (sexp:int n)      -> (format (int n))
-  (sexp:undef)      -> "#u"
-  (sexp:vector v)   -> (format "#(" (join repr " " v) ")")
-  (sexp:record fl)  -> (format "{" (join repr-field " " fl) "}")
-  (sexp:cons dt c)  -> (format (if (eq? dt 'nil) "" (symbol->string dt)) ":" (sym c))
-  (sexp:attr lhs a) -> (format (repr lhs) "." (sym a))
+  (sexp:string s _) -> (repr-string s)
+  (sexp:char ch _)  -> (repr-char ch)
+  (sexp:bool #t _)  -> "#t"
+  (sexp:bool #f _)  -> "#f"
+  (sexp:int n _)    -> (format (int n))
+  (sexp:undef _)    -> "#u"
+  (sexp:vector v _) -> (format "#(" (join repr " " v) ")")
+  (sexp:record fl _)  -> (format "{" (join repr-field " " fl) "}")
+  (sexp:cons dt c _)  -> (format (if (eq? dt 'nil) "" (symbol->string dt)) ":" (sym c))
+  (sexp:attr lhs a _) -> (format (repr lhs) "." (sym a))
   )
 
 (define (indent n)
   (printf (repeat n " ")))
 
 (define pp-size-field
-  (field:t name val) -> (+ (+ 1 (string-length (symbol->string name)))
+  (field:t name val _) -> (+ (+ 1 (string-length (symbol->string name)))
 			   (pp-size val)))
 (define pp-size
-  (sexp:list l)     -> (foldr binary+ (+ 1 (length l)) (map pp-size l))
+  (sexp:list l _)   -> (foldr binary+ (+ 1 (length l)) (map pp-size l))
   (sexp:symbol s _) -> (string-length (symbol->string s))
-  (sexp:string s)   -> (+ 2 (string-length s)) ;; escaped backslashes!
-  (sexp:char ch)    -> (string-length (repr (sexp:char ch)))
-  (sexp:bool _)     -> 2
-  (sexp:int n)      -> (string-length (int->string n))
-  (sexp:undef)      -> 2
-  (sexp:vector v)   -> (foldr binary+ (+ 2 (length v)) (map pp-size v))
-  (sexp:record fl)  -> (foldr binary+ (+ (length fl) 1) (map pp-size-field fl))
-  (sexp:cons dt c)  -> (+ 1 (+ (string-length (symbol->string dt)) (string-length (symbol->string c))))
-  (sexp:attr lhs a) -> (+ 1 (+ (pp-size lhs) (string-length (symbol->string a))))
+  (sexp:string s _) -> (+ 2 (string-length s)) ;; escaped backslashes!
+  (sexp:char ch _)  -> (string-length (repr (sexp:char ch null-src)))
+  (sexp:bool _ _)   -> 2
+  (sexp:int n _)    -> (string-length (int->string n))
+  (sexp:undef _)    -> 2
+  (sexp:vector v _) -> (foldr binary+ (+ 2 (length v)) (map pp-size v))
+  (sexp:record fl _)  -> (foldr binary+ (+ (length fl) 1) (map pp-size-field fl))
+  (sexp:cons dt c _)  -> (+ 1 (+ (string-length (symbol->string dt)) (string-length (symbol->string c))))
+  (sexp:attr lhs a _) -> (+ 1 (+ (pp-size lhs) (string-length (symbol->string a))))
   )
 
 (define (pp* exp width depth)
@@ -210,9 +250,9 @@
       (if (< size width)
 	  (printf (repr exp))
 	  (match exp with
-	    (sexp:list ())
+	    (sexp:list () _)
 	    -> (printf "()")
-	    (sexp:list (hd . tl))
+	    (sexp:list (hd . tl) _)
 	    -> (begin (printf "(")
 		      (recur d hd)
 		      (for-each

@@ -98,7 +98,7 @@
       (string->symbol (format (sym interface) "/" (sym name))))
 
     (define (iface-includes)
-      (map (lambda (path) (sexp (sym 'cinclude) (sexp:string path)))
+      (map (lambda (path) (sexp (sym 'cinclude) (sexp:string path null-src)))
            info.includes))
 
     (when first-time?
@@ -151,8 +151,8 @@
                                   (argtype->sexp rtype)
                                   (char (ctype->rtype-code rtype))
                                   (int (length argtypes))
-                                  (sexp:list (map argtype->sexp argtypes))
-                                  (sexp:list (argnames (length argtypes)))
+                                  (sexp:list (map argtype->sexp argtypes) null-src)
+                                  (sexp:list (argnames (length argtypes)) null-src)
                                   )
                             )))
            (csig:obj name obtype)

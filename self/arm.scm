@@ -174,32 +174,32 @@
   (sexp:symbol 'retval _)                                  -> (armop:retval)
   (sexp:symbol 'xzr _)                                     -> (armop:xzr)
   (sexp:symbol 'sp _)                                      -> (armop:sp)
-  (sexp:string label)                                      -> (armop:l (clabel label))
-  (sexp:list ((sexp:symbol 'r _) (sexp:symbol name _)))    -> (armop:r (symbol->string name))
-  (sexp:list ((sexp:symbol 'r _) (sexp:string name)))      -> (armop:r name)
-  (sexp:list ((sexp:symbol 's _) (sexp:int num)))          -> (armop:s num)
-  (sexp:list ((sexp:symbol 'a _) (sexp:int num)))          -> (armop:a num)
-  (sexp:list ((sexp:symbol 'i _) (sexp:int num)))          -> (armop:i num)
-  (sexp:list ((sexp:symbol 'c _) (sexp:int num)))          -> (armop:c num)
-  (sexp:list ((sexp:symbol 'lsl _) (sexp:int num)))        -> (armop:lsl num)
-  (sexp:list ((sexp:symbol 'lsr _) (sexp:int num)))        -> (armop:lsr num)
-  (sexp:list ((sexp:symbol 'asr _) (sexp:int num)))        -> (armop:asr num)
-  (sexp:list ((sexp:symbol 'ror _) (sexp:int num)))        -> (armop:ror num)
-  (sexp:list ((sexp:symbol 'cc _) (sexp:symbol cc _)))     -> (armop:cc (name->armcc cc))
-  (sexp:list ((sexp:symbol 'ind _) . args))                -> (armop:ind (map parse-armop args))
-  (sexp:list ((sexp:symbol 'w _) arg))                     -> (armop:w (parse-armop arg))
+  (sexp:string label _)                                    -> (armop:l (clabel label))
+  (sexp:list ((sexp:symbol 'r _) (sexp:symbol name _)) _)  -> (armop:r (symbol->string name))
+  (sexp:list ((sexp:symbol 'r _) (sexp:string name _)) _)    -> (armop:r name)
+  (sexp:list ((sexp:symbol 's _) (sexp:int num _)) _)        -> (armop:s num)
+  (sexp:list ((sexp:symbol 'a _) (sexp:int num _)) _)        -> (armop:a num)
+  (sexp:list ((sexp:symbol 'i _) (sexp:int num _)) _)        -> (armop:i num)
+  (sexp:list ((sexp:symbol 'c _) (sexp:int num _)) _)        -> (armop:c num)
+  (sexp:list ((sexp:symbol 'lsl _) (sexp:int num _)) _)      -> (armop:lsl num)
+  (sexp:list ((sexp:symbol 'lsr _) (sexp:int num _)) _)      -> (armop:lsr num)
+  (sexp:list ((sexp:symbol 'asr _) (sexp:int num _)) _)      -> (armop:asr num)
+  (sexp:list ((sexp:symbol 'ror _) (sexp:int num _)) _)      -> (armop:ror num)
+  (sexp:list ((sexp:symbol 'cc _) (sexp:symbol cc _)) _)   -> (armop:cc (name->armcc cc))
+  (sexp:list ((sexp:symbol 'ind _) . args) _)              -> (armop:ind (map parse-armop args))
+  (sexp:list ((sexp:symbol 'w _) arg) _)                   -> (armop:w (parse-armop arg))
   ;; we leave out (armop:n) on purpose, since that information shouldn't
   ;;  be user-observable.
   x -> (raise (:ArmAsm/BadExpression (repr x)))
   )
 
 (define parse-arm-inline
-  (sexp:list ((sexp:symbol 'com _) (sexp:string comment)))
+  (sexp:list ((sexp:symbol 'com _) (sexp:string comment _)) _)
   -> (arm:comment comment)
-  (sexp:list ((sexp:symbol rator _) . rands))
+  (sexp:list ((sexp:symbol rator _) . rands) _)
   -> (arm:insn rator (map parse-armop rands))
   ;; this is a hack to handle mnemonics with dots, which look like attribute references to the sexp parser.
-  (sexp:list ((sexp:attr (sexp:symbol left _) right) . rands))
+  (sexp:list ((sexp:attr (sexp:symbol left _) right _) . rands) _)
   -> (arm:insn
       (string->symbol
        (format (symbol->string left) "." (symbol->string right)))
@@ -984,9 +984,9 @@
         '%divmod  _                  (arg0 arg1)           -> (emit-divmod arg0 arg1 k.target)
         '%llicmp  (sexp:symbol cc _) (arg0 arg1)           -> (emit-icmp cc arg0 arg1 k.target)
         '%lleq    _                  (arg0 arg1)           -> (emit-icmp 'eq arg0 arg1 k.target)
-        '%dtcon   (sexp:cons dtname altname) args          -> (emit-dtcon dtname altname args k.target)
-	'%nvget   (sexp:list (_ (sexp:int index) _)) (reg) -> (emit-nvget k.target reg index)
-        '%arm (sexp:list (sig . inline)) args              -> (emit-arm-inline inline args k.target)
+        '%dtcon   (sexp:cons dtname altname _) args          -> (emit-dtcon dtname altname args k.target)
+	'%nvget   (sexp:list (_ (sexp:int index _) _) _) (reg) -> (emit-nvget k.target reg index)
+        '%arm (sexp:list (sig . inline) _) args              -> (emit-arm-inline inline args k.target)
 	'%array-ref _ (vec index)                          -> (emit-array-ref vec index k.target)
 	'%array-set _ (vec index val)                      -> (emit-array-set vec index val)
         '%exit _ (arg)                                     -> (emit-exit arg)
@@ -1008,16 +1008,16 @@
         '%free _ (ref)                                     -> (emit-free ref k.free)
         '%c-sizeof ctexp ()                                -> (emit-c-sizeof ctexp k.target)
 
-	'%record-get (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec)
+	'%record-get (sexp:list ((sexp:symbol label _) (sexp:list sig _)) _) (rec)
         -> (emit-record-get label sig rec k.target k.free)
 
-        '%record-set (sexp:list ((sexp:symbol label _) (sexp:list sig))) (rec val)
+        '%record-set (sexp:list ((sexp:symbol label _) (sexp:list sig _)) _) (rec val)
         -> (emit-record-set label sig rec val k.free)
 
-        '%asm-c-call (sexp:list ((sexp:string name) sig)) args
+        '%asm-c-call (sexp:list ((sexp:string name _) sig) _) args
         -> (emit-c-call (parse-type sig) name args k.target k.free #t)
 
-        '%asm-c-call (sexp:list ((sexp:string name) sig (sexp:bool convert?))) args
+        '%asm-c-call (sexp:list ((sexp:string name _) sig (sexp:bool convert? _)) _) args
         -> (emit-c-call (parse-type sig) name args k.target k.free convert?)
 
         _ _ _

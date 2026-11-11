@@ -17,11 +17,11 @@
 ;; XXX add help string...
 
 (define optval->sexp
-  (optval:bool b)   -> (sexp:bool b)
-  (optval:string s) -> (sexp:string s)
-  (optval:int n)    -> (sexp:int n)
-  (optval:null)     -> (sexp:undef)
-  (optval:list vs)  -> (sexp:list (map optval->sexp vs))
+  (optval:bool b)   -> (sexp:bool b null-src)
+  (optval:string s) -> (sexp:string s null-src)
+  (optval:int n)    -> (sexp:int n null-src)
+  (optval:null)     -> (sexp:undef null-src)
+  (optval:list vs)  -> (sexp:list (map optval->sexp vs) null-src)
   )
 
 (datatype option
@@ -45,8 +45,8 @@
 ;; for the return value from `process-options`
 (define (args->sexp parsed)
   (define arg->sexp
-    (:tuple name val) -> (field:t name (optval->sexp val)))
-  (sexp:record (map arg->sexp parsed)))
+    (:tuple name val) -> (field:t name (optval->sexp val) null-src))
+  (sexp:record (map arg->sexp parsed) null-src))
 
 (define (process-options options-spec arglist)
 

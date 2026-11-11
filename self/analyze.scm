@@ -769,7 +769,7 @@
 				     ;;   to ignore it.  Need to write a test to expose this branch!
 				     (let ((eclause (noderec->rec (nth exp.subs 1))))
 				       (assert (is-match/fail? eclause))
-				       (set! eclause.t (node:primapp '%complete-match (sexp:bool #f)))
+				       (set! eclause.t (node:primapp '%complete-match (sexp:bool #f null-src)))
 				       ;;(raise (:NotTestedError))
 				       )
 				     ))

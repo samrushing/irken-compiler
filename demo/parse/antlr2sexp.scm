@@ -14,7 +14,7 @@
 
 (define prods->sexp
   (one) -> (prod->sexp one)
-  prods -> (sexp:list (map prod->sexp prods))
+  prods -> (sexp:list (map prod->sexp prods) null-src)
   )
 
 (if (< sys.argc 2)

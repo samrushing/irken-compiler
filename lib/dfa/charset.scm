@@ -91,7 +91,7 @@
   (let ((r '()))
     (for-list x s
       (cond ((= x.lo (- x.hi 1)) ;; single char
-             (push! r (sexp:char (int->char x.lo))))
+             (push! r (sexp:char (int->char x.lo) null-src)))
             ((and (printable? (int->char x.lo)) (printable? (int->char (- x.hi 1))))
              (push! r (sexp (char (int->char x.lo)) (char (int->char (- x.hi 1))))))
             (else

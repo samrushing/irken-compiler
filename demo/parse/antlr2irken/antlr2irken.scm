@@ -518,7 +518,7 @@
   (define W
     (exp:literal s) -> (replace-rx (lit->rx s))
     (exp:name s)    -> (sexp:symbol s)
-    (exp:cat exps)  -> (sexp:list (map W exps))
+    (exp:cat exps)  -> (sexp:list (map W exps) null-src)
     ;; these should only happen with regular expressions
     (exp:or exps)   -> (replace-rx (convert-or-lit exps))
     (exp:not exp)   -> (replace-rx (convert-not exp))
@@ -541,13 +541,13 @@
     (sexp:symbol name)
     -> (when (upper? (string-ref (symbol->string name) 0))
          (set/insert! terminals symbol-index-cmp name))
-    (sexp:list subs)
+    (sexp:list subs _)
     -> (for-each W subs)
     e -> (raise (:ANTLR2Irken/UnexpectedEarleyRule (repr e)))
     )
   (for-list erule erules
     (match erule with
-      (sexp:list ((sexp:symbol rname) . alts))
+      (sexp:list ((sexp:symbol rname) . alts) _)
       -> (for-each W alts)
       _ -> (impossible)
       ))

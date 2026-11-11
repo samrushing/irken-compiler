@@ -22,7 +22,7 @@
     )
 
   (define p-filters
-    (sexp:list ((sexp:symbol 'filter _) . names))
+    (sexp:list ((sexp:symbol 'filter _) . names) _)
     -> (map p-filter names)
     exp -> (raise (:Parser/Error "p-filters" exp))
     )
@@ -31,13 +31,13 @@
   ;; (parser (lexicon ...) (filter ...) (grammar ...))
 
   (define p-parser
-    ((sexp:list ((sexp:symbol 'parser _) lexicon filters grammar)))
+    ((sexp:list ((sexp:symbol 'parser _) lexicon filters grammar) _))
     -> (let ((l0 (sexp->lexicon lexicon))
              (f0 (p-filters filters))
              (g0 (sexp->grammar grammar))
              (s0 (start-symbol g0)))
          (:tuple l0 f0 g0 s0))
-    exp -> (raise (:Parser/Error "p-parser" (sexp:list exp)))
+    exp -> (raise (:Parser/Error "p-parser" (sexp:list exp null-src)))
     )
 
   ;; the start symbol is the first non-terminal.

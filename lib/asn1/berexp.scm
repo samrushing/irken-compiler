@@ -9,8 +9,8 @@
 
   (define parse-oid
     acc ()                  -> (ber:OID (reverse acc))
-    acc ((sexp:int n) . tl) -> (parse-oid (list:cons n acc) tl)
-    acc x                   -> (raise (:MalformedOID (sexp:list x)))
+    acc ((sexp:int n _) . tl) -> (parse-oid (list:cons n acc) tl)
+    acc x                   -> (raise (:MalformedOID (sexp:list x null-src)))
     )
 
 
@@ -45,33 +45,33 @@
     (sexp:symbol 'NULL _)  -> (ber:NULL)
     (sexp:symbol 'TRUE _)  -> (ber:BOOLEAN #t)
     (sexp:symbol 'FALSE _) -> (ber:BOOLEAN #f)
-    (sexp:int n)           -> (ber:INTEGER n)
+    (sexp:int n _)         -> (ber:INTEGER n)
 
-    (sexp:list ((sexp:symbol 'SEQUENCE _) . items))
+    (sexp:list ((sexp:symbol 'SEQUENCE _) . items) _)
     -> (ber:SEQUENCE (map parse items))
 
-    (sexp:list ((sexp:symbol 'SET _) . items))
+    (sexp:list ((sexp:symbol 'SET _) . items) _)
     -> (ber:SET (map parse items))
 
-    (sexp:list ((sexp:symbol 'CONTEXT _) (sexp:int tag) . items))
+    (sexp:list ((sexp:symbol 'CONTEXT _) (sexp:int tag _) . items) _)
     -> (ber:CONTEXT tag (map parse items))
 
-    (sexp:list ((sexp:symbol 'APPLICATION _) (sexp:int tag) . items))
+    (sexp:list ((sexp:symbol 'APPLICATION _) (sexp:int tag _) . items) _)
     -> (ber:APPLICATION tag (map parse items))
 
-    (sexp:list ((sexp:symbol 'INTEGER _) (sexp:symbol hex _)))
+    (sexp:list ((sexp:symbol 'INTEGER _) (sexp:symbol hex _)) _)
     -> (ber:BINTEGER (symbol->string hex))
 
-    (sexp:list ((sexp:symbol 'ENUMERATED _) (sexp:int n)))
+    (sexp:list ((sexp:symbol 'ENUMERATED _) (sexp:int n _)) _)
     -> (ber:ENUMERATED n)
 
-    (sexp:list ((sexp:symbol 'OID _) . vals))
+    (sexp:list ((sexp:symbol 'OID _) . vals) _)
     -> (parse-oid '() vals)
 
-    (sexp:list ((sexp:symbol 'RAW _) (sexp:symbol class _) (sexp:bool structured?) (sexp:int tag) (sexp:symbol val _)))
+    (sexp:list ((sexp:symbol 'RAW _) (sexp:symbol class _) (sexp:bool structured? _) (sexp:int tag _) (sexp:symbol val _)) _)
     -> (ber:RAW (parse-class class) structured? tag (symbol->string val))
 
-    (sexp:list ((sexp:symbol other _) (sexp:string val)))
+    (sexp:list ((sexp:symbol other _) (sexp:string val _)) _)
     -> (ber:STRING (parse-string other) val)
 
     x

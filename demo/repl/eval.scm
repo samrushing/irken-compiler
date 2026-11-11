@@ -124,7 +124,7 @@
       (match rand with
         (sexp:symbol name _)
         -> (begin (push! formals name) (univ:undef))
-        _ -> (repl-error (format "bad formals: " (repr (sexp:list rands))))
+        _ -> (repl-error (format "bad formals: " (repr (sexp:list rands null-src))))
         ))
     (univ:function (reverse formals) body)
     ))
@@ -160,21 +160,21 @@
 (define (eval exp env)
   (match exp with
     ;; self-evaluating expressions
-    (sexp:int n)    -> (univ:int n)
-    (sexp:char ch)  -> (univ:char ch)
-    (sexp:string s) -> (univ:string s)
-    (sexp:bool b)   -> (univ:bool b)
-    (sexp:undef)    -> (univ:undef)
+    (sexp:int n _)  -> (univ:int n)
+    (sexp:char ch _)  -> (univ:char ch)
+    (sexp:string s _) -> (univ:string s)
+    (sexp:bool b _) -> (univ:bool b)
+    (sexp:undef _)  -> (univ:undef)
     ;; variable lookup
     (sexp:symbol s _) -> (varref s env)
     ;; variable assignment
-    (sexp:list ((sexp:symbol 'set! _) (sexp:symbol name _) val))
+    (sexp:list ((sexp:symbol 'set! _) (sexp:symbol name _) val) _)
     -> (varset name (eval val env) env)
     ;; lambda
-    (sexp:list ((sexp:symbol 'lambda _) (sexp:list formals) body))
+    (sexp:list ((sexp:symbol 'lambda _) (sexp:list formals _) body) _)
     -> (make-function formals body)
     ;; application
-    (sexp:list (rator . rands))
+    (sexp:list (rator . rands) _)
     -> (match rator with
          (sexp:symbol name _)
          -> (if (starts-with (symbol->string name) "%")
