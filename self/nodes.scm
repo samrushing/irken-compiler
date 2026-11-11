@@ -503,7 +503,20 @@
         )
     x -> (error1 "malformed cexp template" x))
 
+  ;; a record literal can't name a field twice.  (#42)
+  (define (check-duplicate-fields fields)
+    (let loop ((seen '()) (fields fields))
+      (match fields with
+        () -> #u
+        ((field:t name _ src) . tl)
+        -> (if (member-eq? name seen)
+               (begin
+                 (report-error src (format "field `" (sym name) "` appears twice in this record"))
+                 (%exit #f -1))
+               (loop (list:cons name seen) tl)))))
+
   (define (build-record fields)
+    (check-duplicate-fields fields)
     ;; (printf "build-record.  can-haz? " (bool (can-haz-literal-fields? fields)) "\n")
     ;; (printf "      record = {" (join repr-field " " fields) "}\n")
     (if (can-haz-literal-fields? fields)

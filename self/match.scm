@@ -79,7 +79,10 @@
       acc ()                        -> (pattern:record acc #f)
       acc ((field:t '... _ _))        -> (pattern:record acc #t)
       acc ((field:t '... _ _) . tl)   -> (m-error1 "malformed record pattern" (format "... " (join repr-field " " tl) "}"))
-      acc ((field:t name pat _) . tl) -> (parse-record-fields (list:cons (fieldpair:t name (kind pat)) acc) tl)
+      acc ((field:t name pat src) . tl)
+      -> (if (any? (lambda (fp) (eq? name (fieldpair->label fp))) acc)
+             (raise (:CompileError (format "field `" (sym name) "` appears twice in this record pattern") src))
+             (parse-record-fields (list:cons (fieldpair:t name (kind pat)) acc) tl))
       )
 
     (define kind
