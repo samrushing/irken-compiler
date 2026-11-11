@@ -21,3 +21,5 @@ Read about [the library](lib/README.md).
 
 
 
+
+Design notes on changes to the compiler (what was decided, and why) are in [design/](design/README.md).
