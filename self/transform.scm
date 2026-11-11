@@ -16,9 +16,7 @@
      except
      (:SyntaxError msg src exp0)
      -> (begin
-          (printf "\n" (bold "error: ") msg ":\n"
-                  (repr exp0) "\n"
-                  (src-repr src the-context.options.src-limit) "\n")
+          (report-error src (format msg ": " (repr exp0)))
           (%exit #f -1)
           )
      ))
@@ -42,8 +40,8 @@
     (match forms with
       () -> (reverse acc)
       ;; crucial: don't eval %%splice in macro definitions
-      ((sexp:list ((sexp:symbol 'defmacro _) . macro) _) . tl)
-      -> (splice-list tl (list:cons (sexp1 'defmacro macro) acc))
+      ((sexp:list ((sexp:symbol 'defmacro dsrc) . macro) lsrc) . tl)
+      -> (splice-list tl (list:cons (sexp:list (list:cons (sexp:symbol 'defmacro dsrc) macro) lsrc) acc))
       ((sexp:list ((sexp:symbol '%%splice _) . forms0) _) . forms1)
       -> (splice-list forms1 (foldr cons acc (reverse (map splice forms0))))
       (hd . tl)
@@ -51,8 +49,8 @@
       ))
 
   (define splice
-    (sexp:list forms _)
-    -> (sexp:list (splice-list forms '()) null-src)
+    (sexp:list forms src)
+    -> (sexp:list (splice-list forms '()) src)
     x -> x
     )
 
@@ -63,6 +61,11 @@
               (list inits)
               body)
 	body))
+
+  ;; a syntax error in <exps>, a list of sexps: at the first location in them.
+  (define (syntax-error msg exps)
+    (let ((ob (sexp:list exps null-src)))
+      (raise (:SyntaxError msg (guess-location ob) ob))))
 
   (define wrap-begin
     ()    -> (raise (:Transform/Error "empty body"))
@@ -127,7 +130,7 @@
           (result '()))
       (when (not (set/member? the-context.required string-compare path0))
         (set/add! the-context.required string-compare path0)
-        (set! result (reader path0 (lambda () (file/read-char file)))))
+        (set! result (read-source path0 (lambda () (file/read-char file)))))
       (file/close file)
       result))
 
@@ -167,15 +170,33 @@
     (loop '() forms))
 
   (define expand-field
-    (field:t name exp _) -> (field:t name (expand exp) null-src))
+    (field:t name exp src) -> (field:t name (expand exp) src))
+
+  ;; a form made by a transform or macro, and not given a location of its
+  ;;  own, is at the form it was made from: `current-src` is the location
+  ;;  of the innermost form being expanded that has one.
+  (define current-src (src:nil))
+
+  (define (inherit-src src exp)
+    (match (sexp/src exp) with
+      (src:nil) -> (sexp/at src exp)
+      _         -> exp))
+
+  (define (expand-list-at l src0)
+    (let ((src (match src0 with (src:nil) -> current-src _ -> src0))
+          (saved current-src))
+      (set! current-src src)
+      (let ((result (inherit-src src (maybe-expand l src))))
+        (set! current-src saved)
+        result)))
 
   (define (expand* exp)
     (match exp with
-      (sexp:list l _)	   -> (maybe-expand l)
-      (sexp:vector rands _)  -> (sexp:vector (map expand rands) null-src)
-      (sexp:record fields _) -> (sexp:record (map expand-field fields) null-src)
-      (sexp:attr exp sym _)  -> (sexp:attr (expand exp) sym null-src)
-      _                    -> exp
+      (sexp:list l src)	     -> (expand-list-at l src)
+      (sexp:vector rands src)  -> (sexp:vector (map expand rands) src)
+      (sexp:record fields src) -> (sexp:record (map expand-field fields) src)
+      (sexp:attr exp sym src)  -> (sexp:attr (expand exp) sym src)
+      _                        -> exp
       ))
 
   (define (expand exp)
@@ -193,7 +214,7 @@
      (not (starts-with (symbol->string sym) "%%"))
      ))
 
-  (define (maybe-expand l)
+  (define (maybe-expand l lsrc)
     (match l with
       () -> (sexp:list '() null-src)
       (rator . rands)
@@ -204,23 +225,23 @@
                 -> (fun src rands)
 		(maybe:no)
                 -> (match (tree/member the-context.macros symbol-index-cmp sym) with
-                     (maybe:yes macro) -> (expand (macro.apply (sexp:list l null-src) src the-context.options.debugmacroexpansion))
+                     (maybe:yes macro) -> (expand (macro.apply (sexp:list l lsrc) lsrc the-context.options.debugmacroexpansion))
                      (maybe:no)
                      -> (if (primop? sym)
                             ;; do *not* expand the primop param.
-                            (sexp:list (list:cons rator (list:cons (first rands) (map expand (rest rands)))) null-src)
-                            (sexp:list (list:cons rator (map expand rands)) null-src))))
+                            (sexp:list (list:cons rator (list:cons (first rands) (map expand (rest rands)))) lsrc)
+                            (sexp:list (list:cons rator (map expand rands)) lsrc))))
 	   ;; automagically insert the <self> argument
 	   ;; (ob.o.method args0 ...) => (ob.o.method ob args0 ...)
 	   ;; XXX use something like __methods__ rather than 'o', duh.
 	   (sexp:list ((sexp:symbol '%method _) (sexp:symbol name _) ob) _)
-	   -> (sexp:list (append (list (sexp:attr (sexp:attr ob 'o null-src) name null-src) (sexp:attr ob 'self null-src)) (map expand rands)) null-src)
+	   -> (sexp:list (append (list (sexp:attr (sexp:attr ob 'o lsrc) name lsrc) (sexp:attr ob 'self lsrc)) (map expand rands)) lsrc)
 	   (sexp:list ((sexp:symbol '%%obref _) ob (sexp:symbol name _)) _)
-           -> (sexp:list (append (list (sexp:attr (sexp:attr ob 'o null-src) name null-src)
-                                       (sexp (sexp:attr (sexp:attr ob 'o null-src) 'un null-src)
-                                             (sexp:attr ob 'self null-src)))
-                                 (map expand rands)) null-src)
-	   _ -> (sexp:list (map expand l) null-src))))
+           -> (sexp:list (append (list (sexp:attr (sexp:attr ob 'o lsrc) name lsrc)
+                                       (sexp (sexp:attr (sexp:attr ob 'o lsrc) 'un lsrc)
+                                             (sexp:attr ob 'self lsrc)))
+                                 (map expand rands)) lsrc)
+	   _ -> (sexp:list (map expand l) lsrc))))
 
   (define expand-if
     src (tst then)	-> (sexp (sym 'if) (expand tst) (expand then) (undef))
@@ -344,7 +365,7 @@
     ;; pvcase := (vcase <value> . alts)
     src ((sexp:symbol dt _) (sexp:symbol value _) . alts) -> (expand-vcase* src dt value alts)
     src ((sexp:symbol value _) . alts)                    -> (expand-vcase* src 'nil value alts)
-    src x -> (error1 "expand-vcase" x))
+    src x -> (raise (:SyntaxError "expand-vcase" src (sexp:list x null-src))))
 
   (define (expand-vcase* src dt value alts)
     (split-alts
@@ -374,8 +395,8 @@
 		   ;;   body)
 		   (push! alts0
 			 (sexp:list
-			  (append (list (sexp:symbol 'let null-src) (sexp:list binds null-src))
-				  (list (nth alts i))) null-src))
+			  (append (list (sexp:symbol 'let src) (sexp:list binds src))
+				  (list (nth alts i))) (sexp/src (nth alts i))))
 		   ;; body
 		   (push! alts0 (nth alts i)))))
          (sexp (symsrc '%nvcase src) (sym dt) (sym value)
@@ -397,10 +418,10 @@
 		      () -> '()
 		      (in-pat (sexp:symbol '-> _) out-pat . rest)
 		      -> (list:cons (:pair in-pat out-pat) (loop rest))
-		      _ -> (error1 "malformed macro definition:" (format "(" (join repr " " exps)))
+		      _ -> (syntax-error "malformed macro definition" exps)
                       )))))
          (tree/insert! the-context.macros symbol-index-cmp name macro))
-    x -> (error1 "malformed macro definition:" (format "(" (join repr " " x)))
+    x -> (syntax-error "malformed macro definition" x)
     )
 
   (define (make-datatype tvars name src)
@@ -496,7 +517,7 @@
             (list args)
             (bool #f)
             ;; could use some kind of splice formatter here...
-            (sexp:list (append (list (sexp:symbol '%dtcon dt.src) (sexp:cons dt.name tag null-src)) args) null-src)
+            (sexp:list (append (list (sexp:symbol '%dtcon dt.src) (sexp:cons dt.name tag dt.src)) args) dt.src)
             )))
 
   (define (make-alt tvars tag types)
@@ -520,11 +541,11 @@
 	  (lambda (sub)
 	    (match sub with
 	      (sexp:list ((sexp:cons 'nil tag _) . types) _) -> (dt.add (make-alt tvars tag types))
-	      x						 -> (error1 "malformed alt in datatype" x)))
+	      x						 -> (syntax-error "malformed alt in datatype" (list x))))
 	  subs)
 	 (add-datatype name dt)
 	 )
-    x -> (error1 "malformed datatype" (format (join repr " " x)))
+    x -> (syntax-error "malformed datatype" x)
     )
 
   (define parse-typealias
@@ -536,7 +557,7 @@
     ;; only predicate -> predicate mapping
     ;;((sexp:symbol name _) (sexp:symbol alias _))
     ;;-> (alist/push the-context.aliases name alias)
-    x -> (error1 "malformed typealias" x))
+    x -> (syntax-error "malformed typealias" x))
 
   (define has-arrow?
     ()                         -> #f
@@ -546,10 +567,10 @@
 
   (define parse-define
     ;; (define name ...)
-    ((sexp:symbol name _) . body)
+    ((sexp:symbol name src) . body)
     -> (if (has-arrow? body)
 	   ;; pattern-matching expression
-	   (parse-pattern-matching-define name body (sexp:bool #f null-src))
+	   (parse-pattern-matching-define name src body (sexp:bool #f null-src))
 	   ;; normal definition
 	   (parse-no-formals-define name body (maybe:no)))
     ;; (define (%typed name type) ...)
@@ -566,16 +587,18 @@
     ;; (define (name arg ...) ...)
     ((sexp:list ((sexp:symbol name src) . formals) _) . body)
     -> (parse-normal-definition name src formals body (sexp:bool #f null-src))
-    x -> (error1 "malformed <define>" x))
+    x -> (syntax-error "malformed define" x))
 
-  (define (parse-pattern-matching-define name body type)
+  (define (parse-pattern-matching-define name src body type)
     (let (((vars body0) (compile-pattern expand '() body)))
       (:pair name
-             (sexp (sym 'function)
-                   (sym name)
-                   (list (map make-sexp-symbol vars))
-                   type
-                   (expand body0)))))
+             (sexp:list
+              (list (sexp:symbol 'function src)
+                    (sexp:symbol name src)
+                    (sexp:list (map make-sexp-symbol vars) src)
+                    type
+                    (expand (sexp/at src body0)))
+              src))))
 
   (define parse-no-formals-define
     ;; XXX should we run expand-body on body?
@@ -614,7 +637,7 @@
 	(value . el)
 	-> (let ((var (new-match-var)))
 	     (loop (list:cons var vars) (list:cons (sexp (sym var) value) inits) el))
-	_ -> (error1 "malformed match expression" exps))))
+	_ -> (raise (:SyntaxError "malformed match expression" src (sexp:list exps null-src))))))
 
   (define expand-cinclude
     src ((sexp:string path _))
@@ -622,7 +645,7 @@
 	 (push! the-context.cincludes path)
          (sexp:undef null-src)
          )
-    src x -> (error1 "malformed <cinclude>" x)
+    src x -> (raise (:SyntaxError "malformed <cinclude>" src (sexp:list x null-src)))
     )
 
   (define expand-linclude
@@ -631,7 +654,7 @@
 	 (push! the-context.lincludes path)
          (sexp:undef null-src)
          )
-    src x -> (error1 "malformed <linclude>" x)
+    src x -> (raise (:SyntaxError "malformed <linclude>" src (sexp:list x null-src)))
     )
 
   (define expand-cverbatim
@@ -640,17 +663,17 @@
 	 (push! the-context.cverbatim path)
          (sexp:undef null-src)
          )
-    src x -> (error1 "malformed <cverbatim>" x)
+    src x -> (raise (:SyntaxError "malformed <cverbatim>" src (sexp:list x null-src)))
     )
 
   (define (expand-%nvcase src l)
     ;; already expanded... investigate why this happens
-    (sexp:list (list:cons (sexp:symbol '%nvcase src) l) null-src))
+    (sexp:list (list:cons (sexp:symbol '%nvcase src) l) src))
 
   (define expand-%%cexp
     src (sig template . args)
     -> (match the-context.options.backend with
-         (backend:c) -> (sexp:list (append (list (sexp:symbol '%%cexp src) sig (expand template)) (map expand args)) null-src)
+         (backend:c) -> (sexp:list (append (list (sexp:symbol '%%cexp src) sig (expand template)) (map expand args)) src)
          _ -> (raise (:SyntaxError "%%cexp cannot be used with this backend" src sig))
          )
     src x
@@ -665,28 +688,28 @@
                 (sexp:list ((sexp:symbol 'quote _) (sexp:symbol op _)) _) -> op
                 x -> (raise (:SyntaxError "bad %%vminsn opcode" src x)))))
          (sexp:list (append (list (sexp:symbol '%%vminsn src) sig (sexp:symbol opcode0 src))
-                            (map expand args)) null-src))
+                            (map expand args)) src))
     src x -> (raise (:SyntaxError "malformed %%vminsn" src (sexp:list x null-src)))
     )
 
   (define (expand-%%sexp src list)
-    (sexp:list (list:cons (sexp:symbol '%%sexp src) list) null-src))
+    (sexp:list (list:cons (sexp:symbol '%%sexp src) list) src))
 
   (define expand-%%attr
-    src (ob (sexp:symbol name _)) -> (sexp:attr (expand ob) name null-src)
-    src x -> (error1 "malformed %%attr" x))
+    src (ob (sexp:symbol name _)) -> (sexp:attr (expand ob) name src)
+    src x -> (raise (:SyntaxError "malformed %%attr" src (sexp:list x null-src))))
 
   (define expand-%%constructor
     src ((sexp:symbol dtname _) (sexp:symbol altname _))
-    -> (sexp:cons dtname altname null-src)
-    src x -> (error1 "malformed %%constructor" x))
+    -> (sexp:cons dtname altname src)
+    src x -> (raise (:SyntaxError "malformed %%constructor" src (sexp:list x null-src))))
 
   (define expand-%%stringify
     src ((sexp:symbol sym _))
-    -> (sexp:string (symbol->string sym) null-src)
+    -> (sexp:string (symbol->string sym) src)
     src ((sexp:int n _))
-    -> (sexp:string (int->string n) null-src)
-    src x -> (error1 "malformed %%stringify" x))
+    -> (sexp:string (int->string n) src)
+    src x -> (raise (:SyntaxError "malformed %%stringify" src (sexp:list x null-src))))
 
   (define (expand-%%symbol src forms)
     ;; accumulate various sexp bits into a chain of strings to be joined.
@@ -718,12 +741,12 @@
     (define collect
       acc ()
       -> (reverse acc)
-      acc ((sexp:list ((sexp:symbol name _) val) _) . rest)
-      -> (collect (list:cons (field:t name val null-src) acc) rest)
+      acc ((sexp:list ((sexp:symbol name fsrc) val) _) . rest)
+      -> (collect (list:cons (field:t name val fsrc) acc) rest)
       acc (x . _)
       -> (error1 "bad arg to %%record" (repr x))
       )
-    (sexp:record (collect '() forms) null-src)
+    (sexp:record (collect '() forms) src)
     )
 
   (define (expand-%%platform src forms)
@@ -755,45 +778,45 @@
     (let ((args0 (map expand args)))
       (match args0 with
         ((sexp:int n _) (sexp:int m _))
-        -> (sexp:int (<< n m) null-src)
+        -> (sexp:int (<< n m) src)
         _
-        -> (sexp:list (list:cons (sexp:symbol '<< src) args0) null-src)
+        -> (sexp:list (list:cons (sexp:symbol '<< src) args0) src)
         )))
 
   (define (expand-binary- src args)
     (let ((args0 (map expand args)))
       (match args0 with
         ((sexp:int n _) (sexp:int m _))
-        -> (sexp:int (binary- n m) null-src)
+        -> (sexp:int (binary- n m) src)
         _
-        -> (sexp:list (list:cons (sexp:symbol 'binary- src) args0) null-src)
+        -> (sexp:list (list:cons (sexp:symbol 'binary- src) args0) src)
         )))
 
   (define (expand-binary+ src args)
     (let ((args0 (map expand args)))
       (match args0 with
         ((sexp:int n _) (sexp:int m _))
-        -> (sexp:int (binary+ n m) null-src)
+        -> (sexp:int (binary+ n m) src)
         _
-        -> (sexp:list (list:cons (sexp:symbol 'binary+ src) args0) null-src)
+        -> (sexp:list (list:cons (sexp:symbol 'binary+ src) args0) src)
         )))
 
   (define (expand-logand src args)
     (let ((args0 (map expand args)))
       (match args0 with
         ((sexp:int n _) (sexp:int m _))
-        -> (sexp:int (logand n m) null-src)
+        -> (sexp:int (logand n m) src)
         _
-        -> (sexp:list (list:cons (sexp:symbol 'logand src) args0) null-src)
+        -> (sexp:list (list:cons (sexp:symbol 'logand src) args0) src)
         )))
 
   (define (expand-logior src args)
     (let ((args0 (map expand args)))
       (match args0 with
         ((sexp:int n _) (sexp:int m _))
-        -> (sexp:int (logior n m) null-src)
+        -> (sexp:int (logior n m) src)
         _
-        -> (sexp:list (list:cons (sexp:symbol 'logior src) args0) null-src)
+        -> (sexp:list (list:cons (sexp:symbol 'logior src) args0) src)
         )))
 
   ;; --------------------------------------------------------------------------------
@@ -811,15 +834,15 @@
     src ((sexp:symbol dtname src))
     -> (match (alist/lookup the-context.datatypes dtname) with
          (maybe:yes dt) -> (sexp (symsrc 'first src) (sexp (symsrc '%%sexp src) (dt.to-sexp)))
-         (maybe:no)     -> (error1 "unknown datatype" dtname))
-    src x -> (error1 "malformed datatype->sexp" x))
+         (maybe:no)     -> (raise (:SyntaxError "unknown datatype" src (sexp:symbol dtname src))))
+    src x -> (raise (:SyntaxError "malformed datatype->sexp" src (sexp:list x null-src))))
 
   (define expand-dtreflect
     src ((sexp:symbol operator _) (sexp:symbol dtname _))
     -> (match (alist/lookup the-context.datatypes dtname) with
          (maybe:yes dt) -> (expand (sexp (symsrc operator src) (dt.to-sexp)))
-         (maybe:no)     -> (error1 "unknown datatype" dtname))
-    src x -> (error1 "malformed dtreflect" x))
+         (maybe:no)     -> (raise (:SyntaxError "unknown datatype" src (sexp:symbol dtname src))))
+    src x -> (raise (:SyntaxError "malformed dtreflect" src (sexp:list x null-src))))
 
   (define transform-table
      (alist/make

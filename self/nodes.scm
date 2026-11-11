@@ -456,7 +456,9 @@
   (define (get-formals l)
     (define p
       (sexp:symbol formal _) acc -> (list:cons formal acc)
-      _                      acc -> (error1 "malformed formal" l))
+      x                      acc -> (begin
+                                      (report-error (guess-location x) (format "malformed formal: " (repr x)))
+                                      (%exit #f -1)))
     (reverse (fold p '() l)))
 
   ;; sort the inits so that all function definitions come first.
@@ -508,11 +510,11 @@
         (node/literal (build-record-literal fields))
         (foldr (lambda (field rest)
                  (match field with
-                   (field:t name value _)
+                   (field:t name value src)
                    -> (node/primapp '%rextend
-                                    (sexp:symbol name null-src)
+                                    (sexp:symbol name src)
                                     (list rest (walk value))
-                                    (src:nil)
+                                    src
                                     )))
                (node/primapp '%rmake (sexp:bool #f null-src) '() (src:nil))
                fields)))
@@ -623,9 +625,22 @@
          )
     )
 
+  ;; a node is at the sexp it came from, unless walk* gave it a
+  ;;  more specific location (e.g. a call is at its operator); a sexp
+  ;;  with no location is at the innermost enclosing one that has one.
+  (define current-src (src:nil))
+
   (define (walk exp)
     (try
-     (walk* exp)
+     (let ((src (match (sexp/src exp) with (src:nil) -> current-src s -> s))
+           (saved current-src)
+           (_ (set! current-src src))
+           (node (walk* exp)))
+       (set! current-src saved)
+       (match (noderec->src node) with
+         (src:nil) -> (set-node-src! node src)
+         _ -> #u)
+       node)
      except
      (:Node/BadExpression x n)
      -> (if (= n 0)
@@ -670,13 +685,19 @@
           ))
       ))
 
-  (define (check-for-duplicates names)
+  ;; <inits> are the fix's init nodes, in the same order as <names>.
+  (define (check-for-duplicates names inits)
     (let ((nmap (tree:empty)))
-      (for-list name names
-        (match (tree/member nmap symbol-index-cmp name) with
-          (maybe:yes other) -> (raise (:DuplicateName name other))
-          (maybe:no)    -> (tree/insert! nmap symbol-index-cmp name name)
-          ))))
+      (for-range i (length names)
+        (let ((name (nth names i)))
+          (match (tree/member nmap symbol-index-cmp name) with
+            (maybe:yes other)
+            -> (begin
+                 (report-error (noderec->src (nth inits i))
+                               (format "duplicate definition of `" (sym name) "`"))
+                 (%exit #f -1))
+            (maybe:no)    -> (tree/insert! nmap symbol-index-cmp name name)
+            )))))
 
   (define (rename-all exps lenv)
     (for-each (lambda (exp) (rename exp lenv)) exps))
@@ -705,7 +726,7 @@
            (set-node-t! exp (node:function name2 (map (lambda (x) x.name2) rib)))
            (rename-all (noderec->subs exp) (list:cons rib lenv)))
       (node:fix names)
-      -> (let ((_ (check-for-duplicates names))
+      -> (let ((_ (check-for-duplicates names (noderec->subs exp)))
                (rib (map make-vardef names)))
            ;; in this one, the <inits> namespace is renamed, too
            (set-node-t! exp (node:fix (map (lambda (x) x.name2) rib)))
@@ -736,12 +757,7 @@
       )
     )
 
-  (try
-   (rename n '())
-   ;; XXX when symbols get file/pos info this should make a better error message.
-   except (:DuplicateName name other)
-   -> (error1 "duplicate name: " name)
-   )
+  (rename n '())
   )
 
 ;; walk the node tree, applying subst nodes

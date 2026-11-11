@@ -180,10 +180,13 @@
     (define (dead free k)
       (make-cont -1 free k))
 
+    ;; [the node tree around the error: -v]
     (define (cps-error msg exp0)
-      (printf (join "\n" (get-node-context exp (noderec->id exp0) 30)) "\n")
-      (printf "node id=" (int (noderec->id exp0)) "\n")
-      (error msg))
+      (when the-context.options.verbose
+        (printf (join "\n" (get-node-context exp (noderec->id exp0) 30)) "\n")
+        (printf "node id=" (int (noderec->id exp0)) "\n"))
+      (report-error (noderec->src exp0) msg)
+      (%exit #f -1))
 
     (define (compile tail? exp lenv k)
 
@@ -599,8 +602,7 @@
         (for-list dtalt dtalts
           (when (not (member-eq? dtalt alts))
             (push! missing dtalt)))
-        (printf "incomplete match:  un-handled cases: " (join symbol->string ", " missing) "\n")
-        (cps-error "incomplete match" node)
+        (cps-error (format "incomplete match: no case for " (join symbol->string ", " missing)) node)
         ))
 
     (define (c-nvcase tail? dtname alt-formals subs lenv k)

@@ -50,13 +50,13 @@
 
 (define (read-file path)
   (let ((file (file/open-read path))
-	(result (reader path (lambda () (file/read-char file)))))
+	(result (read-source path (lambda () (file/read-char file)))))
     result))
 
 (define (find-and-read-file path)
   ;;(printf "reading file '" path "'\n")
   (let (((path0 file) (find-file the-context.options.include-dirs path)))
-    (reader path0 (lambda () (file/read-char file)))))
+    (read-source path0 (lambda () (file/read-char file)))))
 
 (define (get-options argv options)
   (let ((filename-index 1))

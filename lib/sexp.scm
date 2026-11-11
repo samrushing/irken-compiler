@@ -33,40 +33,86 @@
   (:macro symbol src src)                ;; macro expansion (ditto)
   )
 
-(define (src-repr src limit)
-  (define R
-    acc (src:nil)
-    -> (reverse (list:cons "<no-src-location>" acc))
-    acc (src:base r)
-    -> (list:cons (format r.path ":" (int r.line) ":" (int r.pos)) acc)
-    acc (src:inline fun src0 src1)
-    -> (R (list:cons (format "[inlined from " (sym fun) "]") (R acc src0)) src1)
-    acc (src:macro mac src0 src1)
-    -> (R (list:cons (format "[macro expanded from " (sym mac) "]") (R acc src0)) src1)
-    )
-  (let ((lines (R '() src)))
-    (if (> (length lines) limit)
-        (format (join "\n  " (take lines limit)) "\n  ...\n")
-        (format (join "\n  " lines) "\n")))
+;; a location chain, flattened innermost first: each base location, and
+;;  between them, what happened there.  for example, an error in the
+;;  body of `binary+`, inlined into a call made by the `+` macro, used
+;;  at `(+ 1 "x")` in the user's code, is
+;;    core.scm:84 (inlined binary+) core.scm:103 (macro +) user.scm:2
+(datatype src-step
+  (:at {path=string line=int pos=int})
+  (:macro symbol)    ;; the location after this one is where the macro was used
+  (:inlined symbol)  ;; ... where the function was inlined
   )
+
+(define (src-flatten src)
+  (define F
+    (src:nil)             acc -> acc
+    (src:base r)          acc -> (list:cons (src-step:at r) acc)
+    (src:macro m site s)  acc -> (F site (list:cons (src-step:macro m) (F s acc)))
+    (src:inline f s site) acc -> (F site (list:cons (src-step:inlined f) (F s acc)))
+    )
+  (reverse (F src '())))
+
+;; inlining renames functions: `binary+_177` -> `binary+`
+(define (src-name sym)
+  (let ((s (symbol->string sym))
+        (n (string-length s)))
+    (let loop ((i 0))
+      (cond ((>= (+ i 1) n) s)
+            ((and (eq? (string-ref s i) #\_) (digit? (string-ref s (+ i 1))))
+             (substring s 0 i))
+            (else (loop (+ i 1)))))))
+
+(define (src-loc-repr r)
+  (format r.path ":" (int r.line) ":" (int r.pos)))
+
+;; the note for a location: what happened there.
+(define src-step-note
+  (src-step:macro m)   -> (format "macro `" (src-name m) "` used here")
+  (src-step:inlined f) -> (format "`" (src-name f) "` inlined here")
+  _                    -> ""
+  )
+
+;; one line per location, innermost first, in GNU `file:line:col:` form.
+(define (src-repr src limit)
+  (define L
+    acc note ()
+    -> (reverse acc)
+    acc note ((src-step:at r) . tl)
+    -> (L (list:cons (format (src-loc-repr r) ": " note) acc) "" tl)
+    acc note (step . tl)
+    -> (L acc (src-step-note step) tl)
+    )
+  (let ((lines (L '() "" (src-flatten src))))
+    (cond ((null? lines) "<no source location>\n")
+          ((> (length lines) limit)
+           (format (join "\n" (take lines limit)) "\n...\n"))
+          (else (format (join "\n" lines) "\n")))))
 
 (define null-src (src:nil))
 
+;; the first source location found in <exp> (in reading order).
 (define (guess-location exp)
   (let/cc return
 
-    (define Wf
-      (field:t name val _) -> (W val)
+    (define found
+      (src:nil) -> #u
+      src       -> (return src)
       )
 
-    (define W
-      (sexp:symbol _ src) -> (return src)
-      (sexp:list l _)     -> (for-list x l (W x))
-      (sexp:vector v _)   -> (for-list x v (W x))
-      (sexp:record fl _)  -> (for-list x fl (Wf x))
-      (sexp:attr lhs a _) -> (W lhs)
-      _ -> #u
+    (define Wf
+      (field:t name val src) -> (begin (found src) (W val))
       )
+
+    (define (W x)
+      (found (sexp/src x))
+      (match x with
+        (sexp:list l _)      -> (for-each W l)
+        (sexp:vector v _)    -> (for-each W v)
+        (sexp:record fl _)   -> (for-each Wf fl)
+        (sexp:attr lhs _ _)  -> (W lhs)
+        _ -> #u
+        ))
 
     (W exp)
     null-src

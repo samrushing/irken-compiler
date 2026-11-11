@@ -23,6 +23,14 @@
       -> (raise (:ReadError path line (+ pos 1) (format ob ...)))
       )
 
+    ;; an error in a datum that started at <src>.
+    (defmacro ERR-AT
+      (ERR-AT src ob ...)
+      -> (match src with
+           (src:base r) -> (raise (:ReadError path r.line r.pos (format ob ...)))
+           _            -> (ERR ob ...))
+      )
+
     (define (peek)
       char)
 
@@ -127,8 +135,8 @@
         (match (string-ref code 0) with
           #\u -> (match (parse-integer 16 (substring code 1 len)) with
                    (result:ok val) -> (sexp:char (int->char val) src)
-                   (result:err why) -> (ERR "bad character literal" (string code)))
-          _ -> (ERR "bad character literal" (string code))
+                   (result:err why) -> (ERR-AT src "bad character literal: " (string code)))
+          _ -> (ERR-AT src "bad character literal: " (string code))
           )))
 
     (define (read1)
@@ -136,7 +144,7 @@
             (src (here)))
 	(match ch with
 	  #\eof -> (ERR "unexpected end of file")
-	  #\(   -> (sexp:list (read-list) src)
+	  #\(   -> (sexp:list (read-list src) src)
 	  #\{   -> (read-record src)
 	  #\"   -> (read-string src)
 	  #\'   -> (begin (next) (sexp:list (list (sexp:symbol 'quote src) (read)) src))
@@ -172,7 +180,7 @@
 		       #\U -> (begin (next) (sexp:undef src))
 		       #\u -> (begin (next) (sexp:undef src))
                        #\W -> (begin (next) (src-location))
-		       #\( -> (sexp:vector (read-list) src)
+		       #\( -> (sexp:vector (read-list src) src)
 		       x   -> (ERR "syntax error: " (char x))
 		       ))
 	  #\)   -> (ERR "unexpected close-paren")
@@ -244,6 +252,7 @@
       (let loop ((ch (peek))
 		 (result '()))
 	(match ch with
+	  #\eof -> (ERR-AT src "this string is never closed")
 	  #\" -> (begin
 		   (next) ;; throw away the close-quote
 		   (sexp:string (list->string (reverse result)) src))
@@ -264,11 +273,13 @@
 	  _   -> (loop (skip-peek) (list:cons ch result))
 	  )))
 
-    (define (read-list)
+    (define (read-list src)
       (next) ;; throw away the open paren
       (let loop ((result '()))
 	(skip-whitespace)
-        (cond ((eq? (peek) #\))
+        (cond ((eq? (peek) #\eof)
+               (ERR-AT src "this list is never closed"))
+              ((eq? (peek) #\))
                (next) ;; throw away the close paren
                (reverse result))
               (else
@@ -331,9 +342,9 @@
             (result:err why)
             -> (match why with
                  (:IntegerTooBig _)
-                 -> (ERR "integer literal too big (irken integers are 63 bits): " (string val))
+                 -> (ERR-AT src "integer literal too big (irken integers are 63 bits): " (string val))
                  (:BadInteger _)
-                 -> (ERR "error reading base " (int base) " integer:" (string val))))
+                 -> (ERR-AT src "error reading base " (int base) " integer: " (string val))))
           (sexp:list (list (sexp:symbol '%int src) (sexp:int base src) (sexp:string val src)) src)))
 
 
@@ -342,10 +353,10 @@
         (:atom chars dec? n 0)
         -> (if (all-int-class? base chars)
                (maybe-parse-integer base chars src)
-               (ERR "error reading base " (int base) " integer:" (string chars)))
+               (ERR-AT src "error reading base " (int base) " integer: " (string chars)))
         (:atom chars _ _ _)
-        -> (ERR "unexpected char reading base " (int base)
-                " literal:" (string chars))
+        -> (ERR-AT src "unexpected char reading base " (int base)
+                " literal: " (string chars))
         ))
 
     ;; ----------

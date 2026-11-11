@@ -159,16 +159,16 @@
     ))
 
 (define expand-field
-  (field:t name exp _) r
-  -> (field:t name (expand-pattern exp r) null-src)
+  (field:t name exp src) r
+  -> (field:t name (expand-pattern exp r) src)
   )
 
 (define (expand-pattern p r) ;; sexp, (list sexp) -> sexp
   (match p with
-    (sexp:list pl _)    -> (sexp:list (expand-list pl r) null-src)
-    (sexp:vector pl _)  -> (sexp:vector (expand-list pl r) null-src)
-    (sexp:record fs _)  -> (sexp:record (map (lambda (f) (expand-field f r)) fs) null-src)
-    (sexp:attr exp sym _) -> (sexp:attr (expand-pattern exp r) (expand-name sym r) null-src)
+    (sexp:list pl src)    -> (sexp:list (expand-list pl r) src)
+    (sexp:vector pl src)  -> (sexp:vector (expand-list pl r) src)
+    (sexp:record fs src)  -> (sexp:record (map (lambda (f) (expand-field f r)) fs) src)
+    (sexp:attr exp sym src) -> (sexp:attr (expand-pattern exp r) (expand-name sym r) src)
     (sexp:symbol sym _) -> (match (mbe/assoc sym r) with
                              (maybe:yes v) -> v
                              (maybe:no)    -> p)
@@ -222,8 +222,8 @@
 	      (T s)
 	      s)
           src)
-      (sexp:list l _)
-      -> (sexp:list (map walk l) null-src)
+      (sexp:list l src)
+      -> (sexp:list (map walk l) src)
       x -> x
       )
 
@@ -231,25 +231,25 @@
     ))
 
 (define (annotate-macroexpansion out name src0)
-  ;; some macros (like `let`) expand repeatedly in a way
-  ;;   where recording each one is error spam.
-  (define (maybe-add src1)
-    (match src1 with
-      (src:macro name1 _ _)
-      -> (if (eq? name name1)
-             src1
-             (src:macro name src0 src1))
-      _
-      -> (src:macro name src0 src1)
-      ))
-  (define Wf (field:t name val _) -> (field:t name (W val) null-src))
+  ;; give every part of a macro's output template the location
+  ;;  (src:macro name <call site> <where it is in the template>).
+  ;; this is done to the template *before* the pattern variables are
+  ;;  filled in, so what the caller wrote keeps its own location.
+  ;; some macros (like `let`) expand into themselves repeatedly; only
+  ;;  the outermost call site is kept, to avoid error spam.
+  (define call-site
+    (match src0 with
+      (src:macro name1 site _)
+      -> (if (eq? name name1) site src0)
+      _ -> src0))
+  (define (A src1) (src:macro name call-site src1))
+  (define Wf (field:t name val src) -> (field:t name (W val) (A src)))
   (define W
-    (sexp:list l _)      -> (sexp:list (map W l) null-src)
-    (sexp:vector l _)    -> (sexp:vector (map W l) null-src)
-    (sexp:record fs _)   -> (sexp:record (map Wf fs) null-src)
-    (sexp:attr b a _)    -> (sexp:attr (W b) a null-src)
-    (sexp:symbol s src1) -> (sexp:symbol s (maybe-add src1))
-    x                    -> x
+    (sexp:list l src)    -> (sexp:list (map W l) (A src))
+    (sexp:vector l src)  -> (sexp:vector (map W l) (A src))
+    (sexp:record fs src) -> (sexp:record (map Wf fs) (A src))
+    (sexp:attr b a src)  -> (sexp:attr (W b) a (A src))
+    x                    -> (sexp/at (A (sexp/src x)) x)
     )
   (W out)
   )
@@ -262,10 +262,10 @@
 	-> (if (matches-pattern? in-pat exp)
 	       (begin
 		 (if debug? (printf "expanding macro " (sym name) " in " (repr exp) "\n"))
-		 (let ((out-pat0 (gen-syms out-pat))
+		 (let ((out-pat0 (annotate-macroexpansion (gen-syms out-pat) name src))
 		       (r (expand-pattern out-pat0 (get-bindings in-pat exp))))
 		   (if debug? (printf "  -> " (repr r) "\n"))
-		   (annotate-macroexpansion r name src)))
+		   r))
 	       (loop tl))
 	()
 	-> (error1 "no matching clause for macro" (repr exp)))))

@@ -184,3 +184,107 @@
      the-context.vars)
     (print-string "}\n")))
 
+
+;; ---------- error reports ----------
+;;
+;; path:line:col: error: message
+;;    12 |   (printn (+ 1 "x"))
+;;       |           ^
+;; ./lib/core.scm:84:16: note:
+;; path:line:col: note: macro `+` used here
+;;
+;; the first line is at the innermost location that isn't in the library
+;;  (lib/ in an include directory), since that's most likely the code at
+;;  fault; the notes follow the whole chain of macro expansions and
+;;  inlined functions, innermost first.
+
+(define (library-path? path)
+  (let loop ((dirs the-context.options.include-dirs))
+    (match dirs with
+      () -> #f
+      (dir . dirs)
+      -> (let ((n (string-length dir))
+               (lib (if (and (> n 0) (eq? (string-ref dir (- n 1)) #\/))
+                        (format dir "lib/")
+                        (format dir "/lib/"))))
+           (or (starts-with path lib) (loop dirs))))))
+
+;; line <n> of the file at <path>, if it can be read.
+(define (source-line path n)
+  (try
+   (let ((file (file/open-read path)))
+     (let loop ((i 1))
+       (match (file/read-line file) with
+         (maybe:no) -> (maybe:no)
+         (maybe:yes line)
+         -> (if (= i n)
+                (begin (file/close file) (maybe:yes line))
+                (loop (+ i 1))))))
+   except
+   (:OSError _) -> (maybe:no)
+   ))
+
+(define (print-source-line r)
+  (match (source-line r.path r.line) with
+    (maybe:yes line)
+    -> (let ((caret (map-range
+                     i (min (- r.pos 1) (string-length line))
+                     (if (eq? (string-ref line i) #\tab) #\tab #\space))))
+         (printf (lpad 6 (int r.line)) " | " line "\n"
+                 "       | " (list->string caret) "^\n"))
+    (maybe:no) -> #u
+    ))
+
+;; the innermost location is inside whatever the next step is.
+(define innermost-note
+  ((src-step:inlined f) . _) -> (format "in `" (src-name f) "`")
+  ((src-step:macro m) . _)   -> (format "in the expansion of macro `" (src-name m) "`")
+  _                          -> ""
+  )
+
+(define (report-error src message)
+  (let ((steps (src-flatten src))
+        (locs (filter (lambda (s) (match s with (src-step:at _) -> #t _ -> #f)) steps))
+        (user (filter (lambda (s) (match s with (src-step:at r) -> (not (library-path? r.path)) _ -> #f)) locs))
+        (primary (match user locs with
+                   (hd . _) _ -> (maybe:yes hd)
+                   () (hd . _) -> (maybe:yes hd)
+                   () ()       -> (maybe:no))))
+    (match primary with
+      (maybe:yes (src-step:at r))
+      -> (begin
+           (printf (src-loc-repr r) ": error: " message "\n")
+           (print-source-line r))
+      _ -> (printf "error: " message " (no source location)\n"))
+    ;; the chain, when there is more to it than the one location.
+    (when (> (length steps) 1)
+      (let ((last ""))
+       (let loop ((steps steps)
+                 (note "")
+                 (n 0))
+        (match steps with
+          () -> #u
+          ((src-step:at r) . tl)
+          -> (let ((line (format (src-loc-repr r) ": note: "
+                                 (if (= n 0) (innermost-note tl) note))))
+               (cond ((string=? line last) (loop tl "" n)) ;; (inlining can repeat a step)
+                     ((< n the-context.options.src-limit)
+                      (printf line "\n")
+                      (set! last line)
+                      (loop tl "" (+ n 1)))
+                     (else (printf "...\n"))))
+          (step . tl)
+          -> (loop tl (src-step-note step) n)
+          ))))
+    ))
+
+;; read a source file, reporting a syntax error the same way as the rest.
+(define (read-source path read-char)
+  (try
+   (reader path read-char)
+   except
+   (:ReadError path line pos msg)
+   -> (begin
+        (report-error (src:base {path=path line=line pos=pos}) msg)
+        (%exit #f -1))
+   ))

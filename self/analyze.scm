@@ -17,9 +17,8 @@
    (vars-get-var name)
    except
    (:NoSuchVariable name)
-   -> (let ((src (noderec->src node)))
-        (printf "Unknown Variable " (bold (sym name)) ":\n"
-                (src-repr src the-context.options.src-limit) "\n")
+   -> (begin
+        (report-error (noderec->src node) (format "unknown variable `" (sym name) "`"))
         (%exit #f -1))
    ))
 
@@ -307,10 +306,8 @@
            (walk0 node)
            except
            (:OptimizeError msg _)
-           -> (begin (printf "Error during optimization: " msg "\n"
-                             (src-repr (noderec->src node) the-context.options.src-limit)
-                             "\n")
-                     (error "compiler error"))
+           -> (begin (report-error (noderec->src node) msg)
+                     (%exit #f -1))
            ))
 
         ;; build a map to all functions
@@ -386,10 +383,11 @@
 	(match (noderec->t fun) with
 	  (node:function name formals)
           -> (if (not (= n (length formals)))
-                 (begin
-                   (printf "formals = " (join symbol->string " " formals) "\n")
-                   (raise (:OptimizeError "inline: bad arity" fun))
-                   )
+                 (raise (:OptimizeError
+                         (format "`" (src-name name) "` takes " (int (length formals))
+                                 " argument" (if (= 1 (length formals)) "" "s")
+                                 ", but is called with " (int n))
+                         fun))
                  (let ((fun-type (noderec->type fun)))
                    ;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
                    ;; this is/was an attemp to propagate user types during inlining.

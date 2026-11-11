@@ -124,17 +124,19 @@
 
   (define (unify exp t0 t1)
 
+    ;; [the node tree around the error, with types: -v]
     (define (print-type-error t0 t1)
-      (printf (join "\n" (get-node-context root-node (noderec->id exp) 30)) "\n")
-      (printf "node id=" (int (noderec->id exp)) "\n")
+      (when the-context.options.verbose
+        (printf (join "\n" (get-node-context root-node (noderec->id exp) 30)) "\n")
+        (printf "node id=" (int (noderec->id exp)) "\n\n"))
       (let ((ut0 (apply-subst t0))
 	    (ut1 (apply-subst t1)))
-	(printf "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n")
-        (printf "\n  " (src-repr (noderec->src exp) the-context.options.src-limit) "\n")))
+        (report-error (noderec->src exp)
+                      (format "type error: " (type-repr ut0) " vs. " (type-repr ut1)))))
 
     (define (type-error t0 t1)
       (print-type-error t0 t1)
-      (error "type error"))
+      (%exit #f -1))
 
     (define (U t0 t1)
       (when the-context.options.debugtyping
@@ -224,9 +226,8 @@
     )
 
   (define (other-error message node)
-    (printf (bold message) "\n")
-    (printf "\n  " (src-repr (noderec->src node) the-context.options.src-limit) "\n")
-    (raise (:TypingError message))
+    (report-error (noderec->src node) (format "type error: " message))
+    (%exit #f -1)
     )
 
   (define (instantiate-type-scheme gens type)
