@@ -41,16 +41,18 @@
   ;; -> (format "#(" (join pattern-repr " " subs) ")")
   )
 
+;; patterns -> code, and where the rule is (at its first pattern)
 (datatype rule
-  (:t (list pattern) sexp))
+  (:t (list pattern) sexp src))
 
 (define rule-repr
-  (rule:t pats exp)
+  (rule:t pats exp _)
   -> (format (join pattern-repr " " pats) " -> " (repr exp))
   )
 
-(define rule->code (rule:t _ code) -> code)
-(define rule->pats (rule:t pats _) -> pats)
+(define rule->code (rule:t _ code _) -> code)
+(define rule->pats (rule:t pats _ _) -> pats)
+(define rule->src  (rule:t _ _ src) -> src)
 
 (define match-error (sexp (sym '%match-error) (sexp:bool #f null-src)))
 (define match-fail  (sexp (sym '%fail) (sexp:bool #f null-src)))
@@ -66,6 +68,10 @@
 
   (define (m-error1 m1 m2)
     (raise (:MatchCompilerError (format m1 " : " m2))))
+
+  ;; a mistake in the user's patterns (reported by the transformer).
+  (define (rule-error rule msg)
+    (raise (:CompileError msg (rule->src rule))))
 
   (define (parse-pattern exp)
 
@@ -98,13 +104,18 @@
   (define (parse-match expander body)
     (let loop ((patterns '())
 	       (rules '())
+               (src (src:nil))
 	       (l body))
       (match l with
 	() -> (reverse rules)
-	((sexp:symbol '-> _) code . tl)
-	-> (loop '() (list:cons (rule:t (reverse patterns) (expander code)) rules) tl)
+	((sexp:symbol '-> asrc) code . tl)
+	-> (let ((src0 (match patterns with () -> asrc _ -> src)))
+             (loop '() (list:cons (rule:t (reverse patterns) (expander code) src0) rules) (src:nil) tl))
 	(pat . tl)
-	-> (loop (list:cons (parse-pattern pat) patterns) rules tl))))
+	-> (loop (list:cons (parse-pattern pat) patterns)
+                 rules
+                 (match patterns with () -> (guess-location pat) _ -> src)
+                 tl))))
 
   (define pattern->kind
     (pattern:literal _)		 -> 'literal
@@ -116,12 +127,12 @@
 
   ;; pull the first pattern out of each rule
   (define remove-first-pat
-    (rule:t (pat . pats) code)
-    -> (rule:t pats code)
+    (rule:t (pat . pats) code src)
+    -> (rule:t pats code src)
     _ -> (m-error "remove-first-pat: empty pats?"))
 
   (define first-pattern-kind
-    (rule:t (pat0 . pats) _) -> (pattern->kind pat0)
+    (rule:t (pat0 . pats) _ _) -> (pattern->kind pat0)
     x -> (m-error "empty pattern list?"))
 
   (define (compare-first-patterns a b)
@@ -183,8 +194,8 @@
     (let ((var0 (car vars))
 	  (rules0 (map (lambda (rule)
 			 (match rule with
-			   (rule:t pats code)
-			   -> (rule:t (cdr pats) (subst var0 (car pats) code))))
+			   (rule:t pats code src)
+			   -> (rule:t (cdr pats) (subst var0 (car pats) code) src)))
 		       rules)))
       (compile-match (cdr vars) rules0 default)))
 
@@ -209,8 +220,8 @@
     (let ((sig0 (pattern->record-sig (car (rule->pats (car rules))))))
       (for-list rule (cdr rules)
         (when (not (equal-sigs? sig0 (pattern->record-sig (car (rule->pats rule)))))
-          (printf "record pattern signature mismatch:\n\t" (join rule-repr "\n\t" rules))
-          (m-error "record pattern mismatch")))
+          (rule-error rule (format "this record pattern has fields {" (join symbol->string " " (reverse (pattern->record-sig (car (rule->pats rule)))))
+                                   "}, but the first one has {" (join symbol->string " " (reverse sig0)) "}"))))
       ;; translate
       (let ((var0 (nth vars 0))
 	    (vars0 (map (lambda (field) (string->symbol (format (sym var0) "_" (sym field)))) sig0))
@@ -218,7 +229,7 @@
 	     (map (lambda (rule)
 		    (let ((pats (rule->pats rule))
 			  (pats0 (map fieldpair->pattern (pattern->fieldpairs (car pats)))))
-		      (rule:t (append pats0 (cdr pats)) (rule->code rule))))
+		      (rule:t (append pats0 (cdr pats)) (rule->code rule) (rule->src rule))))
 		  rules))
 	    (bindings
 	     (map-range
@@ -246,7 +257,7 @@
 
   (define (first-literal=? r0 r1)
     (match r0 r1 with
-      (rule:t pats0 _) (rule:t pats1 _)
+      (rule:t pats0 _ _) (rule:t pats1 _ _)
       -> (sexp=? (pattern->literal (car pats0))
 		 (pattern->literal (car pats1)))))
 
@@ -297,11 +308,11 @@
     _ -> (m-error "not a constructor pattern"))
 
   (define rule->constructor-dt
-    (rule:t pats _)
+    (rule:t pats _ _)
     -> (pattern->dt (car pats)))
 
   (define rule->constructor-alt
-    (rule:t pats _)
+    (rule:t pats _ _)
     -> (pattern->alt (car pats)))
 
   (define (sort-constructor-rules rules)
@@ -309,7 +320,12 @@
     (let ((by-dt (collect rule->constructor-dt rules))
 	  (keys (alist->keys by-dt)))
       (if (not (= (length keys) 1))
-	  (m-error1 "more than one datatype in pattern match" (format "(" (join symbol->string " " keys) ")"))
+          (let ((dt0 (rule->constructor-dt (car rules))))
+            (for-list rule rules
+              (let ((dt1 (rule->constructor-dt rule)))
+                (when (not (eq? dt0 dt1))
+                  (rule-error rule (format "this pattern is a `" (sym dt1) "`, but the first one is a `" (sym dt0) "`")))))
+            (impossible))
 	  (collect rule->constructor-alt rules))))
 
   ;; this handles normal constructors *and* polymorphic variants.
@@ -331,12 +347,13 @@
               (rules1 '()))
           (set! nalts (+ nalts 1))
           (define frob-rule
-            (rule:t pats code)
+            (rule:t pats code src)
             -> (let ((subs (pattern->subs (car pats))))
                  (when (not (= (length subs) arity))
-                   (printf "arity mismatch in constructor pattern:\n\t" (rule-repr (rule:t pats code)))
-                   (m-error "arity mismatch in constructor pattern"))
-                 (push! rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code))
+                   (rule-error (rule:t pats code src)
+                               (format "`" (sym tag) "` has " (int arity) " field" (if (= arity 1) "" "s")
+                                       ", but this pattern has " (int (length subs)))))
+                 (push! rules1 (rule:t (append (pattern->subs (car pats)) (cdr pats)) code src))
                  (for-range i arity
                    (match (nth subs i) with
                      (pattern:variable '_) -> #u
@@ -378,13 +395,17 @@
     n p -> (list:cons (p) (nthunk (- n 1) p))
     )
 
+  ;; every rule must have the same number of patterns.  the odd one out
+  ;;  is the first that differs from the most common number.
   (define (arity-check rules)
     (let ((lengths (map (lambda (rule) (length (rule->pats rule))) rules))
-          (arity (car lengths)))
-      (when (not (all? (lambda (x) (= x arity)) (cdr lengths)))
-        (printf "arity mismatch in patterns:\n\t"
-                (join rule-repr "\n\t" rules))
-        (m-error "arity mismatch in patterns"))
+          (count (lambda (n) (length (filter (lambda (x) (= x n)) lengths))))
+          (arity (fold (lambda (n best) (if (> (count n) (count best)) n best)) (car lengths) lengths)))
+      (for-list rule rules
+        (let ((n (length (rule->pats rule))))
+          (when (not (= n arity))
+            (rule-error rule (format "this rule has " (int n) " pattern" (if (= n 1) "" "s")
+                                     ", but the others have " (int arity))))))
       arity))
 
   (let ((rules (parse-match expander exp)))

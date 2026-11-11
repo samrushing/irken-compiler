@@ -19,6 +19,11 @@
           (report-error src (format msg ": " (repr exp0)))
           (%exit #f -1)
           )
+     (:CompileError msg src)
+     -> (begin
+          (report-error src msg)
+          (%exit #f -1)
+          )
      ))
 
   (define (go1 exp)
