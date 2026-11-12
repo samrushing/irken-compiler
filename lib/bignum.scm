@@ -388,8 +388,12 @@
          (let (((q r) (divmod n big/bits)))
            (when (> r 0)
              (set! digs (digits-rshift* digs r)))
+           ;; the bit shift can leave no digits at all (3 >> 2), and
+           ;;  <q> can be more digits than there are (3 >> 120).
            (when (> q 0)
-             (set! digs (vtake digs (- (vlen digs) q))))
+             (set! digs (if (>= q (vlen digs))
+                            #()
+                            (vtake digs (- (vlen digs) q)))))
            digs))))
 
 (define big-lshift
