@@ -6,6 +6,7 @@ implemented.  Newest first.
 
 | Note | Date | Status |
 | --- | --- | --- |
+| [A tagless GC (layouts instead of tags)](2026-11-tagless-gc.md) | Nov 2026 | proposal |
 | [The value restriction](2026-11-value-restriction.md) | Nov 2026 | done (#39) |
 | [Source locations in s-expressions](2026-11-source-locations.md) | Nov 2026 | done (`srcloc`) |
 | [Uncommitted work: survey and plan](2026-10-uncommitted-work.md) | Oct 2026 | done; historical |
