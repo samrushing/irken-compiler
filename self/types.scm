@@ -232,6 +232,9 @@
 						   (set! ra.parent (maybe:yes pb)))
       (type:pred _ _ ra) (type:pred _ _ rb) -> (set! rb.parent (maybe:yes pa)))))
 
+;; the type each alias was defined as, unparsed: name -> sexp.
+(define alias-sources (alist/make))
+
 (define (parse-type* exp tvars)
 
   (define (gen-tvar)
@@ -326,10 +329,17 @@
 	   (maybe:yes t) -> t
 	   ;;(maybe:no) -> (pred sym '()))
 	   (maybe:no) -> (match (alist/lookup the-context.aliases sym) with
-			   ;; textual substitution, nullary predicate leaves
-			   ;;   all tvars untouched (thus forced to be equal in each use).
+			   ;; textual substitution: a nullary use of an alias with
+			   ;;   type variables means its definition, parsed here, so
+			   ;;   its tvars are those of the type it's used in (in a
+			   ;;   datatype, the datatype's own).  #78: its own tvars
+			   ;;   were spliced in: one unknown shared by every use,
+			   ;;   that crashed generate-metadata in a datatype.
 			   (maybe:yes (:scheme gens atype))
-			   -> atype
+			   -> (match gens (alist/lookup alias-sources sym) with
+                                () _ -> atype
+                                _ (maybe:yes def) -> (parse def)
+                                _ (maybe:no) -> atype)
 			   ;; allow nullary predicates
 			   (maybe:no) -> (pred sym '())))
       (sexp:list l _) -> (parse-list l)

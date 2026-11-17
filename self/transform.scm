@@ -652,6 +652,7 @@
     (let ((tvars (alist-maker))
   	     (type (parse-type* alias tvars))
              (scheme (:scheme (reverse (tvars::values)) type)))
+         (alist/push alias-sources name alias)
          (alist/push the-context.aliases name scheme)))
 
   (define has-arrow?
