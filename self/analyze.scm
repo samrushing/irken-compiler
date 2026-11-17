@@ -467,12 +467,31 @@
 		   (maybe:yes to)
 		   (loop tl)))))
 
+      ;; a reference with a type annotation, (%typed type x), keeps it when
+      ;;  x is replaced by its argument: give the annotation to a fresh
+      ;;  reference (a varref in <substs> may stand for several), or to the
+      ;;  argument itself, which is used just once (if it has none of its own).
+      ;;  [a closed record pattern is such an annotation (#34)]
+      (define (keep-annotation node val)
+        (let ((ann (noderec->type node)))
+          (if (no-type? ann)
+              val
+              (match (noderec->t val) with
+                (node:varref vname)
+                -> (let ((ref (node/varref vname (noderec->src node))))
+                     (set-node-type! ref ann)
+                     ref)
+                _ -> (begin
+                       (when (no-type? (noderec->type val))
+                         (set-node-type! val ann))
+                       val)))))
+
       (define (walk node)
 	(let ((node0
 	       (match (noderec->t node) with
 		 (node:varref name)
 		 -> (match (lookup name) with
-		      (maybe:yes val) -> val
+		      (maybe:yes val) -> (keep-annotation node val)
 		      (maybe:no) -> node)
 		 (node:varset name)
 		 -> (match (lookup name) with
