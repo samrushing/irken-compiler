@@ -38,14 +38,15 @@ headers, so a copy generated elsewhere can be quietly wrong (RTLD_LOCAL
 is 4 on macOS and 0 on Linux).  Only two are kept in the repository:
 `libc` and `stdio`, which the bytecode bootstrap compiler needs before
 genffi exists.  The bootstrap generates `posix`, `socket`, `kqueue` or
-`epoll`, `sodium` and `zlib` for you (see `util/gen_ffis.py`).
+`epoll`, `sodium`, `zlib`, `dl` and `p256_ecdsa` for you (see
+`util/gen_ffis.py`; one whose headers aren't installed is skipped).
 
-Anything else (`dl`, `vari`, `p256_ecdsa`, `bearssl`, `decaf`, or your
-own) you generate yourself, once a bootstrap has built genffi:
+Anything else (`vari`, `bearssl`, `decaf`, or your own) you generate
+yourself, once a bootstrap has built genffi:
 
-    $ IRKENLIB=. ffi/gen/genffi -gen ffi/dl.ffi
+    $ IRKENLIB=. ffi/gen/genffi -gen ffi/decaf.ffi
 
-which writes `ffi/dl_ffi.scm`.  `util/install.py` copies every
+which writes `ffi/decaf_ffi.scm`.  `util/install.py` copies every
 `ffi/*_ffi.scm` it finds, so install after generating.
 
 

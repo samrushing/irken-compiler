@@ -16,6 +16,8 @@ system ('IRKENLIB=. %s ffi/gen/genffi.scm -q' % (compiler,))
 # posix is always generated here (it's not committed).  An interface
 #   whose headers or library aren't installed here (kqueue on Linux,
 #   epoll elsewhere) is left as-is.
+# dl and p256_ecdsa need nothing outside the tree but dlfcn.h, so
+#   they're generated here too (see ffi/README.md).
 import subprocess
 
 def start_gen (name):
@@ -40,13 +42,13 @@ except NameError:
 ffi_jobs = max (1, ffi_jobs)
 
 step ('generating platform-dependent FFI interfaces...')
-names = ['posix', 'socket', 'kqueue', 'epoll', 'sodium', 'zlib']
+names = ['posix', 'socket', 'kqueue', 'epoll', 'sodium', 'zlib', 'dl', 'p256_ecdsa']
 results = {}
 while names:
     batch, names = names[:ffi_jobs], names[ffi_jobs:]
     for name, path, saved, p, log in [start_gen (name) for name in batch]:
         results[name] = (path, saved, p.wait(), log)
-for name in ('posix', 'socket', 'kqueue', 'epoll', 'sodium', 'zlib'):
+for name in ('posix', 'socket', 'kqueue', 'epoll', 'sodium', 'zlib', 'dl', 'p256_ecdsa'):
     path, saved, rc, log = results[name]
     if 0 == rc:
         print ('  %s: generated' % (name,))

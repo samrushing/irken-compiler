@@ -89,9 +89,7 @@ directly.  `lib/crypto/p256.scm` wraps it: hashing, nonce generation, and
 DER encoding of the signature.
 
 The generated interface, `ffi/p256_ecdsa_ffi.scm`, isn't in the
-repository: once a bootstrap has built genffi, make it with
-
-    $ IRKENLIB=. ffi/gen/genffi -gen ffi/p256_ecdsa.ffi
+repository: the bootstrap generates it (`util/gen_ffis.py`).
 
 ## Testing
 
