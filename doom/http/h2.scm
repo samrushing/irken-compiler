@@ -348,7 +348,7 @@
             (if (> size 0)
                 (if (> size settings.max-frame-size)
                     (begin
-                      (send-frame (H2-FRAME:DATA) 0 stream-id (substring data pos settings.max-frame-size))
+                      (send-frame (H2-FRAME:DATA) 0 stream-id (substring data pos (+ pos settings.max-frame-size)))
                       (loop (+ pos settings.max-frame-size) (- size settings.max-frame-size)))
                     (send-frame (H2-FRAME:DATA) (if last? H2-FLAGS-END-STREAM 0) stream-id (substring data pos (+ pos size)))
                     )))
