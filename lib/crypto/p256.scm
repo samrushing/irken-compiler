@@ -7,6 +7,12 @@
 
 (require-ffi 'p256_ecdsa)
 
+;; the interface, ffi/p256_ecdsa_ffi.scm, depends on this machine's headers,
+;;  so it isn't in the repository: generate it (after a bootstrap has
+;;  built genffi), from the top of the tree:
+;;    $ IRKENLIB=. ffi/gen/genffi -gen ffi/p256_ecdsa.ffi
+;;  (and run util/install.py again, if you use an installed compiler).
+
 ;; the group order n, big-endian.
 (define p256-n
   (string-append

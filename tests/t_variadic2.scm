@@ -7,6 +7,12 @@
 
 (require-ffi 'vari)
 
+;; the interface, ffi/vari_ffi.scm, depends on this machine's headers,
+;;  so it isn't in the repository: generate it (after a bootstrap has
+;;  built genffi), from the top of the tree:
+;;    $ IRKENLIB=. ffi/gen/genffi -gen ffi/vari.ffi
+;;  (and run util/install.py again, if you use an installed compiler).
+
 (let ((pfun (vm-get-sym-handle 'vari "printf\x00")))
   (printn pfun)
   (%%ffi printf pfun #\i 2 (%string->cref #f "thing1: %d\n\x00") 3141)

@@ -88,6 +88,11 @@ that does `(require-ffi 'p256_ecdsa)` compiles and links `p256_ec.c`
 directly.  `lib/crypto/p256.scm` wraps it: hashing, nonce generation, and
 DER encoding of the signature.
 
+The generated interface, `ffi/p256_ecdsa_ffi.scm`, isn't in the
+repository: once a bootstrap has built genffi, make it with
+
+    $ IRKENLIB=. ffi/gen/genffi -gen ffi/p256_ecdsa.ffi
+
 ## Testing
 
 `tests/p256/` has a small C driver and a Python script that checks

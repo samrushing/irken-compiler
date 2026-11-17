@@ -30,6 +30,24 @@ Steps to make a foreign-function call:
 
 [^1]: you may need to compile it - `irken ffi/gen/genffi.scm`.
 
+Generated interfaces in this tree
+---------------------------------
+
+An interface records sizes, offsets and constants from this machine's
+headers, so a copy generated elsewhere can be quietly wrong (RTLD_LOCAL
+is 4 on macOS and 0 on Linux).  Only two are kept in the repository:
+`libc` and `stdio`, which the bytecode bootstrap compiler needs before
+genffi exists.  The bootstrap generates `posix`, `socket`, `kqueue` or
+`epoll`, `sodium` and `zlib` for you (see `util/gen_ffis.py`).
+
+Anything else (`dl`, `vari`, `p256_ecdsa`, `bearssl`, `decaf`, or your
+own) you generate yourself, once a bootstrap has built genffi:
+
+    $ IRKENLIB=. ffi/gen/genffi -gen ffi/dl.ffi
+
+which writes `ffi/dl_ffi.scm`.  `util/install.py` copies every
+`ffi/*_ffi.scm` it finds, so install after generating.
+
 
 FFI Generator
 -------------

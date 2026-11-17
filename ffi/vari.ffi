@@ -3,7 +3,7 @@
 ;; testing variadic support
 
 (vari
- (includes "sys/stdio.h")
+ (includes "stdio.h")
  (verbatim
   (sig printf ((* char) ... -> int))
   ))

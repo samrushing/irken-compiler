@@ -2,6 +2,14 @@
 
 (require-ffi 'bearssl)
 
+;; the interface, ffi/bearssl_ffi.scm, depends on this machine's headers,
+;;  so it isn't in the repository: generate it (after a bootstrap has
+;;  built genffi), from the top of the tree:
+;;    $ IRKENLIB=. ffi/gen/genffi -gen ffi/bearssl.ffi
+;;  (and run util/install.py again, if you use an installed compiler).
+;;  BearSSL isn't usually installed: first point the paths in
+;;  ffi/bearssl.ffi at your build of it.
+
 (define (p256-build-key sk)
   (let ((skey* (halloc (struct br_ec_private_key))))
     (c-set-int (%c-sref br_ec_private_key.curve skey*) BR_EC_secp256r1)
