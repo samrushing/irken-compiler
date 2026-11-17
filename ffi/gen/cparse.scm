@@ -254,7 +254,7 @@
            ;;
            ;; strip off typedef, which must be in front.
            (match flat with
-             ((parse:nt 'storageClassSpecifier ((parse:t {kind='Typedef val=_}))) . rest)
+             ((parse:nt 'storageClassSpecifier ((parse:t {kind='Typedef val=_ ...}))) . rest)
              -> (begin (set! flat rest) (set! typedef? #t))
              _ -> #u)
            ;; filter out anything else that's not a typeSpecifier, and strip them.
@@ -324,15 +324,15 @@
       )
 
     (define p-typeSpecifier
-      (parse:nt 'typeSpecifier ((parse:t {kind='BaseTypes val="void"})))
+      (parse:nt 'typeSpecifier ((parse:t {kind='BaseTypes val="void" ...})))
       -> (ctype2:name 'void)
-      (parse:nt 'typeSpecifier ((parse:t {kind='BaseTypes val=name})))
+      (parse:nt 'typeSpecifier ((parse:t {kind='BaseTypes val=name ...})))
       -> (name->type (string->symbol name))
-      ;; (parse:nt 'typeSpecifier ((parse:nt 'typedefName ((parse:t {kind='Identifier val=name})))))
+      ;; (parse:nt 'typeSpecifier ((parse:nt 'typedefName ((parse:t {kind='Identifier val=name ...})))))
       ;; -> (ctype2:name (string->symbol name))
-      ;; (parse:nt 'typeSpecifier ((parse:t {kind='Identifier val=name})))
+      ;; (parse:nt 'typeSpecifier ((parse:t {kind='Identifier val=name ...})))
       ;; -> (ctype2:name (string->symbol name))
-      (parse:nt 'typeSpecifier ((parse:t {kind='TypedefName val=name})))
+      (parse:nt 'typeSpecifier ((parse:t {kind='TypedefName val=name ...})))
       -> (ctype2:name (string->symbol name))
       (parse:nt 'typeSpecifier ((parse:nt 'structOrUnionSpecifier subs)))
       -> (p-structOrUnionSpecifier subs)
@@ -381,40 +381,40 @@
 
     (define p-directDeclarator
       ;; x
-      type ((parse:t {kind='Identifier val=ident}))
+      type ((parse:t {kind='Identifier val=ident ...}))
       -> (:tuple type (string->symbol ident))
       ;; (x)
-      type ((parse:t {kind='LeftParen val=_}) decl (parse:t {kind='RightParen val=_}))
+      type ((parse:t {kind='LeftParen val=_ ...}) decl (parse:t {kind='RightParen val=_ ...}))
       -> (p-declarator type decl)
       ;; x:1
-      type ((parse:t {kind='Identifier val=ident}) Colon DigitSequence)
+      type ((parse:t {kind='Identifier val=ident ...}) Colon DigitSequence)
       -> (:tuple type (string->symbol ident)) ;; ignore bitfield length
       ;; (*x)
-      type ((parse:t {kind='LeftParen val=_}) p (parse:nt 'directDeclarator dD) (parse:t {kind='RightParen val=_}))
+      type ((parse:t {kind='LeftParen val=_ ...}) p (parse:nt 'directDeclarator dD) (parse:t {kind='RightParen val=_ ...}))
       -> (let (((type0 name0) (p-directDeclarator type dD)))
            (:tuple (p-pointer type0 p) name0))
       ;; (__stdcall *f)
-      type ((parse:t {kind='LeftParen val=_}) tS p (parse:nt 'directDeclarator dD) (parse:t {kind='RightParen val=_}))
+      type ((parse:t {kind='LeftParen val=_ ...}) tS p (parse:nt 'directDeclarator dD) (parse:t {kind='RightParen val=_ ...}))
       -> (let (((type0 name0) (p-directDeclarator type dD)))
            (:tuple (p-pointer type0 p) name0))
       ;; x[]
-      type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftBracket val=_}) (parse:t {kind='RightBracket val=_}))
+      type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftBracket val=_ ...}) (parse:t {kind='RightBracket val=_ ...}))
       -> (let (((type0 name0) (p-directDeclarator type dD)))
            (:tuple (ctype2:array 0 type0) name0))
       ;; x[exp]
-      type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftBracket val=_}) (parse:nt 'assignmentExpression aE) (parse:t {kind='RightBracket val=_}))
+      type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftBracket val=_ ...}) (parse:nt 'assignmentExpression aE) (parse:t {kind='RightBracket val=_ ...}))
       -> (let (((type0 name0) (p-directDeclarator type dD)))
            (:tuple (ctype2:array (get-exp-value (parse:nt 'assignmentExpression aE)) type0) name0))
       ;; x()
-      type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftParen val=_}) (parse:t {kind='RightParen val=_}))
+      type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftParen val=_ ...}) (parse:t {kind='RightParen val=_ ...}))
       -> (let (((type0 name0) (p-directDeclarator type dD)))
            (:tuple (ctype2:function type0 (list:nil) #f) name0))
       ;; x(int,int)
-      type ((parse:nt 'directDeclarator ((parse:t {kind='Identifier val=name}))) (parse:t {kind='LeftParen val=_}) pTL (parse:t {kind='RightParen val=_}))
+      type ((parse:nt 'directDeclarator ((parse:t {kind='Identifier val=name ...}))) (parse:t {kind='LeftParen val=_ ...}) pTL (parse:t {kind='RightParen val=_ ...}))
       -> (let (((params var?) (p-parameterTypeList pTL)))
            (:tuple (ctype2:function type params var?) (string->symbol name)))
       ;; (*x)(int,int)
-      type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftParen val=_}) pTL (parse:t {kind='RightParen val=_}))
+      type ((parse:nt 'directDeclarator dD) (parse:t {kind='LeftParen val=_ ...}) pTL (parse:t {kind='RightParen val=_ ...}))
       -> (let (((type0 name0) (p-directDeclarator type dD))
                ((params var?) (p-parameterTypeList pTL)))
            (match type0 with
@@ -441,38 +441,38 @@
     ;; an 'abstract' declarator is one without a name. [in other words, it's just a type]
     (define p-directAbstractDeclarator
       ;; (LeftParen abstractDeclarator RightParen)
-      type ((parse:t {kind='LeftParen val=_}) (parse:nt 'abstractDeclarator decl) (parse:t {kind='RightParen val=_}))
+      type ((parse:t {kind='LeftParen val=_ ...}) (parse:nt 'abstractDeclarator decl) (parse:t {kind='RightParen val=_ ...}))
       -> (p-abstractDeclarator type (parse:nt 'abstractDeclarator decl))
       ;; (LeftParen RightParen) [illegal]
       ;; (LeftParen RightParen directAbstractDeclarator-0) [illegal]
       ;; (LeftParen parameterTypeList RightParen)
       ;; (LeftParen parameterTypeList RightParen directAbstractDeclarator-0)
-      type ((parse:t {kind='LeftParen val=_}) (parse:nt 'parameterTypeList pTL) (parse:t {kind='RightParen val=_}) . ignore)
+      type ((parse:t {kind='LeftParen val=_ ...}) (parse:nt 'parameterTypeList pTL) (parse:t {kind='RightParen val=_ ...}) . ignore)
       -> (let (((ptl var?) (p-parameterTypeList (parse:nt 'parameterTypeList pTL))))
            (ctype2:function type ptl var?))
       ;; (LeftBracket RightBracket)
-      type ((parse:t {kind='LeftBracket val=_}) (parse:t {kind='RightBracket val=_}) . ignore)
+      type ((parse:t {kind='LeftBracket val=_ ...}) (parse:t {kind='RightBracket val=_ ...}) . ignore)
       -> (ctype2:array 0 type)
       ;; (LeftBracket assignmentExpression RightBracket)
-      type ((parse:t {kind='LeftBracket val=_}) aE (parse:t {kind='RightBracket val=_}) . ignore)
+      type ((parse:t {kind='LeftBracket val=_ ...}) aE (parse:t {kind='RightBracket val=_ ...}) . ignore)
       -> (ctype2:array (get-exp-value aE) type)
       ;; (LeftBracket typeQualifierList RightBracket)
-      type ((parse:t {kind='LeftBracket val=_}) (parse:nt 'typeQualifierList _) (parse:t {kind='RightBracket val=_}))
+      type ((parse:t {kind='LeftBracket val=_ ...}) (parse:nt 'typeQualifierList _) (parse:t {kind='RightBracket val=_ ...}))
       -> (ctype2:array 0 type)
       ;; (LeftBracket typeQualifierList assignmentExpression RightBracket)
-      type ((parse:t {kind='LeftBracket val=_}) (parse:nt 'typeQualifierList _) aE (parse:t {kind='RightBracket val=_}))
+      type ((parse:t {kind='LeftBracket val=_ ...}) (parse:nt 'typeQualifierList _) aE (parse:t {kind='RightBracket val=_ ...}))
       -> (ctype2:array (get-exp-value aE) type)
       ;; (LeftBracket Static assignmentExpression RightBracket)
-      type ((parse:t {kind='LeftBracket val=_}) (parse:t {kind='Static val=_}) aE (parse:t {kind='RightBracket val=_}))
+      type ((parse:t {kind='LeftBracket val=_ ...}) (parse:t {kind='Static val=_ ...}) aE (parse:t {kind='RightBracket val=_ ...}))
       -> (ctype2:array (get-exp-value aE) type)
       ;; (LeftBracket Static typeQualifierList assignmentExpression RightBracket)
-      type ((parse:t {kind='LeftBracket val=_}) (parse:t {kind='Static val=_}) tQL aE (parse:t {kind='RightBracket val=_}))
+      type ((parse:t {kind='LeftBracket val=_ ...}) (parse:t {kind='Static val=_ ...}) tQL aE (parse:t {kind='RightBracket val=_ ...}))
       -> (ctype2:array (get-exp-value aE) type)
       ;; (LeftBracket typeQualifierList Static assignmentExpression RightBracket)
-      type ((parse:t {kind='LeftBracket val=_}) tQL (parse:t {kind='Static val=_}) aE (parse:t {kind='RightBracket val=_}))
+      type ((parse:t {kind='LeftBracket val=_ ...}) tQL (parse:t {kind='Static val=_ ...}) aE (parse:t {kind='RightBracket val=_ ...}))
       -> (ctype2:array (get-exp-value aE) type)
       ;; (LeftBracket Star RightBracket)
-      type ((parse:t {kind='LeftBracket val=_}) (parse:t {kind='Star val=_}) (parse:t {kind='RightBracket val=_}))
+      type ((parse:t {kind='LeftBracket val=_ ...}) (parse:t {kind='Star val=_ ...}) (parse:t {kind='RightBracket val=_ ...}))
       -> (ctype2:array 0 type)
       ;; the other half of the productions are (pretty much) identical, but with a recursive prefix.
       ;; (directAbstractDeclarator ...)
@@ -546,9 +546,9 @@
 
     ;; note: returns the constructor.
     (define p-structOrUnion
-      (parse:t {kind='Struct val=_})
+      (parse:t {kind='Struct val=_ ...})
       -> ctype2:struct
-      (parse:t {kind='Union val=_})
+      (parse:t {kind='Union val=_ ...})
       -> ctype2:union
       x -> (impossiblex x)
       )
@@ -557,18 +557,18 @@
     (define p-structOrUnionSpecifier
       ((parse:nt 'structOrUnion (sOU)) ident)
       -> ((p-structOrUnion sOU) (p-identifier ident) (maybe:no))
-      ((parse:nt 'structOrUnion (sOU)) ident (parse:t {kind='LeftBrace val=_}) sDL (parse:t {kind='RightBrace val=_}))
+      ((parse:nt 'structOrUnion (sOU)) ident (parse:t {kind='LeftBrace val=_ ...}) sDL (parse:t {kind='RightBrace val=_ ...}))
       -> ((p-structOrUnion sOU) (p-identifier ident) (maybe:yes (p-structDeclarationList '() sDL)))
-      ((parse:nt 'structOrUnion (sOU)) (parse:t {kind='LeftBrace val=_}) sDL (parse:t {kind='RightBrace val=_}))
+      ((parse:nt 'structOrUnion (sOU)) (parse:t {kind='LeftBrace val=_ ...}) sDL (parse:t {kind='RightBrace val=_ ...}))
       -> ((p-structOrUnion sOU) '%anonymous (maybe:yes (p-structDeclarationList '() sDL)))
       x -> (impossiblex (parse:nt 'structOrUnionSpecifier x))
       )
 
     ;; this is part of the 'lex hack'.
     (define p-identifier
-      (parse:nt 'identifier ((parse:t {kind='Identifier val=name})))
+      (parse:nt 'identifier ((parse:t {kind='Identifier val=name ...})))
       -> (string->symbol name)
-      (parse:nt 'identifier ((parse:t {kind='TypedefName val=name})))
+      (parse:nt 'identifier ((parse:t {kind='TypedefName val=name ...})))
       -> (string->symbol name)
       x -> (impossiblex x)
       )
@@ -626,7 +626,7 @@
 
     ;; type parse -> declarator
     (define p-structDeclarator
-      type (parse:nt 'structDeclarator ((parse:t {kind='Colon val=_}) exp))
+      type (parse:nt 'structDeclarator ((parse:t {kind='Colon val=_ ...}) exp))
       -> (declarator:t type (maybe:no))
       type (parse:nt 'structDeclarator (decl . ignore-bitfield))
       -> (let (((type0 name) (p-declarator type decl)))
@@ -638,15 +638,15 @@
     ;; --- enum ---
 
     (define p-enumSpecifier
-      (parse:nt 'enumSpecifier (Enum (parse:t {kind='LeftBrace val=_}) eL RightBrace))
+      (parse:nt 'enumSpecifier (Enum (parse:t {kind='LeftBrace val=_ ...}) eL RightBrace))
       -> (ctype2:enum '%anonymous (maybe:yes (p-enumeratorList '() eL)))
-      (parse:nt 'enumSpecifier (Enum (parse:t {kind='LeftBrace val=_}) eL (parse:t {kind='Comma val=_}) RightBrace))
+      (parse:nt 'enumSpecifier (Enum (parse:t {kind='LeftBrace val=_ ...}) eL (parse:t {kind='Comma val=_ ...}) RightBrace))
       -> (ctype2:enum '%anonymous (maybe:yes (p-enumeratorList '() eL)))
-      (parse:nt 'enumSpecifier (Enum (parse:t {kind='Identifier val=name}) (parse:t {kind='LeftBrace val=_}) eL RightBrace))
+      (parse:nt 'enumSpecifier (Enum (parse:t {kind='Identifier val=name ...}) (parse:t {kind='LeftBrace val=_ ...}) eL RightBrace))
       -> (ctype2:enum (string->symbol name) (maybe:yes (p-enumeratorList '() eL)))
-      (parse:nt 'enumSpecifier (Enum (parse:t {kind='Identifier val=name}) (parse:t {kind='LeftBrace val=_}) eL (parse:t {kind=Comma val=_}) RightBrace))
+      (parse:nt 'enumSpecifier (Enum (parse:t {kind='Identifier val=name ...}) (parse:t {kind='LeftBrace val=_ ...}) eL (parse:t {kind=Comma val=_ ...}) RightBrace))
       -> (ctype2:enum (string->symbol name) (maybe:yes (p-enumeratorList '() eL)))
-      (parse:nt 'enumSpecifier (Enum (parse:t {kind='Identifier val=name})))
+      (parse:nt 'enumSpecifier (Enum (parse:t {kind='Identifier val=name ...})))
       -> (ctype2:enum (string->symbol name) (maybe:no))
       x
       -> (impossiblex x)
@@ -671,7 +671,7 @@
       )
 
     (define p-enumerationConstant
-      (parse:nt 'enumerationConstant ((parse:t {kind='Identifier val=name})))
+      (parse:nt 'enumerationConstant ((parse:t {kind='Identifier val=name ...})))
       -> (string->symbol name)
       x
       -> (impossiblex x)
@@ -723,25 +723,25 @@
 
     ;; we evaluate simple arithmetic expressions involving *,/,%,+,-,<<, and >>.
     (define eval-exp
-      (parse:t {kind='Constant val=num})
+      (parse:t {kind='Constant val=num ...})
       -> (p-int num)
       (parse:nt rule (one))
       -> (eval-exp one)
-      (parse:nt 'primaryExpression ((parse:t {kind='LeftParen val=_}) one (parse:t {kind='RightParen val=_})))
+      (parse:nt 'primaryExpression ((parse:t {kind='LeftParen val=_ ...}) one (parse:t {kind='RightParen val=_ ...})))
       -> (eval-exp one)
-      (parse:nt 'multiplicativeExpression (a (parse:t {kind='Star val=_}) b))
+      (parse:nt 'multiplicativeExpression (a (parse:t {kind='Star val=_ ...}) b))
       -> (* (eval-exp a) (eval-exp b))
-      (parse:nt 'multiplicativeExpression (a (parse:t {kind='Div val=_}) b))
+      (parse:nt 'multiplicativeExpression (a (parse:t {kind='Div val=_ ...}) b))
       -> (/ (eval-exp a) (eval-exp b))
-      (parse:nt 'multiplicativeExpression (a (parse:t {kind='Mod val=_}) b))
+      (parse:nt 'multiplicativeExpression (a (parse:t {kind='Mod val=_ ...}) b))
       -> (mod (eval-exp a) (eval-exp b))
-      (parse:nt 'additiveExpression (a (parse:t {kind='Plus val=_}) b))
+      (parse:nt 'additiveExpression (a (parse:t {kind='Plus val=_ ...}) b))
       -> (+ (eval-exp a) (eval-exp b))
-      (parse:nt 'additiveExpression (a (parse:t {kind='Minus val=_}) b))
+      (parse:nt 'additiveExpression (a (parse:t {kind='Minus val=_ ...}) b))
       -> (- (eval-exp a) (eval-exp b))
-      (parse:nt 'shiftExpression (a (parse:t {kind='LeftShift val=_}) b))
+      (parse:nt 'shiftExpression (a (parse:t {kind='LeftShift val=_ ...}) b))
       -> (<< (eval-exp a) (eval-exp b))
-      (parse:nt 'shiftExpression (a (parse:t {kind='RightShift val=_}) b))
+      (parse:nt 'shiftExpression (a (parse:t {kind='RightShift val=_ ...}) b))
       -> (>> (eval-exp a) (eval-exp b))
       otherwise
       -> (raise (:ExpTooComplex otherwise))

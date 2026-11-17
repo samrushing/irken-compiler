@@ -239,11 +239,36 @@
 		 i (length vars0)
 		 (sexp (sym (nth vars0 i))
 		       (sexp:attr (sexp:symbol var0 null-src) (nth sig0 i) null-src)))))
-	(sexp (sym 'let)
-	      (sexp:list bindings null-src)
-	      (compile-match (append vars0 (cdr vars))
-			     rules0
-			     default)))))
+	(close-record
+         var0 sig0 rules
+         (sexp (sym 'let)
+	       (sexp:list bindings null-src)
+	       (compile-match (append vars0 (cdr vars))
+			      rules0
+			      default))))))
+
+  (define pattern-open?
+    (pattern:record _ open?) -> open?
+    _ -> #t)
+
+  ;; #34: the field accesses a record pattern compiles into only say the
+  ;;  record has *at least* those fields.  unless every pattern says `...`,
+  ;;  the record must have exactly those: annotate the value with a closed
+  ;;  record type, {a='t0 b='t1}, its field types left open.
+  (define (close-record var0 sig rules body)
+    (if (all? (lambda (rule) (pattern-open? (car (rule->pats rule)))) rules)
+        body
+        (let ((src (rule->src (car rules)))
+              (type (sexp:record
+                     (map-range i (length sig)
+                       (field:t (nth sig i)
+                                (sexp (sym 'quote) (sym (string->symbol (format "t" (int i)))))
+                                src))
+                     src)))
+          (sexp (sym 'let)
+                (sexp (sexp (sexp:symbol var0 src)
+                            (sexp (sexp:symbol '%typed src) type (sexp:symbol var0 src))))
+                body))))
 
   ;; assuming we only support exact-arity matches, then we'll need
   ;;   to gate each match with an arity match, then recurse to the sub-matches.
