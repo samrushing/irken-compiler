@@ -882,19 +882,38 @@
 
 ;; this simpler version uses getcc and putcc directly.
 ;; note: the type annotation is necessary.
+;;
+;; the generator and its caller each have their own exception handler
+;;  (#73): a `try` in the generator that is active when it yields must not
+;;  catch the caller's exceptions, and the caller's must not catch the
+;;  generator's.  so the handler is swapped at every switch, and an
+;;  exception the generator doesn't catch goes to whoever called it last.
 (define (make-generator producer) : ((((maybe 'a) -> undefined) -> undefined) -> ( -> (maybe 'a)))
   (let ((ready #f)
         ;; holding useless continuations
         (caller (getcc))
         (saved-point (getcc))
+        (caller-handler *the-exception-handler*)
+        (gen-handler *the-exception-handler*)
         )
+    ;; the generator's outermost handler: pass it on to the caller.
+    (define (to-caller exn)
+      (set! *the-exception-handler* caller-handler)
+      (caller-handler exn))
     (define (entry-point)
       (set! caller (getcc))
+      (set! caller-handler *the-exception-handler*)
       (if ready
-          (putcc saved-point #u)
-          (producer yield)))
+          (begin
+            (set! *the-exception-handler* gen-handler)
+            (putcc saved-point #u))
+          (begin
+            (set! *the-exception-handler* to-caller)
+            (producer yield))))
     (define (yield v)
       (set! saved-point (getcc))
+      (set! gen-handler *the-exception-handler*)
+      (set! *the-exception-handler* caller-handler)
       (set! ready #t)
       (putcc caller v))
     entry-point
