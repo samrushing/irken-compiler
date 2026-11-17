@@ -32,7 +32,7 @@
   asctime ctime
   localtime_r gmtime_r tzset
   clock_gettime ;; better
-  read write close unlink
+  read pread write close unlink
   random srandom initstate setstate
   ;; directory-related
   opendir readdir closedir stat

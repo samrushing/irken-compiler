@@ -28,6 +28,15 @@
 	buffer
 	(copy-string buffer r))))
 
+;; read up to <size> bytes at file offset <offset>, without moving the
+;;  file position (pread(2)).  returns fewer at the end of the file.
+(define (pread fd size offset)
+  (let ((buffer (make-string size))
+        (r (syscall (posix/pread fd (%c-cast void (%string->cref #f buffer)) size offset))))
+    (if (= r size)
+	buffer
+	(copy-string buffer r))))
+
 (define (read-into-buffer fd buffer)
   (let ((blen (string-length buffer)))
     (syscall
