@@ -830,7 +830,20 @@
     (let/cc return
 	(match (noderec->t exp) with
 	  (node:fix formals)	    -> (set! lenv (shadow formals lenv))
-	  (node:let formals)	    -> (set! lenv (shadow formals lenv))
+	  ;; a let's names are in scope one at a time, each after its own
+	  ;;  init (as in rename-variables): (let ((x (+ x 1))) ...) in a
+	  ;;  match body whose pattern bound `x` must substitute that inner
+	  ;;  `x`, the pattern's.  (it was left alone: "unknown variable".)
+	  (node:let formals)
+	  -> (let ((subs (noderec->subs exp))
+		   (env lenv)
+		   (r '()))
+	       (for-range i (length formals)
+		 (push! r (walk (nth subs i) env))
+		 (set! env (shadow (list (nth formals i)) env)))
+	       (push! r (walk (last subs) env))
+	       (set-node-subs! exp (reverse r))
+	       (return exp))
 	  (node:function _ formals) -> (set! lenv (shadow formals lenv))
 	  (node:subst from to)	    -> (begin
 					 (set! lenv (list:cons {from=from to=(lookup to lenv)} lenv))
