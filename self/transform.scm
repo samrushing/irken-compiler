@@ -505,7 +505,75 @@
 
       ))
 
+;; #40: a datatype that has no values can never be built, e.g.
+  ;;   (datatype foo (:t foo))
+  ;; every alternative needs a `foo` before there is one.  The datatypes
+  ;; that do have values are a least fixpoint: those with an alternative
+  ;; whose arguments all have values.  A type variable, a function, a
+  ;; vector or a non-datatype is assumed to have values, and a datatype's
+  ;; own arguments are ignored: both err on the side of no error.
+  ;; A datatype with no alternatives at all is left alone (a phantom).
+
+  (define (dt-type-ok? good t)
+    (match t with
+      (type:tvar _ _) -> #t
+      (type:pred 'rproduct (row) _) -> (dt-type-ok? good row)
+      (type:pred 'rlabel (_ (type:pred 'pre (ft) _) rest) _)
+      -> (and (dt-type-ok? good ft) (dt-type-ok? good rest))
+      (type:pred 'rlabel (_ _ rest) _) -> (dt-type-ok? good rest)
+      (type:pred name _ _)
+      -> (match (alist/lookup the-context.datatypes name) with
+           (maybe:yes _) -> (member-eq? name good)
+           (maybe:no) -> #t)))
+
+  ;; the datatypes with no values that <t> needs.
+  (define (dt-type-needs good t acc)
+    (match t with
+      (type:tvar _ _) -> acc
+      (type:pred name args _)
+      -> (let ((acc (foldr (lambda (t acc) (dt-type-needs good t acc)) acc args)))
+           (match (alist/lookup the-context.datatypes name) with
+             (maybe:yes _) -> (if (or (member-eq? name good) (member-eq? name acc)) acc (list:cons name acc))
+             (maybe:no) -> acc))))
+
+  (define (check-datatypes-have-values)
+    (let ((good '())
+          (bad '())
+          (changed #t))
+      (define (some-alt-ok? dt)
+        (let ((r #f))
+          (dt.iterate
+           (lambda (tag alt)
+             (when (every? (lambda (t) (dt-type-ok? good t)) alt.types)
+               (set! r #t))))
+          r))
+      (while changed
+        (set! changed #f)
+        (for-alist name dt the-context.datatypes
+          (when (and (not (member-eq? name good))
+                     (or (= 0 (dt.get-nalts)) (some-alt-ok? dt)))
+            (push! good name)
+            (set! changed #t))))
+      ;; the-context.datatypes is newest-first: report the first one defined.
+      (for-alist name dt the-context.datatypes
+        (when (not (member-eq? name good))
+          (push! bad dt)))
+      (match bad with
+        () -> #u
+        (dt . _)
+        -> (let ((needs '()))
+             (dt.iterate
+              (lambda (tag alt)
+                (for-list t alt.types
+                  (set! needs (dt-type-needs good t needs)))))
+             (raise (:CompileError
+                     (format "datatype `" (sym dt.name) "` has no values: every alternative needs a "
+                             (join (lambda (n) (format "`" (sym n) "`")) " or " (reverse needs))
+                             " to make one")
+                     dt.src))))))
+
   (define (wrap-with-constructors body)
+    (check-datatypes-have-values)
     (let ((names '())
 	  (constructors '()))
       (for-alist name dt the-context.datatypes
@@ -553,16 +621,38 @@
     x -> (syntax-error "malformed datatype" x)
     )
 
+  ;; where <exp> (a type) mentions the type <name>, if it does.
+  (define (type-mentions name exp)
+    (match exp with
+      (sexp:symbol s src) -> (if (eq? s name) (maybe:yes src) (maybe:no))
+      (sexp:list ((sexp:symbol 'quote _) _) _) -> (maybe:no) ;; a tvar
+      (sexp:list l _) -> (type-mentions-list name l)
+      (sexp:record fl _) -> (type-mentions-list name (map (lambda (f) (match f with (field:t _ t _) -> t)) fl))
+      _ -> (maybe:no)))
+
+  (define type-mentions-list
+    name () -> (maybe:no)
+    name (hd . tl) -> (match (type-mentions name hd) with
+                        (maybe:yes src) -> (maybe:yes src)
+                        (maybe:no) -> (type-mentions-list name tl)))
+
   (define parse-typealias
+    ;; #40: an alias is expanded where it's used, so it can't refer to
+    ;;  itself (that would be infinite: a recursive type is a datatype).
     ((sexp:symbol name _) alias)
-    -> (let ((tvars (alist-maker))
+    -> (match (type-mentions name alias) with
+         (maybe:yes src)
+         -> (raise (:CompileError
+                    (format "type alias `" (sym name) "` refers to itself: an alias is expanded where it's used, so this one never ends (a recursive type needs a datatype)")
+                    src))
+         (maybe:no) -> (parse-typealias* name alias))
+    x -> (syntax-error "malformed typealias" x))
+
+  (define (parse-typealias* name alias)
+    (let ((tvars (alist-maker))
   	     (type (parse-type* alias tvars))
              (scheme (:scheme (reverse (tvars::values)) type)))
-         (alist/push the-context.aliases name scheme))
-    ;; only predicate -> predicate mapping
-    ;;((sexp:symbol name _) (sexp:symbol alias _))
-    ;;-> (alist/push the-context.aliases name alias)
-    x -> (syntax-error "malformed typealias" x))
+         (alist/push the-context.aliases name scheme)))
 
   (define has-arrow?
     ()                         -> #f
