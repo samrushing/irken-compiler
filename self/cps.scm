@@ -639,7 +639,25 @@
       (node:primapp '%match-error _) -> #t
       _ -> #f)
 
-    (define (c-pvcase tail? alt-formals arities subs lenv k)
+    ;; an arm for a variant that no code ever constructs can never match:
+    ;;  drop it.  (the backends had no tag for it, and stopped with
+    ;;  "variant constructor never called".)
+    (define (c-pvcase tail? alt-formals0 arities0 subs0 lenv k)
+      (let ((keep (filter (lambda (i)
+                            (match (alist/lookup the-context.variant-labels (nth alt-formals0 i)) with
+                              (maybe:yes _) -> #t
+                              (maybe:no)    -> #f))
+                          (range (length alt-formals0))))
+            (alt-formals (map (lambda (i) (nth alt-formals0 i)) keep))
+            (arities (map (lambda (i) (nth arities0 i)) keep))
+            (subs (append (list (nth subs0 0) (nth subs0 1))
+                          (map (lambda (i) (nth subs0 (+ i 2))) keep))))
+        (if (null? keep)
+            ;; nothing it could be: what's left is the else clause.
+            (compile tail? (nth subs0 1) lenv k)
+            (c-pvcase* tail? alt-formals arities subs lenv k))))
+
+    (define (c-pvcase* tail? alt-formals arities subs lenv k)
       ;; pvcase subs = <value>, <else-clause>, <alt0>, ...
       (let ((jump-num (jump-counter.inc))
             (value (nth subs 0))
