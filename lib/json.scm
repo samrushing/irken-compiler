@@ -26,7 +26,7 @@
     (filter WHITESPACE)
     (grammar
      (json   value)
-     (obj    (LBRACE pairs RBRACE))
+     (obj    (LBRACE pairs RBRACE) (LBRACE RBRACE))
      (pairs  (pairs COMMA pair) pair)
      (pair   (STRING COLON value))
      (array  (LBRACKET values RBRACKET) (LBRACKET RBRACKET))
@@ -241,6 +241,8 @@
   -> (json:array (reverse (parse-values values)))
   (parse:nt 'value ((parse:nt 'obj (LBRACE pairs RBRACE))))
   -> (json:obj (reverse (parse-pairs pairs)))
+  (parse:nt 'value ((parse:nt 'obj (LBRACE RBRACE))))
+  -> (json:obj '())
   x -> (impossible)
   )
 
