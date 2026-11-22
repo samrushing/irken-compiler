@@ -993,8 +993,12 @@
 ;; a single global exception-handling function that tries each handler in turn.
 
 (defmacro try
+  ;; (in a pattern a plain symbol is a variable: <begin> matches only
+  ;;  `begin`.  as a variable, `begin` matched any form, and the rule
+  ;;  that collects body parts turned (try (f a) (g b) except ...) into
+  ;;  (f a (g b)).)
   ;; done accumulating body parts, finish up.
-  (try (begin body0 ...) <except> exn-match ...)
+  (try (<begin> body0 ...) <except> exn-match ...)
   -> (callcc
       (lambda ($exn-k0)
         (let (($old-hand *the-exception-handler*))
@@ -1010,8 +1014,19 @@
           (let (($result (begin body0 ...)))
             (set! *the-exception-handler* $old-hand)
             $result))))
+  ;; (try body ... finally cleanup ...): <cleanup> runs after <body>,
+  ;;  whether it returns or raises (and then the exception goes on).
+  ;;  not when it escapes with a continuation.  to catch exceptions too,
+  ;;  put a try/except inside a try/finally.
+  (try (<begin> body0 ...) <finally> cleanup0 ...)
+  -> (let (($result (try
+                     (begin body0 ...)
+                     except
+                     $exn -> (begin cleanup0 ... (raise $exn)))))
+       cleanup0 ...
+       $result)
   ;; accumulating body parts...
-  (try (begin body0 ...) body1 body2 ...) -> (try (begin body0 ... body1) body2 ...)
+  (try (<begin> body0 ...) body1 body2 ...) -> (try (begin body0 ... body1) body2 ...)
   ;; begin to accumulate...
   (try body0 body1 ...)                   -> (try (begin body0) body1 ...)
   )
