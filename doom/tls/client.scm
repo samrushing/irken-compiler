@@ -4,7 +4,8 @@
 ;; TLS-1.3 client, RFC 8446
 ;; ------------------------------
 ;;
-;; key exchange: X25519
+;; key exchange: X25519, secp256r1 (a key share for each, so the server
+;;  needn't ask with HelloRetryRequest)
 ;; cipher suites: chacha20-poly1305-sha256 (and aes-256-gcm-sha384, see below)
 ;; server signatures: ecdsa-secp256r1-sha256, ecdsa-secp384r1-sha384,
 ;;   ed25519, rsa-pss-rsae-sha{256,384,512}
@@ -56,19 +57,19 @@
 (define (put-client-ext code body)
   (rope/build (put-u16 code) (put-var-16 body)))
 
-(define (pack-client-hello random server-name alpns key-share)
+(define (pack-client-hello random server-name alpns key-shares)
   (let ((exts (list:nil)))
     ;; no SNI for an IP address (rfc6066 3)
     (when (not (ipv4-literal? server-name))
       (push! exts (put-client-ext 0 (put-var-16 (rope/build (put-u8 0) (put-opaque-16 server-name))))))
-    (push! exts (put-client-ext 10 (put-vector-16 put-u16 (list (named-group->int key-share.group)))))
+    (push! exts (put-client-ext 10 (put-vector-16 put-u16 (map (lambda (ks) (named-group->int ks.group)) key-shares))))
     (push! exts (put-client-ext 13 (put-vector-16 put-u16 (map sigalg->int tls13-client-sigalgs))))
     (when (not (null? alpns))
       (push! exts (put-client-ext 16 (put-vector-16 put-opaque-8 alpns))))
     (push! exts (put-client-ext 43 (put-vector-8 put-u16 (list #x304))))
     (push! exts (put-client-ext 51 (put-vector-16 put-key-share
-                                                  (list {group=(named-group->int key-share.group)
-                                                         kex=key-share.kex}))))
+                                                  (map (lambda (ks) {group=(named-group->int ks.group) kex=ks.kex})
+                                                       key-shares))))
     (rope/build
      (put-u16 #x303)            ;; legacy_version
      (put-opaque random)        ;; 32 bytes
@@ -109,7 +110,9 @@
         (ibuf (buffer/make 8192))
         (maxfraglen (<< 1 14))
         (state (tlsc-state:wait-sh))
-        (kex (make-kex (named-group:x25519)))
+        ;; in order of preference.
+        (kexes (list (make-kex (named-group:x25519)) (make-kex (named-group:secp256r1))))
+        (kex (make-kex (named-group:x25519))) ;; the one the server chooses
         (client-hello "")
         (ksched (keysched/make sha256-hash aead-chacha20poly1305 #x304))
         (suite (cipher-suite:chacha20-poly1305-sha256))
@@ -186,10 +189,10 @@
     ;; --- the handshake ---
 
     (define (send-client-hello)
-      (kex.gen)
+      (for-list k kexes (k.gen))
       (let ((ch (pack-hsk (tls-hsk-type:client-hello)
                           (pack-client-hello (RNG 32) server-name alpns
-                                             {group=kex.group kex=(kex.get-pub)}))))
+                                             (map (lambda (k) {group=k.group kex=(k.get-pub)}) kexes)))))
         (set! client-hello (rope->string ch))
         (send-packet (tls-ctype:hsk) ch)))
 
@@ -220,8 +223,10 @@
       (match (find-extension 'key-share sh.exts) with
         (maybe:yes (tlsext:key-share share))
         -> (begin
-             (when (not (= share.group (named-group->int kex.group)))
-               (raise (:TLS/Alert (tls-alert-desc:illegal-parameter) "server chose another group")))
+             (let loop ((ks kexes))
+               (match ks with
+                 () -> (raise (:TLS/Alert (tls-alert-desc:illegal-parameter) "server chose a group we didn't offer"))
+                 (k . tl) -> (if (= share.group (named-group->int k.group)) (set! kex k) (loop tl))))
              (set! ksched (suite->keysched sh.suite))
              (ksched.set-client)
              (ksched.add-tscript-packet client-hello)
