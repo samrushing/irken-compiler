@@ -1,12 +1,17 @@
-# P-256 ECDSA signing
+# P-256 ECDSA signing and ECDH
 
 DRAFT: motivation and design notes, to be edited.
 
-This directory holds a small, self-contained implementation of exactly one
-operation: ECDSA signing on the NIST P-256 curve (secp256r1), plus
-computing the public key for a private key.  There is no verification, no
-key-exchange, no other curves, and no hashing; the caller hashes the
-message (with libsodium's SHA-256) and supplies the nonce.
+This directory holds a small, self-contained implementation of ECDSA
+signing on the NIST P-256 curve (secp256r1), computing the public key for
+a private key, and ECDH.  There is no verification, no other curves, and
+no hashing; the caller hashes the message (with libsodium's SHA-256) and
+supplies the nonce.
+
+ECDH came later, for TLS clients: PostgreSQL before version 18 offers
+only P-256 for key exchange, so a client that does only X25519 can't
+reach it over TLS.  It reuses the same ladder, and checks every peer
+point (see below).
 
 ## Why this exists
 
@@ -74,6 +79,8 @@ So this is the *one* piece of public-key crypto that Irken carries itself.
   void p256_ecdsa_sign (uint8_t out_r[32], uint8_t out_s[32],
                         const uint8_t sk[32], const uint8_t k[32], const uint8_t h[32]);
   void p256_public_key (uint8_t out_x[32], uint8_t out_y[32], const uint8_t sk[32]);
+  int  p256_ecdh (uint8_t out_x[32], const uint8_t sk[32],
+                  const uint8_t px[32], const uint8_t py[32]);
   ```
 
   The caller is responsible for choosing `sk` and `k` uniformly in
@@ -81,12 +88,20 @@ So this is the *one* piece of public-key crypto that Irken carries itself.
   `p256_ecdsa_sign` does not check for the (astronomically unlikely)
   r = 0 or s = 0 cases.
 
+  `p256_ecdh` returns -1, and computes nothing, unless (px, py) is a
+  point on the curve: both coordinates below p, and y^2 = x^3 + ax + b.
+  Without that check a peer could send a point that isn't on the curve:
+  the ladder would still compute something, but not in P-256's
+  prime-order group, and invalid-point attacks use such results to learn
+  sk a few bits at a time.  The point is public, so the check may branch.
+
 ## Using it from Irken
 
 `ffi/p256_ecdsa.ffi` points at these files via `$IRKENLIB`, so a program
 that does `(require-ffi 'p256_ecdsa)` compiles and links `p256_ec.c`
 directly.  `lib/crypto/p256.scm` wraps it: hashing, nonce generation, and
-DER encoding of the signature.
+DER encoding of the signature; and `p256-ecdh`, which takes the peer's
+key as TLS sends it (04 || x || y).
 
 The generated interface, `ffi/p256_ecdsa_ffi.scm`, isn't in the
 repository: the bootstrap generates it (`util/gen_ffis.py`).
@@ -99,6 +114,9 @@ RFC 6979 A.2.5 test vector and edge-case scalars (1, 2, n-1, ...):
 
     cc -O2 -I include/p256 -o /tmp/p256kat tests/p256/kat.c include/p256/p256_ec.c
     python3 tests/p256/check.py /tmp/p256kat 500
+
+ECDH is checked by `test/crypto/t_p256_ecdh.scm` (the RFC 5903 8.1
+vector, both ways, and points that must be refused).
 
 ## License
 

@@ -1,6 +1,6 @@
 ;; -*- Mode: Irken -*-
 
-;; P-256 ECDSA signing, from include/p256.  p256_ec.c is compiled
+;; P-256 ECDSA signing and ECDH, from include/p256.  p256_ec.c is compiled
 ;;   directly into any program that uses this interface.
 
 (p256_ecdsa
@@ -9,5 +9,5 @@
  (lflags "$IRKENLIB/include/p256/p256_ec.c")
  (constants)
  (structs)
- (sigs p256_ecdsa_sign p256_public_key)
+ (sigs p256_ecdsa_sign p256_public_key p256_ecdh)
  )

@@ -81,3 +81,21 @@
      (ber:SEQUENCE
       (list (ber/uint (substring rs 0 32))
             (ber/uint (substring rs 32 64)))))))
+
+;; ECDH: the shared secret (the x coordinate, 32 bytes) for our secret
+;;  key <sk> and the peer's public key <peer>, a 65-byte uncompressed
+;;  point: 04 || x || y.  (maybe:no) if <peer> isn't a point on the curve.
+(define (p256-ecdh sk peer)
+  (if (or (not (= (string-length peer) 65))
+          (not (= 4 (char->int (string-ref peer 0)))))
+      (maybe:no)
+      (let ((px (substring peer 1 33))
+            (py (substring peer 33 65))
+            (x (make-string 32)))
+        (if (= 0 (p256_ecdsa/p256_ecdh
+                  (p256-string->u8* x)
+                  (p256-string->u8* sk)
+                  (p256-string->u8* px)
+                  (p256-string->u8* py)))
+            (maybe:yes x)
+            (maybe:no)))))

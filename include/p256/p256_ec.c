@@ -69,7 +69,6 @@ p256_fm (fe out, const fe arg)
   fiat_p256_mul (out, arg, one);
 }
 
-#if 0 // not needed.
 // to montgomery
 static void
 p256_tm (fe out, const fe arg)
@@ -78,7 +77,6 @@ p256_tm (fe out, const fe arg)
   fe r2n = {0x3, 0xfffffffbffffffff, 0xfffffffffffffffe, 0x4fffffffd};
   fiat_p256_mul (out, arg, r2n);
 }
-#endif
 
 // from montgomery
 static void
@@ -467,4 +465,86 @@ p256_public_key (uint8_t out_x[32], uint8_t out_y[32], const uint8_t sk[32])
   p256_fm (y, y_m);
   fe_to_bytes (out_x, x);
   fe_to_bytes (out_y, y);
+}
+
+// --------------------------------------------------------------------------------
+// ECDH (as TLS 1.3 uses it for secp256r1, rfc8446 7.4.2)
+// --------------------------------------------------------------------------------
+
+// the field prime p, big-endian.
+static const uint8_t p256_p_bytes[32] = {
+  0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+};
+
+// is the big-endian s < p?  (s is public: this may branch.)
+static int
+bytes_lt_p (const uint8_t s[32])
+{
+  for (size_t i = 0; i < 32; i++) {
+    if (s[i] != p256_p_bytes[i]) {
+      return s[i] < p256_p_bytes[i];
+    }
+  }
+  return 0;
+}
+
+static int
+fe_equal (const fe a, const fe b)
+{
+  uint64_t diff = 0;
+  for (size_t i = 0; i < 4; i++) {
+    diff |= a[i] ^ b[i];
+  }
+  return diff == 0;
+}
+
+// the shared secret for our secret key sk and the peer's public key
+//  (px, py): the x coordinate of sk * (px, py).
+// inputs: sk in [1, n-1], px, py, all BIG endian.
+// output: out_x, BIG endian.
+// returns 0, or -1 if (px, py) is not a point on the curve.  (the
+//  ladder would compute something from a point off the curve, but not
+//  in the prime-order group, and that can reveal bits of sk: every
+//  point is checked.)
+int
+p256_ecdh (uint8_t out_x[32], const uint8_t sk[32], const uint8_t px[32], const uint8_t py[32])
+{
+  fe x, y, t0, t1, lhs, rhs, x_m, y_m, zero = {0, 0, 0, 0};
+  ecph P, R;
+  if (!bytes_lt_p (px) || !bytes_lt_p (py)) {
+    return -1;
+  }
+  fe_from_bytes (t0, px);
+  fe_from_bytes (t1, py);
+  p256_tm (x, t0);
+  p256_tm (y, t1);
+  // y^2 = x^3 + ax + b, times 3 (we have 3b, c_b3):
+  //  3y^2 = 3(x^3 + ax) + 3b
+  FE_MUL (t0, y, y);
+  FE_ADD (lhs, t0, t0);
+  FE_ADD (lhs, lhs, t0);
+  FE_MUL (t0, x, x);
+  FE_MUL (t0, t0, x);
+  FE_MUL (t1, c_a, x);
+  FE_ADD (t0, t0, t1);
+  FE_ADD (rhs, t0, t0);
+  FE_ADD (rhs, rhs, t0);
+  FE_ADD (rhs, rhs, c_b3);
+  if (!fe_equal (lhs, rhs)) {
+    return -1;
+  }
+  fe_copy (P[0], x);
+  fe_copy (P[1], y);
+  fe_copy (P[2], p_g[2]); // 1, in the montgomery domain
+  p256_scalarmult (R, sk, P);
+  // P is on a curve of prime order and sk < n, so R can't be the
+  //  point at infinity; but a bad sk could make it so.
+  if (fe_equal (R[2], zero)) {
+    return -1;
+  }
+  from_homogenous (x_m, y_m, R);
+  p256_fm (t0, x_m);
+  fe_to_bytes (out_x, t0);
+  return 0;
 }
