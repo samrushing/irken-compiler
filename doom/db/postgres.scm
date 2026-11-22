@@ -25,6 +25,7 @@
 ;;   (:PG/Unsupported why) the server wants something we can't do
 ;;   (:PG/Protocol why)    the server's messages make no sense
 ;;   (:PG/NoTLS)           TLS was required, but the server won't
+;;   (:PG/Busy why)        this thread has a rows stream open
 ;;   (:Reader/Closed what) the server hung up
 
 (require "lib/codecs/base64.scm")
@@ -201,10 +202,12 @@
 ;;  binding.  <cancel> sends a CancelRequest, given the backend's
 ;;  process id and secret key.
 ;;
-;; returns {query execute prepare parameter status pid notices close cancel}
+;; returns {query execute prepare rows rows-batch parameter status pid notices close cancel}
 ;;   (query sql) -> (list result), one per statement
 ;;   (execute sql params) -> result: one statement, $1, $2... are <params>
 ;;   (prepare sql) -> {run close}: (run params) -> result
+;;   (rows sql params) -> {columns rows}: rows is a closable generator,
+;;      fetching 500 at a time; (rows-batch sql params batch) chooses the batch.
 ;;   (parameter name) -> (maybe string): a server parameter, e.g. "server_version"
 ;;   (status) -> #\I idle, #\T in a transaction, #\E in a failed transaction
 ;;   (notices) -> notices and notifications since the last call:
@@ -218,6 +221,7 @@
         (txn #\I)
         (notes (list:nil))
         (mutex (mutex/make))
+        (stream-thread -1)       ;; the thread with a rows stream open, or -1
         (counter 0))
 
     (define (send s) (conn.send s))
@@ -444,7 +448,14 @@
           (raise (:PG/Unsupported "COPY")))
         (reverse results)))
 
+    ;; a thread with a rows stream open holds the connection: if it
+    ;;  started another query, it would wait for itself.
+    (define (check-busy)
+      (when (= stream-thread *thread-id*)
+        (raise (:PG/Busy "a rows stream is still open on this connection: close it first (for-closing does)"))))
+
     (define (query sql)
+      (check-busy)
       (pg/locked mutex
         (send (pg/msg #\Q (pg/cstring sql)))
         (collect)))
@@ -467,6 +478,21 @@
        (pg/msg #\E (string-append (pg/cstring "") (pg/int32 0)))
        (pg/msg #\S "")))
 
+    ;; just the Bind.
+    (define (bind-execute-only stmt args)
+      (pg/msg #\B (string-concat
+                   (list (pg/cstring "")
+                         (pg/cstring stmt)
+                         (pg/int16 0)
+                         (pg/int16 (length args))
+                         (string-concat
+                          (map (lambda (arg)
+                                 (match arg with
+                                   (maybe:yes s) -> (string-append (pg/int32 (string-length s)) s)
+                                   (maybe:no)    -> (pg/int32 -1)))
+                               args))
+                         (pg/int16 0)))))
+
     (define (parse-msg stmt sql)
       (pg/msg #\P (string-concat (list (pg/cstring stmt) (pg/cstring sql) (pg/int16 0)))))
 
@@ -476,6 +502,7 @@
         _ -> (raise (:PG/Protocol (format "expected one result, got " (int (length results)))))))
 
     (define (execute sql args)
+      (check-busy)
       (pg/locked mutex
         (send (string-append (parse-msg "" sql) (bind-execute "" args)))
         (one (collect))))
@@ -483,18 +510,138 @@
     (define (prepare sql)
       (let ((name (begin (inc! counter) (format "irken_" (int counter)))))
         (define (run args)
+          (check-busy)
           (pg/locked mutex
             (send (bind-execute name args))
             (one (collect))))
         (define (close)
+          (check-busy)
           (pg/locked mutex
             (send (string-append (pg/msg #\C (string-append "S" (pg/cstring name))) (pg/msg #\S "")))
             (collect)
             #u))
+        (check-busy)
         (pg/locked mutex
           (send (string-append (parse-msg name sql) (pg/msg #\S "")))
           (collect))
         {run=run close=close}))
+
+    ;; --- streaming ---
+
+    ;; read and discard up to ReadyForQuery; the first error, if any.
+    (define (drain)
+      (let loop ((error (maybe:no)))
+        (match (next) with
+          (:tuple #\Z body) -> (begin (set! txn (int->char (pg/first-byte body))) error)
+          (:tuple #\E body) -> (loop (match error with (maybe:no) -> (maybe:yes (pg/parse-fields body)) e -> e))
+          _ -> (loop error))))
+
+    ;; one statement, with its rows fetched <batch> at a time from a
+    ;;  portal as they're wanted.  returns {columns rows}, where rows is
+    ;;  a closable generator (see make-closable-generator) of rows.
+    ;;
+    ;; the connection is held (other threads wait, and this thread's
+    ;;  other queries raise PG/Busy) until the stream ends or is closed:
+    ;;  use for-closing, or close it yourself.  an error part way raises
+    ;;  PG/Error from the generator, after the rows before it.
+    (define (rows* sql args batch)
+      (check-busy)
+      (mutex.acquire)
+      (set! stream-thread *thread-id*)
+      (let ((open? #t)       ;; is the portal open (no Sync sent)?
+            (held? #t))      ;; do we hold the mutex?
+
+        (define (execute-more)
+          (send (string-append (pg/msg #\E (string-append (pg/cstring "") (pg/int32 batch)))
+                               (pg/msg #\H ""))))     ;; Flush: keep the portal
+
+        ;; Sync (closing the portal first if it's open), and read up to
+        ;;  ReadyForQuery.  returns the first error, if any.
+        (define (finish)
+          (let ((error (if open?
+                           (begin
+                             (set! open? #f)
+                             (send (string-append (pg/msg #\C (string-append "P" (pg/cstring "")))
+                                                  (pg/msg #\S "")))
+                             (drain))
+                           (maybe:no))))
+            error))
+
+        (define (release)
+          (when held?
+            (set! held? #f)
+            (set! stream-thread -1)
+            (mutex.release)))
+
+        ;; for close, and for the producer's finally: safe to call twice.
+        (define (cleanup)
+          (try
+           (finish)
+           finally
+           (release))
+          #u)
+
+        (define (fail fields)
+          (cleanup)
+          (raise (:PG/Error fields)))
+
+        ;; Parse, Bind, Describe, and the first batch.
+        (send (string-concat
+               (list (parse-msg "" sql)
+                     (bind-execute-only "" args)
+                     (pg/msg #\D (string-append "P" (pg/cstring "")))
+                     (pg/msg #\E (string-append (pg/cstring "") (pg/int32 batch)))
+                     (pg/msg #\H ""))))
+
+        ;; up to the RowDescription (or NoData).
+        (let ((columns
+               (try
+                (let loop ()
+                  (match (next) with
+                    (:tuple #\1 _) -> (loop)
+                    (:tuple #\2 _) -> (loop)
+                    (:tuple #\T body) -> (parse-row-description body)
+                    (:tuple #\n _) -> (list:nil)
+                    (:tuple #\E body) -> (begin
+                                            ;; the server skips to Sync.
+                                            (set! open? #f)
+                                            (send (pg/msg #\S ""))
+                                            (drain)
+                                            (release)
+                                            (raise (:PG/Error (pg/parse-fields body))))
+                    (:tuple t _) -> (unexpected t)))
+                except
+                (:PG/Error f) -> (raise (:PG/Error f))
+                (:Reader/Closed why) -> (begin (release) (raise (:Reader/Closed why)))
+                (:PG/Protocol why) -> (begin (release) (raise (:PG/Protocol why)))))
+              (gen
+               (closable-gen emit
+                 (try
+                  (let loop ()
+                    (match (next) with
+                      (:tuple #\D body) -> (begin (emit (parse-data-row body)) (loop))
+                      (:tuple #\s _)    -> (begin (execute-more) (loop))    ;; PortalSuspended
+                      (:tuple #\C _)    -> #u                                ;; all done
+                      (:tuple #\I _)    -> #u
+                      (:tuple #\E body) -> (begin
+                                              ;; the portal is gone; the server skips to Sync.
+                                              (set! open? #f)
+                                              (send (pg/msg #\S ""))
+                                              (match (drain) with _ -> #u)
+                                              (release)
+                                              (raise (:PG/Error (pg/parse-fields body))))
+                      (:tuple t _)      -> (unexpected t)))
+                  finally
+                  (cleanup)))))
+          {columns = columns
+           rows    = {next  = gen.next
+                      ;; (if the consumer never asked for a row, the
+                      ;;  producer never started, and closing it does
+                      ;;  nothing: so clean up here too.)
+                      close = (lambda () (gen.close) (cleanup))}})))
+
+    (define (rows sql args)
+      (rows* sql args 500))
 
     (define (parameter name)
       (let loop ((l params))
@@ -523,6 +670,8 @@
     {query     = query
      execute   = execute
      prepare   = prepare
+     rows      = rows
+     rows-batch = rows*
      parameter = parameter
      status    = (lambda () txn)
      pid       = (lambda () pid)

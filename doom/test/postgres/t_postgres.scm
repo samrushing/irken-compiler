@@ -154,6 +154,102 @@
                                      (lambda (a b) (match a b with (:tuple k0 v0) (:tuple k1 v1) -> (and (string=? k0 k1) (string=? v0 v1))))))
     (check "notices are taken" (null? (db.notices)))))
 
+;; --- streaming: rows, for-closing ---
+
+(define (count-rows stream)
+  (let ((n 0))
+    (for-closing row stream (inc! n))
+    n))
+
+(define (now-ns) (timespec->nanoseconds (gettime/monotonic)))
+
+(define (t-rows db)
+  ;; all of them, a batch of 100 at a time
+  (let ((r (db.rows-batch "select g, 'row ' || g from generate_series(1, 2000) g" (list) 100))
+        (n 0)
+        (in-order #t))
+    (check "rows: columns" (list=? (map (lambda (c) c.name) r.columns) '("g" "?column?") string=?))
+    (for-closing row r.rows
+      (inc! n)
+      (when (not (string=? (match row[0] with (maybe:yes v) -> v _ -> "") (int->string n)))
+        (set! in-order #f)))
+    (check "rows: 2000 in 20 batches, in order" (and (= n 2000) in-order)))
+  (check "rows: usable after" (string=? (value (first (db.query "select 'ok'")) 0 0) "ok"))
+
+  ;; break early out of a million rows: the portal is closed, not drained.
+  (let ((t0 (now-ns))
+        (r (db.rows-batch "select g from generate_series(1, 1000000) g" (list) 100))
+        (n 0))
+    (for-closing row r.rows
+      (inc! n)
+      (when (= n 5) (break)))
+    (check "rows: break after 5 of 1000000" (= n 5))
+    (check "rows: ... quickly" (< (- (now-ns) t0) 2000000000)))
+  (check "rows: usable after break" (string=? (value (first (db.query "select 'ok'")) 0 0) "ok"))
+
+  ;; parameters
+  (let ((r (db.rows "select g from generate_series(1, $1::int) g" (list (maybe:yes "7")))))
+    (check "rows: parameters" (= 7 (count-rows r.rows))))
+
+  ;; never read, closed by hand
+  (let ((r (db.rows "select g from generate_series(1, 1000) g" (list))))
+    (r.rows.close))
+  (check "rows: closed unread, usable after" (string=? (value (first (db.query "select 'ok'")) 0 0) "ok"))
+
+  ;; an error part way: the rows before it, then PG/Error
+  (let ((r (db.rows-batch "select 100 / (50 - g) from generate_series(1, 100) g" (list) 10))
+        (n 0))
+    (check "rows: error part way: 22012"
+           (string=? (sqlstate (lambda () (for-closing row r.rows (inc! n)))) "22012"))
+    (check "rows: ... after the rows before it" (>= n 40)))
+  (check "rows: usable after an error" (string=? (value (first (db.query "select 'ok'")) 0 0) "ok"))
+
+  ;; an error at the start
+  (check "rows: syntax error: 42601" (string=? (sqlstate (lambda () (db.rows "selec" (list)))) "42601"))
+  (check "rows: usable after a syntax error" (string=? (value (first (db.query "select 'ok'")) 0 0) "ok"))
+
+  ;; a statement with no rows
+  (let ((r (db.rows "create temp table tr (n int)" (list))))
+    (check "rows: no columns" (null? r.columns))
+    (check "rows: no rows" (= 0 (count-rows r.rows))))
+
+  ;; a query inside the loop, on the same connection: PG/Busy
+  (let ((r (db.rows "select g from generate_series(1, 10) g" (list)))
+        (busy #f))
+    (for-closing row r.rows
+      (try
+       (begin (db.query "select 1") #u)
+       except
+       (:PG/Busy _) -> (set! busy #t))
+      (break))
+    (check "rows: query inside the loop is PG/Busy" busy))
+  (check "rows: usable after PG/Busy" (string=? (value (first (db.query "select 'ok'")) 0 0) "ok"))
+
+  ;; in a transaction
+  (db.query "begin")
+  (let ((r (db.rows "select g from generate_series(1, 3000) g" (list))))
+    (check "rows: in a transaction" (= 3000 (count-rows r.rows))))
+  (check "rows: still in the transaction" (eq? (db.status) #\T))
+  (db.query "commit")
+  (check "rows: idle after commit" (eq? (db.status) #\I))
+  )
+
+;; another thread's query waits for the stream to end.
+(define (t-rows-threads db k)
+  (let ((order (list:nil)))
+    (poller/fork
+     (lambda ()
+       (timeq/sleep 50)
+       (db.query "select 1")
+       (push! order "query")
+       (check "rows: another thread's query waits for the stream"
+              (string=? (string-join (reverse order) ",") "stream,query"))
+       (k)))
+    (let ((r (db.rows-batch "select g from generate_series(1, 20) g" (list) 5)))
+      (for-closing row r.rows
+        (timeq/sleep 10)))
+    (push! order "stream")))
+
 ;; two threads: one waits in pg_sleep, the other cancels it.
 (define (t-cancel db k)
   (let ((t0 (timespec->nanoseconds (gettime/monotonic))))
@@ -226,7 +322,8 @@
           (t-errors db)
           (t-extended db)
           (t-notices db)
-          (t-cancel db (lambda () (t-threads db (lambda () (db.close) (finish))))))))
+          (t-rows db)
+          (t-cancel db (lambda () (t-threads db (lambda () (t-rows-threads db (lambda () (db.close) (finish))))))))))
       except
       (:PG/Error f)        -> (begin (printf "FAIL  unexpected: " (pg/error-repr f) "\n") (inc! failed) (finish))
       (:PG/Protocol why)   -> (begin (printf "FAIL  protocol: " why "\n") (inc! failed) (finish))
