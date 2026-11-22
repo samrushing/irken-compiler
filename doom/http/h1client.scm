@@ -6,68 +6,12 @@
 ;;
 ;; the response body may be delimited by Content-Length, by chunked
 ;;  transfer-coding, or by the server closing the connection.
+;;
+;; a connection closed early raises (:Reader/Closed what); see
+;;  doom/reader.scm.
 
 (require "lib/codecs/hex.scm")
-
-;; a buffered reader over <conn>.recv
-(define (h1/reader conn)
-  (let ((buf "")
-        (pos 0)
-        (eof? #f))
-
-    ;; get more data; #f at end of stream.
-    (define (fill)
-      (if eof?
-          #f
-          (try
-           (let ((s (conn.recv)))
-             (set! buf (string-append (substring buf pos (string-length buf)) s))
-             (set! pos 0)
-             #t)
-           except
-           (:Doom/EOF _)
-           -> (begin (set! eof? #t) #f))))
-
-    (define (ready) (- (string-length buf) pos))
-
-    ;; a line, without its CRLF (or bare LF).
-    (define (read-line)
-      (let ((i (string-find-from "\n" buf pos)))
-        (if (= i -1)
-            (if (fill)
-                (read-line)
-                (raise (:H1/BadResponse "connection closed mid-line")))
-            (let ((end (if (and (> i pos) (eq? (string-ref buf (- i 1)) #\return)) (- i 1) i))
-                  (line (substring buf pos end)))
-              (set! pos (+ i 1))
-              line))))
-
-    ;; exactly <n> bytes.
-    (define (read-n n)
-      (let ((parts (list:nil))
-            (left n))
-        (while (> left 0)
-          (when (and (= 0 (ready)) (not (fill)))
-            (raise (:H1/BadResponse "connection closed mid-body")))
-          (let ((k (min left (ready))))
-            (push! parts (substring buf pos (+ pos k)))
-            (inc! pos k)
-            (dec! left k)))
-        (string-concat (reverse parts))))
-
-    ;; everything until the server closes.
-    (define (read-all)
-      (let ((parts (list (substring buf pos (string-length buf)))))
-        (set! buf "")
-        (set! pos 0)
-        (while (fill)
-          (push! parts buf)
-          (set! buf "")
-          (set! pos 0))
-        (string-concat (reverse parts))))
-
-    {read-line=read-line read-n=read-n read-all=read-all}
-    ))
+(require "doom/reader.scm")
 
 (define (h1/parse-hex s)
   (let ((n 0))
@@ -88,7 +32,7 @@
 ;;  body}, like h2/client.
 (define (h1/request conn method authority path headers body)
 
-  (let ((r (h1/reader conn)))
+  (let ((r (reader/make conn)))
 
     (define (read-headers)
       (let loop ((acc (list:nil)))
