@@ -11,7 +11,7 @@
 #
 # stop it with: doveadm -c <dir>/dovecot.conf stop
 #
-# needs dovecot (2.3), openssl.  run by run.sh.
+# needs dovecot (2.3 or 2.4), openssl.  run by run.sh.
 
 dir=$1
 port=$2
@@ -28,6 +28,17 @@ sam:{PLAIN}hunter2::::::
 other:{PLAIN}otherpw::::::
 PW
 
+# dovecot 2.4 changed its configuration language: settings renamed,
+#  named passdb/userdb blocks, %{user} rather than %u.
+grp=$(id -gn)
+hard=$(ulimit -H -d)
+if [ "$hard" = unlimited ]; then
+    vsz=9223372036854775807     # macOS's RLIM_INFINITY, 2^63-1
+else
+    vsz=$((hard * 1024))
+fi
+case "$(dovecot --version)" in
+2.[0-3].*)
 cat > "$dir/dovecot.conf" <<CONF
 base_dir = $dir/run
 state_dir = $dir/run
@@ -35,6 +46,11 @@ log_path = $dir/dovecot.log
 default_internal_user = $me
 default_internal_group = $(id -gn)
 default_login_user = $me
+# (no per-process memory limit: macOS refuses setrlimit(RLIMIT_DATA).)
+default_vsz_limit = 0
+# (a test needs few connections; macOS's default ulimit -n is 256.)
+default_client_limit = 50
+default_process_limit = 10
 protocols = imap
 listen = 127.0.0.1
 ssl = yes
@@ -81,5 +97,74 @@ namespace inbox {
   }
 }
 CONF
+
+;;
+*)
+cat > "$dir/dovecot.conf" <<CONF
+dovecot_config_version = 2.4.0
+dovecot_storage_version = 2.4.0
+base_dir = $dir/run
+state_dir = $dir/run
+log_path = $dir/dovecot.log
+default_internal_user = $me
+default_internal_group = $grp
+default_login_user = $me
+# (the per-process memory limit: our own hard limit.  macOS refused a
+#  lower one with EINVAL, and a higher one is only for root; 2.4 won't
+#  take 0 for none.)
+default_vsz_limit = $vsz
+# (a test needs few connections; macOS's default ulimit -n is 256.)
+default_client_limit = 50
+default_process_limit = 10
+protocols {
+  imap = yes
+}
+listen = 127.0.0.1
+ssl = yes
+ssl_server_cert_file = $dir/cert.pem
+ssl_server_key_file = $dir/key.pem
+auth_allow_cleartext = yes
+auth_mechanisms = plain login
+mail_driver = maildir
+mail_home = $dir/mail/%{user}
+mail_path = $dir/mail/%{user}
+passdb passwd-file {
+  passwd_file_path = $dir/passwd
+}
+userdb static {
+  fields {
+    uid = $me
+    gid = $grp
+    home = $dir/mail/%{user}
+  }
+}
+service imap-login {
+  chroot =
+  inet_listener imap {
+    port = $port
+  }
+  inet_listener imaps {
+    port = $tlsport
+    ssl = yes
+  }
+}
+service anvil {
+  chroot =
+}
+namespace inbox {
+  inbox = yes
+  separator = /
+  mailbox Drafts {
+    special_use = \Drafts
+    auto = create
+  }
+  mailbox Trash {
+    special_use = \Trash
+    auto = create
+  }
+}
+CONF
+;;
+esac
 
 dovecot -c "$dir/dovecot.conf" || { cat "$dir/dovecot.log"; exit 1; }

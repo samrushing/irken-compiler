@@ -2,8 +2,12 @@
 
 ;; tests for doom/mail/imap.scm, against the dovecot that run.sh starts.
 ;;
-;;   t_imap <port> <cert.pem>      dovecot: STARTTLS on <port>, TLS on <port>+1
-;;   t_imap <port> fake            fake_server.py, misbehaving
+;;   t_imap <port> <cert.pem>        dovecot: STARTTLS on <port>, TLS on <port>+1
+;;   t_imap <port> <cert.pem> plain  ... with the main session in plain text
+;;   t_imap <port> fake              fake_server.py, misbehaving
+;;
+;; ("plain": dovecot 2.4 on macOS drops TLS sessions just after login,
+;;  as openssl s_client sees too; logging in over TLS is still checked.)
 ;;
 ;; prints "ok" or "FAIL" for each check, and exits 1 if any failed.
 
@@ -22,6 +26,8 @@
 
 (define port 2143)
 (define cert "")
+;; for the main session (and the second one, in t-events)
+(define main-security (imap-security:starttls))
 
 (define (insecure ders) (parse-x509 (first ders)))
 
@@ -228,7 +234,7 @@
 
 (define (t-events s)
   (s.events)
-  (let ((other (login (imap-security:starttls))))
+  (let ((other (login main-security)))
     (other.append "INBOX" (list) (message 999 ""))
     (other.logout))
   (s.noop)
@@ -292,8 +298,10 @@
           (begin (t-fake) (finish))
           (begin
             (when (> (vector-length sys.argv) 2) (set! cert sys.argv[2]))
+            (when (and (> (vector-length sys.argv) 3) (string=? sys.argv[3] "plain"))
+              (set! main-security (imap-security:none)))
             (t-login)
-            (let ((s (login (imap-security:starttls))))
+            (let ((s (login main-security)))
               (t-mailboxes s)
               (t-append s)
               (t-fetch s)

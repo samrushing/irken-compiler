@@ -51,9 +51,21 @@ for i in 1 2 3 4 5; do
     sleep 1
 done
 
+# dovecot 2.4 on macOS drops TLS sessions just after login (openssl
+#  s_client too): there, only the login checks use TLS.
+mode=
+case "$(uname -s) $(dovecot --version)" in
+Darwin\ 2.[0-3].*) ;;
+Darwin\ *) mode=plain; echo "(dovecot 2.4 on macOS: the main session in plain text)" ;;
+esac
+
 echo "--- dovecot"
-"$prog" $port "$work/cert.pem"
+"$prog" $port "$work/cert.pem" $mode
 real=$?
+if [ $real -ne 0 ]; then
+    echo "--- the end of dovecot's log"
+    tail -20 "$work/dovecot.log"
+fi
 
 python3 "$here/fake_server.py" $fakeport > "$work/fake.log" 2>&1 &
 fake=$!
