@@ -111,10 +111,9 @@
             (loop (+ i 1))
             (if (> i max-reg)
                 (begin (set! max-reg i)
-                       (if (> i *max-bytecode-registers*)
-                           (begin
-                             (printf "max reg of " (int i) " out of " (int *max-bytecode-registers*) "\n")
-                             (raise (:TooManyRegisters "ran out of registers!")))
+                       ;; registers are numbered 0 .. *max-bytecode-registers* - 1.
+                       (if (>= i *max-bytecode-registers*)
+                           (raise (:TooManyRegisters "ran out of registers!"))
                            i))
                 i))))
     (define (get-max) max-reg)
@@ -153,6 +152,7 @@
 (define (compile exp)
 
   (let ((current-funs '(top))
+        (current-exp exp) ;; for reporting TooManyRegisters
         (regalloc (make-register-allocator)))
 
     (define (add-to-set reg set)
@@ -189,6 +189,8 @@
       (%exit #f -1))
 
     (define (compile tail? exp lenv k)
+
+      (set! current-exp exp)
 
       ;; override continuation when in tail position
       (if tail?
@@ -803,10 +805,10 @@
      (compile #t exp (cpsenv:nil) null-cont)
      except
      (:TooManyRegisters _)
-     -> (begin
-          (printf "too many registers in expression: \n")
-          (pp-node exp)
-          (error "too many registers."))
+     -> (cps-error
+         (format "too many registers (there are " (int *max-bytecode-registers*)
+                 ") in " (join symbol->string " < " current-funs))
+         current-exp)
      )
     ))
 
