@@ -212,6 +212,27 @@
 		     ($genloop ($gen))))))
   )
 
+
+;; for-closing: like for, over a closable generator (see
+;;  make-closable-generator in lib/core.scm), which it closes when the
+;;  loop ends: at the end of the items, when the body raises, or when
+;;  the body calls (break).
+(defmacro for-closing
+  (for-closing var gen-exp body0 ...)
+  -> (let (($gen gen-exp))
+       (try
+        (callcc
+         (lambda ($k)
+          (let ((break (lambda () (throw $k #u))))
+            (let $genloop (($item (closable/next $gen)))
+              (match $item with
+                (maybe:no) -> #u
+                (maybe:yes var)
+                -> (begin body0 ...
+                          ($genloop (closable/next $gen))))))))
+        finally
+        (closable/close $gen))))
+
 ;; XXX there's an argument that the order should be reversed here.
 ;;     scheme has a SRFI-197 implementing 'nest', which matches
 ;;     this order.  'chain' does the more 'natural' order.

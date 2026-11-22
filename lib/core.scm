@@ -1031,6 +1031,82 @@
   (try body0 body1 ...)                   -> (try (begin body0) body1 ...)
   )
 
+;; --- closable generators ---
+;;
+;; a plain generator can't tell when its consumer is done with it: the
+;;  consumer just stops calling.  a closable one is {next close}: (next)
+;;  is the generator, and (close) resumes the producer once more, with
+;;  its <emit> raising (:Generator/Close), so that its own try/finally
+;;  can clean up (e.g. leave a network protocol in a sane state).
+;;
+;; close does nothing if the producer hasn't started or has finished
+;;  (or raised).  a producer that catches Generator/Close and emits
+;;  again raises (:Generator/IgnoredClose) from close.
+;;
+;; see for-closing in lib/derived.scm, which closes the generator when
+;;  the loop ends, however it ends.
+
+(define (make-closable-generator producer)
+  (let ((started #f)
+        (done #f)
+        (closing #f))
+    (define gen
+      (make-generator
+       (lambda (consumer)
+         (define (emit x)
+           (consumer (maybe:yes x))
+           ;; resumed: by next, or by close.
+           (when closing
+             (raise (:Generator/Close))))
+         (producer emit)
+         (set! done #t)
+         (forever (consumer (maybe:no))))))
+    ;; (an exception from the producer ends it: it can't be resumed.)
+    (define (resume)
+      (try
+       (gen)
+       except
+       $exn -> (begin (set! done #t) (raise $exn))))
+    (define (next)
+      (if done
+          (maybe:no)
+          (begin
+            (set! started #t)
+            (let ((r (resume)))
+              (match r with
+                (maybe:no) -> (set! done #t)
+                _ -> #u)
+              r))))
+    (define (close)
+      (when (and started (not done))
+        (set! closing #t)
+        (match (try
+                (resume)
+                except
+                (:Generator/Close) -> (maybe:no)) with
+          (maybe:no)  -> #u
+          (maybe:yes _) -> (begin (set! done #t) (raise (:Generator/IgnoredClose)))))
+      (set! done #t)
+      #u)
+    {next=next close=close}
+    ))
+
+;; like makegen: (closable-gen emit body ...)
+(defmacro closable-gen
+  (closable-gen emit body ...)
+  -> (make-closable-generator
+      (lambda ($emit)
+        (define (emit $x) ($emit $x))
+        body ...)))
+
+;; (for macros, which can't say $g.next)
+(define (closable/next g) (g.next))
+(define (closable/close g) (g.close))
+
+;; a plain generator, closable: close does nothing.
+(define (gen->closable gen)
+  {next=gen close=(lambda () #u)})
+
 (define TAGSIZE 16)
 (define TAGMASK #xffff)
 
