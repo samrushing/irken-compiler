@@ -193,16 +193,18 @@
 ;; unpackbits takes a spec like this:
 ;; (unpackbits value (width location) ...)
 ;; and transforms it into:
-;; (begin
-;;   (set! location (bitmask width val))
-;;   (>> val width))
-;; then recurses.
+;; (let (($v value))
+;;   (set! location (bitmask width $v))
+;;   (unpackbits (>> $v width) ...))
+;; returning the bits left over.
+;;
+;; (<value> is evaluated once: substituting it into both the bitmask
+;;  and the shift made code exponential in the number of fields.)
 
 (defmacro unpackbits
   (unpackbits val) -> val
   (unpackbits val (width loc) rest ...)
-  -> (unpackbits
-      (begin (set! loc (bitmask width val))
-             (>> val width))
-      rest ...)
+  -> (let (($v val))
+       (set! loc (bitmask width $v))
+       (unpackbits (>> $v width) rest ...))
   )
