@@ -9,19 +9,27 @@
       (let ((k (getcc)))
         (queue/push! fifo (poller/make-save k))
         (poller/dispatch)))
+    ;; a waiting thread is handed the mutex by release: if release only
+    ;;  freed it, the releasing thread (or any other) could take it again
+    ;;  before the waiter ran, and then both would think they held it.
     (define (acquire)
-      (when (>= held-by 0)
-        ;; (debugf "mutex held by " (int held-by) " , waiting...\n")
-        (acquire*))
-      ;; (debugf "acquire by " (int *thread-id*) "\n")
-      (set! held-by *thread-id*))
+      (if (>= held-by 0)
+          ;; (debugf "mutex held by " (int held-by) " , waiting...\n")
+          (acquire*)
+          ;; (debugf "acquire by " (int *thread-id*) "\n")
+          (set! held-by *thread-id*)))
     (define (release)
       ;; (debugf "release by " (int *thread-id*) "\n")
       (cond ((= held-by *thread-id*)
-             (set! held-by -1)
-             (when-maybe save (queue/pop! fifo)
-               ;; (debugf "scheduling...\n")
-               (poller/schedule save)))
+             (match (queue/pop! fifo) with
+               (maybe:yes save)
+               -> (match save with
+                    (:tuple thread-id _ _)
+                    -> (begin
+                         (set! held-by thread-id)
+                         (poller/schedule save)))
+               (maybe:no)
+               -> (set! held-by -1)))
             (else
              (raise (:Mutex/BadRelease held-by *thread-id*)))))
     {acquire=acquire release=release}
