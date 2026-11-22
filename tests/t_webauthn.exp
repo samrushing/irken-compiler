@@ -1,0 +1,26 @@
+ok   reg es256
+ok   reg es256 wrong challenge
+ok   reg es256 wrong origin
+ok   reg es256 wrong rp id
+ok   reg es256 truncated
+ok   reg es256 every bit flipped
+ok   get es256
+ok   get es256 bad signature
+ok   get es256 counter changed
+ok   get es256 user not verified
+ok   get es256 user not present
+ok   get es256 other challenge
+ok   get es256 clientData changed
+ok   reg ed25519
+ok   reg ed25519 wrong challenge
+ok   reg ed25519 wrong origin
+ok   reg ed25519 wrong rp id
+ok   reg ed25519 truncated
+ok   reg ed25519 every bit flipped
+ok   get ed25519
+ok   get ed25519 bad signature
+ok   get ed25519 counter changed
+ok   get ed25519 user not verified
+ok   get ed25519 user not present
+ok   get ed25519 other challenge
+ok   get ed25519 clientData changed
