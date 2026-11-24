@@ -2,8 +2,26 @@
 
 import os
 import sys
+import subprocess
 
 semi = '-s' in sys.argv
+
+# the files git tracks (relative to the top of the tree, where this is
+#  run), which are never removed: e.g. doom/test/*/run.sh, executable
+#  scripts that look like build output to the rules below.  empty if
+#  this isn't a git checkout.
+def tracked_files ():
+    try:
+        out = subprocess.run (['git', 'ls-files', '-z'], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return set()
+    return set (os.path.normpath (p) for p in out.decode ('utf-8', 'replace').split ('\0') if p)
+
+tracked = tracked_files()
+
+# scripts are never build output, git or no git.
+SCRIPTS = ('.sh', '.py')
 
 def clean_c (path, precious):
     for root, dirs, files in os.walk (path, topdown=False):
@@ -15,7 +33,9 @@ def clean_c (path, precious):
         else:
             for name in files:
                 jp = os.path.join (root, name)
-                if name.endswith ('.c') and name not in precious:
+                if os.path.normpath (jp) in tracked or name.endswith (SCRIPTS):
+                    pass
+                elif name.endswith ('.c') and name not in precious:
                     # only C generated from an .scm next to it: there's
                     #  hand-written C here too (e.g. tests/p256/kat.c).
                     if os.path.isfile (jp[:-2] + '.scm'):
