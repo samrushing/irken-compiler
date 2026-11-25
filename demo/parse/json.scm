@@ -1,16 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 (require "lib/basis.scm")
-(require "lib/cmap.scm")
-(require "lib/counter.scm")
 (require "lib/parse/lexer.scm")
-(require "lib/dfa/charset.scm")
-(require "lib/dfa/rx.scm")
-(require "lib/dfa/deriv.scm")
-(require "lib/dfa/dfa.scm")
-(require "lib/dfa/emit.scm")
-(require "lib/dfa/lexicon.scm")
-(require "lib/parse/earley.scm")
 (require "lib/parse/parser.scm")
 
 (define json-parser
