@@ -16,6 +16,11 @@
    version="1.1"
    inkscape:version="0.48.0 r9654"
    sodipodi:docname="irken2.svg">
+  <style>
+    @media (prefers-color-scheme: dark) {
+    #text3861, #text3861 * { fill: #e6edf3 !important; }
+    }
+  </style>
   <defs
      id="defs4" />
   <sodipodi:namedview
