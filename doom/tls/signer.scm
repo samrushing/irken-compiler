@@ -1,6 +1,7 @@
 ;; -*- Mode: Irken -*-
 
 ;; for ed25519,rsa, etc.
+(require "doom/tls/datatypes.scm")
 (require "lib/crypto/sig.scm")
 ;; for ed448, for now.
 ;; ED448

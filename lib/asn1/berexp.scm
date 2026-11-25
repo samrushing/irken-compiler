@@ -5,6 +5,8 @@
 ;; expects 'unparsed' integers (see lib/read.scm:read2)
 ;;
 
+(require "lib/asn1/ber.scm")
+
 (define (sexp->ber exp)
 
   (define parse-oid

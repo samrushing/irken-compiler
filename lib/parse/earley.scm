@@ -5,6 +5,8 @@
 ;; This is based on the description from https://en.wikipedia.org/wiki/Earley_parser
 ;;
 
+(require "lib/cmap.scm")
+
 (datatype prod
   (:nt symbol)
   (:t symbol)

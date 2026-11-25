@@ -2,6 +2,8 @@
 
 ;; synchronization primitives go here.
 
+(require "doom/scheduler.scm")
+
 (define (mutex/make)
   (let ((held-by -1)
         (fifo (queue/make)))

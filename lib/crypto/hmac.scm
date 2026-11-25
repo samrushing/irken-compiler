@@ -2,6 +2,8 @@
 
 ;; RFC 2104
 
+(require "lib/crypto/sodium.scm")
+
 (define (hmac/make hash)
 
   ;; (int string -> string)

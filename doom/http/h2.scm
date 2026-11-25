@@ -1,5 +1,6 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/rope.scm")
 (require "doom/scheduler.scm")
 (require "doom/http/hpack.scm")
 (require "doom/sync.scm")

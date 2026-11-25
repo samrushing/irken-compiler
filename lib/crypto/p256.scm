@@ -5,6 +5,8 @@
 ;; secret keys, nonces and the r, s, x, y values are all 32-byte
 ;;  big-endian strings.
 
+(require "lib/asn1/ber.scm")
+(require "lib/crypto/sodium.scm")
 (require-ffi 'p256_ecdsa)
 
 ;; the interface, ffi/p256_ecdsa_ffi.scm, isn't in the repository: the

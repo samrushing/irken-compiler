@@ -25,6 +25,7 @@
 ;;  * client side
 ;;  * DTLS?
 
+(require "doom/scheduler.scm")
 (require "lib/urandom.scm")
 (require "lib/net/socket.scm")
 

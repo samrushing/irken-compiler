@@ -1,5 +1,9 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/parse/lexer.scm")
+(require "lib/parse/earley.scm")
+(require "lib/parse/glextab.scm")
+
 (define (lex-grammar path)
   (make-generator
    (lambda (consumer)

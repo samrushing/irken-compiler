@@ -16,6 +16,7 @@
 ;; checking the server's certificates is up to the caller: see
 ;;  tls13/connect and lib/crypto/x509path.scm.
 
+(require "doom/socket.scm")
 (require "lib/urandom.scm")
 (require "lib/net/socket.scm")
 (require "lib/crypto/x509path.scm")

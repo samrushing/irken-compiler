@@ -3,9 +3,9 @@
 ;; just enough JOSE for ACME (rfc8555 6.2): P-256 keys as JWKs
 ;;  (rfc7517), their thumbprints (rfc7638), and ES256 signatures in
 ;;  the flattened JSON serialization of JWS (rfc7515 7.2.2).
-;;
-;; requires lib/json.scm (and its parser libraries).
 
+(require "lib/asn1/ber.scm")
+(require "lib/json.scm")
 (require "lib/codecs/base64.scm")
 (require "lib/crypto/sodium.scm")
 (require "lib/crypto/p256.scm")

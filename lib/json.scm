@@ -1,5 +1,9 @@
 ;; -*- Mode: Irken -*-
 
+(require "lib/codecs/hex.scm")
+(require "lib/parse/lexer.scm")
+(require "lib/parse/parser.scm")
+
 (define json-parser
   (%%sexp
    (parser

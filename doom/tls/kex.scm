@@ -1,5 +1,6 @@
 ;; -*- Mode: Irken -*-
 
+(require "doom/tls/datatypes.scm")
 (require "lib/crypto/dh.scm")
 (require "lib/crypto/sodium.scm")
 (require "lib/asn1/ber.scm")
