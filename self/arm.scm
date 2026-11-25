@@ -301,8 +301,7 @@
 
 (define (cps->arm cps)
 
-  (let ((used-jumps (find-jumps cps))
-        (ltorg-flag #f))
+  (let ((used-jumps (find-jumps cps)))
 
     (define new-label
       (let ((counter 0))
@@ -352,17 +351,43 @@
                (ARM ('movz (n trg) (i lo))
                     ('movk (n trg) (i hi) (lsl 16)))))
             (else
-             (set! ltorg-flag #t)
-             (ARM
-              ('ldr (n trg) (l (format "=" (int->hex64 imm))))))))
+             (emit-wide-immediate (int->hex64 imm) trg))))
+
+    ;; any 64-bit word, given as "0x" and 16 hex digits (int->hex64,
+    ;;  encode-immediate-hex): movz the low 16 bits, then movk each
+    ;;  nonzero 16 bits above them.  at most four insns.
+    ;;
+    ;; (not `ldr <reg>, =<word>`, with a literal pool: an ldr reaches only
+    ;;  1MB, and llvm's assembler (macOS's) reuses a word already in an
+    ;;  earlier pool, even after a later .ltorg, so in a big enough
+    ;;  program the ldr can't reach it: "fixup value out of range".)
+    (define (emit-wide-immediate hex64 trg)
+      (define (digit pos)
+        (let ((ch (string-ref hex64 pos)))
+          (string-find (char->string ch) "0123456789abcdef0123456789ABCDEF")))
+      ;; the 16 bits at <shift>: hex digits are most significant first,
+      ;;  after the "0x".
+      (define (chunk shift)
+        (let ((pos (+ 2 (- 12 (/ shift 4)))))
+          (let loop ((i 0) (acc 0))
+            (if (= i 4)
+                acc
+                (loop (+ i 1) (+ (* acc 16) (logand 15 (digit (+ pos i)))))))))
+      (let loop ((shift 16)
+                 (acc (ARM ('movz (n trg) (i (chunk 0))))))
+        (if (= shift 64)
+            acc
+            (let ((c (chunk shift)))
+              (loop (+ shift 16)
+                    (if (= c 0)
+                        acc
+                        (append acc (ARM ('movk (n trg) (i c) (lsl shift))))))))))
 
     (define (emit-literal lit trg)
       (if (= trg -1)
           (list:nil) ;; dead literal
           (if (wide-literal? lit)
-              (begin
-                (set! ltorg-flag #t)
-                (ARM ('ldr (n trg) (l (format "=" (encode-immediate-hex lit))))))
+              (emit-wide-immediate (encode-immediate-hex lit) trg)
               (emit-immediate (encode-immediate lit) trg))))
 
     ;; I think obsolete now.
@@ -1083,16 +1108,6 @@
        (com "store off=" (int off) " arg=" (int arg) " tup=" (int tup) " index=" (int index))
        ('str (n arg) (ind (n tup) (i (* 8 (+ 1 off index)))))))
 
-    ;; emit an '.ltorg' directive to tell the assembler to drop a literal pool
-    ;; here, since a 64-bit literal was used recently.
-    ;; we do this just before the beginning of a function.
-    (define (ltorg-hack)
-      (if ltorg-flag
-          (begin
-            (set! ltorg-flag #f)
-            (ARM = ".ltorg"))
-          (ARM)))
-
     (define (emit-close name nreg body target)
       (let ((l0 (new-label "L"))
             (flabel (safe-function-name name))
@@ -1101,7 +1116,6 @@
                           '())))
         (ARM
          ('b (l l0))
-         @ (ltorg-hack)
          (label flabel)
          @ gc-check
          @ (emit body)
