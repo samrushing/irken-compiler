@@ -21,6 +21,7 @@
   (:srv)    ;; Server Selection                         [RFC2782]
   (:dnskey) ;; DNSSEC Key                               [RFC4034]
   (:rrsig)  ;; DNSSEC RRSIG                             [RFC4034]
+  (:opt)    ;; EDNS0 pseudo-record                      [RFC6891]
   (:any)    ;; A request for all records                [RFC1035]
   (:hinfo)  ;; host info (now has new purpose)          [RFC8482]
   (:other int) ;; all other types.
@@ -42,6 +43,7 @@
    (DNST  (dnstype:srv)    "srv"    33)
    (DNST  (dnstype:dnskey) "dnskey" 48)
    (DNST  (dnstype:rrsig)  "rrsig"  46)
+   (DNST  (dnstype:opt)    "opt"    41)
    (DNST  (dnstype:any)    "any"    255)
    ))
 
@@ -157,6 +159,41 @@
     (p::val)
     ))
 
+;; a query, with an EDNS0 OPT record (rfc6891) if <edns-size> > 0:
+;;  the largest UDP reply we'll take.  (1232 avoids IP fragmentation:
+;;  DNS flag day 2020.)
+(define (build-query qid name qtype edns-size)
+  (let ((h (dnsheader-make))
+        (p (pbuf/make 512)))
+    (set! h.opcode dnsopcode-query)
+    (set! h.qid qid)
+    (set! h.qdcount 1)
+    (set! h.arcount (if (> edns-size 0) 1 0))
+    (add-header p h)
+    (when (not (dns/sane-name? name))
+      (raise (:BadDNSName name)))
+    (for-list label (if (= 0 (string-length name)) (list:nil) (string-split name #\.))
+      (p::u8 (string-length label))
+      (p::string label))
+    (p::u8 0)
+    (p::u16 (dnstype->int qtype))
+    (p::u16 dnsclass-in)
+    (when (> edns-size 0)
+      (p::u8 0)       ;; the root
+      (p::u16 41)     ;; OPT
+      (p::u16 edns-size)
+      (p::u32 0)      ;; extended rcode, version 0, no DO
+      (p::u16 0))     ;; no options
+    (p::val)))
+
+;; a name we'll put in a query: labels of 1 to 63 bytes, no more than
+;;  253 bytes in all ("" is the root).
+(define (dns/sane-name? name)
+  (or (= 0 (string-length name))
+      (and (<= (string-length name) 253)
+           (every? (lambda (label) (and (> (string-length label) 0) (<= (string-length label) 63)))
+                   (string-split name #\.)))))
+
 (datatype dnsrr
   (:a (vector char))
   (:aaaa (vector char))
@@ -226,9 +263,14 @@
                  (maybe:yes parts) -> (append parts acc)
                  (maybe:no) -> (raise (:BadDNSPacket "bad name pointer" u))))
               ((= n1 0) acc)
+              ((not (= 0 (logand n0 #xc0)))
+               (raise (:BadDNSPacket "bad label type" u)))
               (else
                ;; normal label
                (let ((label (u::string n1))
+                     ;; (a dot in a label would make a different name of it)
+                     (_ (when (>= (string-find "." label) 0)
+                          (raise (:BadDNSPacket "a dot in a label" u))))
                      (r (unpack-name* (list:cons label acc))))
                  ;; tricky: we want to store only the labels that came *after* this point.
                  (nameparts::add pos (slice r 0 (- (length r) (length acc))))
@@ -236,8 +278,11 @@
         ))
 
     (define (unpack-name)
-      (let ((labels (unpack-name* '())))
-        (string-join (reverse labels) ".")))
+      (let ((labels (unpack-name* '()))
+            (name (string-join (reverse labels) ".")))
+        (when (> (string-length name) 253)
+          (raise (:BadDNSPacket "name too long" u)))
+        name))
 
     (define (unpack-string)
       (let ((slen (u::u8)))
@@ -304,6 +349,7 @@
         (dnstype:ptr)     -> (dnsrr:ptr (unpack-name))
         (dnstype:txt)     -> (dnsrr:txt (u::string len))
         (dnstype:other x) -> (dnsrr:other x (u::string len))
+        (dnstype:opt)     -> (dnsrr:other 41 (u::string len))
         ;; this should not happen
         (dnstype:any)     -> (dnsrr:other 255 (u::string len))
         ))
@@ -313,9 +359,14 @@
             (type (int->dnstype (u::u16)))
             (class (u::u16)) ;; XXX verify as `IN`
             (ttl (u::u32))
-            (rdlength (u::u16)))
-        {name=name type=type class=class ttl=ttl
-                   data=(decode-rr type rdlength)}
+            (rdlength (u::u16))
+            (pos0 (u::pos))
+            (data (decode-rr type rdlength)))
+        ;; the data must be exactly rdlength bytes: a misparse here
+        ;;  would make what follows into something else.
+        (when (not (= (- (u::pos) pos0) rdlength))
+          (raise (:BadDNSPacket "record data doesn't match its length" u)))
+        {name=name type=type class=class ttl=ttl data=data}
         ))
 
     (define (unpack-question)
