@@ -11,10 +11,17 @@
 (define (timeq/sleep msec)
   (let ((k (getcc))
         (now (timespec->nanoseconds (gettime/monotonic)))
-        (then (+ now (* msec 1000000))))
+        (then (timeq/free-slot (+ now (* msec 1000000)))))
     (tree/insert! the-timeq int-cmp then (poller/make-save k))
     (poller/dispatch)
     ))
+
+;; the tree keeps one entry per key: a second thread sleeping until
+;;  the same nanosecond would never wake.  so take the next free one.
+(define (timeq/free-slot then)
+  (match (tree/member the-timeq int-cmp then) with
+    (maybe:yes _) -> (timeq/free-slot (+ then 1))
+    (maybe:no)    -> then))
 
 ;; return the time to the next event, in nanoseconds.
 (define (timeq/time-to-next)
