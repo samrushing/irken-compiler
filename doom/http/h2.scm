@@ -7,6 +7,11 @@
 
 ;; RFC7540
 
+;; a peer that sends a malformed frame raises (:H2/BadFrame <why>), <why>
+;;  a string saying what was wrong.  doom/http/h2client.scm raises it
+;;  too, and Irken's exceptions are typed program-wide (lib/core.scm),
+;;  so both sides must give it the same type: keep it a string.
+
 ;; see [https://www.iana.org/assignments/http2-parameters/http2-parameters.xhtml]
 ;; for updates to these values.
 
@@ -276,7 +281,8 @@
         (let ((plen (string-length f.payload))
               ((n r) (divmod plen 6))
               (pos 0))
-          (when (not (= 0 r)) (raise (:H2/BadFrame f)))
+          (when (not (= 0 r))
+            (raise (:H2/BadFrame (format "SETTINGS payload of " (int plen) " bytes, not a multiple of 6"))))
           (for-range i n
             (let ((ident (uu16 f.payload pos))
                   (value (uu32 f.payload (+ pos 2))))
@@ -291,10 +297,10 @@
     (define (handle-window-update f)
       ;; XXX ignored for now, other than sanity checks.
       (when (not (= 4 (string-length f.payload)))
-        (raise (:H2/BadFrame f)))
+        (raise (:H2/BadFrame (format "WINDOW_UPDATE payload of " (int (string-length f.payload)) " bytes, not 4"))))
       (let ((increment (ui32 f.payload 0)))
         (when (< increment 0)
-          (raise (:H2/BadFrame f)))
+          (raise (:H2/BadFrame (format "WINDOW_UPDATE with a negative increment, " (int increment)))))
         ;;(printf "window-update stream=" (int f.stream-id) " increment " (int increment) "\n")
         ))
 
@@ -409,7 +415,8 @@
             (stream-dep 0)
             (exclusive? #f)
             (weight 0))
-        (when (< f.stream-id 1) (raise (:H2/BadFrame f)))
+        (when (< f.stream-id 1)
+          (raise (:H2/BadFrame (format "HEADERS on stream " (int f.stream-id)))))
         (when (flag-set? H2-FLAGS-PADDED f.flags)
           (set! pad-len (ubyte f.payload pos))
           (inc! pos))
@@ -475,7 +482,8 @@
             (start (if padded? 1 0))
             (end-stream? (flag-set? H2-FLAGS-END-STREAM f.flags)))
         (when (> (+ start padlen) plen)
-          (raise (:H2/BadFrame f)))
+          (raise (:H2/BadFrame (format "DATA on stream " (int f.stream-id) " with " (int padlen)
+                                       " bytes of padding in a payload of " (int plen)))))
         ;; return the flow-control credit for the whole frame (padding
         ;;  included) as it arrives.
         (when (> plen 0)
