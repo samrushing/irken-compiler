@@ -102,6 +102,17 @@
 (define (poller/wait-for-signal signum)
   (raise (:Poller/SignalsNotSupported signum)))
 
+;; stop waiting for <fd> to be readable (or writable): the waiting
+;;  thread's save, if one was waiting.  (see doom/timeout.scm.)  if the
+;;  one-shot registration fires later, nobody is waiting, and it's dropped.
+(define (epoll/cancel-wait table fd)
+  (match (tree/member table int-cmp fd) with
+    (maybe:yes save) -> (begin (tree/delete! table int-cmp fd) (dec! the-poller.nwait) (maybe:yes save))
+    (maybe:no)       -> (maybe:no)))
+
+(define (poller/cancel-read fd) (epoll/cancel-wait the-poller.readers fd))
+(define (poller/cancel-write fd) (epoll/cancel-wait the-poller.writers fd))
+
 (define (poller/forget fd)
   (when (tree/delete!? the-poller.readers int-cmp fd)
     (dec! the-poller.nwait))

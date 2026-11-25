@@ -162,6 +162,18 @@
 (define (poller/wait-for-signal signum)
   (poller/wait-for signum EVFILT_SIGNAL))
 
+;; stop waiting for <fd> to be readable (or writable): the waiting
+;;  thread's save, if one was waiting.  (see doom/timeout.scm.)  the
+;;  kernel's one-shot registration is left: if it fires, nobody is
+;;  waiting, and it's dropped.
+(define (poller/cancel-wait fd filter)
+  (match (poller/lookup-event fd filter) with
+    (maybe:yes save) -> (begin (poller/delete-event fd filter) (maybe:yes save))
+    (maybe:no)       -> (maybe:no)))
+
+(define (poller/cancel-read fd) (poller/cancel-wait fd EVFILT_READ))
+(define (poller/cancel-write fd) (poller/cancel-wait fd EVFILT_WRITE))
+
 (define (poller/forget fd)
   (remove-kevents the-poller.ievents fd)
   (poller/delete-event fd EVFILT_READ)
