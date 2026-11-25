@@ -59,7 +59,8 @@ util/tmp*.ll
 self/irk*.c
 ffi/gen/genffi.c
 ffi/tests/*.c
-doom/test/*.c
+doom/**/*.c
+demo/**/*.c
 
 # symlinks used to select the active compiler driver
 self/irken.scm
