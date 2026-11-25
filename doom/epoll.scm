@@ -142,10 +142,13 @@
 
 (define (poller/wait-and-schedule)
   ;; all the runnable threads have done their bit, now throw it to epoll_wait().
-  (when (and (eq? the-timeq (tree:empty)) (= the-poller.nwait 0))
+  ;; a thread may still be runnable (main, when the first thread it
+  ;;  forked blocks): then just poll, don't sleep or exit.
+  (when (and (eq? the-timeq (tree:empty)) (= the-poller.nwait 0)
+             (= the-poller.runnable.len 0))
     (debugf "no more events, exiting.\n")
     (%exit #f 1))
-  (let ((timeout-ns (timeq/time-to-next))
+  (let ((timeout-ns (if (> the-poller.runnable.len 0) 0 (timeq/time-to-next)))
         ;; round up, so a timer that's due in under a millisecond doesn't spin.
         (timeout-ms (/ (+ timeout-ns 999999) 1000000))
         (n (epoll/epoll_wait the-poller.epfd (%c-cast (struct epoll_event) the-poller.events)

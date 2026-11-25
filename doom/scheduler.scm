@@ -200,10 +200,13 @@
 (define (poller/wait-and-schedule)
   ;; all the runnable threads have done their bit, now throw it to kevent().
   ;;(poller/dump)
-  (when (and (eq? the-timeq (tree:empty)) (= the-poller.nwait 0))
+  ;; a thread may still be runnable (main, when the first thread it
+  ;;  forked blocks): then just poll, don't sleep or exit.
+  (when (and (eq? the-timeq (tree:empty)) (= the-poller.nwait 0)
+             (= the-poller.runnable.len 0))
     (debugf "no more events, exiting.\n")
     (%exit #f 1))
-  (let ((timeout (timeq/time-to-next))
+  (let ((timeout (if (> the-poller.runnable.len 0) 0 (timeq/time-to-next)))
         (n (syscall (kevent the-poller.kqfd the-poller.ievents the-poller.oevents timeout))))
       (set! the-poller.ievents.index 0)
       (for-range i n
